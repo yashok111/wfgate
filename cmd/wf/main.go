@@ -40,6 +40,7 @@ const usage = `wf — gate harness
   wf apply -f edits.json          all-or-nothing batch of edits, then commit
   wf round new [-title T]         open the next round, scaffold its findings file
   wf freeze                       hash the artifacts, commit, tag gate-rN
+  wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF]  the diff a delta round reviews
   wf check [cite|dup] [flags]     deterministic checks over the artifacts
 
@@ -63,6 +64,8 @@ func main() {
 		err = cmdRound(os.Args[2:])
 	case "freeze":
 		err = cmdFreeze(os.Args[2:])
+	case "verify":
+		err = cmdVerify(os.Args[2:])
 	case "delta":
 		err = cmdDelta(os.Args[2:])
 	case "check":
@@ -417,6 +420,122 @@ func targetHead(dir string) string {
 		return "(unknown)"
 	}
 	return short(sha)
+}
+
+// cmdVerify answers the only question that matters immediately before a launch:
+// is what is about to run byte-for-byte what the reviewers read?
+//
+// It exists because the obvious substitute does not work. A clean working tree
+// proves nothing here: artifacts are changed through `wf apply`, which commits
+// as it writes, so an edit made after the gate closed leaves the tree exactly
+// as clean as one made before it. The check has to compare against the frozen
+// record, and it has to notice an artifact that was ADDED after the freeze —
+// a manifest that covered three files and a set that now holds four is the
+// shape of a launch nobody reviewed.
+func cmdVerify(args []string) error {
+	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	round := fs.Int("round", 0, "round to verify against (default the newest frozen one)")
+	if _, err := parseMixed(fs, args); err != nil {
+		return err
+	}
+	w, err := open()
+	if err != nil {
+		return err
+	}
+	n := *round
+	if n == 0 {
+		for r := w.M.Round; r >= 1; r-- {
+			if _, err := os.Stat(filepath.Join(w.RoundDir(r), "freeze.json")); err == nil {
+				n = r
+				break
+			}
+		}
+	}
+	if n == 0 {
+		return fmt.Errorf("no frozen round to verify against; run `wf freeze` first")
+	}
+	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
+	if err != nil {
+		return err
+	}
+	var fm freezeManifest
+	if err := json.Unmarshal(b, &fm); err != nil {
+		return err
+	}
+	fmt.Printf("## verify round %d\n", n)
+	bad := 0
+	fail := func(format string, a ...any) {
+		bad++
+		fmt.Printf("  MISMATCH "+format+"\n", a...)
+	}
+
+	dirty, err := w.Git.Dirty(".")
+	if err != nil {
+		return err
+	}
+	for _, d := range dirty {
+		fail("uncommitted: %s", d)
+	}
+
+	tag := ws.RoundTag(n)
+	head, err := w.Git.Head()
+	if err != nil {
+		return err
+	}
+	tagged, err := w.Git.Run("rev-parse", tag+"^{commit}")
+	switch {
+	case err != nil:
+		fail("tag %s does not exist", tag)
+	case tagged != head:
+		// Naming the distance turns "something moved" into "this many applies
+		// happened after the gate closed", which is the number that decides
+		// whether to re-open a round or to re-freeze.
+		ahead, _ := w.Git.Run("rev-list", "--count", tag+"..HEAD")
+		fail("HEAD is %s, tag %s is %s (%s commit(s) after the freeze)", short(head), tag, short(tagged), ahead)
+	}
+
+	arts, err := w.ArtifactList()
+	if err != nil {
+		return err
+	}
+	onDisk := map[string]bool{}
+	for _, a := range arts {
+		onDisk[a] = true
+		want, known := fm.Artifacts[a]
+		if !known {
+			fail("%s is not in the manifest (added after the freeze)", a)
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(w.Root, a))
+		if err != nil {
+			fail("%s: %v", a, err)
+			continue
+		}
+		sum := sha256.Sum256(body)
+		if got := hex.EncodeToString(sum[:]); got != want {
+			fail("%s: sha256 %s, frozen %s", a, got[:12], want[:12])
+		}
+	}
+	for a := range fm.Artifacts {
+		if !onDisk[a] {
+			fail("%s is in the manifest but gone from the tree", a)
+		}
+	}
+
+	// The target's revision is part of the frozen state, not context around it:
+	// every line number the artifacts cite is a claim about one revision of the
+	// repository under review, and a target that moved silently invalidates all
+	// of them.
+	if now := targetHead(w.M.Target); now != fm.TargetRef {
+		fail("target is at %s, frozen against %s", now, fm.TargetRef)
+	}
+
+	if bad > 0 {
+		fmt.Printf("\n%d mismatch(es): what would run is NOT what was reviewed. Do not launch.\n", bad)
+		return errFindings
+	}
+	fmt.Printf("  tag %s, %d artifact(s), target %s — clean\n", tag, len(arts), fm.TargetRef)
+	return nil
 }
 
 func cmdDelta(args []string) error {

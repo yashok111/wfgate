@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"git.sumka.site/yakov/wfgate/internal/gitx"
 )
@@ -25,11 +26,26 @@ import (
 // citeRe matches `path.ext:LINE`, `path.ext:A-B`, and either form followed by
 // `#anchor`.
 //
-// The extension is required and comes from a closed list. Without it the
-// pattern eats every `host:port` and every `key: value` in prose; with it, the
-// check reports only what an author meant as a citation.
-var citeRe = regexp.MustCompile(`([A-Za-z0-9_./\-]+\.(?:go|md|ts|tsx|js|jsx|mjs|sql|json|sh|ya?ml|toml|css|txt))` +
+// An extension is required, but NOT from a closed list. A whitelist of the
+// extensions one project happens to use makes the check silently find nothing
+// on a repository written in another language — the worst possible failure for
+// a tool whose whole value is telling you what it did not verify. The extension
+// must instead be short and contain at least one letter, which is what
+// separates a real suffix from the last octet of `127.0.0.1:3000` and from a
+// `3:4` in prose; both were the reason a whitelist looked necessary.
+var citeRe = regexp.MustCompile(`([A-Za-z0-9_./\-]+\.([A-Za-z0-9]{1,8}))` +
 	`:(\d+)(?:-(\d+))?(?:#([A-Za-z0-9_.\-]+))?`)
+
+// hasLetter rejects an "extension" made only of digits, which is how a dotted
+// numeric host or a version string reaches the pattern above.
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
 
 // Citation is one `file:line` reference found in an artifact.
 type Citation struct {
@@ -66,14 +82,17 @@ func ScanCitations(root string, files []string) ([]Citation, error) {
 		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for n := 1; sc.Scan(); n++ {
 			for _, m := range citeRe.FindAllStringSubmatch(sc.Text(), -1) {
-				start, _ := strconv.Atoi(m[2])
+				if !hasLetter(m[2]) {
+					continue
+				}
+				start, _ := strconv.Atoi(m[3])
 				end := start
-				if m[3] != "" {
-					end, _ = strconv.Atoi(m[3])
+				if m[4] != "" {
+					end, _ = strconv.Atoi(m[4])
 				}
 				out = append(out, Citation{
 					Artifact: rel, AtLine: n, Raw: m[0],
-					Path: m[1], Start: start, End: end, Anchor: m[4],
+					Path: m[1], Start: start, End: end, Anchor: m[5],
 				})
 			}
 		}

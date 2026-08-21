@@ -70,6 +70,31 @@ func TestScanCitations(t *testing.T) {
 	}
 }
 
+// The extension is not a whitelist, because a whitelist of one project's
+// languages makes the check find nothing at all on a repository written in
+// another — and a check that finds nothing reports zero findings and exits
+// clean, which is indistinguishable from a clean artifact set.
+func TestScanCitations_extensionIsNotAWhitelist(t *testing.T) {
+	root := t.TempDir()
+	body := "py src/main.py:12 rs core/lib.rs:3-9 java A.java:5#Bump kt x.kt:1 hpp v/a.hpp:2\n" +
+		"host http://127.0.0.1:3000 and 10.0.0.1:8080 and ratio 3:4 and v1.2.3:9\n"
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cits, err := ScanCitations(root, []string{"a.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range cits {
+		got = append(got, c.Path)
+	}
+	want := []string{"src/main.py", "core/lib.rs", "A.java", "x.kt", "v/a.hpp"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
 func TestVerifyCitations(t *testing.T) {
 	target := mkrepo(t, map[string]string{
 		"internal/a/repo.go": "package a\n\nfunc Bump() {}\n\nfunc Other() {}\n",
