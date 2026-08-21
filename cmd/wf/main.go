@@ -998,20 +998,30 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, er
 	// Only an `#anchor` catches that, and only where an author wrote one — so the
 	// number of citations WITHOUT one is the number this check did not really
 	// verify, and printing it keeps a green run from reading as coverage.
-	anchored := 0
+	anchored, badAnchors := 0, 0
 	for _, c := range cits {
 		if c.Anchor != "" {
 			anchored++
 		}
+		if c.BadAnchor != "" {
+			badAnchors++
+		}
 	}
-	fmt.Printf("## cite — %d citation(s), %d anchored (%d unverified beyond range), %d finding(s)\n",
+	hdr := fmt.Sprintf("## cite — %d citation(s), %d anchored (%d unverified beyond range), %d finding(s)",
 		len(cits), anchored, len(cits)-anchored, len(findings))
+	if badAnchors > 0 {
+		hdr += fmt.Sprintf(", %d anchor(s) not ASCII", badAnchors)
+	}
+	fmt.Println(hdr)
 	for _, f := range findings {
 		fmt.Println("  " + f.String())
 	}
 	if requireAnchor {
 		for _, c := range cits {
-			if c.Anchor == "" {
+			// A non-ASCII anchor already carries its own error above; flagging
+			// it as "without #anchor" too would state a falsehood about a
+			// citation whose author did write one.
+			if c.Anchor == "" && c.BadAnchor == "" {
 				fmt.Printf("  %s:%d: error: citation without #anchor  [%s]\n", c.Artifact, c.AtLine, c.Raw)
 				findings = append(findings, check.Finding{Citation: c})
 			}

@@ -49,13 +49,14 @@ func hasLetter(s string) bool {
 
 // Citation is one `file:line` reference found in an artifact.
 type Citation struct {
-	Artifact string // workspace-relative file the citation was written in
-	AtLine   int    // line inside the artifact, so the operator can go fix it
-	Raw      string
-	Path     string
-	Start    int
-	End      int    // == Start for a single-line citation
-	Anchor   string // optional `#symbol`: the token that must appear in range
+	Artifact  string // workspace-relative file the citation was written in
+	AtLine    int    // line inside the artifact, so the operator can go fix it
+	Raw       string
+	Path      string
+	Start     int
+	End       int    // == Start for a single-line citation
+	Anchor    string // optional `#symbol`: the token that must appear in range
+	BadAnchor string // a trailing #token the anchor grammar did not accept
 }
 
 // Finding is a citation the check rejects.
@@ -81,19 +82,45 @@ func ScanCitations(root string, files []string) ([]Citation, error) {
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for n := 1; sc.Scan(); n++ {
-			for _, m := range citeRe.FindAllStringSubmatch(sc.Text(), -1) {
-				if !hasLetter(m[2]) {
+			line := sc.Text()
+			for _, ix := range citeRe.FindAllStringSubmatchIndex(line, -1) {
+				get := func(i int) string {
+					if ix[2*i] < 0 {
+						return ""
+					}
+					return line[ix[2*i]:ix[2*i+1]]
+				}
+				if !hasLetter(get(2)) {
 					continue
 				}
-				start, _ := strconv.Atoi(m[3])
+				start, _ := strconv.Atoi(get(3))
 				end := start
-				if m[4] != "" {
-					end, _ = strconv.Atoi(m[4])
+				if get(4) != "" {
+					end, _ = strconv.Atoi(get(4))
 				}
-				out = append(out, Citation{
-					Artifact: rel, AtLine: n, Raw: m[0],
-					Path: m[1], Start: start, End: end, Anchor: m[5],
-				})
+				c := Citation{
+					Artifact: rel, AtLine: n, Raw: get(0),
+					Path: get(1), Start: start, End: end, Anchor: get(5),
+				}
+				// A `#` right after the match is an anchor the grammar did not
+				// accept — Cyrillic, spaces. The artifacts are English-only by
+				// rule, so this is a VIOLATION to report, never a citation to
+				// silently count as unanchored: on the first live run 15 such
+				// anchors read as "17 unverified" and hid that only two real
+				// unanchored citations existed — and one of the invisible
+				// anchors was factually wrong.
+				if c.Anchor == "" {
+					if e := ix[1]; e < len(line) && line[e] == '#' {
+						tok := line[e+1:]
+						if i := strings.IndexAny(tok, " \t"); i >= 0 {
+							tok = tok[:i]
+						}
+						tok = strings.TrimRight(tok, "`).,;|\"'")
+						c.BadAnchor = tok
+						c.Raw += "#" + tok
+					}
+				}
+				out = append(out, c)
 			}
 		}
 		cerr := sc.Err()
@@ -175,6 +202,9 @@ func VerifyCitations(target string, ix *Index, cits []Citation) ([]Finding, erro
 		out = append(out, Finding{Citation: c, Level: level, Msg: msg})
 	}
 	for _, c := range cits {
+		if c.BadAnchor != "" {
+			add(c, "error", fmt.Sprintf("anchor %q is not an ASCII token; the artifacts are English-only — anchor with a token from the cited line, or cite the range without one", c.BadAnchor))
+		}
 		path, amb := ix.resolve(c.Path)
 		if path == "" {
 			if len(amb) > 1 {

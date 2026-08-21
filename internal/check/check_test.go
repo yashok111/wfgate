@@ -95,6 +95,55 @@ func TestScanCitations_extensionIsNotAWhitelist(t *testing.T) {
 	}
 }
 
+// The artifacts are English-only by rule, so a Cyrillic (or multi-word) anchor
+// is a violation to REPORT, never a citation to silently count as unanchored.
+// On the first live run 15 such anchors hid inside "17 unverified" — and one of
+// them was factually wrong, which the silence also hid.
+func TestCitations_nonASCIIAnchorIsReportedNotSilent(t *testing.T) {
+	root := t.TempDir()
+	body := "see `a/f.go:3#якорь` then b/g.md:1-2#на самом деле and `a/f.go:1#OK`\n"
+	if err := os.WriteFile(filepath.Join(root, "x.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cits, err := ScanCitations(root, []string{"x.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cits) != 3 {
+		t.Fatalf("want 3 citations, got %d: %+v", len(cits), cits)
+	}
+	if cits[0].BadAnchor != "якорь" || cits[0].Anchor != "" {
+		t.Fatalf("cyrillic anchor must land in BadAnchor: %+v", cits[0])
+	}
+	if cits[1].BadAnchor != "на" {
+		t.Fatalf("multi-word anchor must be flagged by its first token: %+v", cits[1])
+	}
+	if cits[2].Anchor != "OK" || cits[2].BadAnchor != "" {
+		t.Fatalf("an ASCII anchor must stay a normal anchor: %+v", cits[2])
+	}
+
+	target := mkrepo(t, map[string]string{
+		"a/f.go": "// OK\n_\n_\n",
+		"b/g.md": "one\ntwo\n",
+	})
+	ix, err := NewIndex(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := VerifyCitations(target, ix, cits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 2 {
+		t.Fatalf("want exactly the two bad-anchor findings, got %d: %v", len(f), f)
+	}
+	for _, x := range f {
+		if !strings.Contains(x.Msg, "English-only") {
+			t.Errorf("finding must state the policy, got %q", x.Msg)
+		}
+	}
+}
+
 func TestVerifyCitations(t *testing.T) {
 	target := mkrepo(t, map[string]string{
 		"internal/a/repo.go": "package a\n\nfunc Bump() {}\n\nfunc Other() {}\n",
