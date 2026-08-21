@@ -53,7 +53,7 @@ Exit codes: 0 clean, 1 findings or failure, 2 usage.
 // version is stamped by the Makefile via -ldflags; "(devel)" is a binary built
 // outside make — including every `go test` and a bare `go build`.
 //
-// It exists because of a measured stumble, recorded in HANDOFF the day it
+// It exists because of a measured stumble, written down the day it
 // happened: after an edit, a run against the STALE installed binary looks
 // exactly like a run against the new one, and nothing in the frozen record
 // could say which produced it. The version goes into freeze.json for the same

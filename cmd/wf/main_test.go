@@ -51,7 +51,8 @@ func dispatch(args []string) error {
 
 // runWF runs one subcommand in-process from dir, capturing stdout and stderr
 // together. In-process rather than a built binary so `go test -cover` counts
-// these paths — HANDOFF lists cmd/wf at 0.0% as the open risk.
+// these paths — cmd/wf carried the whole prescribed sequence at 0.0% coverage
+// before this file existed.
 func runWF(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	t.Chdir(dir)
