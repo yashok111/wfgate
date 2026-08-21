@@ -44,14 +44,14 @@ wf delta                                   # the delta round's brief: findings +
 | `wf init <name> -target <repo>` | workspace: git init, `gate.json`, `artifacts/`, `rounds/`, first commit |
 | `wf add <file>...` | bring an authored artifact under the workspace and commit it; adopts an untracked draft already in place |
 | `wf status` | manifest, current round, who last touched each artifact, dirt, tool version |
-| `wf apply -f edits.json [-m msg] [--dry-run]` | all-or-nothing batch of edits, then a commit of only the touched files |
+| `wf apply -f <edits> [-m msg] [--dry-run]` | all-or-nothing batch of edits (JSON or text blocks), then a commit of only the touched files |
 | `wf round new [-title T] [-kind full\|delta]` | open the next round, scaffold `rounds/rN/findings.md` with its scope |
 | `wf round record <file> [-round N]` | fill a round's findings.md, validating closures before writing |
 | `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
-| `wf delta [-from REF] [-to REF]` | the round's findings, the closure checklist, and the artifact diff since the closed round's tag |
+| `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules) |
-| `wf stats` | per-round findings, closures and apply batches, from the ledger and git |
+| `wf stats` | per-round findings, closures, apply batches and the opt-in `[fix-induced]` share, from the ledger and git |
 | `wf version` | the binary's stamped build version |
 
 Exit codes: `0` clean, `1` findings or failure, `2` usage.
@@ -75,6 +75,22 @@ hard error at apply time, not a finding three rounds later.
 
 After the write the files are re-read from disk and every edit is searched for.
 An apply is verified by finding each change, not by the absence of an error.
+
+For multi-line or quote-bearing `old` strings, prefer the plain-text block
+format — nothing between markers is ever escaped:
+
+```
+=== artifacts/context.md  count=2  note=closes B7
+<<<<
+old text, verbatim — backticks, ${}, quotes, JSON all pass through
+====
+the replacement
+>>>>
+```
+
+Assembling the JSON was the measured bottleneck of the first live gate: a
+35-edit batch under three layers of quoting failed on escaping more often than
+on substance. The format is detected by the first byte (`[` means JSON).
 
 ### `wf check cite`
 

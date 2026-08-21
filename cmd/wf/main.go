@@ -38,13 +38,13 @@ const usage = `wf — gate harness
 
   wf init <name> -target <repo>   create a workspace (its own git repo)
   wf status                       manifest, round, dirty artifacts
-  wf apply -f edits.json          all-or-nothing batch of edits, then commit
+  wf apply -f <edits>             all-or-nothing batch (JSON array or === text blocks), then commit
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta]  open the next round, scaffold its findings file
   wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
-  wf delta [-from REF] [-to REF]  the diff a delta round reviews, with the closure checklist
+  wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
   wf check [cite|dup|drift|rules] deterministic checks over the artifacts
   wf stats                        per-round findings, closures and batches, from the ledger and git
   wf version                      the stamped build version of this binary
@@ -234,11 +234,22 @@ func cmdApply(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Two batch formats, detected by the first byte: a JSON array, or the
+	// plain-text block format (see apply.ParseText) that needs no escaping at
+	// all — assembling the JSON was the measured bottleneck of the first live
+	// gate, three layers of quoting deep.
 	var edits []apply.Edit
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&edits); err != nil {
-		return fmt.Errorf("edits: %w", err)
+	trimmed := bytes.TrimLeft(raw, " \t\r\n")
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		dec := json.NewDecoder(strings.NewReader(string(raw)))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&edits); err != nil {
+			return fmt.Errorf("edits: %w", err)
+		}
+	} else {
+		if edits, err = apply.ParseText(raw); err != nil {
+			return fmt.Errorf("edits: %w", err)
+		}
 	}
 	if len(edits) == 0 {
 		return fmt.Errorf("edits: empty batch")
@@ -860,12 +871,26 @@ func cmdDelta(args []string) error {
 	fs := flag.NewFlagSet("delta", flag.ExitOnError)
 	from := fs.String("from", "", "base ref (default the previously frozen round)")
 	to := fs.String("to", "HEAD", "target ref")
+	save := fs.Bool("save", false, "write the brief to rounds/r<open>/brief.md and commit it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	w, err := open()
 	if err != nil {
 		return err
+	}
+	// -save exists because the brief IS round bookkeeping: on the first live
+	// gate the operator saved it by hand as an untracked rounds/r7/delta.txt —
+	// the very stray file verify then had to learn to name. If the brief is
+	// wanted as a file, the tool writes and commits it, so the class dies at
+	// its source.
+	var out io.Writer = os.Stdout
+	var buf bytes.Buffer
+	if *save {
+		if w.M.Round == 0 {
+			return fmt.Errorf("no round is open to save the brief into")
+		}
+		out = &buf
 	}
 	// The base is the round BEING CLOSED, which is the one before the open round —
 	// not simply the newest tag. By the time a delta reviewer is briefed, the
@@ -886,18 +911,18 @@ func cmdDelta(args []string) error {
 	} else {
 		baseRound = ws.RoundOfTag(base)
 	}
-	fmt.Printf("# delta %s..%s\n\n", base, *to)
+	fprintf(out, "# delta %s..%s\n\n", base, *to)
 	// The findings the round was asked to close come first, and they are the
 	// findings of the BASE round — the open round's file is the blank scaffold
 	// `wf round new` just wrote, and briefing a reviewer with it briefs nobody.
 	if baseRound > 0 {
 		p := filepath.Join(w.RoundDir(baseRound), "findings.md")
 		if b, err := os.ReadFile(p); err == nil {
-			fmt.Printf("## findings round %d filed, which this delta must close\n\n%s\n",
+			fprintf(out, "## findings round %d filed, which this delta must close\n\n%s\n",
 				baseRound, strings.TrimRight(string(b), "\n"))
-			printClosures(w, baseRound, ws.ParseFindings(b))
+			printClosures(out, w, baseRound, ws.ParseFindings(b))
 		} else {
-			fmt.Printf("## findings\n\n(none recorded in %s — record what round %d found there before briefing a reviewer)\n\n",
+			fprintf(out, "## findings\n\n(none recorded in %s — record what round %d found there before briefing a reviewer)\n\n",
 				p, baseRound)
 		}
 	}
@@ -905,7 +930,27 @@ func cmdDelta(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("## artifact diff\n\n%s\n", d)
+	fprintf(out, "## artifact diff\n\n%s\n", d)
+	if *save {
+		dir := w.RoundDir(w.M.Round)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		p := filepath.Join(dir, "brief.md")
+		if err := os.WriteFile(p, buf.Bytes(), 0o644); err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(w.Root, p)
+		sha, err := w.Git.Commit(fmt.Sprintf("round %d: save delta brief", w.M.Round), []string{rel})
+		if errors.Is(err, gitx.ErrNothingStaged) {
+			fmt.Printf("saved %s (%d bytes) — unchanged since the last save\n", rel, buf.Len())
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		fmt.Printf("saved %s (%d bytes)\ncommitted %s\n", rel, buf.Len(), short(sha))
+	}
 	return nil
 }
 
@@ -916,11 +961,11 @@ func cmdDelta(args []string) error {
 // commit actually close the finding" is left, with the artifact diff below as
 // the evidence. Nothing here fails the command: a briefing that refused to
 // print would brief nobody.
-func printClosures(w *ws.Workspace, round int, rows []ws.FindingRow) {
+func printClosures(out io.Writer, w *ws.Workspace, round int, rows []ws.FindingRow) {
 	printed := false
 	head := func() {
 		if !printed {
-			fmt.Printf("\n## closures round %d claims\n\n", round)
+			fprintf(out, "\n## closures round %d claims\n\n", round)
 			printed = true
 		}
 	}
@@ -935,21 +980,21 @@ func printClosures(w *ws.Workspace, round int, rows []ws.FindingRow) {
 			for _, s := range shas {
 				subj, files, err := w.Git.CommitBrief(s)
 				if err != nil {
-					fmt.Printf("  [%s] %s closed by %s — NOT a commit in this workspace\n", r.Num, r.Level, s)
+					fprintf(out, "  [%s] %s closed by %s — NOT a commit in this workspace\n", r.Num, r.Level, s)
 					continue
 				}
-				fmt.Printf("  [%s] %s closed by %s %q — %s\n", r.Num, r.Level, short(s), subj, strings.Join(files, ", "))
+				fprintf(out, "  [%s] %s closed by %s %q — %s\n", r.Num, r.Level, short(s), subj, strings.Join(files, ", "))
 			}
 		case strings.TrimSpace(r.ClosedBy) != "":
-			fmt.Printf("  [%s] %s closed by %q — not a commit, verify by hand\n", r.Num, r.Level, r.ClosedBy)
+			fprintf(out, "  [%s] %s closed by %q — not a commit, verify by hand\n", r.Num, r.Level, r.ClosedBy)
 		default:
-			fmt.Printf("  [%s] %s — OPEN, nothing claims to close it\n", r.Num, r.Level)
+			fprintf(out, "  [%s] %s — OPEN, nothing claims to close it\n", r.Num, r.Level)
 		}
 	}
 	if len(rows) == 0 {
-		fmt.Printf("\n## closures round %d claims\n\n  (no findings table recognized — closures not validated)\n", round)
+		fprintf(out, "\n## closures round %d claims\n\n  (no findings table recognized — closures not validated)\n", round)
 	}
-	fmt.Println()
+	fprintf(out, "\n")
 }
 
 func cmdCheck(args []string) error {
@@ -1247,9 +1292,9 @@ func cmdStats(args []string) error {
 		return fmt.Errorf("no rounds yet")
 	}
 	fmt.Printf("## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
-	totalF, totalB := 0, 0
+	totalF, totalB, totalFI := 0, 0, 0
 	for n := 1; n <= w.M.Round; n++ {
-		findings, blockers, byCommit, byProse, open := 0, 0, 0, 0, 0
+		findings, blockers, byCommit, byProse, open, fixInduced := 0, 0, 0, 0, 0, 0
 		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
 			for _, r := range ws.ParseFindings(b) {
 				if r.Placeholder() {
@@ -1258,6 +1303,9 @@ func cmdStats(args []string) error {
 				findings++
 				if r.Blocker() {
 					blockers++
+				}
+				if r.FixInduced() {
+					fixInduced++
 				}
 				switch {
 				case len(r.Shas()) > 0:
@@ -1271,6 +1319,7 @@ func cmdStats(args []string) error {
 		}
 		totalF += findings
 		totalB += blockers
+		totalFI += fixInduced
 		tag := ws.RoundTag(n)
 		state := tag
 		if !w.Git.TagExists(tag) {
@@ -1291,11 +1340,29 @@ func cmdStats(args []string) error {
 				}
 			}
 		}
-		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)\n",
-			n, state, findings, blockers, byCommit, byProse, open, batches)
+		fi := ""
+		if fixInduced > 0 {
+			fi = fmt.Sprintf("; fix-induced %d", fixInduced)
+		}
+		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s\n",
+			n, state, findings, blockers, byCommit, byProse, open, batches, fi)
 	}
 	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
+	// The marker is opt-in, so its absence must read as "unmeasured", never as
+	// "no self-inflicted findings" — the two are different claims and only the
+	// author of a finding can make the second.
+	if totalFI > 0 {
+		fmt.Printf("  fix-induced — %d of %d finding(s); the share climbs toward 100%% when the gate is exhausted\n", totalFI, totalF)
+	} else {
+		fmt.Printf("  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
+	}
 	return nil
+}
+
+// fprintf writes the delta brief to stdout or to the -save buffer; neither can
+// meaningfully fail, and checking each call would bury the brief's structure.
+func fprintf(w io.Writer, format string, a ...any) {
+	_, _ = fmt.Fprintf(w, format, a...)
 }
 
 func short(s string) string {

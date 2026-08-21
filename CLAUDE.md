@@ -172,6 +172,27 @@ measured failure, not taste:
   re-freeze".
 - *Lowercasing in `Shas`* — `2344D3D8` silently rode off into "verify by hand".
 
+**The third wave — the residue P2d named but the queue missed:**
+
+- *The plain-text batch format for `apply`* (`apply.ParseText`) — assembling
+  the JSON was the run's actual bottleneck: a 35-edit batch with multi-line
+  `old` strings under three layers of quoting failed on escaping more often
+  than on substance. Between `<<<<`/`====`/`>>>>` nothing is ever escaped; a
+  marker collision mis-splits and then fails the plan LOUDLY, because the
+  mis-split old matches nothing — all-or-nothing converts the format's one
+  weakness into a rejection instead of a silent wrong edit.
+- *`delta -save`* — the stray `rounds/r7/delta.txt` that taught verify to name
+  bookkeeping dirt was the operator hand-saving the brief. If the brief is
+  wanted as a file, it IS round bookkeeping: the tool writes
+  `rounds/r<open>/brief.md` and commits it, killing the class at its source.
+  An unchanged re-save is reported, not re-committed.
+- *`[fix-induced]` in `wf stats`* — the share of findings introduced by the
+  previous round's own fix is the close signal (100% on P2d's last two
+  rounds), and the ledger can carry it only where the author marks it. Stats
+  prints "not measured" when nobody marked: an unmarked corpus and "no
+  self-inflicted findings" are different claims, and only the second belongs
+  to the finding's author.
+
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and
 printed a usage error naming the very flag that was passed.

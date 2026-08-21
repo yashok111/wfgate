@@ -316,13 +316,14 @@ func TestPrescribedSequence(t *testing.T) {
 	// The anchor ratchet: dropping the one anchor must surface at the next
 	// freeze as a fall against the previous round's share, not pass as just
 	// another green freeze.
-	strip := filepath.Join(tmp, "edits-strip.json")
-	write(t, strip, `[
-  {"file": "artifacts/context.md", "old": "src/main.go:3#NeedleFn", "new": "src/main.go:3", "count": 1, "note": "drop the anchor"}
-]`)
+	// The strip batch uses the plain-text block format — the quoting-hostile
+	// content (# and backticks) goes in verbatim, no escaping.
+	strip := filepath.Join(tmp, "edits-strip.txt")
+	write(t, strip, "=== artifacts/context.md  count=1  note=drop the anchor\n"+
+		"<<<<\n`src/main.go:3#NeedleFn`\n====\n`src/main.go:3`\n>>>>\n")
 	out, err = runWF(t, wsDir, "apply", "-f", strip)
 	noErr(t, err, "apply strip")
-	mustContain(t, out, "[0] ok")
+	mustContain(t, out, "[0] ok", "committed ")
 
 	// The open round's virgin scaffold must count as ZERO findings — the
 	// measured miss: an operator's awk counted the placeholder row and closed
@@ -331,7 +332,8 @@ func TestPrescribedSequence(t *testing.T) {
 	noErr(t, err, "stats mid-run")
 	mustContain(t, out,
 		"round 1 [gate-r1] — 1 finding(s), 1 blocker(s); closed: 0 commit, 0 prose, 1 open",
-		"round 2 [open] — 0 finding(s), 0 blocker(s)")
+		"round 2 [open] — 0 finding(s), 0 blocker(s)",
+		"no [fix-induced] markers; the self-inflicted share was not measured")
 
 	// The prescribed flow freezes a round right after opening it, so the frozen
 	// round's own findings are always a blank scaffold — the blockers that must
@@ -369,7 +371,7 @@ func TestPrescribedSequence(t *testing.T) {
 	r2closed := filepath.Join(tmp, "r2-closed.md")
 	write(t, r2closed, `| # | level | finding | closed by |
 |---|-------|---------|-----------|
-| 1 | BLOCKER | delta briefing was verified by hand only | deferred to the live mocker run |
+| 1 | BLOCKER | delta briefing was verified by hand only [fix-induced] | deferred to the live mocker run |
 `)
 	out, err = runWF(t, wsDir, "round", "record", r2closed)
 	noErr(t, err, "record r2 closed")
@@ -434,6 +436,18 @@ func TestPrescribedSequence(t *testing.T) {
 		"## findings round 1 filed, which this delta must close",
 		"stale copy of the composition rule")
 
+	// -save banks the brief into the open round's bookkeeping — the hand-saved
+	// untracked delta.txt was the very stray file verify learned to name.
+	out, err = runWF(t, wsDir, "delta", "-save")
+	noErr(t, err, "delta -save")
+	mustContain(t, out, "saved rounds/r2/brief.md", "committed ")
+	brief, err := os.ReadFile(filepath.Join(wsDir, "rounds", "r2", "brief.md"))
+	noErr(t, err, "read brief")
+	mustContain(t, string(brief), "# delta gate-r1..HEAD", "## closures round 1 claims", "## artifact diff")
+	out, err = runWF(t, wsDir, "delta", "-save")
+	noErr(t, err, "delta -save unchanged")
+	mustContain(t, out, "unchanged since the last save")
+
 	// A first draft written straight into artifacts/ is adopted, not refused:
 	// refusing it forced the hand `git commit` this command exists to remove.
 	write(t, filepath.Join(wsDir, "artifacts", "notes.md"), "# Notes\n")
@@ -448,6 +462,7 @@ func TestPrescribedSequence(t *testing.T) {
 	mustContain(t, out,
 		"## stats — workspace demo, 2 round(s)",
 		"round 1 [gate-r1] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
-		"round 2 [gate-r2] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es)",
-		"total — 2 finding(s), 2 blocker(s)")
+		"round 2 [gate-r2] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es); fix-induced 1",
+		"total — 2 finding(s), 2 blocker(s)",
+		"fix-induced — 1 of 2 finding(s)")
 }

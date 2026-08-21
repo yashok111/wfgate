@@ -67,6 +67,15 @@ func TestFindingRow_shas(t *testing.T) {
 	}
 }
 
+func TestFindingRow_fixInduced(t *testing.T) {
+	if !(FindingRow{Text: "seam broken by round 3's fix [fix-induced]"}).FixInduced() {
+		t.Fatal("marked row must report fix-induced")
+	}
+	if (FindingRow{Text: "a fix-induced-looking phrase without the marker"}).FixInduced() {
+		t.Fatal("prose without the bracketed marker must not count")
+	}
+}
+
 func TestParseFindings_noTable(t *testing.T) {
 	if rows := ParseFindings([]byte("free-form findings, nothing tabular\n")); len(rows) != 0 {
 		t.Fatalf("want no rows, got %+v", rows)

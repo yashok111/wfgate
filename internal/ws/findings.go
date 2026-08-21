@@ -31,6 +31,14 @@ func (r FindingRow) Blocker() bool { return strings.EqualFold(r.Level, "BLOCKER"
 // claim to validate.
 func (r FindingRow) Placeholder() bool { return r.Text == "" }
 
+// FixInduced reports the opt-in `[fix-induced]` marker in the finding text.
+// The share of a round's findings introduced by the previous round's own fix
+// is the number that says a gate is exhausted — it climbed to 100% on the
+// first live gate's last two rounds — and the ledger can only carry it where
+// the author marked it, which is why stats prints the marker's population
+// rather than pretending an unmarked corpus measured anything.
+func (r FindingRow) FixInduced() bool { return strings.Contains(r.Text, "[fix-induced]") }
+
 // A commit claim is a hex token of 7-40 chars containing at least one digit.
 // The digit rule is what keeps English out: "acceded"- and "deadbeef"-class
 // words are pure-letter hex, and a prose cell mentioning one must not be
