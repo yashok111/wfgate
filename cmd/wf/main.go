@@ -40,6 +40,7 @@ const usage = `wf — gate harness
   wf apply -f edits.json          all-or-nothing batch of edits, then commit
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T]         open the next round, scaffold its findings file
+  wf round record <file>          fill the open round's findings.md from a file, and commit
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF]  the diff a delta round reviews
@@ -332,8 +333,11 @@ func cmdAdd(args []string) error {
 }
 
 func cmdRound(args []string) error {
+	if len(args) > 0 && args[0] == "record" {
+		return cmdRoundRecord(args[1:])
+	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("usage: wf round new [-title T]")
+		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file>")
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
@@ -381,6 +385,55 @@ round is frozen, and the next round's first job is to check that claim.
 		return err
 	}
 	fmt.Printf("round %d opened, %s\ncommitted %s\n", n, rel, short(sha))
+	return nil
+}
+
+// cmdRoundRecord fills the open round's findings file from an authored document.
+//
+// The scaffold `wf round new` writes is a form, and an empty form briefs nobody:
+// what a round FOUND is the half of the delta a reviewer checks first. Filling
+// it needs a command, because the alternative an operator reaches for is the
+// hand `git commit` the workflow forbids everywhere else — and a rule with one
+// undocumented exception is a rule that stops being followed.
+func cmdRoundRecord(args []string) error {
+	fs := flag.NewFlagSet("round record", flag.ExitOnError)
+	round := fs.Int("round", 0, "round to record into (default the open one)")
+	pos, err := parseMixed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("usage: wf round record <file> [-round N]")
+	}
+	w, err := open()
+	if err != nil {
+		return err
+	}
+	n := *round
+	if n == 0 {
+		n = w.M.Round
+	}
+	if n == 0 {
+		return fmt.Errorf("no round is open; run `wf round new` first")
+	}
+	b, err := os.ReadFile(pos[0])
+	if err != nil {
+		return err
+	}
+	dir := w.RoundDir(n)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	dst := filepath.Join(dir, "findings.md")
+	if err := os.WriteFile(dst, b, 0o644); err != nil {
+		return err
+	}
+	rel, _ := filepath.Rel(w.Root, dst)
+	sha, err := w.Git.Commit(fmt.Sprintf("round %d: record findings", n), []string{rel})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("recorded %s (%d bytes)\ncommitted %s\n", rel, len(b), short(sha))
 	return nil
 }
 
