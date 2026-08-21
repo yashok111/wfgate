@@ -483,15 +483,17 @@ func cmdVerify(args []string) error {
 		return err
 	}
 	tagged, err := w.Git.Run("rev-parse", tag+"^{commit}")
-	switch {
-	case err != nil:
+	if err != nil {
 		fail("tag %s does not exist", tag)
-	case tagged != head:
-		// Naming the distance turns "something moved" into "this many applies
-		// happened after the gate closed", which is the number that decides
-		// whether to re-open a round or to re-freeze.
+	} else if tagged != head {
+		// HEAD moving past the tag is NOT a mismatch by itself. Recording a
+		// round's findings, opening the next round and writing its scaffold all
+		// commit without touching an artifact, and a check that failed on those
+		// would push an operator to skip the bookkeeping the tool exists for.
+		// The authoritative comparison is the artifact hashes below; the distance
+		// is printed because it is the number that says whether to re-freeze.
 		ahead, _ := w.Git.Run("rev-list", "--count", tag+"..HEAD")
-		fail("HEAD is %s, tag %s is %s (%s commit(s) after the freeze)", short(head), tag, short(tagged), ahead)
+		fmt.Printf("  note: HEAD is %s, %s commit(s) past tag %s (%s)\n", short(head), ahead, tag, short(tagged))
 	}
 
 	arts, err := w.ArtifactList()
