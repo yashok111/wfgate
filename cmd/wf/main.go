@@ -38,6 +38,7 @@ const usage = `wf — gate harness
   wf init <name> -target <repo>   create a workspace (its own git repo)
   wf status                       manifest, round, dirty artifacts
   wf apply -f edits.json          all-or-nothing batch of edits, then commit
+  wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T]         open the next round, scaffold its findings file
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
@@ -60,6 +61,8 @@ func main() {
 		err = cmdStatus(os.Args[2:])
 	case "apply":
 		err = cmdApply(os.Args[2:])
+	case "add":
+		err = cmdAdd(os.Args[2:])
 	case "round":
 		err = cmdRound(os.Args[2:])
 	case "freeze":
@@ -265,6 +268,66 @@ func cmdApply(args []string) error {
 		return err
 	}
 	fmt.Printf("\ncommitted %s  (%d file(s))\n", short(sha), len(written))
+	return nil
+}
+
+// cmdAdd brings an existing file into the workspace as an artifact.
+//
+// It exists because `wf apply` cannot make the FIRST commit of an artifact: every
+// edit must match text that already exists, so an empty `old` is rejected. Without
+// this command the only way to seed a workspace is the hand `git commit` the
+// workflow otherwise forbids, and `wf freeze` — which refuses while anything is
+// uncommitted — is unreachable on the first pass. A rule with one undocumented
+// exception is a rule an operator stops believing.
+func cmdAdd(args []string) error {
+	fs := flag.NewFlagSet("add", flag.ExitOnError)
+	as := fs.String("as", "", "name to store the file under (default its basename)")
+	pos, err := parseMixed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) == 0 {
+		return fmt.Errorf("usage: wf add <file>... [-as name]")
+	}
+	if *as != "" && len(pos) != 1 {
+		return fmt.Errorf("-as names one file, got %d", len(pos))
+	}
+	w, err := open()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(w.Artifacts(), 0o755); err != nil {
+		return err
+	}
+	var added []string
+	for _, src := range pos {
+		name := filepath.Base(src)
+		if *as != "" {
+			name = *as
+		}
+		dst := filepath.Join(w.Artifacts(), name)
+		// Refusing an existing artifact is the whole boundary between this command
+		// and `wf apply`: a silent overwrite would be an unvalidated, uncounted,
+		// whole-file replacement — exactly what apply exists to prevent.
+		if _, err := os.Stat(dst); err == nil {
+			return fmt.Errorf("%s already exists; change it with `wf apply`, not `wf add`", name)
+		}
+		b, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(dst, b, 0o644); err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(w.Root, dst)
+		added = append(added, rel)
+		fmt.Printf("  added %s (%d bytes)\n", rel, len(b))
+	}
+	sha, err := w.Git.Commit(fmt.Sprintf("add %d artifact(s)", len(added)), added)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("committed %s\n", short(sha))
 	return nil
 }
 
@@ -551,24 +614,38 @@ func cmdDelta(args []string) error {
 	if err != nil {
 		return err
 	}
-	base := *from
+	// The base is the round BEING CLOSED, which is the one before the open round —
+	// not simply the newest tag. By the time a delta reviewer is briefed, the
+	// current round has itself been frozen, so "newest tag" is the round about to
+	// be reviewed and the diff against it is empty. An empty diff looks exactly
+	// like a round that changed nothing.
+	base, baseRound := *from, 0
 	if base == "" {
-		for n := w.M.Round; n >= 1; n-- {
+		for n := w.M.Round - 1; n >= 1; n-- {
 			if t := ws.RoundTag(n); w.Git.TagExists(t) {
-				base = t
+				base, baseRound = t, n
 				break
 			}
 		}
-	}
-	if base == "" {
-		return fmt.Errorf("no frozen round to diff from; pass -from")
+		if base == "" {
+			return fmt.Errorf("no earlier frozen round to diff from; pass -from")
+		}
+	} else {
+		baseRound = ws.RoundOfTag(base)
 	}
 	fmt.Printf("# delta %s..%s\n\n", base, *to)
-	// The findings the round was asked to close come first. A delta reviewer
-	// whose first job is to check a closure claim needs the claim in front of
-	// the diff, not in another file.
-	if b, err := os.ReadFile(filepath.Join(w.RoundDir(w.M.Round), "findings.md")); err == nil {
-		fmt.Printf("## findings this round must close\n\n%s\n", strings.TrimRight(string(b), "\n"))
+	// The findings the round was asked to close come first, and they are the
+	// findings of the BASE round — the open round's file is the blank scaffold
+	// `wf round new` just wrote, and briefing a reviewer with it briefs nobody.
+	if baseRound > 0 {
+		p := filepath.Join(w.RoundDir(baseRound), "findings.md")
+		if b, err := os.ReadFile(p); err == nil {
+			fmt.Printf("## findings round %d filed, which this delta must close\n\n%s\n",
+				baseRound, strings.TrimRight(string(b), "\n"))
+		} else {
+			fmt.Printf("## findings\n\n(none recorded in %s — record what round %d found there before briefing a reviewer)\n\n",
+				p, baseRound)
+		}
 	}
 	d, err := w.Git.Diff(base, *to, "artifacts")
 	if err != nil {

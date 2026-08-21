@@ -133,6 +133,24 @@ func (w *Workspace) RoundDir(n int) string {
 
 func RoundTag(n int) string { return fmt.Sprintf("gate-r%d", n) }
 
+// RoundOfTag is RoundTag's inverse, 0 for anything else. A caller that names a
+// base tag by hand still needs the round it belongs to, so that the findings a
+// delta prints come from the round being closed rather than the one open.
+func RoundOfTag(tag string) int {
+	rest, ok := strings.CutPrefix(tag, "gate-r")
+	if !ok {
+		return 0
+	}
+	n := 0
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return 0
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
+}
+
 // ArtifactList returns the artifact files relative to the workspace root, so
 // that a caller can pass them to git and to a check without re-deriving paths.
 func (w *Workspace) ArtifactList() ([]string, error) {
