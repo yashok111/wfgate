@@ -78,7 +78,7 @@ func ScanCitations(root string, files []string) ([]Citation, error) {
 			}
 		}
 		cerr := sc.Err()
-		f.Close()
+		_ = f.Close() // read-only; the scan error above is the one that matters
 		if cerr != nil {
 			return nil, fmt.Errorf("%s: %w", rel, cerr)
 		}

@@ -12,7 +12,8 @@ test:
 lint:
 	go vet $(PKGS)
 	@out=$$(gofmt -l cmd internal); if [ -n "$$out" ]; then echo "gofmt:"; echo "$$out"; exit 1; fi
-	@command -v golangci-lint >/dev/null && golangci-lint run || echo "golangci-lint absent, skipped"
+	@if command -v golangci-lint >/dev/null; then golangci-lint run; \
+	else echo "golangci-lint absent, skipped"; fi
 
 fmt:
 	gofmt -w cmd internal

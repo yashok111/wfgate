@@ -181,13 +181,15 @@ func atomicWrite(path string, b []byte) error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp) // no-op once the rename succeeded
+	// no-op once the rename succeeded; a failure to remove a temp file must not
+	// mask the write error the caller is about to see.
+	defer func() { _ = os.Remove(tmp) }()
 	if _, err := f.Write(b); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {
