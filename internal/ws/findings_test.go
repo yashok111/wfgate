@@ -56,6 +56,7 @@ func TestFindingRow_shas(t *testing.T) {
 		{"the fix acceded to a deadbeef facade", ""},
 		{"", ""},
 		{"deferred, see decision D-7", ""},
+		{"2344D3D8", "2344d3d8"},
 		{"0123456789abcdef0123456789abcdef01234567", "0123456789abcdef0123456789abcdef01234567"},
 	}
 	for _, c := range cases {

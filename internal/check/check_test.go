@@ -182,6 +182,63 @@ func TestVerifyCitations(t *testing.T) {
 	}
 }
 
+// Rule markers close dup's structural blind spot — copies contradicting in
+// DIFFERENT words — but only where an author marked the rule; quoting and case
+// still normalise away, so markup does not reintroduce the escaping seam.
+func TestRuleMarkers(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"a.md": "- [R1] The layer is composed at startup, never per request.\n" +
+			"- [R2] Errors are `wrapped`, not swallowed.\n",
+		"b.md": "// [R1] the layer is composed at STARTUP, never per request\n" +
+			"// [R2] errors are wrapped, not swallowed\n" +
+			"- [R3] Only one site states this rule.\n",
+		"c.md": "- [R1] The layer is composed per request when the flag says so.\n",
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sites, markers, err := CollectRuleSites(root, []string{"a.md", "b.md", "c.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if markers != 6 || len(sites) != 3 {
+		t.Fatalf("want 6 markers over 3 ids, got %d over %d", markers, len(sites))
+	}
+	conflicts := RuleConflicts(sites)
+	if len(conflicts) != 1 || conflicts[0].ID != "R1" {
+		t.Fatalf("want exactly R1 in conflict (c.md contradicts), got %+v", conflicts)
+	}
+	if len(conflicts[0].Sites) != 3 {
+		t.Fatalf("a conflict must list every site of the id, got %d", len(conflicts[0].Sites))
+	}
+}
+
+// Only a reference that RESOLVES to a tracked file is reported: the note exists
+// to reveal unverified references to real files, not to re-admit the prose
+// ratios and hosts the extension rule exists to exclude.
+func TestExtensionlessRefs(t *testing.T) {
+	target := mkrepo(t, map[string]string{"Makefile": "all:\n\tgo build\n", "src/x.go": "package x\n"})
+	ix, err := NewIndex(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	body := "see Makefile:2 and nowhere/else:7 and ratio 3:4 and http://127.0.0.1:3000\n"
+	if err := os.WriteFile(filepath.Join(root, "x.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := ExtensionlessRefs(root, []string{"x.md"}, ix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].Path != "Makefile" || refs[0].Start != 2 {
+		t.Fatalf("want exactly the Makefile reference, got %+v", refs)
+	}
+}
+
 func TestFindDuplicates_divergentCopy(t *testing.T) {
 	root := mkrepo(t, map[string]string{
 		"artifacts/context.md": "- The composition is a pure function called from buildRuntime, not a branch inside it.\n",

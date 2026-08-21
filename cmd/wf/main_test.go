@@ -45,6 +45,8 @@ func dispatch(args []string) error {
 		return cmdDelta(args[1:])
 	case "check":
 		return cmdCheck(args[1:])
+	case "stats":
+		return cmdStats(args[1:])
 	}
 	return fmt.Errorf("unknown command %q", args[0])
 }
@@ -148,6 +150,7 @@ func TestPrescribedSequence(t *testing.T) {
 	// target line 3 and an unanchored one line 2.
 	target := filepath.Join(tmp, "target")
 	write(t, filepath.Join(target, "src", "main.go"), "package main\n\nfunc NeedleFn() {}\n")
+	write(t, filepath.Join(target, "Makefile"), "all:\n\tgo build\n")
 	gitIn(t, target, "init", "-q", "-b", "main")
 	gitIn(t, target, "add", "-A")
 	gitIn(t, target, "commit", "-q", "-m", "initial")
@@ -160,26 +163,28 @@ func TestPrescribedSequence(t *testing.T) {
 	// Two artifacts carrying the same rule. `wf add` is the only way to make an
 	// artifact's first commit — apply rejects an empty `old` — so the sequence
 	// starts here.
-	rule := "- The composition stays a pure function called from buildRuntime, never a branch inside it.\n"
-	write(t, filepath.Join(tmp, "context.md"), "# Context\n\n"+rule+"\nEntry point: `src/main.go:3#NeedleFn`.\n")
+	rule := "- [R1] The composition stays a pure function called from buildRuntime, never a branch inside it.\n"
+	write(t, filepath.Join(tmp, "context.md"), "# Context\n\n"+rule+"\nEntry point: `src/main.go:3#NeedleFn`.\nBuild entry: Makefile:2.\n")
 	write(t, filepath.Join(tmp, "script.md"), "# Script\n\n"+rule+"\nBase: `src/main.go:2`.\n")
 	out, err = runWF(t, wsDir, "add", filepath.Join(tmp, "context.md"), filepath.Join(tmp, "script.md"))
 	noErr(t, err, "add")
 	mustContain(t, out, "added artifacts/context.md", "added artifacts/script.md", "committed ")
 
-	// Re-adding must refuse: an overwrite-by-add would be an unvalidated,
-	// uncounted whole-file replacement, the exact thing apply exists to prevent.
-	if _, err = runWF(t, wsDir, "add", filepath.Join(tmp, "context.md")); err == nil || !strings.Contains(err.Error(), "already exists") {
-		t.Fatalf("re-add: want 'already exists', got %v", err)
+	// Re-adding a REVIEWED artifact must refuse: an overwrite-by-add would be
+	// an unvalidated, uncounted whole-file replacement, the exact thing apply
+	// exists to prevent.
+	if _, err = runWF(t, wsDir, "add", filepath.Join(tmp, "context.md")); err == nil || !strings.Contains(err.Error(), "already a reviewed artifact") {
+		t.Fatalf("re-add: want the reviewed-artifact refusal, got %v", err)
 	}
 
 	out, err = runWF(t, wsDir, "round", "new", "-title", "initial review")
 	noErr(t, err, "round new")
-	mustContain(t, out, "round 1 opened, rounds/r1/findings.md")
+	mustContain(t, out, "round 1 opened (full), rounds/r1/findings.md")
 
 	out, err = runWF(t, wsDir, "freeze")
 	noErr(t, err, "freeze r1")
-	mustContain(t, out, "frozen round 1", "gate-r1", "artifacts/context.md", "artifacts/script.md", "tool   wf (devel)")
+	mustContain(t, out, "frozen round 1", "gate-r1", "artifacts/context.md", "artifacts/script.md",
+		"tool   wf (devel)", "cites  1 anchored / 2 citation(s)")
 
 	out, err = runWF(t, wsDir, "status")
 	noErr(t, err, "status")
@@ -234,8 +239,11 @@ func TestPrescribedSequence(t *testing.T) {
 	noErr(t, err, "check")
 	mustContain(t, out,
 		"## cite — 2 citation(s), 1 anchored (1 unverified beyond range), 0 finding(s)",
+		"1 citation-like reference(s) to extensionless tracked file(s) — NOT verified",
+		"[Makefile:2]",
 		"## dup — 2 statement(s), 1 cross-file group(s), 0 divergent",
-		"sim 1.00")
+		"sim 1.00",
+		"## rules — 2 marker(s), 1 id(s), 0 conflict(s)")
 	mustNotContain(t, out, "DIVERGENT")
 
 	// -require-anchor turns the unanchored citation into a finding, and -show
@@ -301,9 +309,29 @@ func TestPrescribedSequence(t *testing.T) {
 		"findings: 1 row(s), 1 blocker(s); closed by commit 0, by prose 0, open 1",
 		"committed ")
 
-	out, err = runWF(t, wsDir, "round", "new", "-title", "delta review")
+	out, err = runWF(t, wsDir, "round", "new", "-title", "delta review", "-kind", "delta")
 	noErr(t, err, "round new r2")
-	mustContain(t, out, "round 2 opened, rounds/r2/findings.md")
+	mustContain(t, out, "round 2 opened (delta), rounds/r2/findings.md")
+
+	// The anchor ratchet: dropping the one anchor must surface at the next
+	// freeze as a fall against the previous round's share, not pass as just
+	// another green freeze.
+	strip := filepath.Join(tmp, "edits-strip.json")
+	write(t, strip, `[
+  {"file": "artifacts/context.md", "old": "src/main.go:3#NeedleFn", "new": "src/main.go:3", "count": 1, "note": "drop the anchor"}
+]`)
+	out, err = runWF(t, wsDir, "apply", "-f", strip)
+	noErr(t, err, "apply strip")
+	mustContain(t, out, "[0] ok")
+
+	// The open round's virgin scaffold must count as ZERO findings — the
+	// measured miss: an operator's awk counted the placeholder row and closed
+	// the gate on 99/27 against a true 98/26.
+	out, err = runWF(t, wsDir, "stats")
+	noErr(t, err, "stats mid-run")
+	mustContain(t, out,
+		"round 1 [gate-r1] — 1 finding(s), 1 blocker(s); closed: 0 commit, 0 prose, 1 open",
+		"round 2 [open] — 0 finding(s), 0 blocker(s)")
 
 	// The prescribed flow freezes a round right after opening it, so the frozen
 	// round's own findings are always a blank scaffold — the blockers that must
@@ -349,7 +377,9 @@ func TestPrescribedSequence(t *testing.T) {
 
 	out, err = runWF(t, wsDir, "freeze")
 	noErr(t, err, "freeze r2")
-	mustContain(t, out, "frozen round 2", "gate-r2", "1 closure(s) not naming a commit")
+	mustContain(t, out, "frozen round 2", "gate-r2", "1 closure(s) not naming a commit",
+		"cites  0 anchored / 2 citation(s)",
+		"anchored 0/2, down from 1/2 (round 1)")
 
 	// verify must pick the NEWEST frozen round on its own, and round 2 was
 	// frozen against the moved target, so the run is clean again.
@@ -357,6 +387,24 @@ func TestPrescribedSequence(t *testing.T) {
 	noErr(t, err, "verify r2")
 	mustContain(t, out, "## verify round 2", "tag gate-r2, 2 artifact(s)", "— clean")
 	mustNotContain(t, out, "MISMATCH")
+
+	// A stray bookkeeping file refuses the launch like any dirt, but the
+	// verdict must say the artifacts themselves still match the freeze.
+	stray := filepath.Join(wsDir, "rounds", "r2", "stray.txt")
+	write(t, stray, "reviewer scratch\n")
+	out, err = runWF(t, wsDir, "verify")
+	wantFindings(t, err, "verify bookkeeping dirt")
+	mustContain(t, out, "uncommitted: ?? rounds/r2/stray.txt",
+		"the artifacts match the freeze — every mismatch above is uncommitted round bookkeeping")
+	if err := os.Remove(stray); err != nil {
+		t.Fatal(err)
+	}
+
+	// -since narrows dup to what this round touched: the rule group's copies
+	// were last edited before gate-r2, so it is hidden and SAID to be hidden.
+	out, err = runWF(t, wsDir, "check", "dup", "-since", "gate-r2")
+	noErr(t, err, "dup -since")
+	mustContain(t, out, "0 cross-file group(s)", "1 group(s) predate gate-r2, not shown")
 
 	// Delta without flags. The base must be the round BEING CLOSED (r1), not
 	// the newest tag — r2 is already frozen, and diffing against it printed an
@@ -385,4 +433,21 @@ func TestPrescribedSequence(t *testing.T) {
 	mustContain(t, out, "# delta gate-r1..HEAD",
 		"## findings round 1 filed, which this delta must close",
 		"stale copy of the composition rule")
+
+	// A first draft written straight into artifacts/ is adopted, not refused:
+	// refusing it forced the hand `git commit` this command exists to remove.
+	write(t, filepath.Join(wsDir, "artifacts", "notes.md"), "# Notes\n")
+	out, err = runWF(t, wsDir, "add", filepath.Join(wsDir, "artifacts", "notes.md"))
+	noErr(t, err, "add in place")
+	mustContain(t, out, "added artifacts/notes.md", "already in place", "committed ")
+
+	// Stats come from the ledger and git, not an operator's awk — the scaffold
+	// placeholder of an open round must not count as a finding.
+	out, err = runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out,
+		"## stats — workspace demo, 2 round(s)",
+		"round 1 [gate-r1] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
+		"round 2 [gate-r2] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es)",
+		"total — 2 finding(s), 2 blocker(s)")
 }

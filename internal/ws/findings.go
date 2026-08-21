@@ -38,10 +38,13 @@ func (r FindingRow) Placeholder() bool { return r.Text == "" }
 // chars) degrades to "verify by hand" — safe in the direction that matters.
 var shaRe = regexp.MustCompile(`\b[0-9a-f]{7,40}\b`)
 
-// Shas extracts the commit claims from the closed-by cell.
+// Shas extracts the commit claims from the closed-by cell. The cell is
+// lowercased first: an UPPERCASE sha pasted from some UI is the same claim, and
+// classifying it as prose silently demotes a verifiable closure to "verify by
+// hand" (measured on the first live run).
 func (r FindingRow) Shas() []string {
 	var out []string
-	for _, m := range shaRe.FindAllString(r.ClosedBy, -1) {
+	for _, m := range shaRe.FindAllString(strings.ToLower(r.ClosedBy), -1) {
 		if strings.ContainsAny(m, "0123456789") {
 			out = append(out, m)
 		}

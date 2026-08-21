@@ -14,6 +14,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -39,12 +40,13 @@ const usage = `wf — gate harness
   wf status                       manifest, round, dirty artifacts
   wf apply -f edits.json          all-or-nothing batch of edits, then commit
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
-  wf round new [-title T]         open the next round, scaffold its findings file
+  wf round new [-title T] [-kind full|delta]  open the next round, scaffold its findings file
   wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF]  the diff a delta round reviews, with the closure checklist
-  wf check [cite|dup|drift]       deterministic checks over the artifacts
+  wf check [cite|dup|drift|rules] deterministic checks over the artifacts
+  wf stats                        per-round findings, closures and batches, from the ledger and git
   wf version                      the stamped build version of this binary
 
 Exit codes: 0 clean, 1 findings or failure, 2 usage.
@@ -88,6 +90,8 @@ func main() {
 		err = cmdDelta(os.Args[2:])
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "stats":
+		err = cmdStats(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Println(toolID())
 		return
@@ -324,15 +328,31 @@ func cmdAdd(args []string) error {
 			name = *as
 		}
 		dst := filepath.Join(w.Artifacts(), name)
-		// Refusing an existing artifact is the whole boundary between this command
-		// and `wf apply`: a silent overwrite would be an unvalidated, uncounted,
-		// whole-file replacement — exactly what apply exists to prevent.
-		if _, err := os.Stat(dst); err == nil {
-			return fmt.Errorf("%s already exists; change it with `wf apply`, not `wf add`", name)
-		}
 		b, err := os.ReadFile(src)
 		if err != nil {
 			return err
+		}
+		if _, err := os.Stat(dst); err == nil {
+			// The refusal guards exactly one thing: overwriting a REVIEWED
+			// artifact, which is `wf apply`'s job to change. A file that exists
+			// but is untracked is the natural first draft written in place —
+			// refusing it forced the hand `git commit` this command exists to
+			// remove, three times on the first live gate — so it is adopted:
+			// committed as it lies, never overwritten with different bytes.
+			rel, _ := filepath.Rel(w.Root, dst)
+			if tracked, _ := w.Git.Run("ls-files", "--", rel); tracked != "" {
+				return fmt.Errorf("%s is already a reviewed artifact; change it with `wf apply`, not `wf add`", name)
+			}
+			onDisk, err := os.ReadFile(dst)
+			if err != nil {
+				return err
+			}
+			if abs, _ := filepath.Abs(src); abs != dst && !bytes.Equal(onDisk, b) {
+				return fmt.Errorf("%s exists untracked and differs from %s; resolve by hand — adding would silently pick one of two drafts", name, src)
+			}
+			added = append(added, rel)
+			fmt.Printf("  added %s (%d bytes, already in place)\n", rel, len(onDisk))
+			continue
 		}
 		if err := os.WriteFile(dst, b, 0o644); err != nil {
 			return err
@@ -358,8 +378,20 @@ func cmdRound(args []string) error {
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
+	kind := fs.String("kind", "full", "full: re-reads the whole set; delta: reviews the diff only")
 	if _, err := parseMixed(fs, args[1:]); err != nil {
 		return err
+	}
+	// The kind is recorded because the audit needs what a round did NOT look
+	// at. On the first live gate seven of ten rounds were delta rounds, the
+	// scope lived only in prose titles, and twice a round reviewed less than a
+	// reader of its findings would assume — with no record of it anywhere.
+	scope := map[string]string{
+		"full":  "Kind: full — this round re-reads the whole artifact set.",
+		"delta": "Kind: delta — this round reviews the delta only; state below what was NOT re-read.",
+	}[*kind]
+	if scope == "" {
+		return fmt.Errorf("-kind %q: full or delta", *kind)
 	}
 	w, err := open()
 	if err != nil {
@@ -381,6 +413,7 @@ func cmdRound(args []string) error {
 	tmpl := fmt.Sprintf(`# Round %d — %s
 
 Opened at %s.
+%s
 
 Every BLOCKER below must be closed by a commit in this workspace before the
 round is frozen, and the next round's first job is to check that claim.
@@ -388,7 +421,7 @@ round is frozen, and the next round's first job is to check that claim.
 | # | level | finding | closed by |
 |---|-------|---------|-----------|
 | 1 | BLOCKER |  |  |
-`, n, t, time.Now().UTC().Format(time.RFC3339))
+`, n, t, time.Now().UTC().Format(time.RFC3339), scope)
 	if err := os.WriteFile(f, []byte(tmpl), 0o644); err != nil {
 		return err
 	}
@@ -397,11 +430,11 @@ round is frozen, and the next round's first job is to check that claim.
 		return err
 	}
 	rel, _ := filepath.Rel(w.Root, f)
-	sha, err := w.Git.Commit(fmt.Sprintf("round %d: open — %s", n, t), []string{rel, ws.ManifestName})
+	sha, err := w.Git.Commit(fmt.Sprintf("round %d: open (%s) — %s", n, *kind, t), []string{rel, ws.ManifestName})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("round %d opened, %s\ncommitted %s\n", n, rel, short(sha))
+	fmt.Printf("round %d opened (%s), %s\ncommitted %s\n", n, *kind, rel, short(sha))
 	return nil
 }
 
@@ -505,6 +538,11 @@ type freezeManifest struct {
 	Tool      string            `json:"tool"` // wf version that wrote this freeze
 	Frozen    string            `json:"frozen"`
 	Artifacts map[string]string `json:"artifacts"` // path -> sha256
+	// The anchor ratchet: a direction, not a threshold. A fixed bar would be
+	// arbitrary; what matters is the share not silently falling — an author who
+	// stopped anchoring writes citations this gate cannot really verify.
+	CiteAnchored int `json:"citeAnchored"`
+	CiteTotal    int `json:"citeTotal"`
 }
 
 func cmdFreeze(args []string) error {
@@ -603,6 +641,27 @@ func cmdFreeze(args []string) error {
 		sum := sha256.Sum256(b)
 		fm.Artifacts[a] = hex.EncodeToString(sum[:])
 	}
+	cits, err := check.ScanCitations(w.Root, arts)
+	if err != nil {
+		return err
+	}
+	fm.CiteTotal = len(cits)
+	for _, c := range cits {
+		if c.Anchor != "" {
+			fm.CiteAnchored++
+		}
+	}
+	// The previous freeze is the ratchet's baseline. Compared by cross-product
+	// so a share is never computed over zero.
+	var prev freezeManifest
+	for r := w.M.Round - 1; r >= 1; r-- {
+		if pb, err := os.ReadFile(filepath.Join(w.RoundDir(r), "freeze.json")); err == nil {
+			if json.Unmarshal(pb, &prev) == nil {
+				prev.Round = r
+			}
+			break
+		}
+	}
 	out, err := json.MarshalIndent(fm, "", "  ")
 	if err != nil {
 		return err
@@ -628,11 +687,17 @@ func cmdFreeze(args []string) error {
 		return err
 	}
 	fmt.Printf("frozen round %d\n  commit %s\n  tag    %s\n  target %s\n  tool   %s\n", w.M.Round, short(sha), tag, fm.TargetRef, fm.Tool)
+	fmt.Printf("  cites  %d anchored / %d citation(s)\n", fm.CiteAnchored, fm.CiteTotal)
 	for _, a := range arts {
 		fmt.Printf("  %s  %s\n", fm.Artifacts[a][:12], a)
 	}
 	if prose > 0 {
 		fmt.Printf("  note: %d closure(s) not naming a commit — verify by hand\n", prose)
+	}
+	if prev.CiteTotal > 0 && fm.CiteTotal > 0 &&
+		fm.CiteAnchored*prev.CiteTotal < prev.CiteAnchored*fm.CiteTotal {
+		fmt.Printf("  note: anchored %d/%d, down from %d/%d (round %d) — the share this gate can really verify fell\n",
+			fm.CiteAnchored, fm.CiteTotal, prev.CiteAnchored, prev.CiteTotal, prev.Round)
 	}
 	return nil
 }
@@ -709,8 +774,20 @@ func cmdVerify(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Bookkeeping dirt is tracked apart from artifact dirt: both refuse the
+	// launch, but "a stray file in rounds/" and "an artifact differs from the
+	// freeze" deserve different reactions, and the verdict below says which
+	// one the operator has.
+	bookkeeping := 0
 	for _, d := range dirty {
 		fail("uncommitted: %s", d)
+		p := d
+		if i := strings.LastIndexByte(d, ' '); i >= 0 {
+			p = d[i+1:]
+		}
+		if !strings.HasPrefix(p, "artifacts/") {
+			bookkeeping++
+		}
 	}
 
 	tag := ws.RoundTag(n)
@@ -769,6 +846,9 @@ func cmdVerify(args []string) error {
 	}
 
 	if bad > 0 {
+		if bad == bookkeeping {
+			fmt.Printf("  note: the artifacts match the freeze — every mismatch above is uncommitted round bookkeeping. Commit it; do not re-freeze.\n")
+		}
 		fmt.Printf("\n%d mismatch(es): what would run is NOT what was reviewed. Do not launch.\n", bad)
 		return errFindings
 	}
@@ -883,6 +963,7 @@ func cmdCheck(args []string) error {
 	thr := fs.Float64("threshold", 0.82, "dup: similarity threshold for a near match")
 	minWords := fs.Int("min-words", 8, "dup: shortest statement compared")
 	round := fs.Int("round", 0, "drift: frozen round to measure from (default the newest)")
+	since := fs.String("since", "", "dup: show only groups with a copy touched after this ref")
 	if _, err := parseMixed(fs, args); err != nil {
 		return err
 	}
@@ -911,14 +992,21 @@ func cmdCheck(args []string) error {
 		fail = fail || bad
 	}
 	if which == "all" || which == "dup" {
-		bad, err := runDup(w, arts, *thr, *minWords)
+		bad, err := runDup(w, arts, *thr, *minWords, *since)
 		if err != nil {
 			return err
 		}
 		fail = fail || bad
 	}
-	if which != "all" && which != "cite" && which != "dup" {
-		return fmt.Errorf("unknown check %q (cite, dup, drift)", which)
+	if which == "all" || which == "rules" {
+		bad, err := runRules(w, arts)
+		if err != nil {
+			return err
+		}
+		fail = fail || bad
+	}
+	if which != "all" && which != "cite" && which != "dup" && which != "rules" {
+		return fmt.Errorf("unknown check %q (cite, dup, drift, rules)", which)
 	}
 	if fail {
 		return errFindings
@@ -998,6 +1086,15 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, er
 	// Only an `#anchor` catches that, and only where an author wrote one — so the
 	// number of citations WITHOUT one is the number this check did not really
 	// verify, and printing it keeps a green run from reading as coverage.
+	// Extensionless references are the check's own blind spot made visible: a
+	// `Makefile:90` is not recognised as a citation — the extension rule is
+	// what keeps prose ratios and dotted hosts out — so it is absent from every
+	// count above. Unverified without being reported as unverified is this
+	// project's named worst failure, hence the note.
+	extless, err := check.ExtensionlessRefs(w.Root, arts, ix)
+	if err != nil {
+		return false, err
+	}
 	anchored, badAnchors := 0, 0
 	for _, c := range cits {
 		if c.Anchor != "" {
@@ -1013,6 +1110,12 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, er
 		hdr += fmt.Sprintf(", %d anchor(s) not ASCII", badAnchors)
 	}
 	fmt.Println(hdr)
+	if len(extless) > 0 {
+		fmt.Printf("  note: %d citation-like reference(s) to extensionless tracked file(s) — NOT verified:\n", len(extless))
+		for _, c := range extless {
+			fmt.Printf("    %s:%d  [%s]\n", c.Artifact, c.AtLine, c.Raw)
+		}
+	}
 	for _, f := range findings {
 		fmt.Println("  " + f.String())
 	}
@@ -1035,7 +1138,7 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, er
 	return len(findings) > 0, nil
 }
 
-func runDup(w *ws.Workspace, arts []string, thr float64, minWords int) (bool, error) {
+func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since string) (bool, error) {
 	sts, err := check.CollectStatements(w.Root, arts, minWords)
 	if err != nil {
 		return false, err
@@ -1044,6 +1147,42 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int) (bool, er
 	if err != nil {
 		return false, err
 	}
+	// -since narrows the OUTPUT, never the threshold. On a derived artifact
+	// (a context document that deliberately restates the decisions) every
+	// restated sentence satisfies both DIVERGENT conditions by construction —
+	// measured: 21-25 flagged groups per one real contradiction. A divergence
+	// that survived earlier freezes was seen and left standing; what a round
+	// needs is the groups IT touched. The hidden count is printed, because a
+	// filter that hides silently turns focus into blindness.
+	hidden := 0
+	if since != "" {
+		out, err := w.Git.Run("rev-list", since+"..HEAD")
+		if err != nil {
+			return false, err
+		}
+		recent := map[string]bool{}
+		for _, sha := range strings.Split(out, "\n") {
+			if len(sha) >= 8 {
+				recent[sha[:8]] = true
+			}
+		}
+		kept := groups[:0]
+		for _, g := range groups {
+			touched := false
+			for _, s := range g.Sites {
+				if recent[s.Commit] {
+					touched = true
+					break
+				}
+			}
+			if touched {
+				kept = append(kept, g)
+			} else {
+				hidden++
+			}
+		}
+		groups = kept
+	}
 	divergent := 0
 	for _, g := range groups {
 		if g.Divergent {
@@ -1051,6 +1190,9 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int) (bool, er
 		}
 	}
 	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent\n", len(sts), len(groups), divergent)
+	if hidden > 0 {
+		fmt.Printf("  note: %d group(s) predate %s, not shown\n", hidden, since)
+	}
 	for _, g := range groups {
 		flag := ""
 		if g.Divergent {
@@ -1065,6 +1207,95 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int) (bool, er
 	// how a rule is SUPPOSED to look when it legitimately lives in two places;
 	// failing on those would make the check noise and it would get turned off.
 	return divergent > 0, nil
+}
+
+// runRules compares every site of each `[RN]` rule marker. Zero markers is a
+// corpus that opted out, and the population line says so — dup's structural
+// blind spot (copies contradicting in DIFFERENT words: eight on the first live
+// gate, all found by reviewers) is only closed where an author marked the rule.
+func runRules(w *ws.Workspace, arts []string) (bool, error) {
+	sites, markers, err := check.CollectRuleSites(w.Root, arts)
+	if err != nil {
+		return false, err
+	}
+	conflicts := check.RuleConflicts(sites)
+	fmt.Printf("## rules — %d marker(s), %d id(s), %d conflict(s)\n", markers, len(sites), len(conflicts))
+	for _, c := range conflicts {
+		fmt.Printf("  %s: sites disagree\n", c.ID)
+		for _, s := range c.Sites {
+			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, trunc(s.Text, 110))
+		}
+	}
+	return len(conflicts) > 0, nil
+}
+
+// cmdStats derives the numbers a close/continue decision needs from what the
+// workspace already records — the findings ledger and git — instead of the
+// operator's own awk. Measured need: hand-counting on the first live gate
+// returned 99/27 against a true 98/26, because the scaffold placeholder of the
+// open round was counted as a finding; the ledger parser knows better.
+func cmdStats(args []string) error {
+	fs := flag.NewFlagSet("stats", flag.ExitOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	w, err := open()
+	if err != nil {
+		return err
+	}
+	if w.M.Round == 0 {
+		return fmt.Errorf("no rounds yet")
+	}
+	fmt.Printf("## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
+	totalF, totalB := 0, 0
+	for n := 1; n <= w.M.Round; n++ {
+		findings, blockers, byCommit, byProse, open := 0, 0, 0, 0, 0
+		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
+			for _, r := range ws.ParseFindings(b) {
+				if r.Placeholder() {
+					continue
+				}
+				findings++
+				if r.Blocker() {
+					blockers++
+				}
+				switch {
+				case len(r.Shas()) > 0:
+					byCommit++
+				case strings.TrimSpace(r.ClosedBy) != "":
+					byProse++
+				default:
+					open++
+				}
+			}
+		}
+		totalF += findings
+		totalB += blockers
+		tag := ws.RoundTag(n)
+		state := tag
+		if !w.Git.TagExists(tag) {
+			state, tag = "open", "HEAD"
+		}
+		// Batches are counted by commit subject over the round's tag window.
+		// The window is chronology, not attribution: a batch closing round
+		// N's findings lands after gate-rN and is counted where it happened.
+		rng := tag
+		if prev := ws.RoundTag(n - 1); n > 1 && w.Git.TagExists(prev) {
+			rng = prev + ".." + tag
+		}
+		batches := 0
+		if subjects, err := w.Git.Run("log", "--format=%s", rng); err == nil && subjects != "" {
+			for _, s := range strings.Split(subjects, "\n") {
+				if strings.HasPrefix(s, "apply") {
+					batches++
+				}
+			}
+		}
+		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)\n",
+			n, state, findings, blockers, byCommit, byProse, open, batches)
+	}
+	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
+	return nil
 }
 
 func short(s string) string {

@@ -249,6 +249,45 @@ func VerifyCitations(target string, ix *Index, cits []Citation) ([]Finding, erro
 	return out, nil
 }
 
+// extlessRe matches a citation-shaped reference whose path carries NO
+// extension: the class citeRe deliberately requires an extension to exclude
+// (`Makefile:90`). The two are disjoint by construction — this token class has
+// no dot.
+var extlessRe = regexp.MustCompile(`\b([A-Za-z][A-Za-z0-9_/\-]*):(\d+)\b`)
+
+// ExtensionlessRefs finds citation-like references to extensionless TRACKED
+// files. They are not citations — the extension rule is what separates a path
+// from prose ratios and dotted hosts — so they are absent from every count the
+// check prints, which is the failure this scan makes visible: unverified
+// without being reported as unverified. Only a token that resolves in the
+// target's index is reported; "see 3:4" stays prose.
+func ExtensionlessRefs(root string, files []string, ix *Index) ([]Citation, error) {
+	var out []Citation
+	for _, rel := range files {
+		f, err := os.Open(filepath.Join(root, rel))
+		if err != nil {
+			return nil, err
+		}
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		for n := 1; sc.Scan(); n++ {
+			for _, m := range extlessRe.FindAllStringSubmatch(sc.Text(), -1) {
+				if path, _ := ix.resolve(m[1]); path == "" {
+					continue
+				}
+				line, _ := strconv.Atoi(m[2])
+				out = append(out, Citation{Artifact: rel, AtLine: n, Raw: m[0], Path: m[1], Start: line, End: line})
+			}
+		}
+		cerr := sc.Err()
+		_ = f.Close() // read-only; the scan error above is the one that matters
+		if cerr != nil {
+			return nil, fmt.Errorf("%s: %w", rel, cerr)
+		}
+	}
+	return out, nil
+}
+
 // nearest returns the line number of the occurrence of tok closest to want, or
 // 0. An off-by-a-few citation is the common case, and naming the correct line
 // turns the finding into a patch instead of a search.
