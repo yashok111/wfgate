@@ -1,0 +1,226 @@
+// Package check holds the deterministic checks a gate can run on its artifacts.
+//
+// The split of labour is the point. Of the blockers a real gate produces, the
+// large majority are judgement about a specific codebase and no tool will find
+// them. A measurable minority are mechanical — a citation pointing at the wrong
+// line, a rule corrected in one artifact and left standing in another — and
+// those cost review rounds, which are the expensive resource. These checks take
+// only the mechanical share, and they must never be presented as coverage of
+// the rest.
+package check
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+
+	"git.sumka.site/yakov/wfgate/internal/gitx"
+)
+
+// citeRe matches `path.ext:LINE`, `path.ext:A-B`, and either form followed by
+// `#anchor`.
+//
+// The extension is required and comes from a closed list. Without it the
+// pattern eats every `host:port` and every `key: value` in prose; with it, the
+// check reports only what an author meant as a citation.
+var citeRe = regexp.MustCompile(`([A-Za-z0-9_./\-]+\.(?:go|md|ts|tsx|js|jsx|mjs|sql|json|sh|ya?ml|toml|css|txt))` +
+	`:(\d+)(?:-(\d+))?(?:#([A-Za-z0-9_.\-]+))?`)
+
+// Citation is one `file:line` reference found in an artifact.
+type Citation struct {
+	Artifact string // workspace-relative file the citation was written in
+	AtLine   int    // line inside the artifact, so the operator can go fix it
+	Raw      string
+	Path     string
+	Start    int
+	End      int    // == Start for a single-line citation
+	Anchor   string // optional `#symbol`: the token that must appear in range
+}
+
+// Finding is a citation the check rejects.
+type Finding struct {
+	Citation
+	Level string // "error" | "warn"
+	Msg   string
+}
+
+func (f Finding) String() string {
+	return fmt.Sprintf("%s:%d: %s: %s  [%s]", f.Artifact, f.AtLine, f.Level, f.Msg, f.Raw)
+}
+
+// ScanCitations reads every file in files (workspace-relative) and extracts the
+// citations it contains.
+func ScanCitations(root string, files []string) ([]Citation, error) {
+	var out []Citation
+	for _, rel := range files {
+		f, err := os.Open(filepath.Join(root, rel))
+		if err != nil {
+			return nil, err
+		}
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		for n := 1; sc.Scan(); n++ {
+			for _, m := range citeRe.FindAllStringSubmatch(sc.Text(), -1) {
+				start, _ := strconv.Atoi(m[2])
+				end := start
+				if m[3] != "" {
+					end, _ = strconv.Atoi(m[3])
+				}
+				out = append(out, Citation{
+					Artifact: rel, AtLine: n, Raw: m[0],
+					Path: m[1], Start: start, End: end, Anchor: m[4],
+				})
+			}
+		}
+		cerr := sc.Err()
+		f.Close()
+		if cerr != nil {
+			return nil, fmt.Errorf("%s: %w", rel, cerr)
+		}
+	}
+	return out, nil
+}
+
+// Index is the target repository's tracked files, addressable by full path and
+// by trailing path segment.
+//
+// Bare basenames are how citations are actually written — `bundle.go:340`, not
+// `internal/bundle/bundle.go:340` — so resolution has to accept them. It also
+// has to refuse them when they are ambiguous, because a repository with
+// `repo.go` in five packages makes an unqualified citation unverifiable, and
+// silently picking one would produce a green check over a wrong reference.
+type Index struct {
+	all    map[string]bool
+	suffix map[string][]string
+}
+
+func NewIndex(target string) (*Index, error) {
+	files, err := gitx.Repo{Dir: target}.Files()
+	if err != nil {
+		return nil, err
+	}
+	ix := &Index{all: map[string]bool{}, suffix: map[string][]string{}}
+	for _, f := range files {
+		ix.all[f] = true
+		parts := strings.Split(f, "/")
+		for i := range parts {
+			ix.suffix[strings.Join(parts[i:], "/")] = append(ix.suffix[strings.Join(parts[i:], "/")], f)
+		}
+	}
+	return ix, nil
+}
+
+func (ix *Index) resolve(p string) (string, []string) {
+	if ix.all[p] {
+		return p, nil
+	}
+	m := ix.suffix[p]
+	if len(m) == 1 {
+		return m[0], nil
+	}
+	return "", m
+}
+
+// VerifyCitations checks each citation against the target repository: the file
+// resolves to exactly one tracked file, the range is well formed and inside the
+// file, and an `#anchor`, when present, appears within the cited range.
+//
+// It cannot check that the cited lines say what the surrounding sentence claims.
+// That is the reviewer's job, and `wf check cite --show` exists to make it cheap
+// rather than to pretend it has been done.
+func VerifyCitations(target string, ix *Index, cits []Citation) ([]Finding, error) {
+	lineCache := map[string][]string{}
+	var out []Finding
+	add := func(c Citation, level, msg string) {
+		out = append(out, Finding{Citation: c, Level: level, Msg: msg})
+	}
+	for _, c := range cits {
+		path, amb := ix.resolve(c.Path)
+		if path == "" {
+			if len(amb) > 1 {
+				sort.Strings(amb)
+				show := amb
+				if len(show) > 4 {
+					show = append(append([]string{}, show[:4]...), fmt.Sprintf("… +%d", len(amb)-4))
+				}
+				add(c, "error", "ambiguous path, matches "+strings.Join(show, ", "))
+			} else {
+				add(c, "error", "no tracked file matches "+c.Path)
+			}
+			continue
+		}
+		if c.End < c.Start {
+			add(c, "error", fmt.Sprintf("inverted range %d-%d", c.Start, c.End))
+			continue
+		}
+		lines, ok := lineCache[path]
+		if !ok {
+			b, err := os.ReadFile(filepath.Join(target, path))
+			if err != nil {
+				add(c, "error", fmt.Sprintf("read %s: %v", path, err))
+				continue
+			}
+			lines = strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+			lineCache[path] = lines
+		}
+		if c.Start < 1 || c.End > len(lines) {
+			add(c, "error", fmt.Sprintf("%s has %d lines, citation covers %d-%d", path, len(lines), c.Start, c.End))
+			continue
+		}
+		if c.Anchor != "" && !strings.Contains(strings.Join(lines[c.Start-1:c.End], "\n"), c.Anchor) {
+			at := nearest(lines, c.Anchor, c.Start)
+			msg := fmt.Sprintf("anchor %q not in %s:%d-%d", c.Anchor, path, c.Start, c.End)
+			if at > 0 {
+				msg += fmt.Sprintf("; nearest occurrence is line %d", at)
+			}
+			add(c, "error", msg)
+		}
+	}
+	return out, nil
+}
+
+// nearest returns the line number of the occurrence of tok closest to want, or
+// 0. An off-by-a-few citation is the common case, and naming the correct line
+// turns the finding into a patch instead of a search.
+func nearest(lines []string, tok string, want int) int {
+	best, bestD := 0, 1<<30
+	for i, l := range lines {
+		if !strings.Contains(l, tok) {
+			continue
+		}
+		d := i + 1 - want
+		if d < 0 {
+			d = -d
+		}
+		if d < bestD {
+			best, bestD = i+1, d
+		}
+	}
+	return best
+}
+
+// Show renders the cited lines so a reviewer can compare them with the claim.
+func Show(target string, ix *Index, c Citation) string {
+	path, _ := ix.resolve(c.Path)
+	if path == "" {
+		return "  <unresolved>"
+	}
+	b, err := os.ReadFile(filepath.Join(target, path))
+	if err != nil {
+		return "  <unreadable>"
+	}
+	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	var sb strings.Builder
+	for n := c.Start; n <= c.End && n <= len(lines); n++ {
+		if n < 1 {
+			continue
+		}
+		fmt.Fprintf(&sb, "  %s:%d| %s\n", path, n, lines[n-1])
+	}
+	return sb.String()
+}

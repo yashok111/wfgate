@@ -1,0 +1,173 @@
+package check
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// mkrepo builds a git repository with the given files and one commit per call,
+// so a test can control which commit last touched which file — the signal the
+// duplicate check reads.
+func mkrepo(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	run(t, dir, "init", "-q", "-b", "main")
+	run(t, dir, "config", "user.email", "t@example.invalid")
+	run(t, dir, "config", "user.name", "t")
+	commit(t, dir, "initial", files)
+	return dir
+}
+
+func commit(t *testing.T, dir, msg string, files map[string]string) {
+	t.Helper()
+	for rel, body := range files {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(t, dir, "add", "-A")
+	run(t, dir, "commit", "-q", "-m", msg)
+}
+
+func run(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+	}
+}
+
+func TestScanCitations(t *testing.T) {
+	root := t.TempDir()
+	body := "see `internal/a/repo.go:42` and DESIGN.md:100-120 and repo.go:7#Bump\n" +
+		"not a citation: http://127.0.0.1:3000 or ratio 3:4\n"
+	if err := os.WriteFile(filepath.Join(root, "ctx.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cits, err := ScanCitations(root, []string{"ctx.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cits) != 3 {
+		t.Fatalf("want 3 citations, got %d: %+v", len(cits), cits)
+	}
+	if cits[1].Start != 100 || cits[1].End != 120 {
+		t.Fatalf("range parsed wrong: %+v", cits[1])
+	}
+	if cits[2].Anchor != "Bump" || cits[2].Start != 7 || cits[2].End != 7 {
+		t.Fatalf("anchor parsed wrong: %+v", cits[2])
+	}
+	if cits[0].AtLine != 1 {
+		t.Fatalf("artifact line wrong: %+v", cits[0])
+	}
+}
+
+func TestVerifyCitations(t *testing.T) {
+	target := mkrepo(t, map[string]string{
+		"internal/a/repo.go": "package a\n\nfunc Bump() {}\n\nfunc Other() {}\n",
+		"internal/b/repo.go": "package b\n",
+		"DESIGN.md":          "one\ntwo\nthree\n",
+	})
+	ix, err := NewIndex(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cits := []Citation{
+		{Artifact: "x.md", AtLine: 1, Raw: "internal/a/repo.go:3", Path: "internal/a/repo.go", Start: 3, End: 3},
+		{Artifact: "x.md", AtLine: 2, Raw: "repo.go:1", Path: "repo.go", Start: 1, End: 1},
+		{Artifact: "x.md", AtLine: 3, Raw: "DESIGN.md:99", Path: "DESIGN.md", Start: 99, End: 99},
+		{Artifact: "x.md", AtLine: 4, Raw: "nowhere.go:1", Path: "nowhere.go", Start: 1, End: 1},
+		{Artifact: "x.md", AtLine: 5, Raw: "internal/a/repo.go:1#Bump", Path: "internal/a/repo.go", Start: 1, End: 1, Anchor: "Bump"},
+		{Artifact: "x.md", AtLine: 6, Raw: "DESIGN.md:3-1", Path: "DESIGN.md", Start: 3, End: 1},
+	}
+	f, err := VerifyCitations(target, ix, cits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 5 {
+		t.Fatalf("want 5 findings, got %d: %v", len(f), f)
+	}
+	want := []string{"ambiguous path", "has 3 lines", "no tracked file matches", "anchor \"Bump\"", "inverted range"}
+	for i, w := range want {
+		if !strings.Contains(f[i].Msg, w) {
+			t.Errorf("finding %d = %q, want it to mention %q", i, f[i].Msg, w)
+		}
+	}
+	// An off-by-a-few anchor names the right line, which turns the finding into
+	// a patch rather than a search.
+	if !strings.Contains(f[3].Msg, "nearest occurrence is line 3") {
+		t.Errorf("anchor finding does not point at the real line: %q", f[3].Msg)
+	}
+}
+
+func TestFindDuplicates_divergentCopy(t *testing.T) {
+	root := mkrepo(t, map[string]string{
+		"artifacts/context.md": "- The composition is a pure function called from buildRuntime, not a branch inside it.\n",
+		"artifacts/script.js":  "// the composition is a PURE function called from buildRuntime, not a branch inside it\n",
+	})
+	sts, err := CollectStatements(root, []string{"artifacts/context.md", "artifacts/script.js"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both copies are still in the initial commit: a rule that legitimately
+	// lives in two artifacts is not a finding.
+	g, err := FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g) != 1 {
+		t.Fatalf("want 1 group, got %d", len(g))
+	}
+	if g[0].Similarity != 1.0 {
+		t.Fatalf("quoting and case must normalise away, sim = %v", g[0].Similarity)
+	}
+	if g[0].Divergent {
+		t.Fatal("copies committed together must not be flagged")
+	}
+
+	// Now correct one copy and leave the other. This is the defect the check is
+	// for, and it is the divergent commit that reveals it.
+	commit(t, root, "correct the rule in the context only", map[string]string{
+		"artifacts/context.md": "- The composition is a pure function called from buildRuntime, never a branch inside it.\n",
+	})
+	sts, err = CollectStatements(root, []string{"artifacts/context.md", "artifacts/script.js"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err = FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g) != 1 || !g[0].Divergent {
+		t.Fatalf("want one divergent group, got %+v", g)
+	}
+	if g[0].Similarity >= 1.0 {
+		t.Fatalf("the copies differ now, sim = %v", g[0].Similarity)
+	}
+}
+
+func TestFindDuplicates_ignoresSameFileAndShortLines(t *testing.T) {
+	root := mkrepo(t, map[string]string{
+		"artifacts/a.md": "short line here\nsame sentence repeated twice in one file for emphasis today\nsame sentence repeated twice in one file for emphasis today\n",
+		"artifacts/b.md": "short line here\n",
+	})
+	sts, err := CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g) != 0 {
+		t.Fatalf("want no cross-file groups, got %+v", g)
+	}
+}
