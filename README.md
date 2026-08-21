@@ -1,104 +1,131 @@
 # wfgate — gate harness
 
-Утилита `wf`: воркспейс ревью-гейта как git-репозиторий, атомарное применение
-правок и две детерминированные проверки над артефактами.
+The `wf` CLI: a review gate's workspace as a git repository, atomic application
+of edits, and deterministic checks over the artifacts.
 
-Гейт над крупным изменением тратится на две разные вещи. Первая — само
-рецензирование, это суждение, ради него и существуют раунды. Вторая —
-бухгалтерия: какую ревизию какого артефакта читал ревьюер, что раунд обязан был
-закрыть, приземлился ли батч правок целиком, и поправлена ли вторая копия
-правила вместе с первой. Инструмент делает только вторую.
+A gate over a large change spends effort on two different things. One is the
+reviewing itself — that is judgement, and it is what the rounds are for. The
+other is bookkeeping: which revision of which artifact a reviewer read, what a
+round was obliged to close, whether a batch of edits landed whole, and whether
+the second copy of a rule was corrected along with the first. This tool does
+only the second.
 
-## Установка
+## Install
 
 ```bash
-make build          # ./wf
+make build          # ./wf, version-stamped via -ldflags
 make install        # ~/.local/bin/wf
 make test           # go test -race
 ```
 
-Только stdlib, `git` берётся из `PATH`.
+Stdlib only; `git` is taken from `PATH`.
 
-## Быстрый цикл
+## The quick cycle
 
 ```bash
-wf init p2c -target ~/projects/mocker      # воркспейс со своим git
-cd p2c
-cp ~/draft/context.md artifacts/           # первый раз — руками, дальше только wf apply
-git add artifacts && git commit -m "initial artifacts"
+wf init p2d -target ~/projects/mocker      # a workspace with its own git repo
+cd p2d
+wf add ~/draft/context.md ~/draft/script.md  # first commit of an artifact; wf apply cannot make it
 
-wf round new -title "kernel + checkpoints"
-wf check                                   # cite + dup
+wf round new -title "kernel + checkpoints"   # -kind delta for a delta round
+wf check                                   # cite + dup + rules
 wf apply -f fixes.json -m "close r1 blockers"
-wf freeze                                  # хеши + коммит + тег gate-r1
+wf round record findings.md                # the round's ledger, closures validated
+wf freeze                                  # hashes + target HEAD + tool version → commit, tag gate-r1
+wf verify                                  # the pre-launch check: what runs is what was reviewed
 
-wf delta                                   # вход дельта-раунда: находки + диф
+wf delta                                   # the delta round's brief: findings + closure checklist + diff
 ```
 
-## Команды
+## Commands
 
-| команда | что делает |
+| command | what it does |
 |---|---|
-| `wf init <name> -target <repo>` | воркспейс: git init, `gate.json`, `artifacts/`, `rounds/`, первый коммит |
-| `wf status` | манифест, текущий раунд, кто последним трогал каждый артефакт, грязь |
-| `wf apply -f edits.json [-m msg] [--dry-run]` | всё-или-ничего батч правок, затем коммит только затронутых файлов |
-| `wf round new [-title T]` | открыть следующий раунд, создать `rounds/rN/findings.md` |
-| `wf freeze` | sha256 всех артефактов + HEAD цели → `rounds/rN/freeze.json`, коммит, тег `gate-rN` |
-| `wf delta [-from REF] [-to REF]` | находки раунда плюс диф артефактов от последнего замороженного тега |
-| `wf check [cite\|dup]` | детерминированные проверки |
+| `wf init <name> -target <repo>` | workspace: git init, `gate.json`, `artifacts/`, `rounds/`, first commit |
+| `wf add <file>...` | bring an authored artifact under the workspace and commit it; adopts an untracked draft already in place |
+| `wf status` | manifest, current round, who last touched each artifact, dirt, tool version |
+| `wf apply -f edits.json [-m msg] [--dry-run]` | all-or-nothing batch of edits, then a commit of only the touched files |
+| `wf round new [-title T] [-kind full\|delta]` | open the next round, scaffold `rounds/rN/findings.md` with its scope |
+| `wf round record <file> [-round N]` | fill a round's findings.md, validating closures before writing |
+| `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open |
+| `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
+| `wf delta [-from REF] [-to REF]` | the round's findings, the closure checklist, and the artifact diff since the closed round's tag |
+| `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules) |
+| `wf stats` | per-round findings, closures and apply batches, from the ledger and git |
+| `wf version` | the binary's stamped build version |
 
-Коды возврата: `0` чисто, `1` находки или сбой, `2` ошибка вызова.
+Exit codes: `0` clean, `1` findings or failure, `2` usage.
 
 ### `wf apply`
 
 ```json
 [
   {"file": "artifacts/context.md",
-   "old": "точная строка как в файле",
-   "new": "замена",
+   "old": "the exact string as it is in the file",
+   "new": "the replacement",
    "count": 2,
-   "note": "закрывает B7"}
+   "note": "closes B7"}
 ]
 ```
 
-`count` — сколько вхождений автор ОЖИДАЕТ (по умолчанию 1). Если реальное число
-другое — батч отклоняется целиком, ни один файл не пишется. Это и есть смысл
-команды: правило, живущее в двух артефактах и поправленное в одном, становится
-жёсткой ошибкой в момент применения, а не находкой через три раунда.
+`count` is how many occurrences the author EXPECTS (default 1). If the real
+number differs, the whole batch is rejected and no file is written. That is the
+command's point: a rule living in two artifacts and corrected in one becomes a
+hard error at apply time, not a finding three rounds later.
 
-После записи файлы перечитываются с диска и каждая правка ищется поиском.
-Применение проверяется не отсутствием ошибки, а нахождением каждого изменения.
+After the write the files are re-read from disk and every edit is searched for.
+An apply is verified by finding each change, not by the absence of an error.
 
 ### `wf check cite`
 
-Находит `path.ext:LINE`, `path.ext:A-B` и `path.ext:LINE#anchor` в артефактах и
-сверяет с целевым репозиторием: файл резолвится ровно в один отслеживаемый файл,
-диапазон корректен и внутри файла, а `#anchor` — встречается в процитированных
-строках. Промах якоря печатает ближайшую строку с этим токеном, то есть отдаёт
-готовую правку, а не повод искать.
+Finds `path.ext:LINE`, `path.ext:A-B` and `path.ext:LINE#anchor` in the
+artifacts and verifies them against the target repository: the path resolves to
+exactly one tracked file, the range is well-formed and inside the file, and the
+`#anchor` occurs within the cited lines. An anchor miss prints the nearest line
+carrying the token — a ready patch, not a reason to search.
 
-`-show` печатает процитированные строки. `-require-anchor` валит проверку на
-цитате без якоря.
+The anchor is an ASCII token by policy (gate artifacts are English); a
+non-ASCII anchor is an error, never a silent "unanchored". The count of
+citations without an anchor is printed on every run, and citation-like
+references to extensionless tracked files (`Makefile:90`) are listed as NOT
+verified. `-show` prints the cited lines; `-require-anchor` fails on a citation
+written without an anchor.
 
 ### `wf check dup`
 
-Режет артефакты на предложения, нормализует (кавычки и регистр стираются —
-одно правило в markdown и в шаблонной строке JS пишется по-разному), группирует
-совпадающие и близкие по Жаккару, и помечает `DIVERGENT` те группы, где копии
-**и читаются по-разному, и правились в разных коммитах** по построчному
-`git blame`.
+Cuts the artifacts into sentences, normalises them (quoting and case erased —
+one rule is written differently in markdown and in a JS template literal),
+groups exact and near matches by Jaccard, and flags `DIVERGENT` only the groups
+whose copies **both read differently and were last edited in different
+commits**, by per-line `git blame`.
 
-Обоих условий поодиночке мало: одинаковые копии, правленные врозь, — это просто
-корректно повторённое правило, а разошедшиеся копии из одного коммита — это
-осознанная переформулировка, которую автор видел рядом.
+Either condition alone is not enough: identical copies edited apart are a rule
+correctly restated, and diverged copies from one commit are a deliberate
+rewording the author saw side by side. `-since gate-rN` narrows the output to
+groups touched after that tag and prints how many it hid.
 
-## Границы
+### `wf check drift`
 
-Воркспейс **никогда не внутри проверяемого репозитория**. Агенты гейта диффят то
-дерево против его собственного HEAD, и правило «пока ран жив — дерево не
-трогать» не переживёт коммитов оркестрации в него. `target` только читается.
+When the target moved after a freeze, intersects its `frozen..HEAD` diff with
+the cited ranges: `edited` — the cited lines changed, re-read the claim;
+`shifted` — the citation moved, the re-aimed range is printed; `gone` — the
+file left the tree. The only mechanical signal an unanchored citation gets.
 
-Проверки берут механическую долю блокеров, порядка пятой части, и никогда не
-изображают покрытие остального. Поэтому `check cite` всегда печатает, сколько
-цитат осталось без якоря: зелёный прогон при 148 цитатах без якорей ничего не
-доказал.
+### `wf check rules`
+
+Sites of one rule marked `[RN]` must normalise identically across the
+artifacts. This is the reach into what `dup` structurally cannot see — copies
+that contradict in different words — and it works only where an author marked
+the rule, so the marker population is always printed.
+
+## Boundaries
+
+The workspace is **never inside the repository under review**. The gate's
+agents diff that tree against its own HEAD, and the rule "the tree stays
+untouched while a run is live" does not survive orchestration commits into it.
+`target` is read-only.
+
+The checks take the mechanical share of blockers — about a fifth — and never
+impersonate coverage of the rest. That is why `check cite` always prints how
+many citations carry no anchor: a green run over 148 unanchored citations
+proved nothing.

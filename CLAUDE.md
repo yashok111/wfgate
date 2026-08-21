@@ -1,253 +1,271 @@
-# wfgate — контекст для агента
+# wfgate — agent context
 
-CLI `wf`: бухгалтерия ревью-гейта. Воркспейс гейта — это git-репозиторий,
-применение правок атомарно и становится коммитом, заморозка раунда — тег, а
-вход дельта-раунда — диф. Go 1.27, модуль `git.sumka.site/yakov/wfgate`,
-**только stdlib**, `git` вызывается как процесс. Зависимостей нет и не будет:
-инструмент, следящий за чужой цепочкой поставки артефактов, не заводит свою.
+The `wf` CLI: the bookkeeping of a review gate. A gate's workspace is a git
+repository, applying edits is atomic and becomes a commit, freezing a round is
+a tag, and a delta round's input is a diff. Go 1.27, module
+`git.sumka.site/yakov/wfgate`, **stdlib only**, `git` is run as a process.
+There are no dependencies and there will be none: a tool that watches other
+people's artifact supply chain does not grow one of its own.
 
-Утилита выросла из измеренных потерь одного реального гейта (mocker, срез P2c:
-7 раундов решений / 94 блокера, 7 раундов скрипта / 14 блокеров) и лечит ровно
-их — см. «Почему каждая команда такая» ниже. Общий индекс правил и типовых
-блокеров живёт **не здесь**, а в `~/.claude/workflow-gate-checks.md`; этот
-репозиторий — механика, тот файл — суждение.
+The tool grew out of the measured losses of one real gate (mocker, slice P2c:
+7 decision rounds / 94 blockers, 7 script rounds / 14 blockers) and treats
+exactly those — see "Why each command is the way it is" below. The shared index
+of rules and recurring blockers lives **not here** but in
+`~/.claude/workflow-gate-checks.md`; this repository is the mechanics, that
+file is the judgement.
 
-## Архитектура
+## Architecture
 
-Пять пакетов, каждый — одно решение.
+Five packages, each one decision.
 
-- `internal/gitx` — единственное место, где запускается `git`. Git тут не
-  интеграция, а слой хранения; обёртка существует, чтобы «воркспейс — это
-  репозиторий» осталось одним решением, а не шеллаутом, размазанным по шести
-  командам.
-- `internal/ws` — воркспейс: `gate.json` (маркер, его же ищет `Find`, поднимаясь
-  вверх как сам git), `artifacts/`, `rounds/`. Здесь же парсер таблицы
-  findings (`findings.go`) — таблица **парсится, никогда не генерируется**.
-- `internal/apply` — всё-или-ничего батч текстовых правок.
-- `internal/check` — детерминированные проверки: `cite.go`, `dup.go`.
-- `cmd/wf` — диспетчер подкоманд.
+- `internal/gitx` — the only place that runs `git`. Git is not an integration
+  here, it is the storage layer; the wrapper exists so that "the workspace is a
+  repository" stays a single decision instead of a shell-out smeared across six
+  commands.
+- `internal/ws` — the workspace: `gate.json` (the marker; `Find` walks up
+  looking for it the way git itself does), `artifacts/`, `rounds/`. The
+  findings-table parser (`findings.go`) lives here too — the table is
+  **parsed, never generated**.
+- `internal/apply` — the all-or-nothing batch of textual edits.
+- `internal/check` — the deterministic checks: `cite.go`, `dup.go`,
+  `drift.go`, `rules.go`.
+- `cmd/wf` — the subcommand dispatcher.
 
-## Почему каждая команда такая
+## Why each command is the way it is
 
-Это единственная часть, которую по коду не восстановить: каждое решение —
-ответ на конкретный отказ, а не вкус.
+This is the one part that cannot be reconstructed from the code: every decision
+answers a specific failure, not taste.
 
-**`apply` — всё-или-ничего.** Батч из трёх замен, вторая не совпала, хелпер
-упал на ней, а две уже совпавшие **не были записаны никогда**. Оператор увидел
-одну ошибку, поправил одну правку и считал, что батч приземлился. Он не
-приземлился, и через раунд ревьюер переоткрыл находку, помеченную закрытой.
-Отсюда: сначала весь батч проверяется в памяти, и если хоть одна правка не даёт
-объявленного числа вхождений — на диск не идёт **ничего**. Частично применённый
-батч хуже отклонённого: отклонённый заявляет о себе.
+**`apply` is all-or-nothing.** A batch of three replacements, the second did
+not match, the helper died on it, and the two that HAD matched **were never
+written**. The operator saw one error, fixed that one edit, and believed the
+batch had landed. It had not, and a round later a reviewer re-filed a finding
+marked closed. Hence: the whole batch is verified in memory first, and if a
+single edit does not produce its declared occurrence count, **nothing** goes to
+disk. A partially applied batch is worse than a rejected one: a rejected one
+announces itself.
 
-**`Count` в правке.** Не удобство. Автор объявляет, сколько вхождений ожидает;
-правило, живущее в двух артефактах и поправленное в одном, — самый частый дефект
-этого гейта, и объявленный `count: 2` превращает его в ошибку применения вместо
-находки через три раунда.
+**`Count` on an edit.** Not a convenience. The author declares how many
+occurrences they expect; a rule living in two artifacts and corrected in one is
+this gate's most frequent defect, and a declared `count: 2` turns it into an
+apply-time error instead of a finding three rounds later.
 
-**Перечитывание с диска после записи.** Применение проверяется не отсутствием
-ошибки, а поиском каждого изменения. Та же история, другой её конец.
+**Re-reading from disk after the write.** An apply is verified not by the
+absence of an error but by searching for each change. Same story, its other
+end.
 
-**`Commit` стейджит только названные пути, никогда `git add -A`.** В воркспейсе
-часто лежит недописанный руками артефакт, и apply, подметающий его в тот же
-коммит, уничтожил бы свойство «один коммит = одно отревьюенное изменение».
+**`Commit` stages only the named paths, never `git add -A`.** The workspace
+often holds a half-written artifact the operator is still drafting by hand, and
+an apply that swept it into the same commit would destroy the property "one
+commit = one reviewed change".
 
-**`freeze` вместо копий `<sha8>-artifact`.** Раньше заморозка была `cp` каждого
-артефакта под именем с хешем плюс ручная сверка `sha256sum -c` перед стартом.
-Один манифест, покрывающий все артефакты сразу и привязанный к коммиту,
-превращает проверку в «дерево чисто на теге `gate-rN`». В манифест пишется и
-HEAD **цели**: замороженный гейт, цитирующий номера строк, осмыслен только
-против одной ревизии проверяемого репозитория.
+**`freeze` instead of `<sha8>-artifact` copies.** Freezing used to be a `cp`
+of each artifact under a hash-bearing name plus a hand `sha256sum -c` before
+launch. One manifest covering the whole set at once, bound to a commit, turns
+the check into "the tree is clean at tag `gate-rN`". The manifest also records
+the TARGET's HEAD: a frozen gate that cites line numbers is meaningful only
+against one revision of the repository under review.
 
-**`cite` печатает покрытие якорями всегда.** На реальном корпусе (артефакты
-раунда 1 того же гейта) — 148 цитат, 16 находок, и **все** класса «двусмысленный
-путь»: ни одной «вне диапазона». Те 19 цитат, что гейт реально поймал руками,
-были off-by-N — обе строки существуют, проверка диапазона бессильна. Ловит их
-только `#anchor`, и только там, где автор его написал. Поэтому число цитат
-**без** якоря печатается всегда: зелёный прогон при 148 неякоренных цитатах не
-доказал ничего, и отчёт не должен давать читать себя иначе.
+**`cite` prints anchor coverage always.** On the real corpus (round-1 artifacts
+of that same gate) — 148 citations, 16 findings, **all** of the
+"ambiguous path" class: not one "out of range". The 19 citations the gate
+actually caught by hand were off-by-N — both lines exist, the range check is
+powerless. Only an `#anchor` catches those, and only where the author wrote
+one. So the number of citations WITHOUT an anchor is printed always: a green
+run over 148 unanchored citations proved nothing, and the report must not read
+as if it had.
 
-**Якорь — только ASCII, и это политика, а не ограничение.** Артефакты гейта —
-англоязычные по правилу воркфлоу (решено 2026-08-21 после обкатки P2d). Якорь,
-который грамматика не принимает — кириллица, пробелы, — репортится ошибкой
-(`BadAnchor`), а не молча падает в неякорные: на P2d 15 кириллических якорей
-растворились в «17 unverified», спрятав и то, что настоящих неякорных две, и
-фактически неверный якорь среди невидимых. Расширить грамматику до юникода было
-бы второй дорогой; выбрана первая — граница проходит по языку артефактов, и
-инструмент её объявляет, а не размывает.
+**An anchor is ASCII only, and that is policy, not a limitation.** Gate
+artifacts are English by workflow rule (decided 2026-08-21 after the P2d live
+run). An anchor the grammar does not accept — Cyrillic, spaces — is reported as
+an error (`BadAnchor`), never silently dropped into the unanchored count: on
+P2d, 15 Cyrillic anchors dissolved into "17 unverified", hiding both that only
+two truly unanchored citations existed and a factually wrong anchor among the
+invisible ones. Extending the grammar to Unicode was the other road; this one
+was chosen — the boundary runs along the artifact language, and the tool
+declares it rather than blurring it.
 
-**`dup`: расхождение — это два условия, а не одно.** Первая версия брала
-`git log -1 -- <file>`: одна правка `decisions.md` пометила **161 группу из
-176**. Проверка, которая красит 92% выдачи, — проверка, которую выключают.
-Сейчас blame построчный, и группа помечается `DIVERGENT`, только если копии
-**и читаются по-разному, и правились в разных коммитах**. Стало 34 из 176, и это
-настоящие расхождения («A round added one» против «Round 4 added one»).
-Поодиночке условий мало: одинаковые копии, правленные врозь, — просто корректно
-повторённое правило; разошедшиеся копии из одного коммита — осознанная
-переформулировка, которую автор видел рядом.
+**`dup`: divergence is two conditions, not one.** The first version used
+`git log -1 -- <file>`: one edit to `decisions.md` flagged **161 groups out of
+176**. A check that paints 92% of its output is a check that gets switched off.
+Blame is now per-line, and a group is flagged `DIVERGENT` only when the copies
+**both read differently and were last edited in different commits**. That made
+it 34 of 176, and they were real divergences ("A round added one" vs "Round 4
+added one"). Either condition alone is not enough: identical copies edited
+apart are just a rule correctly restated; diverged copies from one commit are a
+deliberate rewording the author saw side by side.
 
-**Нормализация в `dup` стирает кавычки и регистр.** Одно правило пишется
-обратными кавычками в markdown и экранированными — внутри шаблонной строки JS.
-Именно это несовпадение цитирования и позволило поправленному правилу стоять
-рядом со своим протухшим близнецом: копипаст между артефактами ломал шаблон
-замены.
+**Normalisation in `dup` erases quoting and case.** One rule is written with
+plain backticks in markdown and with escaped ones inside a JS template literal.
+Exactly that quoting mismatch is what let a corrected rule stand next to its
+stale twin: copy-paste between artifacts broke the replacement pattern.
 
-**`check drift` делит дриф на два класса, потому что работа разная.** `verify`
-говорит «цель уехала», но не говорит, *какие* цитаты это обесценило; якорные
-цитаты сами всплывут в `check cite`, а неякорное большинство проходит проверку
-диапазона вечно — обе строки продолжают существовать. Пересечение дифа цели
-(`frozen..HEAD`, `--unified=0`) с процитированными диапазонами — единственный
-механический сигнал для них. `edited` (процитированные строки правились) —
-перечитать утверждение; `shifted` (вставки/удаления выше) — перенацелить номер,
-и новый диапазон печатается сразу, чтобы это была правка, а не поиск — тот же
-размен, что «nearest occurrence» у якоря. Rename намеренно отдаётся как
-delete+add (`--no-renames`): цитата называет старый путь, и «файла нет,
-перецитируй» — честное состояние такой претензии.
+**`check drift` splits drift into two classes because the work differs.**
+`verify` says "the target moved" but not WHICH citations that invalidated;
+anchored citations surface on their own in `check cite`, while the unanchored
+majority passes the range check forever — both lines keep existing.
+Intersecting the target's diff (`frozen..HEAD`, `--unified=0`) with the cited
+ranges is the only mechanical signal they get. `edited` (the cited lines
+changed) — re-read the claim; `shifted` (insertions/deletions above) — re-aim
+the number, and the new range is printed immediately so it is a patch, not a
+search — the same trade the anchor check's "nearest occurrence" makes. A rename
+is deliberately surfaced as delete+add (`--no-renames`): the citation names the
+old path, and "the file is gone, re-cite" is that claim's honest state.
 
-**Валидация findings: record терпит открытый блокер, freeze — нет.** Находки
-записываются, когда поданы; закрытия приземляются позже. Отказ record'а на
-честном «ещё открыто» научил бы оператора писать в леджер фикцию. Зато sha,
-которого нет в воркспейсе, отвергается всегда и до записи — приземлившаяся ложь
-брифит следующий раунд фикцией, отклонённая заявляет о себе. Freeze — тот
-момент, где скаффолд сам обещает «каждый блокер закрыт до заморозки», там и
-проверка. Строка-заглушка (пустой текст находки) — форма, не претензия:
-нетронутый скаффолд замораживается. Freeze проверяет **два** раунда —
-закрываемый и открытый: в предписанном потоке раунд замораживается сразу после
-открытия, его собственный findings — всегда пустой скаффолд, и проверка только
-его проходила бы вакуумно вечно. Найдено не ревью кода, а сверкой
-документов-спецификаций с исходником — тем самым способом, которым ловились
-8 из 22 блокеров гейта над документами.
+**Findings validation: record tolerates an open blocker, freeze does not.**
+Findings are recorded when filed; closures land later. A record that rejected
+an honest "still open" would teach the operator to write fiction into the
+ledger. But a sha that does not exist in the workspace is refused always, and
+before writing — a landed lie briefs the next round with fiction, a rejected
+one announces itself. Freeze is the moment where the scaffold itself promises
+"every blocker closed before the freeze", so the check lives there. A
+placeholder row (empty finding text) is a form, not a claim: the untouched
+scaffold freezes fine. Freeze checks **two** rounds — the one being closed and
+the open one: in the prescribed flow a round is frozen right after opening, its
+own findings file is always a blank scaffold, and checking only it would pass
+vacuously forever. Found not by reviewing the code but by reconciling the spec
+documents against the source — the same method that caught 8 of the 22 blockers
+in the gate over those documents.
 
-**Правило цифры в детекторе sha.** Претензия на коммит — hex-токен 7–40 знаков
-**с хотя бы одной цифрой**: «acceded» и «deadbeef» — чистобуквенный hex, и
-прозаическая ячейка, их упомянувшая, не должна отвергаться как лживый sha.
-Полностью буквенный короткий sha (вероятность ~4e-4) деградирует в «verify by
-hand» — ошибка в безопасную сторону.
+**The digit rule in the sha detector.** A commit claim is a hex token of 7–40
+chars **with at least one digit**: "acceded" and "deadbeef" are pure-letter
+hex, and a prose cell mentioning one must not be rejected as a lying sha. An
+all-letter short sha (odds ~4e-4) degrades to "verify by hand" — an error in
+the safe direction.
 
-**Версия бинаря в `freeze.json`.** Измеренный отказ, записанный в день, когда
-случился: после правки прогон против несвежего установленного бинаря
-неотличим от прогона против нового. Штамп `git describe` через `-ldflags`
-пишется в манифест заморозки по той же причине, по которой туда пишется HEAD
-цели: это часть того, ЧЕМ была проверена заморозка. В `verify` расхождение —
-note, не mismatch: пересобранный бинарь легитимно проверяет старую заморозку.
+**The binary's version in `freeze.json`.** A measured failure, written down the
+day it happened: after an edit, a run against the stale installed binary is
+indistinguishable from a run against the new one. The `git describe` stamp via
+`-ldflags` goes into the freeze manifest for the same reason the target's HEAD
+does: it is part of what the freeze was verified WITH. In `verify` a mismatch
+is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
+freeze.
 
-**Вторая волна, вся из замеров обкатки P2d** (`FEEDBACK-p2d.md`; 10 раундов,
-98 находок, весь гейт через `wf`). Каждый пункт — измеренный отказ, не вкус:
+**The second wave, all from P2d live-run measurements** (`FEEDBACK-p2d.md`;
+10 rounds, 98 findings, the whole gate run through `wf`). Each item is a
+measured failure, not taste:
 
-- *Счётчик extensionless-ссылок в `cite`* — корректная `Makefile:90#corepack`
-  была невидима в зелёном отчёте из 237 цитат; теперь печатается «NOT verified».
-- *`check rules` и маркеры `[RN]`* — восемь противоречий копий одного правила
-  разными словами за срез, все нашли ревьюеры, `dup` — ноль: до этого класса не
-  достаёт ни одна метрика похожести, достаёт только явная разметка. Ноль
-  маркеров печатается как популяция: корпус, который не размечали, не «прошёл».
-- *`dup -since <tag>`* — производный `context.md` даёт 21–25 групп на одно
-  настоящее противоречие; сужается вывод, не порог, и скрытое число печатается.
-- *Ratchet якорей во `freeze.json`* — направление, не порог: упавшая против
-  прошлой заморозки доля печатается note, потому что автор, переставший писать
-  якоря, пишет цитаты, которые гейт проверить не может.
-- *`round new -kind full|delta`* — 7 из 10 раундов были дельта, охват жил в
-  прозе заголовка, и дважды раунд смотрел меньше, чем читатель думал.
-- *`wf stats`* — ручной awk закрыл гейт на 99/27 при истинных 98/26, посчитав
-  scaffold-плейсхолдер находкой; парсер леджера это знает.
-- *`wf add` принимает untracked-черновик на месте* — отказ гнал в ручной
-  `git commit` трижды за срез; отказ остался только для отслеживаемого
-  (отревьюенного) артефакта и для расходящихся байтов двух черновиков.
-- *`verify` отделяет грязь бухгалтерии* — «Do not launch» одинаково звучал для
-  разошедшихся артефактов и для забытого `rounds/r7/delta.txt`; когда все
-  мисматчи — незакоммиченная бухгалтерия, note говорит «commit it, не re-freeze».
-- *Нижний регистр в `Shas`* — `2344D3D8` молча уезжал в «verify by hand».
+- *The extensionless-reference counter in `cite`* — a correct
+  `Makefile:90#corepack` sat invisible in a green report of 237 citations; now
+  it prints as "NOT verified".
+- *`check rules` and `[RN]` markers* — eight contradictions between copies of
+  one rule in different words over the slice, all found by reviewers, zero by
+  `dup`: no similarity metric reaches that class, only explicit markup does.
+  Zero markers prints as a population: a corpus nobody marked did not "pass".
+- *`dup -since <tag>`* — the derived `context.md` yields 21–25 groups per one
+  real contradiction; the OUTPUT is narrowed, never the threshold, and the
+  hidden count is printed.
+- *The anchor ratchet in `freeze.json`* — a direction, not a threshold: a share
+  that fell against the previous freeze prints a note, because an author who
+  stopped anchoring writes citations the gate cannot really verify.
+- *`round new -kind full|delta`* — 7 of 10 rounds were deltas, the scope lived
+  in prose titles, and twice a round reviewed less than a reader would assume.
+- *`wf stats`* — a hand awk closed the gate on 99/27 against a true 98/26 by
+  counting the scaffold placeholder as a finding; the ledger parser knows
+  better.
+- *`wf add` adopts an untracked draft already in place* — the refusal forced a
+  hand `git commit` three times over the slice; it now guards only a tracked
+  (reviewed) artifact and two drafts with differing bytes.
+- *`verify` separates bookkeeping dirt* — "Do not launch" sounded identical for
+  diverged artifacts and for a forgotten `rounds/r7/delta.txt`; when every
+  mismatch is uncommitted bookkeeping, a note says "commit it, do not
+  re-freeze".
+- *Lowercasing in `Shas`* — `2344D3D8` silently rode off into "verify by hand".
 
-**`parseMixed` вместо `fs.Parse`.** `flag.FlagSet` останавливается на первом
-позиционном аргументе, поэтому `wf init p2c -target X` молча терял `-target` и
-печатал usage, называющий ровно тот флаг, который передали.
+**`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
+positional argument, so `wf init p2c -target X` silently dropped `-target` and
+printed a usage error naming the very flag that was passed.
 
-**`safeJoin` в apply.** Список правок обычно пишет агент, и агента, перепутавшего
-воркспейс с проверяемым репозиторием, надо останавливать здесь, а не обнаруживать
-по коммиту в чужом дереве.
+**`safeJoin` in apply.** The edit list is usually written by an agent, and an
+agent that has confused the workspace with the repository under review must be
+stopped here, not discovered by a commit in the wrong tree.
 
-## Жёсткие правила
+## Hard rules
 
-- **origin — Gitea** `ssh://git@git.sumka.site:2222/yakov/wfgate.git`, ветка
-  `main`, приватный. **В GitHub не пушить.** Путь модуля совпадает с origin.
-- **Воркспейс никогда не внутри проверяемого репозитория.** Агенты гейта диффят
-  то дерево против его HEAD, и правило «пока ран жив — дерево не трогать» не
-  переживёт коммитов оркестрации в него. `target` только читается: ни одна
-  команда в него не пишет.
-- **Проверки не изображают покрытие.** Из блокеров реального гейта механизируется
-  порядка пятой части (неверные цитаты, отставшие копии). Остальное — суждение
-  модели над конкретным деревом. Инструмент, заявляющий, что он их заменяет, был
-  бы худшим исходом: он выглядел бы как покрытие.
-- **Индекс правил не генерируется автоматически.** `~/.claude/workflow-gate-checks.md`
-  ценен тем, что достаточно короток, чтобы его прочёл каждый ревьюер. Инструмент
-  может предлагать строку, но дописывать её обязан человек — иначе файл станет
-  логом и перестанет быть чеклистом.
-- **Артефакты правятся через `wf apply`, не руками.** Ручная правка плюс
-  `git commit` теряет и всё-или-ничего, и объявленный `count`, то есть обе
-  причины, по которым команда существует.
-- **Семантика команд — спецификация.** `~/.claude/workflow-guide.md` и
-  `~/.claude/workflow-gate-checks.md` прошли гейт и описывают, что каждая
-  команда делает и почему. Менять семантику или вывод — сверять оба документа с
-  исходником (8 из 22 блокеров гейта над ними были расхождениями текста и кода,
-  и сверка 2026-08-21 тем же способом нашла вакуумный enforcement во freeze).
+- **origin is Gitea** `ssh://git@git.sumka.site:2222/yakov/wfgate.git`, branch
+  `main`, private. **Never push to GitHub.** The module path matches origin.
+- **The workspace is never inside the repository under review.** The gate's
+  agents diff that tree against its own HEAD, and the rule "the tree stays
+  untouched while a run is live" does not survive orchestration commits into
+  it. `target` is read-only: no command writes into it.
+- **The checks never impersonate coverage.** Of a real gate's blockers, about a
+  fifth mechanises (wrong citations, stale copies). The rest is a model's
+  judgement over a specific tree. A tool claiming to replace that would be the
+  worst outcome: it would look like coverage.
+- **The rules index is not auto-generated.** `~/.claude/workflow-gate-checks.md`
+  is valuable because it is short enough for every reviewer to read. The tool
+  may propose a line; a human must write it in — otherwise the file becomes a
+  log and stops being a checklist.
+- **Artifacts are changed through `wf apply`, never by hand.** A hand edit plus
+  `git commit` gives up both all-or-nothing and the declared `count` — the two
+  reasons the command exists.
+- **Command semantics are specification.** `~/.claude/workflow-guide.md` and
+  `~/.claude/workflow-gate-checks.md` passed a gate and describe what each
+  command does and why. Changing semantics or output means reconciling both
+  documents against the source (8 of that gate's 22 blockers were text-code
+  divergences, and the 2026-08-21 reconciliation by the same method found the
+  vacuous enforcement in freeze).
 
-## Бары
+## Bars
 
 ```bash
 make test    # go test ./cmd/... ./internal/... -race -count=1
-make lint    # go vet + gofmt (+ golangci-lint, если стоит)
-make build   # ./wf со штампом версии (-ldflags)
+make lint    # go vet + gofmt (+ golangci-lint when installed)
+make build   # ./wf with the version stamp (-ldflags)
 ```
 
-После любой правки кода — `make install` (`~/.local/bin/wf`): документы
-предписывают команды `wf ...`, и прогон против старого бинаря выглядит как
-прогон против нового. Штамп в `freeze.json` и note в `verify` ловят это
-постфактум, но не заменяют переустановку.
+After any code change — `make install` (`~/.local/bin/wf`): the documents
+prescribe `wf ...` commands, and a run against the stale binary looks exactly
+like a run against the new one. The stamp in `freeze.json` and the note in
+`verify` catch it after the fact; they do not replace the reinstall.
 
-Тестов два файла: `internal/apply/apply_test.go` (главный — регрессия на
-потерянный батч) и `internal/check/check_test.go` (парсинг цитат, резолв путей,
-якорь с подсказкой ближайшей строки, расхождение копий на настоящем git-репо).
+Tests: `internal/apply/apply_test.go` (the core lost-batch regression),
+`internal/check/check_test.go` (citation parsing, path resolution, the anchor
+with its nearest-line hint, divergence on a real git repo, rule markers, drift),
+`internal/ws/findings_test.go` (the ledger parser), and the end-to-end
+`cmd/wf/main_test.go` driving the prescribed sequence and asserting on OUTPUT.
 
-## Стиль
+## Style
 
-Как в `mocker`: комментарии объясняют «почему» и несут измеренную причину
-(«161 группа из 176», «148 цитат, ни одной вне диапазона»), а не пересказывают
-код. Комментарии английские, документы русские.
+As in `mocker`: comments explain the WHY and carry the measured reason ("161
+groups of 176", "148 citations, none out of range"), never a retelling of the
+code. Everything is English — code, comments, and documents alike (the workflow
+is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
+fixtures for the non-ASCII anchor detector).
 
-## Состояние на 2026-08-21 — читать перед тем, как доверять
+## State as of 2026-08-21 — read before trusting
 
-- **Ни один настоящий workflow-гейт на утилите не прошёл.** Единственная
-  обкатка — гейт над документами-спецификациями. Следующий шаг — воркспейс на
-  живом срезе `~/projects/mocker`, всё через `wf` с первой строки. Замерить
-  долю цитат с якорем в свежих артефактах: если авторы якорей не пишут,
-  `check cite` покрывает только резолв пути — ровно то, о чём он предупреждает
-  каждым прогоном. `check drift` и валидируемый леджер findings вживую тоже не
-  работали ни разу.
-- **Валидационный корпус не переживает сессию** (жил в scratch-директории).
-  Пересобрать: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, затем
-  воркспейс на артефактах любого набора документов.
-- История решений и замеров — в git log; здесь держится только то, что по
-  коммитам не восстановить.
-- Очередь идей с условиями «когда делать» — `IDEAS.md`; половина списка
-  намеренно ждёт данных обкатки.
+- **One real gate has now run entirely through `wf`** — mocker slice P2d:
+  10 rounds, 98 findings, 26 blockers, 11 freezes; the measurements are banked
+  in `FEEDBACK-p2d.md` and resolved the whole idea queue. Still unexercised
+  live: `check drift` (P2d's target never moved mid-gate) and `check rules`
+  (markers did not exist yet).
+- **The validation corpus does not survive a session** (it lived in a scratch
+  directory). To rebuild: `git clone --no-hardlinks ~/projects/mocker
+  <lab>/head`, then a workspace over any set of documents.
+- The history of decisions and measurements is in the git log; this file keeps
+  only what the commits cannot reconstruct.
+- The idea queue and the do-not-build list — `IDEAS.md`; as of 2026-08-21 the
+  "build" queue is fully closed.
 
-## Чего намеренно нет
+## What is deliberately absent
 
-Не «забыли», а отложено — чтобы дыра не читалась как недосмотр:
+Not forgotten — deferred, so the gap does not read as an oversight:
 
-- **MCP-сервера нет.** Сначала CLI: пока не ясно, что узкое место — именно
-  разговор агента с инструментом, а не сами проверки, MCP добавит транспорт к
-  непроверенной механике.
-- **Реестра находок как данных по-прежнему нет — есть только парсер.**
-  `findings.md` заполняется руками; `ws.ParseFindings` читает таблицу для
-  валидации закрытий (record/freeze) и чеклиста в delta, но ничего не
-  генерирует и другого формата не вводит. Формат — тот же скаффолд, который
-  четыре раунда заполняли руками без изменений.
-- **`round close`, повторного открытия и переоткрытия раунда нет.** Заморозка
-  односторонняя: тег `gate-rN` уже существует — открывают следующий раунд.
-- **Проверки «цитата говорит то, что утверждает предложение рядом» нет и не
-  будет.** Это суждение; `wf check cite -show` существует, чтобы оно стоило
-  дёшево, а не чтобы изобразить, что оно сделано.
-- **Автоправок нет.** `check` только сообщает. Инструмент, который сам чинит
-  цитаты, чинил бы их в артефакте, который кто-то уже отревьюел.
-- **Пуша, хуков и CI нет.** Воркспейс гейта живёт локально и умирает вместе со
-  срезом; публиковать нечего.
+- **No MCP server.** CLI first — and the live run measured the question: zero
+  agent↔CLI seam errors over 10 rounds. The bottleneck was assembling the JSON
+  edit batch, which is a different layer. Reopen only with new data.
+- **Still no findings registry as data — only a parser.** `findings.md` is
+  filled by hand; `ws.ParseFindings` reads the table to validate closures
+  (record/freeze) and to print the delta checklist, but generates nothing and
+  introduces no second format. The format is the same scaffold that four gate
+  rounds — and ten more on the live P2d gate — filled by hand unchanged.
+- **No `round close`, no reopening a round.** Freezing is one-way: if tag
+  `gate-rN` exists, you open the next round.
+- **No check that "the cited line says what the sentence beside it claims" —
+  ever.** That is judgement; `wf check cite -show` exists to make it cheap, not
+  to pretend it has been done.
+- **No autofixes.** `check` only reports. A tool that fixed citations itself
+  would be fixing them in an artifact somebody already reviewed.
+- **No push, hooks, or CI.** A gate workspace lives locally and dies with its
+  slice; there is nothing to publish.
