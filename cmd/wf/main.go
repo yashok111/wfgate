@@ -542,8 +542,24 @@ func cmdFreeze(args []string) error {
 	// that rejected an honest "still open" at record time would teach operators
 	// to write fiction into the ledger. Placeholder rows (empty finding text)
 	// are a form, not a claim, so the untouched scaffold freezes fine.
+	//
+	// TWO rounds are checked, not one. In the prescribed flow a round is frozen
+	// right after it is opened, so the round being frozen always carries a blank
+	// scaffold — a check on it alone passes vacuously forever, which is this
+	// project's named worst failure. The round whose closures this freeze
+	// publishes is the one being CLOSED (the previous round): its findings are
+	// what `wf delta` will brief the next reviewer with, so its blockers are the
+	// ones that must be closed by now. The open round is checked too, for the
+	// operator who records into it before freezing.
 	prose := 0
-	if fb, err := os.ReadFile(filepath.Join(w.RoundDir(w.M.Round), "findings.md")); err == nil {
+	for _, rn := range []int{w.M.Round - 1, w.M.Round} {
+		if rn < 1 {
+			continue
+		}
+		fb, err := os.ReadFile(filepath.Join(w.RoundDir(rn), "findings.md"))
+		if err != nil {
+			continue
+		}
 		open := 0
 		for _, r := range ws.ParseFindings(fb) {
 			if r.Placeholder() {
@@ -551,7 +567,7 @@ func cmdFreeze(args []string) error {
 			}
 			for _, sha := range r.Shas() {
 				if !w.Git.CommitExists(sha) {
-					return fmt.Errorf("findings row %s: closed by names %s, which is not a commit in this workspace", r.Num, sha)
+					return fmt.Errorf("round %d findings row %s: closed by names %s, which is not a commit in this workspace", rn, r.Num, sha)
 				}
 			}
 			switch {
@@ -564,7 +580,7 @@ func cmdFreeze(args []string) error {
 			}
 		}
 		if open > 0 {
-			return fmt.Errorf("%d blocker(s) without closed by; record closures with `wf round record` before freezing", open)
+			return fmt.Errorf("round %d: %d blocker(s) without closed by; record closures with `wf round record` before freezing", rn, open)
 		}
 	}
 	head, err := w.Git.Head()

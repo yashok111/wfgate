@@ -285,26 +285,44 @@ func TestPrescribedSequence(t *testing.T) {
 		t.Fatalf("bogus record: want 'not a commit in this workspace', got %v", err)
 	}
 
+	// Findings are recorded when FILED, before the fixes — an open blocker is
+	// legal at record time.
 	recorded := filepath.Join(tmp, "r1-findings.md")
 	write(t, recorded, `# Round 1 — findings
 
 | # | level | finding | closed by |
 |---|-------|---------|-----------|
-| 1 | BLOCKER | stale copy of the composition rule in script.md | `+applySha+` |
+| 1 | BLOCKER | stale copy of the composition rule in script.md | |
 `)
 	out, err = runWF(t, wsDir, "round", "record", recorded)
 	noErr(t, err, "round record")
 	mustContain(t, out, "recorded rounds/r1/findings.md",
-		"findings: 1 row(s), 1 blocker(s); closed by commit 1, by prose 0, open 0",
+		"findings: 1 row(s), 1 blocker(s); closed by commit 0, by prose 0, open 1",
 		"committed ")
 
 	out, err = runWF(t, wsDir, "round", "new", "-title", "delta review")
 	noErr(t, err, "round new r2")
 	mustContain(t, out, "round 2 opened, rounds/r2/findings.md")
 
-	// The scaffold's contract, enforced: a round with an OPEN blocker does not
-	// freeze. Recording the open state is legal — refusing THAT would teach
-	// operators to write fiction — the freeze is where closure is demanded.
+	// The prescribed flow freezes a round right after opening it, so the frozen
+	// round's own findings are always a blank scaffold — the blockers that must
+	// be closed by now are the CLOSED round's (r1), and freeze must read that
+	// file, not pass vacuously over the scaffold.
+	if _, err = runWF(t, wsDir, "freeze"); err == nil || !strings.Contains(err.Error(), "round 1: 1 blocker(s) without closed by") {
+		t.Fatalf("freeze over the closed round's open blocker: want refusal naming round 1, got %v", err)
+	}
+	write(t, recorded, `# Round 1 — findings
+
+| # | level | finding | closed by |
+|---|-------|---------|-----------|
+| 1 | BLOCKER | stale copy of the composition rule in script.md | `+applySha+` |
+`)
+	out, err = runWF(t, wsDir, "round", "record", recorded, "-round", "1")
+	noErr(t, err, "re-record r1 closures")
+	mustContain(t, out, "closed by commit 1, by prose 0, open 0")
+
+	// Same contract on the OPEN round, for the operator who records into it
+	// before freezing.
 	r2open := filepath.Join(tmp, "r2-open.md")
 	write(t, r2open, `| # | level | finding | closed by |
 |---|-------|---------|-----------|
@@ -313,8 +331,8 @@ func TestPrescribedSequence(t *testing.T) {
 	out, err = runWF(t, wsDir, "round", "record", r2open)
 	noErr(t, err, "record r2 open")
 	mustContain(t, out, "open 1")
-	if _, err = runWF(t, wsDir, "freeze"); err == nil || !strings.Contains(err.Error(), "blocker(s) without closed by") {
-		t.Fatalf("freeze over an open blocker: want refusal, got %v", err)
+	if _, err = runWF(t, wsDir, "freeze"); err == nil || !strings.Contains(err.Error(), "round 2: 1 blocker(s) without closed by") {
+		t.Fatalf("freeze over the open round's open blocker: want refusal naming round 2, got %v", err)
 	}
 
 	// A prose closure is a deliberate escape (defer, decision) — it freezes,
