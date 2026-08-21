@@ -40,14 +40,28 @@ const usage = `wf — gate harness
   wf apply -f edits.json          all-or-nothing batch of edits, then commit
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T]         open the next round, scaffold its findings file
-  wf round record <file>          fill the open round's findings.md from a file, and commit
+  wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
-  wf delta [-from REF] [-to REF]  the diff a delta round reviews
-  wf check [cite|dup] [flags]     deterministic checks over the artifacts
+  wf delta [-from REF] [-to REF]  the diff a delta round reviews, with the closure checklist
+  wf check [cite|dup|drift]       deterministic checks over the artifacts
+  wf version                      the stamped build version of this binary
 
 Exit codes: 0 clean, 1 findings or failure, 2 usage.
 `
+
+// version is stamped by the Makefile via -ldflags; "(devel)" is a binary built
+// outside make — including every `go test` and a bare `go build`.
+//
+// It exists because of a measured stumble, recorded in HANDOFF the day it
+// happened: after an edit, a run against the STALE installed binary looks
+// exactly like a run against the new one, and nothing in the frozen record
+// could say which produced it. The version goes into freeze.json for the same
+// reason the target's HEAD does — it is part of what "this round was verified"
+// was verified WITH.
+var version = "(devel)"
+
+func toolID() string { return "wf " + version }
 
 func main() {
 	if len(os.Args) < 2 {
@@ -74,6 +88,9 @@ func main() {
 		err = cmdDelta(os.Args[2:])
 	case "check":
 		err = cmdCheck(os.Args[2:])
+	case "version", "-version", "--version":
+		fmt.Println(toolID())
+		return
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return
@@ -159,8 +176,8 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	head, _ := w.Git.Head()
-	fmt.Printf("workspace %s\n  root   %s\n  target %s\n  round  %d\n  head   %s\n",
-		w.M.Name, w.Root, w.M.Target, w.M.Round, short(head))
+	fmt.Printf("workspace %s\n  root   %s\n  target %s\n  round  %d\n  head   %s\n  tool   %s\n",
+		w.M.Name, w.Root, w.M.Target, w.M.Round, short(head), toolID())
 	arts, err := w.ArtifactList()
 	if err != nil {
 		return err
@@ -420,6 +437,36 @@ func cmdRoundRecord(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Validated BEFORE any byte is written, like apply: a findings file whose
+	// closed-by names a commit that does not exist is a lie in the ledger, and
+	// a rejected record announces itself where a landed one would brief the
+	// next round with fiction. An OPEN blocker is legal here — findings are
+	// recorded when filed, closures land later, and freeze is the gate that
+	// demands them closed.
+	rows := ws.ParseFindings(b)
+	byCommit, byProse, open, blockers := 0, 0, 0, 0
+	for _, r := range rows {
+		if r.Placeholder() {
+			continue
+		}
+		if r.Blocker() {
+			blockers++
+		}
+		shas := r.Shas()
+		for _, s := range shas {
+			if !w.Git.CommitExists(s) {
+				return fmt.Errorf("row %s (line %d): closed by names %s, which is not a commit in this workspace; nothing was recorded", r.Num, r.Line, s)
+			}
+		}
+		switch {
+		case len(shas) > 0:
+			byCommit++
+		case strings.TrimSpace(r.ClosedBy) != "":
+			byProse++
+		default:
+			open++
+		}
+	}
 	dir := w.RoundDir(n)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -433,7 +480,16 @@ func cmdRoundRecord(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("recorded %s (%d bytes)\ncommitted %s\n", rel, len(b), short(sha))
+	fmt.Printf("recorded %s (%d bytes)\n", rel, len(b))
+	if len(rows) == 0 {
+		// No table means nothing was validated, and saying so is the entire
+		// difference between "checked" and "looked green".
+		fmt.Printf("  findings: no table recognized — closures not validated\n")
+	} else {
+		fmt.Printf("  findings: %d row(s), %d blocker(s); closed by commit %d, by prose %d, open %d\n",
+			len(rows), blockers, byCommit, byProse, open)
+	}
+	fmt.Printf("committed %s\n", short(sha))
 	return nil
 }
 
@@ -446,6 +502,7 @@ type freezeManifest struct {
 	Commit    string            `json:"commit"`
 	Target    string            `json:"target"`
 	TargetRef string            `json:"targetRef"`
+	Tool      string            `json:"tool"` // wf version that wrote this freeze
 	Frozen    string            `json:"frozen"`
 	Artifacts map[string]string `json:"artifacts"` // path -> sha256
 }
@@ -479,12 +536,43 @@ func cmdFreeze(args []string) error {
 	if len(arts) == 0 {
 		return fmt.Errorf("no artifacts to freeze")
 	}
+	// The scaffold's own contract, enforced at the moment it matters: every
+	// blocker is closed before the round freezes. Freeze is the right gate, not
+	// record — findings are recorded when filed, closures land later, and a rule
+	// that rejected an honest "still open" at record time would teach operators
+	// to write fiction into the ledger. Placeholder rows (empty finding text)
+	// are a form, not a claim, so the untouched scaffold freezes fine.
+	prose := 0
+	if fb, err := os.ReadFile(filepath.Join(w.RoundDir(w.M.Round), "findings.md")); err == nil {
+		open := 0
+		for _, r := range ws.ParseFindings(fb) {
+			if r.Placeholder() {
+				continue
+			}
+			for _, sha := range r.Shas() {
+				if !w.Git.CommitExists(sha) {
+					return fmt.Errorf("findings row %s: closed by names %s, which is not a commit in this workspace", r.Num, sha)
+				}
+			}
+			switch {
+			case len(r.Shas()) > 0:
+			case strings.TrimSpace(r.ClosedBy) != "":
+				prose++
+			case r.Blocker():
+				open++
+				fmt.Fprintf(os.Stderr, "  [%s] BLOCKER open: %s\n", r.Num, trunc(r.Text, 90))
+			}
+		}
+		if open > 0 {
+			return fmt.Errorf("%d blocker(s) without closed by; record closures with `wf round record` before freezing", open)
+		}
+	}
 	head, err := w.Git.Head()
 	if err != nil {
 		return err
 	}
 	fm := freezeManifest{
-		Round: w.M.Round, Commit: head, Target: w.M.Target,
+		Round: w.M.Round, Commit: head, Target: w.M.Target, Tool: toolID(),
 		Frozen: time.Now().UTC().Format(time.RFC3339), Artifacts: map[string]string{},
 	}
 	// The target's HEAD is recorded too. A frozen gate that cites line numbers
@@ -523,11 +611,26 @@ func cmdFreeze(args []string) error {
 	if err := w.Git.Tag(tag, fmt.Sprintf("gate round %d frozen at %s", w.M.Round, short(sha))); err != nil {
 		return err
 	}
-	fmt.Printf("frozen round %d\n  commit %s\n  tag    %s\n  target %s\n", w.M.Round, short(sha), tag, fm.TargetRef)
+	fmt.Printf("frozen round %d\n  commit %s\n  tag    %s\n  target %s\n  tool   %s\n", w.M.Round, short(sha), tag, fm.TargetRef, fm.Tool)
 	for _, a := range arts {
 		fmt.Printf("  %s  %s\n", fm.Artifacts[a][:12], a)
 	}
+	if prose > 0 {
+		fmt.Printf("  note: %d closure(s) not naming a commit — verify by hand\n", prose)
+	}
 	return nil
+}
+
+// newestFrozen returns the newest round with a freeze.json, 0 if none. Both
+// verify and drift default to it: the newest frozen record is the one a launch
+// would run against.
+func newestFrozen(w *ws.Workspace) int {
+	for r := w.M.Round; r >= 1; r-- {
+		if _, err := os.Stat(filepath.Join(w.RoundDir(r), "freeze.json")); err == nil {
+			return r
+		}
+	}
+	return 0
 }
 
 func targetHead(dir string) string {
@@ -560,12 +663,7 @@ func cmdVerify(args []string) error {
 	}
 	n := *round
 	if n == 0 {
-		for r := w.M.Round; r >= 1; r-- {
-			if _, err := os.Stat(filepath.Join(w.RoundDir(r), "freeze.json")); err == nil {
-				n = r
-				break
-			}
-		}
+		n = newestFrozen(w)
 	}
 	if n == 0 {
 		return fmt.Errorf("no frozen round to verify against; run `wf freeze` first")
@@ -579,6 +677,12 @@ func cmdVerify(args []string) error {
 		return err
 	}
 	fmt.Printf("## verify round %d\n", n)
+	// Provenance, not a mismatch: a rebuilt binary legitimately verifies an
+	// older freeze. What the note kills is the silent version: a stale
+	// installed binary whose run is indistinguishable from the new one's.
+	if fm.Tool != "" && fm.Tool != toolID() {
+		fmt.Printf("  note: frozen by %s, verifying with %s\n", fm.Tool, toolID())
+	}
 	bad := 0
 	fail := func(format string, a ...any) {
 		bad++
@@ -695,6 +799,7 @@ func cmdDelta(args []string) error {
 		if b, err := os.ReadFile(p); err == nil {
 			fmt.Printf("## findings round %d filed, which this delta must close\n\n%s\n",
 				baseRound, strings.TrimRight(string(b), "\n"))
+			printClosures(w, baseRound, ws.ParseFindings(b))
 		} else {
 			fmt.Printf("## findings\n\n(none recorded in %s — record what round %d found there before briefing a reviewer)\n\n",
 				p, baseRound)
@@ -708,6 +813,49 @@ func cmdDelta(args []string) error {
 	return nil
 }
 
+// printClosures renders the base round's closure claims as a checklist: each
+// claimed commit resolved to its subject and files. It makes the delta
+// reviewer's first job — "check that claim" is the scaffold's own words —
+// START mechanical: claim → commit → files is looked up, and only "does that
+// commit actually close the finding" is left, with the artifact diff below as
+// the evidence. Nothing here fails the command: a briefing that refused to
+// print would brief nobody.
+func printClosures(w *ws.Workspace, round int, rows []ws.FindingRow) {
+	printed := false
+	head := func() {
+		if !printed {
+			fmt.Printf("\n## closures round %d claims\n\n", round)
+			printed = true
+		}
+	}
+	for _, r := range rows {
+		if r.Placeholder() {
+			continue
+		}
+		head()
+		shas := r.Shas()
+		switch {
+		case len(shas) > 0:
+			for _, s := range shas {
+				subj, files, err := w.Git.CommitBrief(s)
+				if err != nil {
+					fmt.Printf("  [%s] %s closed by %s — NOT a commit in this workspace\n", r.Num, r.Level, s)
+					continue
+				}
+				fmt.Printf("  [%s] %s closed by %s %q — %s\n", r.Num, r.Level, short(s), subj, strings.Join(files, ", "))
+			}
+		case strings.TrimSpace(r.ClosedBy) != "":
+			fmt.Printf("  [%s] %s closed by %q — not a commit, verify by hand\n", r.Num, r.Level, r.ClosedBy)
+		default:
+			fmt.Printf("  [%s] %s — OPEN, nothing claims to close it\n", r.Num, r.Level)
+		}
+	}
+	if len(rows) == 0 {
+		fmt.Printf("\n## closures round %d claims\n\n  (no findings table recognized — closures not validated)\n", round)
+	}
+	fmt.Println()
+}
+
 func cmdCheck(args []string) error {
 	which := "all"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
@@ -718,6 +866,7 @@ func cmdCheck(args []string) error {
 	reqAnchor := fs.Bool("require-anchor", false, "cite: fail on a citation written without #anchor")
 	thr := fs.Float64("threshold", 0.82, "dup: similarity threshold for a near match")
 	minWords := fs.Int("min-words", 8, "dup: shortest statement compared")
+	round := fs.Int("round", 0, "drift: frozen round to measure from (default the newest)")
 	if _, err := parseMixed(fs, args); err != nil {
 		return err
 	}
@@ -731,6 +880,11 @@ func cmdCheck(args []string) error {
 	}
 	if len(arts) == 0 {
 		return fmt.Errorf("no artifacts under %s", w.Artifacts())
+	}
+	// drift is not part of "all": it is measured from a freeze, and "all" must
+	// keep working on a workspace that has not frozen anything yet.
+	if which == "drift" {
+		return runDrift(w, arts, *round)
 	}
 	fail := false
 	if which == "all" || which == "cite" {
@@ -748,9 +902,61 @@ func cmdCheck(args []string) error {
 		fail = fail || bad
 	}
 	if which != "all" && which != "cite" && which != "dup" {
-		return fmt.Errorf("unknown check %q (cite, dup)", which)
+		return fmt.Errorf("unknown check %q (cite, dup, drift)", which)
 	}
 	if fail {
+		return errFindings
+	}
+	return nil
+}
+
+// runDrift intersects the target's movement since a freeze with the cited
+// ranges. It exists because verify's "target is at X, frozen against Y" opens a
+// question it cannot answer — WHICH citations did the move invalidate — and the
+// unanchored majority get no other mechanical signal: both their lines keep
+// existing, so the range check in cite stays green forever.
+func runDrift(w *ws.Workspace, arts []string, round int) error {
+	n := round
+	if n == 0 {
+		n = newestFrozen(w)
+	}
+	if n == 0 {
+		return fmt.Errorf("no frozen round; drift is measured from a freeze, run `wf freeze` first")
+	}
+	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
+	if err != nil {
+		return err
+	}
+	var fm freezeManifest
+	if err := json.Unmarshal(b, &fm); err != nil {
+		return err
+	}
+	if fm.TargetRef == "" || fm.TargetRef == "(unknown)" {
+		return fmt.Errorf("round %d froze without a resolvable target ref; drift has no baseline", n)
+	}
+	now := targetHead(w.M.Target)
+	if now == fm.TargetRef {
+		fmt.Printf("## drift — target still at %s — nothing to re-read\n", now)
+		return nil
+	}
+	cits, err := check.ScanCitations(w.Root, arts)
+	if err != nil {
+		return err
+	}
+	ds, clean, err := check.FindDrift(w.M.Target, fm.TargetRef, cits)
+	if err != nil {
+		return err
+	}
+	kinds := map[string]int{}
+	for _, d := range ds {
+		kinds[d.Kind]++
+	}
+	fmt.Printf("## drift — %s..%s: %d citation(s), %d edited, %d shifted, %d gone, %d unresolved, %d clean\n",
+		fm.TargetRef, now, len(cits), kinds["edited"], kinds["shifted"], kinds["gone"], kinds["unresolved"], clean)
+	for _, d := range ds {
+		fmt.Println("  " + d.String())
+	}
+	if len(ds) > 0 {
 		return errFindings
 	}
 	return nil

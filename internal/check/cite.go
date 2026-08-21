@@ -123,6 +123,22 @@ func NewIndex(target string) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
+	return indexFiles(files), nil
+}
+
+// NewIndexAt indexes the files tracked at ref rather than the working tree.
+// Drift resolves citations against the revision they were frozen with, so a
+// file the target has since deleted still resolves — and is then reported as
+// gone, instead of silently failing to resolve at all.
+func NewIndexAt(target, ref string) (*Index, error) {
+	files, err := gitx.Repo{Dir: target}.FilesAt(ref)
+	if err != nil {
+		return nil, err
+	}
+	return indexFiles(files), nil
+}
+
+func indexFiles(files []string) *Index {
 	ix := &Index{all: map[string]bool{}, suffix: map[string][]string{}}
 	for _, f := range files {
 		ix.all[f] = true
@@ -131,7 +147,7 @@ func NewIndex(target string) (*Index, error) {
 			ix.suffix[strings.Join(parts[i:], "/")] = append(ix.suffix[strings.Join(parts[i:], "/")], f)
 		}
 	}
-	return ix, nil
+	return ix
 }
 
 func (ix *Index) resolve(p string) (string, []string) {

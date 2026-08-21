@@ -1,0 +1,369 @@
+// End-to-end test of the prescribed sequence, from `wf init` to `wf delta`,
+// asserting on OUTPUT rather than on returned errors.
+//
+// Every step here was once a real blocker: `verify` did not compare what it
+// promised, `delta` diffed against the newest tag and printed an empty diff,
+// and the first commit of an artifact had no command to make it. The failure
+// shape both documents call the worst — a command that exits zero having
+// checked nothing — is invisible to an assertion on the error alone, which is
+// why each step checks the printed text.
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"git.sumka.site/yakov/wfgate/internal/gitx"
+)
+
+// dispatch mirrors main's switch. The switch is duplicated rather than factored
+// out of main because main's other half is os.Exit and usage printing; a copy
+// of nine cases is cheaper than making the real one testable.
+func dispatch(args []string) error {
+	switch args[0] {
+	case "init":
+		return cmdInit(args[1:])
+	case "status":
+		return cmdStatus(args[1:])
+	case "apply":
+		return cmdApply(args[1:])
+	case "add":
+		return cmdAdd(args[1:])
+	case "round":
+		return cmdRound(args[1:])
+	case "freeze":
+		return cmdFreeze(args[1:])
+	case "verify":
+		return cmdVerify(args[1:])
+	case "delta":
+		return cmdDelta(args[1:])
+	case "check":
+		return cmdCheck(args[1:])
+	}
+	return fmt.Errorf("unknown command %q", args[0])
+}
+
+// runWF runs one subcommand in-process from dir, capturing stdout and stderr
+// together. In-process rather than a built binary so `go test -cover` counts
+// these paths — HANDOFF lists cmd/wf at 0.0% as the open risk.
+func runWF(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	t.Chdir(dir)
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = w, w
+	defer func() { os.Stdout, os.Stderr = oldOut, oldErr }()
+	done := make(chan string, 1)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+	cmdErr := dispatch(args)
+	_ = w.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+	out := <-done
+	t.Logf("$ wf %s\n%s", strings.Join(args, " "), out)
+	return out, cmdErr
+}
+
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+	}
+}
+
+// setGitEnv pins identity and blanks host config, so the commits the tool makes
+// succeed on a machine with no global git identity and are not bent by whatever
+// the host config carries (signing, hooks, templates).
+func setGitEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	for _, who := range []string{"GIT_AUTHOR", "GIT_COMMITTER"} {
+		t.Setenv(who+"_NAME", "wf-test")
+		t.Setenv(who+"_EMAIL", "wf@example.invalid")
+	}
+}
+
+func write(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustContain(t *testing.T, out string, subs ...string) {
+	t.Helper()
+	for _, s := range subs {
+		if !strings.Contains(out, s) {
+			t.Fatalf("output must contain %q, got:\n%s", s, out)
+		}
+	}
+}
+
+func mustNotContain(t *testing.T, out string, subs ...string) {
+	t.Helper()
+	for _, s := range subs {
+		if strings.Contains(out, s) {
+			t.Fatalf("output must not contain %q, got:\n%s", s, out)
+		}
+	}
+}
+
+func noErr(t *testing.T, err error, step string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("%s: %v", step, err)
+	}
+}
+
+func wantFindings(t *testing.T, err error, step string) {
+	t.Helper()
+	if !errors.Is(err, errFindings) {
+		t.Fatalf("%s: want errFindings, got %v", step, err)
+	}
+}
+
+func TestPrescribedSequence(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+
+	// The repository under review. Three lines, so an anchored citation can
+	// target line 3 and an unanchored one line 2.
+	target := filepath.Join(tmp, "target")
+	write(t, filepath.Join(target, "src", "main.go"), "package main\n\nfunc NeedleFn() {}\n")
+	gitIn(t, target, "init", "-q", "-b", "main")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "initial")
+
+	wsDir := filepath.Join(tmp, "ws")
+	out, err := runWF(t, tmp, "init", "demo", "-target", target, "-dir", wsDir)
+	noErr(t, err, "init")
+	mustContain(t, out, "workspace demo", target)
+
+	// Two artifacts carrying the same rule. `wf add` is the only way to make an
+	// artifact's first commit — apply rejects an empty `old` — so the sequence
+	// starts here.
+	rule := "- The composition stays a pure function called from buildRuntime, never a branch inside it.\n"
+	write(t, filepath.Join(tmp, "context.md"), "# Context\n\n"+rule+"\nEntry point: `src/main.go:3#NeedleFn`.\n")
+	write(t, filepath.Join(tmp, "script.md"), "# Script\n\n"+rule+"\nBase: `src/main.go:2`.\n")
+	out, err = runWF(t, wsDir, "add", filepath.Join(tmp, "context.md"), filepath.Join(tmp, "script.md"))
+	noErr(t, err, "add")
+	mustContain(t, out, "added artifacts/context.md", "added artifacts/script.md", "committed ")
+
+	// Re-adding must refuse: an overwrite-by-add would be an unvalidated,
+	// uncounted whole-file replacement, the exact thing apply exists to prevent.
+	if _, err = runWF(t, wsDir, "add", filepath.Join(tmp, "context.md")); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("re-add: want 'already exists', got %v", err)
+	}
+
+	out, err = runWF(t, wsDir, "round", "new", "-title", "initial review")
+	noErr(t, err, "round new")
+	mustContain(t, out, "round 1 opened, rounds/r1/findings.md")
+
+	out, err = runWF(t, wsDir, "freeze")
+	noErr(t, err, "freeze r1")
+	mustContain(t, out, "frozen round 1", "gate-r1", "artifacts/context.md", "artifacts/script.md", "tool   wf (devel)")
+
+	out, err = runWF(t, wsDir, "status")
+	noErr(t, err, "status")
+	mustContain(t, out, "round  1", "artifacts (2)", "frozen rounds: gate-r1", "tree clean", "tool   wf (devel)")
+
+	out, err = runWF(t, wsDir, "verify")
+	noErr(t, err, "verify clean")
+	mustContain(t, out, "## verify round 1", "tag gate-r1, 2 artifact(s)", "— clean")
+	mustNotContain(t, out, "MISMATCH")
+
+	// Drift before the target moves: nothing to measure, and the check says so
+	// instead of printing an empty green report.
+	out, err = runWF(t, wsDir, "check", "drift")
+	noErr(t, err, "drift still")
+	mustContain(t, out, "## drift — target still at", "nothing to re-read")
+
+	// A batch with one matching and one mis-counted edit must reject WHOLE. The
+	// measured failure this tool grew from is the matching half landing anyway.
+	badEdits := filepath.Join(tmp, "edits-bad.json")
+	write(t, badEdits, `[
+  {"file": "artifacts/script.md", "old": "stays a pure", "new": "remains a pure", "note": "matches, must still not land"},
+  {"file": "artifacts/context.md", "old": "pure function", "new": "total function", "count": 2, "note": "declared twice, present once"}
+]`)
+	out, err = runWF(t, wsDir, "apply", "-f", badEdits)
+	wantFindings(t, err, "apply rejected")
+	mustContain(t, out, "[0] ok", "[1] FAIL", "expected 2 occurrence(s), found 1", "batch REJECTED — nothing was written")
+
+	// Byte-for-byte proof nothing landed: the hashes still match the freeze.
+	out, err = runWF(t, wsDir, "verify")
+	noErr(t, err, "verify after rejection")
+	mustNotContain(t, out, "MISMATCH")
+
+	edits := filepath.Join(tmp, "edits.json")
+	write(t, edits, `[
+  {"file": "artifacts/context.md", "old": "never a branch inside it", "new": "not a branch inside it", "count": 1, "note": "soften the wording"},
+  {"file": "artifacts/script.md", "old": "never a branch inside it", "new": "not a branch inside it", "count": 1, "note": "same rule, second copy"}
+]`)
+	out, err = runWF(t, wsDir, "apply", "-f", edits)
+	noErr(t, err, "apply")
+	mustContain(t, out, "[0] ok", "[1] ok", "committed ", "(2 file(s))")
+	// The apply commit's full sha, for the findings table below: the closure
+	// checklist must resolve a real commit, and the full form dodges the
+	// (unlikely) all-letter short sha the digit rule would refuse to trust.
+	applySha, err := gitx.Repo{Dir: wsDir}.Head()
+	noErr(t, err, "apply sha")
+
+	// Both checks in one pass. The cite header must always carry the unverified
+	// count — a green run over unanchored citations is not coverage and must not
+	// read as such. The dup group is exact and committed together, so it is
+	// reported but does not fail the check.
+	out, err = runWF(t, wsDir, "check")
+	noErr(t, err, "check")
+	mustContain(t, out,
+		"## cite — 2 citation(s), 1 anchored (1 unverified beyond range), 0 finding(s)",
+		"## dup — 2 statement(s), 1 cross-file group(s), 0 divergent",
+		"sim 1.00")
+	mustNotContain(t, out, "DIVERGENT")
+
+	// -require-anchor turns the unanchored citation into a finding, and -show
+	// prints the cited target lines so the judgement call it cannot make stays
+	// cheap for the reviewer who can.
+	out, err = runWF(t, wsDir, "check", "cite", "-show", "-require-anchor")
+	wantFindings(t, err, "check cite -require-anchor")
+	mustContain(t, out, "citation without #anchor", "[src/main.go:2]",
+		"src/main.go:3| func NeedleFn() {}")
+
+	// The target moves. Every line number the frozen artifacts cite is now a
+	// claim about a revision that is gone: a line inserted on top shifts both
+	// citations, and the NeedleFn line itself is edited under one of them.
+	write(t, filepath.Join(target, "src", "main.go"), "// moved\npackage main\n\nfunc NeedleFn() { panic(\"x\") }\n")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "target moves")
+
+	// Drift names WHICH citations the move invalidated, and how: the cited
+	// func line changed (re-read), the empty line merely shifted (re-aim).
+	out, err = runWF(t, wsDir, "check", "drift")
+	wantFindings(t, err, "drift after move")
+	mustContain(t, out,
+		"2 citation(s), 1 edited, 1 shifted, 0 gone, 0 unresolved, 0 clean",
+		"artifacts/context.md:5: edited: src/main.go:3 changed since the freeze",
+		"artifacts/script.md:5: shifted: src/main.go:2 is now 3 (+1)")
+
+	// Exactly three mismatches: both artifact hashes and the target ref. The
+	// apply commit past the tag is a note, never a mismatch — a verify that
+	// failed on bookkeeping commits would teach the operator to skip the
+	// bookkeeping the tool exists for.
+	out, err = runWF(t, wsDir, "verify")
+	wantFindings(t, err, "verify mismatches")
+	mustContain(t, out, "## verify round 1", "note: HEAD is", "past tag gate-r1",
+		"artifacts/context.md: sha256", "artifacts/script.md: sha256",
+		"target is at", "3 mismatch(es)", "Do not launch")
+	if n := strings.Count(out, "MISMATCH"); n != 3 {
+		t.Fatalf("want exactly 3 MISMATCH lines, got %d:\n%s", n, out)
+	}
+
+	// A record whose closed-by names a commit that does not exist must reject
+	// before writing: a landed lie briefs the next round with fiction.
+	bogus := filepath.Join(tmp, "r1-bogus.md")
+	write(t, bogus, `| # | level | finding | closed by |
+|---|-------|---------|-----------|
+| 1 | BLOCKER | stale copy | 1234567890abcdef |
+`)
+	if _, err = runWF(t, wsDir, "round", "record", bogus); err == nil || !strings.Contains(err.Error(), "not a commit in this workspace") {
+		t.Fatalf("bogus record: want 'not a commit in this workspace', got %v", err)
+	}
+
+	recorded := filepath.Join(tmp, "r1-findings.md")
+	write(t, recorded, `# Round 1 — findings
+
+| # | level | finding | closed by |
+|---|-------|---------|-----------|
+| 1 | BLOCKER | stale copy of the composition rule in script.md | `+applySha+` |
+`)
+	out, err = runWF(t, wsDir, "round", "record", recorded)
+	noErr(t, err, "round record")
+	mustContain(t, out, "recorded rounds/r1/findings.md",
+		"findings: 1 row(s), 1 blocker(s); closed by commit 1, by prose 0, open 0",
+		"committed ")
+
+	out, err = runWF(t, wsDir, "round", "new", "-title", "delta review")
+	noErr(t, err, "round new r2")
+	mustContain(t, out, "round 2 opened, rounds/r2/findings.md")
+
+	// The scaffold's contract, enforced: a round with an OPEN blocker does not
+	// freeze. Recording the open state is legal — refusing THAT would teach
+	// operators to write fiction — the freeze is where closure is demanded.
+	r2open := filepath.Join(tmp, "r2-open.md")
+	write(t, r2open, `| # | level | finding | closed by |
+|---|-------|---------|-----------|
+| 1 | BLOCKER | delta briefing was verified by hand only | |
+`)
+	out, err = runWF(t, wsDir, "round", "record", r2open)
+	noErr(t, err, "record r2 open")
+	mustContain(t, out, "open 1")
+	if _, err = runWF(t, wsDir, "freeze"); err == nil || !strings.Contains(err.Error(), "blocker(s) without closed by") {
+		t.Fatalf("freeze over an open blocker: want refusal, got %v", err)
+	}
+
+	// A prose closure is a deliberate escape (defer, decision) — it freezes,
+	// but the note keeps it from reading as a verified commit.
+	r2closed := filepath.Join(tmp, "r2-closed.md")
+	write(t, r2closed, `| # | level | finding | closed by |
+|---|-------|---------|-----------|
+| 1 | BLOCKER | delta briefing was verified by hand only | deferred to the live mocker run |
+`)
+	out, err = runWF(t, wsDir, "round", "record", r2closed)
+	noErr(t, err, "record r2 closed")
+	mustContain(t, out, "by prose 1")
+
+	out, err = runWF(t, wsDir, "freeze")
+	noErr(t, err, "freeze r2")
+	mustContain(t, out, "frozen round 2", "gate-r2", "1 closure(s) not naming a commit")
+
+	// verify must pick the NEWEST frozen round on its own, and round 2 was
+	// frozen against the moved target, so the run is clean again.
+	out, err = runWF(t, wsDir, "verify")
+	noErr(t, err, "verify r2")
+	mustContain(t, out, "## verify round 2", "tag gate-r2, 2 artifact(s)", "— clean")
+	mustNotContain(t, out, "MISMATCH")
+
+	// Delta without flags. The base must be the round BEING CLOSED (r1), not
+	// the newest tag — r2 is already frozen, and diffing against it printed an
+	// empty diff indistinguishable from a round that changed nothing. The
+	// findings printed are round 1's recorded file, never round 2's blank
+	// scaffold ("Opened at" is scaffold text).
+	out, err = runWF(t, wsDir, "delta")
+	noErr(t, err, "delta")
+	mustContain(t, out,
+		"# delta gate-r1..HEAD",
+		"## findings round 1 filed, which this delta must close",
+		"stale copy of the composition rule",
+		"## closures round 1 claims",
+		"[1] BLOCKER closed by "+applySha[:8]+" \"apply: 2 edit(s) across 2 file(s)\" — artifacts/context.md, artifacts/script.md",
+		"## artifact diff",
+		"artifacts/context.md",
+		"artifacts/script.md",
+		"never a branch inside it",
+		"not a branch inside it")
+	mustNotContain(t, out, "Opened at", "freeze.json")
+
+	// A hand-named base must still brief with the findings of the round that
+	// tag froze, not the open one — RoundOfTag is what recovers the number.
+	out, err = runWF(t, wsDir, "delta", "-from", "gate-r1")
+	noErr(t, err, "delta -from")
+	mustContain(t, out, "# delta gate-r1..HEAD",
+		"## findings round 1 filed, which this delta must close",
+		"stale copy of the composition rule")
+}

@@ -136,6 +136,44 @@ func (r Repo) Files() ([]string, error) {
 	return strings.Split(out, "\n"), nil
 }
 
+// FilesAt lists the files tracked at ref, the way Files does for the working
+// tree. The drift check resolves citations against the FROZEN revision: they
+// were written and reviewed against it, and resolving them against whatever the
+// target has since become would misread every file the move renamed or deleted.
+func (r Repo) FilesAt(ref string) ([]string, error) {
+	out, err := r.Run("ls-tree", "-r", "--name-only", ref)
+	if err != nil || out == "" {
+		return nil, err
+	}
+	return strings.Split(out, "\n"), nil
+}
+
+// CommitExists reports whether sha names a commit in this repository. The
+// findings table claims closures by commit, and a claim naming a commit that
+// does not exist is a lie the record must refuse, not a typo to warn about.
+func (r Repo) CommitExists(sha string) bool {
+	_, err := r.Run("rev-parse", "--verify", "-q", sha+"^{commit}")
+	return err == nil
+}
+
+// CommitBrief returns one commit's subject and the files it touched. The delta
+// checklist prints both so a reviewer maps claim → commit → files without
+// leaving the briefing; the artifact diff below it is the evidence.
+func (r Repo) CommitBrief(sha string) (string, []string, error) {
+	out, err := r.Run("show", "--name-only", "--format=%s", sha)
+	if err != nil {
+		return "", nil, err
+	}
+	lines := strings.Split(out, "\n")
+	var files []string
+	for _, l := range lines[1:] {
+		if l != "" {
+			files = append(files, l)
+		}
+	}
+	return lines[0], files, nil
+}
+
 // BlameLines maps each 1-based line of path to the commit that last changed it.
 //
 // File-level history is too coarse for the duplicate check: one commit touching
