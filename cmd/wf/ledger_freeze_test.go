@@ -171,3 +171,21 @@ func TestAddRefusesAnEscapingName(t *testing.T) {
 		t.Fatal("the target repository was written into")
 	}
 }
+
+// A row the parser cannot split is neither a finding nor a form. `freeze` and
+// `record` refuse it; the commands that only COUNT must not quietly score it as
+// one or the other — a hand awk once closed a gate on 99/27 against a true
+// 98/26 by counting the scaffold placeholder, and this is the same error with a
+// different sign.
+func TestStatsNamesAnUnparsableRow(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | a real one | 2344d3d8 |\n| 2 | BLOCKER | three cells only |\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "round 1: record findings")
+
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "1 ledger row(s) are not four cells")
+	// The malformed row must not inflate the count.
+	mustContain(t, out, "total — 1 finding(s)")
+}

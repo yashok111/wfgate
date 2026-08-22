@@ -1077,6 +1077,11 @@ func printClosures(out io.Writer, w *ws.Workspace, round int, rows []ws.FindingR
 		}
 	}
 	for _, r := range rows {
+		if r.Malformed {
+			head()
+			fprintf(out, "- line %d: UNPARSABLE row (%s) — not four cells; nothing can be checked against it\n", r.Line, trunc(r.Raw, 60))
+			continue
+		}
 		if r.Placeholder() {
 			continue
 		}
@@ -1452,10 +1457,19 @@ func cmdStats(args []string) error {
 	kinds := roundKinds(w)
 	totalF, totalB, totalFI, totalEdits := 0, 0, 0, 0
 	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
+	unparsable := 0
 	for n := 1; n <= w.M.Round; n++ {
 		findings, blockers, byCommit, byProse, open, fixInduced := 0, 0, 0, 0, 0, 0
 		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
 			for _, r := range ws.ParseFindings(b) {
+				// A row the parser could not split into four cells is neither a
+				// finding nor a form. It is counted apart and named below: a
+				// ledger the tool half-read must not be reported as a ledger it
+				// read, which is the whole reason the parser returns it at all.
+				if r.Malformed {
+					unparsable++
+					continue
+				}
 				if r.Placeholder() {
 					continue
 				}
@@ -1534,6 +1548,9 @@ func cmdStats(args []string) error {
 			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi)
 	}
 	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
+	if unparsable > 0 {
+		fmt.Printf("  note: %d ledger row(s) are not four cells and were counted as nothing — a hand-awk once closed a gate on 99/27 against a true 98/26, and a row the parser cannot read is the same error with a different sign\n", unparsable)
+	}
 	// A tooling round restarting the stop rule's clock is the P2e distortion:
 	// the rule reads REVIEWER evidence, and a round nobody reviewed is not it.
 	if toolRounds > 0 {
@@ -1639,7 +1656,7 @@ func batchHistory(w *ws.Workspace) (edits, findings int) {
 	for n := 1; n <= w.M.Round; n++ {
 		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
 			for _, r := range ws.ParseFindings(b) {
-				if !r.Placeholder() {
+				if !r.Placeholder() && !r.Malformed {
 					findings++
 				}
 			}
