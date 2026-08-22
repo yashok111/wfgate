@@ -1377,7 +1377,12 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 		}
 	}
 	nums := check.FindNumericDrift(sts)
-	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent, %d numeric\n", len(sts), len(groups), divergent, len(nums))
+	ops, err := check.FindOperatorConflicts(w.Root, sts)
+	if err != nil {
+		return false, err
+	}
+	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent, %d numeric, %d operator\n",
+		len(sts), len(groups), divergent, len(nums), len(ops))
 	if hidden > 0 {
 		fmt.Printf("  note: %d group(s) predate %s, not shown\n", hidden, since)
 	}
@@ -1388,6 +1393,15 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	// is named rather than left to read as "nothing there".
 	if blind > 0 {
 		fmt.Printf("  note: %d statement(s) share no rare token — invisible to the near-match pass, exact matches unaffected\n", blind)
+	}
+	// An operator conflict prints regardless of -since, for the same reason a
+	// numeric one does: two copies that cannot both be followed contradict each
+	// other NOW, whatever their history.
+	for _, oc := range ops {
+		fmt.Printf("  OPERATOR (copies agree except the comparison)\n")
+		for _, s := range oc.Sites {
+			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, trunc(s.Text, 110))
+		}
 	}
 	// Numeric conflicts print regardless of -since: a count contradiction is a
 	// contradiction NOW, whatever its history.
@@ -1411,7 +1425,7 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	// together are how a rule is SUPPOSED to look when it legitimately lives in
 	// two places; failing on those would make the check noise and it would get
 	// turned off.
-	return divergent > 0 || len(nums) > 0, nil
+	return divergent > 0 || len(nums) > 0 || len(ops) > 0, nil
 }
 
 // runRules compares every site of each `[RN]` rule marker. Zero markers is a

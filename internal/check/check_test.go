@@ -468,3 +468,133 @@ func TestFindDuplicates_thirdCopyIsStillCompared(t *testing.T) {
 		t.Fatalf("the third copy was committed apart and reads differently — that is DIVERGENT: %+v", groups)
 	}
 }
+
+// The normaliser erases every non-alphanumeric rune, which is what lets one
+// rule compare equal across markdown and a JS template literal — and it erased
+// the difference between `== 3` and `!= 3` too. Measured on this repository's
+// own audit: `check rules` reported 0 conflicts over a direct contradiction and
+// `check dup` reported the same pair as `sim 1.00`, an exact match. Being wrong
+// in that direction is worse than being blind.
+func TestOperatorConflict_wordsAgreeComparisonsDoNot(t *testing.T) {
+	root := mkrepo(t, map[string]string{
+		"a.md": "[R1] The retry counter must satisfy retry_count == 3 in every client.\n",
+		"b.md": "[R1] The retry counter must satisfy retry_count != 3 in every client.\n",
+	})
+	sts, err := CollectStatements(root, []string{"a.md", "b.md"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ops, err := FindOperatorConflicts(root, sts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 1 || len(ops[0].Sites) != 2 {
+		t.Fatalf("want one operator conflict over both sites, got %+v", ops)
+	}
+
+	// And the pair must NOT be presented as an exact duplicate.
+	groups, _, err := FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range groups {
+		if g.Similarity == 1.0 {
+			t.Fatalf("a contradiction must not be reported as an exact match: %+v", g)
+		}
+	}
+
+	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := RuleConflicts(sites); len(c) != 1 || c[0].ID != "R1" {
+		t.Fatalf("the marked rule contradicts itself; want R1 in conflict, got %+v", c)
+	}
+}
+
+// A zero-byte file has no lines: strings.Split("", "\n") returns one empty
+// element, so a citation to line 1 of an empty file passed the range check.
+func TestVerifyCitations_emptyFileHasNoLines(t *testing.T) {
+	target := mkrepo(t, map[string]string{"empty.go": "", "src/main.go": "package main\n"})
+	ix, err := NewIndex(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cits := []Citation{{Artifact: "a.md", AtLine: 1, Raw: "empty.go:1", Path: "empty.go", Start: 1, End: 1}}
+	f, err := VerifyCitations(target, ix, cits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 1 || !strings.Contains(f[0].Msg, "has 0 lines") {
+		t.Fatalf("want one out-of-range finding, got %+v", f)
+	}
+}
+
+// A path is DATA about the repository under review and may be written in any
+// language. An ASCII-only path class made such a citation match nothing at all
+// — invisible rather than unverified — and `git ls-files` quotes the same paths,
+// so the ones that did parse resolved to no tracked file.
+func TestCitations_nonASCIIPathIsSeenAndResolved(t *testing.T) {
+	root := t.TempDir()
+	body := "see `src/файл.go:1#package` and src/plain.go:1\n"
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cits, err := ScanCitations(root, []string{"a.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cits) != 2 {
+		t.Fatalf("a non-ASCII path must be SEEN, got %+v", cits)
+	}
+
+	target := mkrepo(t, map[string]string{
+		"src/файл.go":  "package s\n",
+		"src/plain.go": "package s\n",
+	})
+	ix, err := NewIndex(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := VerifyCitations(target, ix, cits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f) != 0 {
+		t.Fatalf("both citations resolve to tracked files; got findings %+v", f)
+	}
+}
+
+// A rule hard-wrapped across two lines used to be compared by its FIRST line
+// alone, so two copies whose continuations said "three times" and "five times"
+// agreed. A rule is a sentence and is compared as one.
+func TestRuleMarkers_wrappedRuleIsComparedWhole(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"a.md": "[R7] The client retries a failed request\nthree times before giving up.\n",
+		"b.md": "[R7] The client retries a failed request\nfive times before giving up.\n",
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sites, markers, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if markers != 2 || len(sites) != 1 {
+		t.Fatalf("want 2 markers over 1 id, got %d over %d: %+v", markers, len(sites), sites)
+	}
+	for _, ss := range sites {
+		for _, s := range ss {
+			if !strings.Contains(s.Text, "before giving up") {
+				t.Fatalf("the continuation must be part of the rule: %q", s.Text)
+			}
+		}
+	}
+	if c := RuleConflicts(sites); len(c) != 1 {
+		t.Fatalf("three times vs five times is a conflict, got %+v", c)
+	}
+}

@@ -33,7 +33,15 @@ import (
 // must instead be short and contain at least one letter, which is what
 // separates a real suffix from the last octet of `127.0.0.1:3000` and from a
 // `3:4` in prose; both were the reason a whitelist looked necessary.
-var citeRe = regexp.MustCompile(`([A-Za-z0-9_./\-]+\.([A-Za-z0-9]{1,8}))` +
+// The PATH class accepts non-ASCII letters, the anchor class does not, and the
+// asymmetry is the point. An anchor is a token an English-only artifact quotes
+// out of the target, so a non-ASCII one is a policy violation this check
+// reports. A path is DATA about the repository under review, which may be
+// written in any language: an ASCII-only path class made `src/файл.go:1` match
+// nothing at all, so the citation was neither verified nor counted — invisible
+// rather than unverified, which is the one outcome this check exists to
+// prevent.
+var citeRe = regexp.MustCompile(`([\p{L}\p{N}_./\-]+\.([\p{L}\p{N}]{1,8}))` +
 	`:(\d+)(?:-(\d+))?(?:#([A-Za-z0-9_.\-]+))?`)
 
 // hasLetter rejects an "extension" made only of digits, which is how a dotted
@@ -230,7 +238,14 @@ func VerifyCitations(target string, ix *Index, cits []Citation) ([]Finding, erro
 				add(c, "error", fmt.Sprintf("read %s: %v", path, err))
 				continue
 			}
-			lines = strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+			// A zero-byte file has NO lines. strings.Split("", "\n") returns one
+			// empty element, so `empty.go:1` passed the range check and -show
+			// printed a blank line as its evidence.
+			if len(b) == 0 {
+				lines = nil
+			} else {
+				lines = strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+			}
 			lineCache[path] = lines
 		}
 		if c.Start < 1 || c.End > len(lines) {

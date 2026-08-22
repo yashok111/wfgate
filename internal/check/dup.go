@@ -1,8 +1,10 @@
 package check
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -31,6 +33,7 @@ type Statement struct {
 	Text string   // as written, trimmed
 	Norm string   // normalised form used for comparison
 	Toks []string // sorted unique tokens of Norm
+	Ops  string   // the comparison operators Norm erases; see opsOf
 }
 
 // Site is one location of a duplicated statement, with the commit that last
@@ -76,6 +79,27 @@ func normalise(s string) (string, []string) {
 	sort.Strings(us)
 	return strings.Join(toks, " "), us
 }
+
+// opRe is deliberately the UNAMBIGUOUS multi-character comparison set and
+// nothing more. The normaliser erases every non-alphanumeric rune — which is
+// what makes a rule written with plain backticks in markdown compare equal to
+// the same rule inside a JavaScript template literal — and the price is that it
+// also erases the difference between `retry_count == 3` and `retry_count != 3`.
+// Measured on this repository's own audit: the two normalised identically, so
+// `check rules` reported 0 conflicts over a direct contradiction AND `check dup`
+// reported the pair as `sim 1.00`, an exact match — a reviewer reads that as
+// "consistent in two places". Being wrong in that direction is worse than being
+// blind.
+//
+// Single-character operators are NOT in the set: `-` opens a markdown bullet and
+// hyphenates words, `*` marks emphasis, `<`/`>` appear in `<placeholder>` syntax
+// and blockquotes. The four below cannot occur as markup, so this check has no
+// noise population at all — the same bargain the numeric mask makes.
+var opRe = regexp.MustCompile(`==|!=|<=|>=`)
+
+// opsOf returns the comparison operators of a statement, in order, as one
+// string — the skeleton the normaliser drops.
+func opsOf(s string) string { return strings.Join(opRe.FindAllString(s, -1), " ") }
 
 // trimMarkers strips the leading decoration a statement carries because of the
 // file it lives in — list bullets, comment openers, table pipes — so the same
@@ -132,6 +156,7 @@ func CollectStatements(root string, files []string, minWords int) ([]Statement, 
 			joined := strings.Join(texts, " ")
 			for _, s := range splitSentencesAt(joined) {
 				norm, toks := normalise(s.text)
+				ops := opsOf(s.text)
 				if len(strings.Fields(norm)) < minWords {
 					continue
 				}
@@ -147,7 +172,7 @@ func CollectStatements(root string, files []string, minWords int) ([]Statement, 
 						break
 					}
 				}
-				out = append(out, Statement{File: rel, Line: line, Text: strings.TrimSpace(s.text), Norm: norm, Toks: toks})
+				out = append(out, Statement{File: rel, Line: line, Text: strings.TrimSpace(s.text), Norm: norm, Toks: toks, Ops: ops})
 			}
 			para = para[:0]
 		}
@@ -175,6 +200,13 @@ func CollectStatements(root string, files []string, minWords int) ([]Statement, 
 // prose inside comments and quotes is exactly what unwrapping exists for.
 func startsBlock(raw string) bool {
 	t := strings.TrimSpace(raw)
+	// A rule marker at the head of a line opens a statement of its own. Without
+	// this, two consecutive `// [R1] ...` / `// [R2] ...` comment lines — the
+	// natural way a rule set is written in code — join into one paragraph and
+	// each id inherits the other's words.
+	if loc := ruleMarkRe.FindStringIndex(trimMarkers(t)); loc != nil && loc[0] == 0 {
+		return true
+	}
 	for _, p := range []string{"- ", "* ", "+ ", "|", "#", "```", "~~~"} {
 		if strings.HasPrefix(t, p) {
 			return true
@@ -210,14 +242,23 @@ func splitSentencesAt(s string) []sentenceAt {
 func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup, int, error) {
 	repo := gitx.Repo{Dir: root}
 	blame := map[string][]string{}
+	// A blame that FAILS gave every line of that file the empty commit, and two
+	// copies whose commits are both "" compare as edited together — so a real
+	// divergence between two artifacts git cannot blame (an untracked draft, a
+	// repository in an unexpected state) was silently downgraded to agreement.
+	// The error is carried out instead.
+	var blameErr error
 	site := func(s Statement) Site {
 		b, ok := blame[s.File]
 		if !ok {
-			b, _ = repo.BlameLines(s.File)
+			var err error
+			if b, err = repo.BlameLines(s.File); err != nil && blameErr == nil {
+				blameErr = fmt.Errorf("%s: %w", s.File, err)
+			}
 			blame[s.File] = b
 		}
 		sha := ""
-		if s.Line-1 < len(b) {
+		if s.Line-1 >= 0 && s.Line-1 < len(b) {
 			sha = b[s.Line-1]
 		}
 		return Site{File: s.File, Line: s.Line, Text: s.Text, Commit: sha}
@@ -225,9 +266,12 @@ func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup
 
 	// Exact normalised matches first. They are the common case and grouping them
 	// up front keeps the quadratic pass below from re-reporting them.
+	// Keyed by the normalised form AND the operator skeleton: two statements
+	// whose words agree and whose operators do not are a CONTRADICTION, and
+	// grouping them here would print it as `sim 1.00`.
 	byNorm := map[string][]Statement{}
 	for _, s := range sts {
-		byNorm[s.Norm] = append(byNorm[s.Norm], s)
+		byNorm[s.Norm+"\x00"+s.Ops] = append(byNorm[s.Norm+"\x00"+s.Ops], s)
 	}
 	var groups []DupGroup
 	for _, g := range byNorm {
@@ -294,7 +338,9 @@ func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup
 		}
 		for j := range cand {
 			o := sts[j]
-			// Identical normalised forms are the exact pass's business. A rule
+			// Identical normalised forms belong to the exact pass, or — when
+			// only their operators differ — to FindOperatorConflicts; either
+			// way a jaccard of 1.0 over them would print as agreement. A rule
 			// present verbatim in three artifacts and reworded in a fourth
 			// yields one near-match pair per verbatim copy: the multiplicity is
 			// the price of naming every site of the contradiction.
@@ -321,6 +367,9 @@ func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup
 		}
 		return groups[a].Sites[0].File < groups[b].Sites[0].File
 	})
+	if blameErr != nil {
+		return nil, 0, fmt.Errorf("blame: %w; divergence cannot be decided without it", blameErr)
+	}
 	return groups, blind, nil
 }
 
@@ -385,6 +434,63 @@ func isNumericTok(t string) bool {
 // NumericConflict is one masked sentence whose copies disagree on a number.
 type NumericConflict struct {
 	Sites []Statement
+}
+
+// OperatorConflict is one set of statements whose WORDS are identical and whose
+// comparison operators are not — `retry_count == 3` beside `retry_count != 3`.
+// It is reported separately from a duplicate because it is the opposite of one:
+// a duplicate says two artifacts agree, this says they cannot both be followed.
+type OperatorConflict struct {
+	Sites []Site
+}
+
+// FindOperatorConflicts groups statements that normalise identically but carry
+// different comparison operators, across files. See opRe for why the operator
+// set is four tokens wide and has no noise population.
+func FindOperatorConflicts(root string, sts []Statement) ([]OperatorConflict, error) {
+	repo := gitx.Repo{Dir: root}
+	blame := map[string][]string{}
+	var blameErr error
+	site := func(s Statement) Site {
+		b, ok := blame[s.File]
+		if !ok {
+			var err error
+			if b, err = repo.BlameLines(s.File); err != nil && blameErr == nil {
+				blameErr = fmt.Errorf("%s: %w", s.File, err)
+			}
+			blame[s.File] = b
+		}
+		sha := ""
+		if s.Line-1 >= 0 && s.Line-1 < len(b) {
+			sha = b[s.Line-1]
+		}
+		return Site{File: s.File, Line: s.Line, Text: s.Text, Commit: sha}
+	}
+	byNorm := map[string][]Statement{}
+	for _, s := range sts {
+		byNorm[s.Norm] = append(byNorm[s.Norm], s)
+	}
+	var keys []string
+	for k, g := range byNorm {
+		ops, files := map[string]bool{}, map[string]bool{}
+		for _, s := range g {
+			ops[s.Ops] = true
+			files[s.File] = true
+		}
+		if len(ops) > 1 && len(files) > 1 {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	var out []OperatorConflict
+	for _, k := range keys {
+		oc := OperatorConflict{}
+		for _, s := range byNorm[k] {
+			oc.Sites = append(oc.Sites, site(s))
+		}
+		out = append(out, oc)
+	}
+	return out, blameErr
 }
 
 // FindNumericDrift groups statements whose normalised forms are IDENTICAL once

@@ -91,7 +91,7 @@ func (r Repo) Dirty(pathspec ...string) ([]Change, error) {
 		return nil, err
 	}
 	var cs []Change
-	recs := strings.Split(strings.TrimRight(out, "\x00"), "\x00")
+	recs := splitNUL(out)
 	for i := 0; i < len(recs); i++ {
 		rec := recs[i]
 		if len(rec) < 4 {
@@ -169,11 +169,24 @@ func (r Repo) Diff(from, to string, pathspec ...string) (string, error) {
 // so that a vendored dependency tree inside the repo cannot be cited, and so
 // gitignored artifacts stay invisible to the citation resolver.
 func (r Repo) Files() ([]string, error) {
-	out, err := r.Run("ls-files")
+	// -z for the same reason Dirty uses it: git QUOTES a path containing a space
+	// or a non-ASCII byte, and a quoted path matches nothing — so a citation to
+	// a real tracked file was reported as naming no tracked file at all.
+	out, err := r.Run("ls-files", "-z")
 	if err != nil || out == "" {
 		return nil, err
 	}
-	return strings.Split(out, "\n"), nil
+	return splitNUL(out), nil
+}
+
+// splitNUL splits git's -z output, which is NUL-TERMINATED rather than
+// NUL-separated: the trailing empty field is not a path.
+func splitNUL(out string) []string {
+	out = strings.TrimRight(out, "\x00")
+	if out == "" {
+		return nil
+	}
+	return strings.Split(out, "\x00")
 }
 
 // FilesAt lists the files tracked at ref, the way Files does for the working
@@ -181,11 +194,11 @@ func (r Repo) Files() ([]string, error) {
 // were written and reviewed against it, and resolving them against whatever the
 // target has since become would misread every file the move renamed or deleted.
 func (r Repo) FilesAt(ref string) ([]string, error) {
-	out, err := r.Run("ls-tree", "-r", "--name-only", ref)
+	out, err := r.Run("ls-tree", "-r", "--name-only", "-z", ref)
 	if err != nil || out == "" {
 		return nil, err
 	}
-	return strings.Split(out, "\n"), nil
+	return splitNUL(out), nil
 }
 
 // CommitExists reports whether sha names a commit in this repository. The
@@ -229,12 +242,14 @@ func (r Repo) BlameLines(path string) ([]string, error) {
 	var lines []string
 	for _, l := range strings.Split(out, "\n") {
 		// A header is "<sha> <origline> <finalline> [<numlines>]"; everything
-		// after it until the tab-prefixed content belongs to that header.
-		if len(l) < 41 || l[40] != ' ' || !isHex(l[:40]) {
-			continue
-		}
+		// after it until the tab-prefixed content belongs to that header. The
+		// object id is read as the first whitespace-delimited field rather than
+		// at a fixed offset of 40: a repository with sha256 object format prints
+		// 64 hex characters, every header was skipped, every line got the empty
+		// commit, and dup's divergence — which needs two DIFFERENT commits —
+		// silently became "these copies were edited together".
 		f := strings.Fields(l)
-		if len(f) < 3 {
+		if len(f) < 3 || len(f[0]) < 7 || !isHex(f[0]) {
 			continue
 		}
 		final := atoi(f[2])
