@@ -81,3 +81,70 @@ func TestParseFindings_noTable(t *testing.T) {
 		t.Fatalf("want no rows, got %+v", rows)
 	}
 }
+
+// A markdown-escaped pipe belongs to the finding TEXT. Splitting on every pipe
+// read the fourth fragment as the closure, which scored an open BLOCKER as
+// "closed by prose" and let the round freeze.
+func TestParseFindings_escapedPipeStaysInTheText(t *testing.T) {
+	doc := "| # | level | finding | closed by |\n" +
+		"|---|-------|---------|-----------|\n" +
+		"| 1 | BLOCKER | the regex accepts `a \\| b` and must not |  |\n"
+	rows := ParseFindings([]byte(doc))
+	if len(rows) != 1 {
+		t.Fatalf("want 1 row, got %d: %+v", len(rows), rows)
+	}
+	r := rows[0]
+	if r.Malformed {
+		t.Fatalf("an escaped pipe is not malformed: %+v", r)
+	}
+	if r.ClosedBy != "" {
+		t.Fatalf("closed by must be the LAST cell and empty here, got %q", r.ClosedBy)
+	}
+	if !strings.Contains(r.Text, "a \\| b") || !strings.Contains(r.Text, "must not") {
+		t.Fatalf("the whole text must survive the split, got %q", r.Text)
+	}
+	if !r.Blocker() || r.Placeholder() {
+		t.Fatalf("an open blocker must read as one: %+v", r)
+	}
+}
+
+// A table-shaped line that is not four cells is REPORTED, not skipped. Skipping
+// is how a three-column row carrying an open blocker became invisible.
+func TestParseFindings_shortRowIsMalformedNotSkipped(t *testing.T) {
+	doc := "| # | level | finding | closed by |\n" +
+		"|---|-------|---------|-----------|\n" +
+		"| 1 | BLOCKER | still open |\n"
+	rows := ParseFindings([]byte(doc))
+	if len(rows) != 1 {
+		t.Fatalf("want the malformed row reported, got %d rows", len(rows))
+	}
+	if !rows[0].Malformed || rows[0].Placeholder() {
+		t.Fatalf("want a malformed, non-placeholder row, got %+v", rows[0])
+	}
+	if !strings.Contains(rows[0].Raw, "still open") {
+		t.Fatalf("the refusal must be able to quote the line, got %q", rows[0].Raw)
+	}
+}
+
+// An UNESCAPED pipe in prose leaves the parser unable to tell text from
+// closure, and guessing is what it must not do.
+func TestParseFindings_unescapedPipeIsMalformed(t *testing.T) {
+	doc := "| # | level | finding | closed by |\n" +
+		"|---|-------|---------|-----------|\n" +
+		"| 1 | BLOCKER | A | B is the rule | 2344d3d8 |\n"
+	rows := ParseFindings([]byte(doc))
+	if len(rows) != 1 || !rows[0].Malformed {
+		t.Fatalf("want one malformed row, got %+v", rows)
+	}
+}
+
+// The untouched scaffold still parses: an empty LAST cell keeps its place.
+func TestParseFindings_scaffoldKeepsItsEmptyClosure(t *testing.T) {
+	doc := "| # | level | finding | closed by |\n" +
+		"|---|-------|---------|-----------|\n" +
+		"| 1 | BLOCKER |  |  |\n"
+	rows := ParseFindings([]byte(doc))
+	if len(rows) != 1 || rows[0].Malformed || !rows[0].Placeholder() {
+		t.Fatalf("the scaffold row must parse as a placeholder, got %+v", rows)
+	}
+}

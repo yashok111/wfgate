@@ -20,6 +20,14 @@ type FindingRow struct {
 	Level    string
 	Text     string
 	ClosedBy string
+
+	// Malformed marks a table-shaped line that is NOT four cells. It is a row
+	// rather than a skip because skipping is how a ledger validates nothing and
+	// says nothing: the first version dropped any line with too few cells, so a
+	// three-column row carrying an open BLOCKER was invisible and the round
+	// froze green. The caller must refuse it out loud.
+	Malformed bool
+	Raw       string // the line as written, so the refusal can quote it
 }
 
 // Blocker matches by word, not by list: levels beyond BLOCKER are free text,
@@ -28,8 +36,10 @@ type FindingRow struct {
 func (r FindingRow) Blocker() bool { return strings.EqualFold(r.Level, "BLOCKER") }
 
 // Placeholder reports the scaffold's empty row, which is a form to fill, not a
-// claim to validate.
-func (r FindingRow) Placeholder() bool { return r.Text == "" }
+// claim to validate. A malformed row is never a placeholder: an unreadable
+// claim and an unfilled form are opposite things, and collapsing them would
+// hand a malformed row the exemption the scaffold gets.
+func (r FindingRow) Placeholder() bool { return !r.Malformed && r.Text == "" }
 
 // FixInduced reports the opt-in `[fix-induced]` marker in the finding text.
 // The share of a round's findings introduced by the previous round's own fix
@@ -71,15 +81,15 @@ func ParseFindings(b []byte) []FindingRow {
 		if !strings.HasPrefix(t, "|") {
 			continue
 		}
-		parts := strings.Split(t, "|")
-		if len(parts) < 6 { // leading empty, 4 cells, trailing empty
+		cells := splitCells(t)
+		if len(cells) == 0 {
 			continue
 		}
-		cells := parts[1 : len(parts)-1]
-		for j := range cells {
-			cells[j] = strings.TrimSpace(cells[j])
-		}
 		if cells[0] == "#" || isSeparator(cells[0]) {
+			continue
+		}
+		if len(cells) != 4 {
+			rows = append(rows, FindingRow{Line: i + 1, Malformed: true, Raw: t})
 			continue
 		}
 		rows = append(rows, FindingRow{
@@ -87,6 +97,50 @@ func ParseFindings(b []byte) []FindingRow {
 		})
 	}
 	return rows
+}
+
+// splitCells splits a markdown table row on its UNESCAPED pipes.
+//
+// Measured: the first version split on every `|` and read cells[3] as the
+// closure. A finding whose text quotes a pipe — written `\|`, as markdown
+// requires — shifted a fragment of that text into the closed-by cell, so an
+// open BLOCKER was scored as "closed by prose" and `wf freeze` tagged the
+// round. The tag is one-way, and the ledger is the one place the gate promises
+// no blocker survives the freeze.
+//
+// A row whose pipes are NOT escaped comes out with the wrong cell count and is
+// returned as such: the caller reports it as malformed rather than guessing
+// which fragment was the author's closure.
+func splitCells(row string) []string {
+	var cells []string
+	var b strings.Builder
+	esc := false
+	for _, r := range row {
+		switch {
+		case esc:
+			b.WriteRune(r) // the backslash is already written; keep the cell as written
+			esc = false
+		case r == '\\':
+			b.WriteRune(r)
+			esc = true
+		case r == '|':
+			cells = append(cells, strings.TrimSpace(b.String()))
+			b.Reset()
+		default:
+			b.WriteRune(r)
+		}
+	}
+	cells = append(cells, strings.TrimSpace(b.String()))
+	// `| a | b |` splits into an empty cell at each end; a genuinely empty LAST
+	// cell (the scaffold's unfilled "closed by") keeps its place because only
+	// one trailing empty is dropped.
+	if len(cells) > 0 && cells[0] == "" {
+		cells = cells[1:]
+	}
+	if len(cells) > 0 && cells[len(cells)-1] == "" {
+		cells = cells[:len(cells)-1]
+	}
+	return cells
 }
 
 func isSeparator(cell string) bool {

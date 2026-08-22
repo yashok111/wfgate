@@ -517,6 +517,10 @@ func cmdRoundRecord(args []string) error {
 	rows := ws.ParseFindings(b)
 	byCommit, byProse, open, blockers := 0, 0, 0, 0
 	for _, r := range rows {
+		if r.Malformed {
+			return fmt.Errorf("line %d is a table row of %d cells, not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
+				r.Line, len(strings.Split(r.Raw, "|"))-1, trunc(r.Raw, 60))
+		}
 		if r.Placeholder() {
 			continue
 		}
@@ -632,12 +636,26 @@ func cmdFreeze(args []string) error {
 		if rn < 1 {
 			continue
 		}
-		fb, err := os.ReadFile(filepath.Join(w.RoundDir(rn), "findings.md"))
+		fp := filepath.Join(w.RoundDir(rn), "findings.md")
+		fb, err := os.ReadFile(fp)
 		if err != nil {
-			continue
+			// A ledger that cannot be READ is not a ledger with nothing in it.
+			// The first version skipped the round on any read error, so deleting
+			// findings.md let a round carrying open blockers freeze green — the
+			// "exits zero having checked nothing" shape this project names as
+			// its worst, sitting inside the check written to prevent it.
+			return fmt.Errorf("round %d: %v; freeze publishes that round's closures and cannot validate a ledger it cannot read", rn, err)
+		}
+		rows := ws.ParseFindings(fb)
+		if len(rows) == 0 {
+			return fmt.Errorf("round %d: no findings table recognised in %s; freeze validates every blocker against that table and would check nothing", rn, fp)
 		}
 		open := 0
-		for _, r := range ws.ParseFindings(fb) {
+		for _, r := range rows {
+			if r.Malformed {
+				return fmt.Errorf("round %d: %s line %d is a table row of %d cells, not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\|",
+					rn, fp, r.Line, len(strings.Split(r.Raw, "|"))-1, trunc(r.Raw, 60))
+			}
 			if r.Placeholder() {
 				continue
 			}
@@ -700,6 +718,16 @@ func cmdFreeze(args []string) error {
 			break
 		}
 	}
+	// The refusal comes FIRST. It used to sit after the write and the commit,
+	// so a re-freeze that correctly errored had already replaced
+	// rounds/rN/freeze.json with hashes of the CURRENT tree — and `wf verify`
+	// reads that file from the worktree, not from the tag. A post-freeze edit
+	// plus a refused `wf freeze` therefore turned MISMATCH into "clean": the
+	// command that said no had already blessed what it refused.
+	tag := ws.RoundTag(w.M.Round)
+	if w.Git.TagExists(tag) {
+		return fmt.Errorf("tag %s already exists; a frozen round is not re-frozen, open a new one", tag)
+	}
 	out, err := json.MarshalIndent(fm, "", "  ")
 	if err != nil {
 		return err
@@ -716,10 +744,6 @@ func cmdFreeze(args []string) error {
 	sha, err := w.Git.Commit(fmt.Sprintf("round %d: freeze %d artifact(s)", w.M.Round, len(arts)), []string{rel})
 	if err != nil {
 		return err
-	}
-	tag := ws.RoundTag(w.M.Round)
-	if w.Git.TagExists(tag) {
-		return fmt.Errorf("tag %s already exists; a frozen round is not re-frozen, open a new one", tag)
 	}
 	if err := w.Git.Tag(tag, fmt.Sprintf("gate round %d frozen at %s", w.M.Round, short(sha))); err != nil {
 		return err
