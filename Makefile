@@ -31,8 +31,10 @@ install: build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/$(BIN)
 	ln -sfn $(CURDIR)/scripts/wfcheck $(HOME)/.local/bin/wfcheck
 	ln -sfn $(CURDIR)/scripts/wfdry $(HOME)/.local/bin/wfdry
-	ln -sfn $(CURDIR)/docs/workflow-guide.md $(HOME)/.claude/workflow-guide.md
-	ln -sfn $(CURDIR)/docs/workflow-gate-checks.md $(HOME)/.claude/workflow-gate-checks.md
+	mkdir -p $(HOME)/.claude/skills
+	ln -sfn $(CURDIR)/skill/workflow-gate $(HOME)/.claude/skills/workflow-gate
+	@[ -L $(HOME)/.claude/workflow-guide.md ] && rm $(HOME)/.claude/workflow-guide.md || true
+	@[ -L $(HOME)/.claude/workflow-gate-checks.md ] && rm $(HOME)/.claude/workflow-gate-checks.md || true
 
 # The regression the P2e gate paid for, held forever: a body touching the
 # harness-only `meta` binding must FAIL every wfdry mode; the clean fixture

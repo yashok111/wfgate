@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	wfgate "git.sumka.site/yakov/wfgate"
 	"git.sumka.site/yakov/wfgate/internal/apply"
 	"git.sumka.site/yakov/wfgate/internal/check"
 	"git.sumka.site/yakov/wfgate/internal/gitx"
@@ -42,13 +43,14 @@ const usage = `wf — gate harness
   wf status                       manifest, round, dirty artifacts
   wf apply -f <edits>             all-or-nothing batch (JSON array or === text blocks), then commit
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
-  wf round new [-title T] [-kind full|delta]  open the next round, scaffold its findings file
+  wf round new [-title T] [-kind full|delta|tool]  open the next round, scaffold its findings file
   wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
   wf check [cite|dup|drift|rules] deterministic checks over the artifacts
   wf stats                        per-round findings, closures and batches, from the ledger and git
+  wf docs [name]                  print the embedded operating manual (guide, checks, routing, ...)
   wf version                      the stamped build version of this binary
 
 Exit codes: 0 clean, 1 findings or failure, 2 usage.
@@ -94,6 +96,8 @@ func main() {
 		err = cmdCheck(os.Args[2:])
 	case "stats":
 		err = cmdStats(os.Args[2:])
+	case "docs":
+		err = cmdDocs(os.Args[2:])
 	case "version", "-version", "--version":
 		fmt.Println(toolID())
 		return
@@ -166,12 +170,24 @@ func cmdInit(args []string) error {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
+	// The gate-checks reference is written into the workspace BEFORE the
+	// initial commit sweeps it in: the version of the rules that will brief
+	// this gate's reviewers is pinned with the gate, the way the target's
+	// HEAD is pinned by a freeze. Generated from the binary, never hand-edited
+	// — a snapshot, not a divergent copy.
+	if checks, err := wfgate.Docs.ReadFile("skill/workflow-gate/references/gate-checks.md"); err == nil {
+		stamped := append([]byte(fmt.Sprintf("<!-- written by %s at init; regenerate with `wf docs checks`, do not edit -->\n", toolID())), checks...)
+		if err := os.WriteFile(filepath.Join(root, "gate-checks.md"), stamped, 0o644); err != nil {
+			return err
+		}
+	}
 	w, err := ws.Create(root, name, *target, time.Now())
 	if err != nil {
 		return err
 	}
 	head, _ := w.Git.Head()
 	fmt.Printf("workspace %s\n  root   %s\n  target %s\n  head   %s\n", name, w.Root, w.M.Target, short(head))
+	fmt.Printf("  gate-checks.md written — hand it to every reviewer\n")
 	fmt.Printf("\nput the gate's artifacts under %s/ and run `wf apply`.\n", filepath.Join(root, "artifacts"))
 	return nil
 }
@@ -1393,6 +1409,65 @@ func cmdStats(args []string) error {
 	} else {
 		fmt.Printf("  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
 	}
+	return nil
+}
+
+// docNames maps a `wf docs` argument to its embedded reference. `guide` is a
+// runtime concatenation of the manual's parts, never a stored second copy —
+// two copies of a spec is this project's most-repeated defect class.
+var docNames = map[string]string{
+	"authoring":    "authoring.md",
+	"routing":      "model-routing.md",
+	"preflight":    "pre-flight-gate.md",
+	"section-gate": "section-gate.md",
+	"cost":         "cost-discipline.md",
+	"checks":       "gate-checks.md",
+}
+
+// guideOrder is the manual's reading order for the concatenated form.
+var guideOrder = []string{"authoring", "routing", "preflight", "section-gate", "cost"}
+
+func readDoc(name string) ([]byte, error) {
+	return wfgate.Docs.ReadFile("skill/workflow-gate/references/" + docNames[name])
+}
+
+// cmdDocs serves the operating manual from the binary itself. It exists so the
+// shipped tool needs no guide standing in an agent's context: the skill
+// triggers, this command delivers, and the version of the text is the version
+// of the binary that behaves as it describes.
+func cmdDocs(args []string) error {
+	if len(args) == 0 {
+		fmt.Print(`wf docs <name> — print one reference of the operating manual
+
+  guide         the whole manual (authoring + routing + preflight + section-gate + cost)
+  authoring     language rule, companions, the spawn wrapper name
+  routing       model routing: explicit per-agent tiers
+  preflight     the pre-flight script-review gate and the wf round loop
+  section-gate  the per-section dual-review gate inside a script
+  cost          cost & context discipline
+  checks        the failure-mode checklist every gate reviewer reads
+`)
+		return nil
+	}
+	name := args[0]
+	if name == "guide" {
+		for _, n := range guideOrder {
+			b, err := readDoc(n)
+			if err != nil {
+				return err
+			}
+			_, _ = os.Stdout.Write(b)
+		}
+		return nil
+	}
+	if _, ok := docNames[name]; !ok {
+		return fmt.Errorf("unknown doc %q; run `wf docs` for the list", name)
+	}
+	b, err := readDoc(name)
+	if err != nil {
+		return err
+	}
+	_, _ = os.Stdout.Write(b)
 	return nil
 }
 

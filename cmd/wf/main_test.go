@@ -47,6 +47,8 @@ func dispatch(args []string) error {
 		return cmdCheck(args[1:])
 	case "stats":
 		return cmdStats(args[1:])
+	case "docs":
+		return cmdDocs(args[1:])
 	}
 	return fmt.Errorf("unknown command %q", args[0])
 }
@@ -158,7 +160,22 @@ func TestPrescribedSequence(t *testing.T) {
 	wsDir := filepath.Join(tmp, "ws")
 	out, err := runWF(t, tmp, "init", "demo", "-target", target, "-dir", wsDir)
 	noErr(t, err, "init")
-	mustContain(t, out, "workspace demo", target)
+	mustContain(t, out, "workspace demo", target, "gate-checks.md written")
+
+	// The workspace copy pins the rules version that briefs this gate's
+	// reviewers, stamped with the tool that wrote it.
+	checks, err := os.ReadFile(filepath.Join(wsDir, "gate-checks.md"))
+	noErr(t, err, "read workspace gate-checks")
+	mustContain(t, string(checks), "written by wf (devel) at init", "known failure modes")
+
+	// The manual ships inside the binary; `guide` is a concatenation of the
+	// parts, never a stored second copy.
+	out, err = runWF(t, wsDir, "docs")
+	noErr(t, err, "docs list")
+	mustContain(t, out, "guide", "checks", "routing")
+	out, err = runWF(t, wsDir, "docs", "guide")
+	noErr(t, err, "docs guide")
+	mustContain(t, out, "# Workflow model routing", "# Workflow cost & context discipline")
 
 	// Two artifacts carrying the same rule. `wf add` is the only way to make an
 	// artifact's first commit — apply rejects an empty `old` — so the sequence

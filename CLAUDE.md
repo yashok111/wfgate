@@ -12,15 +12,22 @@ The tool grew out of the measured losses of one real gate (mocker, slice P2c:
 exactly those — see "Why each command is the way it is" below.
 
 **This repository is the single source of truth for the whole gate toolchain**
-(consolidated 2026-08-22): the `wf` binary, the two Node scripts of the script
-gate (`scripts/wfcheck`, `scripts/wfdry`), and the two gated spec documents
-(`docs/workflow-guide.md`, `docs/workflow-gate-checks.md`). The consumer paths
-did not move — `~/.local/bin/{wfcheck,wfdry}` and `~/.claude/workflow-*.md` are
-symlinks `make install` maintains — so a fix to a tool or a spec is a commit
-here, never a hand edit of an installed copy. Before consolidation, 866 lines
-of gate-guarding tooling and both specs had no version control at all, and the
+(consolidated 2026-08-22, made self-shipping the same day): the `wf` binary,
+the two Node scripts of the script gate (`scripts/wfcheck`, `scripts/wfdry`),
+and the operating manual, which lives as the `workflow-gate` SKILL
+(`skill/workflow-gate/SKILL.md` + `references/`). Nothing about workflows
+stands in an agent's always-on context any more: the skill self-triggers from
+its one-line description, the binary EMBEDS the references (`go:embed`,
+stdlib) and serves them via `wf docs`, `wf init` writes the gate-checks
+reference into every workspace so the rules version that briefed a gate's
+reviewers is pinned with the gate, and an optional PreToolUse hook on the
+Workflow tool (`scripts/hooks/workflow-preflight.sh`) injects the reminder
+deterministically. `make install` maintains the symlinks
+(`~/.local/bin/{wfcheck,wfdry}`, `~/.claude/skills/workflow-gate`) and removes
+the retired `~/.claude/workflow-*.md` ones. Before consolidation, 866 lines of
+gate-guarding tooling and both specs had no version control at all, and the
 P2e false green lived in exactly such a file. The mechanics/judgement split
-stands: this repo is the mechanics, `docs/workflow-gate-checks.md` is the
+stands: this repo is the mechanics, the gate-checks reference is the
 judgement.
 
 ## Architecture
@@ -44,9 +51,14 @@ Five packages, each one decision.
   with its regression fixtures in `testdata/` — the meta-guard fixture is the
   P2e false green, banked). The no-deps doctrine covers the Go module; these
   are co-located for history and review, not linked in.
-- `docs/` — the two gated spec documents, symlinked into `~/.claude/` by
-  `make install`. Symlink, not copy: a second copy of a spec is this project's
-  most-repeated defect class.
+- `skill/workflow-gate/` — the operating manual as a Claude Code skill: a thin
+  SKILL.md front door and the gated spec split byte-exact into `references/`
+  (authoring, model-routing, pre-flight-gate, section-gate, cost-discipline,
+  gate-checks). The split preserved the gated text verbatim — cutting at
+  headings is packaging, not rewriting, so no re-gate was owed. `embed.go` at
+  the module root embeds the references into the binary; `wf docs guide`
+  CONCATENATES them at runtime rather than storing a monolith — a second copy
+  of a spec is this project's most-repeated defect class.
 
 ## Why each command is the way it is
 
@@ -266,12 +278,12 @@ stopped here, not discovered by a commit in the wrong tree.
 - **Artifacts are changed through `wf apply`, never by hand.** A hand edit plus
   `git commit` gives up both all-or-nothing and the declared `count` — the two
   reasons the command exists.
-- **Command semantics are specification.** `docs/workflow-guide.md` and
-  `docs/workflow-gate-checks.md` (symlinked at `~/.claude/`) passed a gate and
-  describe what each command does and why. Changing semantics or output means
-  reconciling both documents against the source, in the same commit (8 of that
-  gate's 22 blockers were text-code divergences, and the 2026-08-21
-  reconciliation by the same method found the vacuous enforcement in freeze).
+- **Command semantics are specification.** The `skill/workflow-gate/references`
+  passed a gate and describe what each command does and why. Changing
+  semantics or output means reconciling the references against the source, in
+  the same commit (8 of that gate's 22 blockers were text-code divergences,
+  and the 2026-08-21 reconciliation by the same method found the vacuous
+  enforcement in freeze).
 
 ## Bars
 

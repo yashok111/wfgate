@@ -628,7 +628,7 @@ The fix is the largest single source of blockers. These are protocol, not taste.
 One line per novel blocker, in the section it belongs to, in the imperative, with the concrete failure in
 parentheses. If a blocker does not fit a section, add a section — the taxonomy is descriptive, not fixed.
 
-Two rules about what goes here, because this file is loaded in every project:
+Two rules about what goes here, because this file ships with the tool into every project:
 
 - **State the rule so it survives a change of language, framework and domain.** Strip package names, type
   names and product nouns; keep the shape of the failure. "A template and the concrete value that matched

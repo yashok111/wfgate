@@ -1,12 +1,17 @@
 # wfgate — gate harness
 
 The `wf` CLI: a review gate's workspace as a git repository, atomic application
-of edits, and deterministic checks over the artifacts. The repository is also
-the single source of truth for the rest of the gate toolchain: the script
-gate's Node tools (`scripts/wfcheck`, `scripts/wfdry` with their regression
-fixtures) and the two gated spec documents (`docs/workflow-guide.md`,
-`docs/workflow-gate-checks.md`), which `make install` symlinks to the paths
-their consumers read (`~/.local/bin`, `~/.claude`).
+of edits, and deterministic checks over the artifacts. The repository is the
+single source of truth for the whole gate toolchain: the script gate's Node
+tools (`scripts/wfcheck`, `scripts/wfdry` with their regression fixtures) and
+the operating manual, shipped as the `workflow-gate` skill
+(`skill/workflow-gate/`) and embedded into the binary — `wf docs guide` prints
+it, `wf init` writes the gate-checks reference into every workspace, and
+nothing needs to stand in an agent's always-on context. `make install`
+maintains the symlinks (`~/.local/bin/{wfcheck,wfdry}`,
+`~/.claude/skills/workflow-gate`); an optional PreToolUse hook
+(`scripts/hooks/workflow-preflight.sh`) injects the pre-flight reminder on
+every Workflow call.
 
 A gate over a large change spends effort on two different things. One is the
 reviewing itself — that is judgement, and it is what the rounds are for. The
@@ -60,6 +65,7 @@ wf delta                                   # the delta round's brief: findings +
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules) |
 | `wf stats` | per-round findings, closures, apply batches, the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
+| `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
 
 Exit codes: `0` clean, `1` findings or failure, `2` usage.
