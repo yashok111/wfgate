@@ -13,11 +13,13 @@ the verify, the delta with its closure checklist, and four artifact checks — c
 owns the BOOKKEEPING of the gate; the script's own static and dynamic checks stay
 in the two binaries below),
 `~/.local/bin/wfcheck` (a static checker for these
-scripts; run it before the gate and after every fix) and `~/.local/bin/wfdry` (a dynamic runner that
-executes the script with stubbed hooks across the modes a real run can enter; run it before each freeze).
-All of it — `wf`, both scripts, and these two documents — is versioned in the wfgate repository
-(`~/projects/wfgate`); the `~/.local/bin` and `~/.claude` paths are symlinks `make install` maintains,
-so a fix to a tool or to a spec is a COMMIT there, never a hand edit of an installed copy. Extracted from CLAUDE.md 2026-06-10 to
+scripts, reading the parsed program; run it before the gate and after every fix) and
+`~/.local/bin/wfdry` (a dynamic runner that executes the script with stubbed hooks across the modes a
+real run can enter; run it before each freeze).
+All of it — the three binaries and these references — is versioned in the wfgate repository
+(`~/projects/wfgate`). Two delivery channels: `make install` copies the three version-stamped binaries
+into `~/.local/bin`, and the wfgate PLUGIN carries this skill and the PreToolUse hook. Either way a fix
+to a tool or to a spec is a COMMIT there, never a hand edit of an installed copy. Extracted from CLAUDE.md 2026-06-10 to
 keep the always-loaded context lean — these rules are only needed when you actually orchestrate, and
 the Workflow tool is not invoked on most turns.
 

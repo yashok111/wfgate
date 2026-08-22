@@ -5,9 +5,9 @@
 #   git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git && wfgate/scripts/install.sh
 #
 # Two delivery channels, split by what each does well:
-#   - `make install` covers what a plugin cannot: builds the version-stamped
-#     `wf` binary (copy) and symlinks wfcheck/wfdry (single source of truth
-#     stays this repo).
+#   - `make install` covers what a plugin cannot: builds the three
+#     version-stamped binaries — wf, wfcheck, wfdry — and copies them into
+#     ~/.local/bin.
 #   - the wfgate PLUGIN covers the rest: the workflow-gate skill and the
 #     PreToolUse hook on the Workflow tool. Plugin hooks activate on install —
 #     settings.json is never edited, by anyone.
@@ -25,19 +25,15 @@ need() {
 }
 
 if [ "${1:-}" = "--uninstall" ]; then
-	rm -f "$HOME/.local/bin/wf"
-	for l in "$HOME/.local/bin/wfcheck" "$HOME/.local/bin/wfdry"; do
-		[ -L "$l" ] && rm "$l"
-	done
+	rm -f "$HOME/.local/bin/wf" "$HOME/.local/bin/wfcheck" "$HOME/.local/bin/wfdry"
 	claude plugin uninstall wfgate 2>/dev/null || true
 	claude plugin marketplace remove wfgate-tools 2>/dev/null || true
-	echo "uninstalled: binary, symlinks, plugin and marketplace registration"
+	echo "uninstalled: binaries, plugin and marketplace registration"
 	exit 0
 fi
 
 need git "clone/pull the repo"
-need go "build the wf binary"
-need node "run wfcheck and wfdry"
+need go "build the three binaries"
 need claude "register the plugin"
 
 mkdir -p "$HOME/.local/bin"
@@ -62,8 +58,7 @@ fi
 
 echo
 echo "installed from $ROOT:"
-echo "  wf $("$HOME/.local/bin/wf" version | cut -d' ' -f2)  -> ~/.local/bin/wf"
-echo "  wfcheck, wfdry              -> symlinks into scripts/"
+echo "  wf, wfcheck, wfdry $("$HOME/.local/bin/wf" version | cut -d' ' -f2)  -> ~/.local/bin/"
 echo "  wfgate plugin               -> workflow-gate skill + PreToolUse(Workflow) hook"
 echo
 echo "verify in a NEW session: the skill list shows wfgate:workflow-gate; wf docs | head"

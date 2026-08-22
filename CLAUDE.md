@@ -3,9 +3,19 @@
 The `wf` CLI: the bookkeeping of a review gate. A gate's workspace is a git
 repository, applying edits is atomic and becomes a commit, freezing a round is
 a tag, and a delta round's input is a diff. Go 1.27, module
-`git.sumka.site/yakov/wfgate`, **stdlib only**, `git` is run as a process.
-There are no dependencies and there will be none: a tool that watches other
-people's artifact supply chain does not grow one of its own.
+`git.sumka.site/yakov/wfgate`, `git` is run as a process.
+
+**One dependency: `goja`** (a JavaScript parser and engine, pure Go, no cgo).
+The rule used to be stdlib-only, on the argument that a tool watching other
+people's artifact supply chain should not grow one of its own; it was lifted
+2026-08-22, deliberately, when the two script-gate tools were rewritten from
+JavaScript into Go. They read and RUN Workflow orchestration scripts, which are
+JavaScript: `wfcheck` needs a parser and `wfdry` needs an engine, and the
+alternatives were to keep interpreting them under whatever `node` happened to
+be on PATH, or to re-derive a JS parser here. One audited dependency, used by
+two binaries, is the smaller risk — and it removed an entire defect class,
+because every check that a text scanner could be defeated by simply stopped
+existing. Adding a SECOND dependency needs the same kind of argument.
 
 The tool grew out of the measured losses of one real gate (mocker, slice P2c:
 7 decision rounds / 94 blockers, 7 script rounds / 14 blockers) and treats
@@ -13,7 +23,8 @@ exactly those — see "Why each command is the way it is" below.
 
 **This repository is the single source of truth for the whole gate toolchain**
 (consolidated 2026-08-22, made self-shipping the same day): the `wf` binary,
-the two Node scripts of the script gate (`scripts/wfcheck`, `scripts/wfdry`),
+the two script-gate binaries (`wfcheck`, `wfdry` — Node scripts until
+2026-08-22, Go since),
 and the operating manual, which lives as the `workflow-gate` SKILL
 (`skills/workflow-gate/SKILL.md` + `references/`). Nothing about workflows
 stands in an agent's always-on context any more: the skill self-triggers from
@@ -27,8 +38,8 @@ deterministically. The skill and the hook ship as the **wfgate plugin**
 IS the plugin, and its own `.claude-plugin/marketplace.json` makes the local
 clone the marketplace): plugin hooks activate on install, so settings.json is
 never edited, by anyone. `scripts/install.sh` is the one-command bootstrap
-for any machine — `make install` for what a plugin cannot carry (the built
-binary, the wfcheck/wfdry symlinks), `claude plugin` for the rest; it also
+for any machine — `make install` for what a plugin cannot carry (the three
+built binaries), `claude plugin` for the rest; it also
 removes the retired `~/.claude/skills/workflow-gate` and
 `~/.claude/workflow-*.md` symlinks. Before consolidation, 866 lines of
 gate-guarding tooling and both specs had no version control at all, and the
@@ -52,11 +63,17 @@ Five packages, each one decision.
 - `internal/check` — the deterministic checks: `cite.go`, `dup.go`,
   `drift.go`, `rules.go`.
 - `cmd/wf` — the subcommand dispatcher.
-- `scripts/` — the script gate's Node tools, versioned here, NOT part of the
-  Go module and never called by `wf`: `wfcheck` (static), `wfdry` (dynamic,
-  with its regression fixtures in `testdata/` — the meta-guard fixture is the
-  P2e false green, banked). The no-deps doctrine covers the Go module; these
-  are co-located for history and review, not linked in.
+- `internal/wfscript` — a Workflow orchestration script as a PARSED PROGRAM:
+  the wrapper discovery, the agent-call inventory with its options resolved
+  through consts, spreads and factories, the phase titles, the loops. Every
+  question the two script-gate tools ask about a script is answered once, here.
+- `internal/wfcheck` + `cmd/wfcheck` — the static check over that inventory.
+- `internal/wfdry` + `cmd/wfdry` — the dynamic runner: it executes the script
+  on an embedded engine with every orchestration hook stubbed, across the seven
+  modes a real run can enter. Fixtures live in `testdata/` — the meta-guard
+  fixture is the P2e false green, banked.
+- `internal/cli` — `ParseMixed`, shared by all three binaries.
+- `scripts/` — no longer code: the PreToolUse hook and `install.sh`.
 - `skills/workflow-gate/` — the operating manual as a Claude Code skill: a thin
   SKILL.md front door and the gated spec split byte-exact into `references/`
   (authoring, model-routing, pre-flight-gate, section-gate, cost-discipline,
@@ -266,6 +283,65 @@ measured failure, not taste:
   An automatic split is deliberately absent: which edits belong together is
   judgement — one rule and all its copies must land or fail as a unit.
 
+**The fifth wave — the five-reviewer audit of this repository** (2026-08-22;
+three Opus agents on three vectors plus two vcodex passes, 73 raw findings, 52
+after dedup). It was the first review of the gate harness BY the method the
+harness exists to run, and it found the tool committing the class it was built
+to catch:
+
+- *`freeze` wrote and committed the manifest BEFORE refusing to re-freeze* — so
+  a refused re-freeze rewrote `rounds/rN/freeze.json` with hashes of the current
+  tree, and `wf verify`, which reads that file from the worktree, turned
+  MISMATCH into "clean". The command that said no had already blessed what it
+  refused. The refusal comes first now.
+- *`freeze`'s open-blocker check passed vacuously and silently* — a findings.md
+  that could not be read was skipped by `continue`, and a table that did not
+  parse yielded zero rows and zero objections. `record` printed "no table
+  recognized" for the same input; `freeze`, which IS the enforcement, printed
+  its success block.
+- *One pipe character carried an open BLOCKER past a freeze* — the row splitter
+  cut on every `|`, so a finding quoting an escaped `\|` shifted its own text
+  into the closed-by cell and scored as "closed by prose". Cells split on
+  unescaped pipes; a row that still is not four cells is `Malformed` and
+  refused by name, never skipped.
+- *A deletion was verified by `strings.Count(body, "")`* — which is `len+1`, so
+  every pure-deletion edit was verified vacuously; and buffers keyed by the path
+  STRING made `artifacts/a.md` and `./artifacts/a.md` two files, both planned
+  from the pristine bytes. `Verify` now compares each written file byte-for-byte
+  with the planned buffer, which also stops it rejecting a chained batch that
+  landed perfectly.
+- *`dup` lost recall as a rule SPREAD* — a statement in an exact cross-file
+  group was excluded from the near pass in both roles, so two verbatim copies
+  plus a contradicting third reported nothing, while deleting one verbatim copy
+  made the same corpus report it. The three-artifact shape is the one the check
+  exists for.
+- *`dup` and `rules` reported a contradiction as agreement* — the normaliser
+  keeps only letters and digits, so `retry_count == 3` and `retry_count != 3`
+  normalised identically: `rules` said 0 conflicts and `dup` said `sim 1.00`, an
+  exact match. Statements now carry the operator skeleton, and the pair is an
+  `OPERATOR` conflict.
+- *A deleted line beginning `-- ` was read as a diff file header* — one SQL
+  comment made `drift` file every later hunk under a phantom path and call an
+  invalidated citation clean.
+- *`wf add -as` wrote into the target* — the one tree no command may touch.
+- *HEAD is not the whole tree* — a cited line rewritten without a commit left
+  `verify` printing "clean" and `drift` printing "nothing to re-read". Both now
+  separate a modified tracked file (refusal) from an untracked one (note).
+- *The text scanner was the defect, not its checks* — `wfcheck` was defeated by
+  an unrecognised wrapper plus an options factory ("0 call sites, 0 errors, exit
+  0" on a script with five), by `effort:` inside a schema description, by a
+  spread options object (four phantom ERRORs on a correct call), by an inline
+  schema, by a multiline `phase()`, and by a comment quoting a footgun. All of
+  those stopped existing when it started reading the parsed program.
+- *`wfdry` passed 6/6 over runs that executed nothing* — a script whose only
+  spawn sat behind a false flag, a body gated on an `args` it was never given,
+  and an invented `--mode` that ran and reported "1/1 modes completed". A mode
+  that spawns nothing now FAILS, `args` is supplied and withheld as two modes,
+  and an unknown mode is refused.
+- *8 of 9 `wfdry` guards had no test* — including the single `if
+  (violations.length)` that turns a recorded defect into a failing mode. Every
+  guard in both tools now has a case that fails without it.
+
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and
 printed a usage error naming the very flag that was passed.
@@ -305,9 +381,12 @@ stopped here, not discovered by a commit in the wrong tree.
 ```bash
 make test        # go test ./cmd/... ./internal/... -race -count=1
 make lint        # go vet + gofmt (+ golangci-lint when installed)
-make build       # ./wf with the version stamp (-ldflags)
-make check-tools # wfcheck/wfdry parse + wfdry fixtures (the meta-guard must FAIL)
+make build       # ./wf ./wfcheck ./wfdry with the version stamp (-ldflags)
+make check-tools # the BUILT binaries against the banked fixtures (meta-guard must FAIL)
 ```
+
+`make test` counting `ok` lines is not a green bar — one package can fail while
+the count looks right. Read the FAIL lines.
 
 After any code change — `make install` (`~/.local/bin/wf`): the documents
 prescribe `wf ...` commands, and a run against the stale binary looks exactly
@@ -365,5 +444,7 @@ Not forgotten — deferred, so the gap does not read as an oversight:
   to pretend it has been done.
 - **No autofixes.** `check` only reports. A tool that fixed citations itself
   would be fixing them in an artifact somebody already reviewed.
-- **No push, hooks, or CI.** A gate workspace lives locally and dies with its
-  slice; there is nothing to publish.
+- **No git hooks or CI IN A GATE WORKSPACE.** A workspace lives locally and dies
+  with its slice; there is nothing to publish. This repository itself is pushed
+  to Gitea and does ship a Claude Code PreToolUse hook — a different thing with
+  the same word in it.

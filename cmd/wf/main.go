@@ -33,6 +33,7 @@ import (
 	wfgate "git.sumka.site/yakov/wfgate"
 	"git.sumka.site/yakov/wfgate/internal/apply"
 	"git.sumka.site/yakov/wfgate/internal/check"
+	"git.sumka.site/yakov/wfgate/internal/cli"
 	"git.sumka.site/yakov/wfgate/internal/gitx"
 	"git.sumka.site/yakov/wfgate/internal/ws"
 )
@@ -122,26 +123,8 @@ func main() {
 // report, the other means the run never happened.
 var errFindings = errors.New("findings")
 
-// parseMixed lets flags and positional arguments appear in any order.
-//
-// flag.FlagSet stops at the first non-flag argument, so `wf init p2c -target X`
-// silently drops -target and reports a usage error naming the very flag the
-// caller passed. Re-parsing the tail after each positional is the standard
-// remedy, and it belongs here rather than in each subcommand.
-func parseMixed(fs *flag.FlagSet, args []string) ([]string, error) {
-	var pos []string
-	for {
-		if err := fs.Parse(args); err != nil {
-			return nil, err
-		}
-		rest := fs.Args()
-		if len(rest) == 0 {
-			return pos, nil
-		}
-		pos = append(pos, rest[0])
-		args = rest[1:]
-	}
-}
+// parseMixed is internal/cli.ParseMixed; the alias keeps the call sites short.
+var parseMixed = cli.ParseMixed
 
 func open() (*ws.Workspace, error) {
 	cwd, err := os.Getwd()

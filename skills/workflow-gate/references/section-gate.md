@@ -10,7 +10,10 @@ The gate = **2 reviewer subagents in parallel** (a `parallel()` barrier), each a
 - design/plan → feasibility vs real code · risk/blockers · alignment with the goal  (pick 2)
 
 Rules:
-- **Reviewers are `model: 'sonnet'` by DEFAULT.** Opus on a reviewer is reserved for a genuine extreme case — a security-/correctness-critical section where a subtle, high-cost-if-missed defect is plausible (e.g. crypto, auth, a kill-switch, money/data-loss paths). Opus review is the rare exception, not the norm; if you can't name the specific catastrophic miss it guards against, use sonnet.
+- **Reviewers are `model: 'sonnet'` and `effort: 'high'` by DEFAULT.** Both axes are explicit on every
+  `agent()` call (see `model-routing.md`); a reviewer is a step whose error nothing downstream
+  re-checks, which is what `high` is for, and the fan-out effort ban does not reach it. `wfcheck`
+  refuses a call with no `effort`, so a reviewer written from this section without one does not run. Opus on a reviewer is reserved for a genuine extreme case — a security-/correctness-critical section where a subtle, high-cost-if-missed defect is plausible (e.g. crypto, auth, a kill-switch, money/data-loss paths). Opus review is the rare exception, not the norm; if you can't name the specific catastrophic miss it guards against, use sonnet.
 - Feed each reviewer the section's diff or output + the section's goal.
 - Collect findings, then ACT: a blocker from either vector loops that section (fix → re-review) before proceeding; advisory findings are recorded and surfaced.
 - **The loop is BOUNDED, and what survives it is carried in the RETURN value.** An unbounded "loop until no blockers" does not terminate against a fix agent that keeps failing, and it has no budget guard — which is why every real script instead runs one bounded fix round and moves on. That divergence between the rule and the practice is the defect; the rule is what changes. Write the form that works: a fixed small number of fix→re-review rounds, guarded on `budget.total`, and every blocker still open when the rounds run out pushed into an explicit open-blockers list in the return value — never only into a `log()` line. A run that ends green while carrying open blockers must say so in its verdict, not in its scrollback.

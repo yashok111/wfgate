@@ -96,8 +96,15 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `git add -N X && git diff` (which hides the diff entirely); a lister used as a gate that exits 0
    whether or not it printed (`gofmt -l X &&` and its equivalents in other formatters); a
    `<placeholder>` inside a fenced command; `phase()` titles that do not match `meta.phases`; a missing
-   `model:`/`schema:`; an unused const; per-agent prompt sizes and per-blob multiplicity; a required
-   schema field no consumer's prompt explains; a test name the tree does not declare. Reviewer rounds are
+   `model:`/`effort:`/`schema:`, and an `effort` outside `low|medium|high|xhigh|max`; an unused const;
+   per-agent prompt sizes and per-blob multiplicity; a required
+   schema field no consumer's prompt explains; a test name the tree does not declare. It reads the
+   PARSED program, so an options object built by spreading a shared const, an options factory, a
+   wrapper under any name and an inline schema are all understood — and where it cannot resolve
+   something statically it says so as a note rather than reporting what it could not see as absent.
+   It also PRINTS its populations on every run — call sites, wrappers, owned paths — because a check
+   over an empty set reports zero findings and exits clean, which is indistinguishable from a clean
+   script and is trusted more, since a tool said so. Reviewer rounds are
    worth ~10 minutes and six figures of tokens each — do not spend one on a regex. Re-run it after EVERY
    round's fixes: it has caught an unescaped apostrophe inside a quoted string that would have failed a
    run at launch.
@@ -203,11 +210,15 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    replaced by stubs that derive each report from the `schema` the script hands that call — the schema
    IS the fixture contract, so nothing is hand-authored per run. Your own `spawn` wrapper is NOT
    stubbed: it is left in place and exercised, which is what makes the note below about a swallowed
-   throw true. It must complete every mode before the gate runs. The six modes are `clean`, `blockers`
+   throw true. It must complete every mode before the gate runs. The seven modes are `clean`, `blockers`
    (every gate returns one), `acceptfail`, `unfixed` (a fix round that leaves blockers open),
-   `throw-serial` and `dead-reviews`. Killing a named agent is not a mode: `--dead <label>[,<label>…]`
-   kills those labels in every one of the six. Print the phase
-   order, the label/model list and the whole return value each time. Seconds of cost; it evaluates every
+   `throw-serial`, `dead-reviews` and `no-args` (the script runs with no `args`; every other mode hands
+   it a representative object). Killing a named agent is not a mode: `--dead <label>[,<label>…]`
+   kills those labels in every one of the seven, and `--args <json>` replaces what the six
+   args-carrying modes pass. A mode that completes having spawned NO agent FAILS: every stub check is
+   then a guard over the empty set, and that is indistinguishable from a clean run — the one exception
+   is `no-args` on a script that gates its body on `args`, which is correct behaviour and is noted
+   instead. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
    template literal on every path and walks branches a parse cannot reach. **The clean path is the one
    that matters most** — reviewers read the failure branches, because that is where the risk looks like
    it lives, so the defects that survive a gate are the ones on the happy path. It is a DISTINCT dynamic
@@ -353,7 +364,7 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   CRITERION 3 blockers, FACTS 0 blockers (every citation and count in a 150 KB script was correct). Run FACTS once —
   its one major was an invariant asserted in another reviewer's own prompt that the code did not hold —
   then spend later rounds on SEAMS and CRITERION.
-- **The fix protocol lives in `workflow-gate-checks.md` section I.** Short version: record what the
+- **The fix protocol lives in `gate-checks.md` section I.** Short version: record what the
   round found with `wf round record <file>` BEFORE touching a fix — that file is what briefs the next
   reviewer; apply the round's fixes as ONE `wf apply` batch, one edit per artifact per rule, each
   declaring its own occurrence count; fill the `closed by` column with the apply commit and re-record

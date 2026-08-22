@@ -83,11 +83,14 @@ efforts names them in that entry's `detail` string, exactly as a mixed-tier phas
   fan-out. `max` is an escalation the script argues for in a comment or a `log()` line; a per-item
   fan-out agent never gets it.
 
-**Inside a fan-out, effort is cheap for the same reason models are.** Per-item producers under
-`parallel()`/`pipeline()` are `medium`, or `low` where the item work is mechanical — never above; the
-only high-effort role is the SINGLE fan-in or gate agent that runs once. N same-role high-effort
-producers in parallel is the same defect as N opus producers, and it bites harder: effort multiplies the
-output tokens of every one of the N.
+**Inside a fan-out, effort is cheap for the same reason models are.** Per-item PRODUCERS under
+`parallel()`/`pipeline()` are `medium`, or `low` where the item work is mechanical — never above. N
+same-role high-effort producers in parallel is the same defect as N opus producers, and it bites
+harder: effort multiplies the output tokens of every one of the N. The high-effort roles are the
+single fan-in agent that runs once and the GATE REVIEWERS — the section gate's two reviewers run in a
+`parallel()` barrier by design (see `section-gate.md`), and they carry the same exemption the model
+half of this document grants them. The ban is on producers, not on everything that happens to sit
+inside a `parallel()`.
 
 **Unmeasured, and stated as such.** No gate has yet run one script at two efforts and compared the
 findings, so the tiers above are derived from the cost model — reasoning tokens are output tokens,

@@ -39,5 +39,5 @@ the same text from the installed binary (`wf docs guide` = the whole manual).
 - A fix is unreviewed code and the largest single source of blockers; later
   rounds review the delta (`wf delta`), not the original.
 
-The tooling is versioned in `~/projects/wfgate`; `~/.local/bin/{wf,wfcheck,wfdry}`
-are what `make install` maintains. A fix to a tool or a spec is a commit there.
+The tooling is versioned in `~/projects/wfgate`; `~/.local/bin/{wf,wfcheck,wfdry}` are three
+version-stamped binaries `make install` copies there. A fix to a tool or a spec is a commit there.

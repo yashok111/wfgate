@@ -73,6 +73,7 @@ session's setting — a gate opened from an `xhigh` session runs its whole fan-o
 the grep-and-report agents, and the script that was reviewed says nothing about it. Reasoning tokens are
 output tokens: raising the effort of a per-item agent multiplies across every item, so the axis is at
 its most expensive exactly where the tier list already says to be cheap. Write the effort on every call
-(`references/model-routing.md`); mechanical stages are `low`, ordinary producers `medium`, and `high`+
-is for the once-only steps nothing downstream re-checks. The same applies to the main loop of a long
+(`references/model-routing.md`); mechanical stages are `low`, ordinary producers `medium`, `high` is
+for a step whose error nothing downstream re-checks cheaply — a gate reviewer, an adversarial verifier —
+and `xhigh`/`max` for a once-only step whose one wrong answer burns the fan-out. The same applies to the main loop of a long
 mechanical session — point 7's argument holds for effort as much as for tier.

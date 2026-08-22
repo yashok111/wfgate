@@ -2,8 +2,9 @@
 
 The `wf` CLI: a review gate's workspace as a git repository, atomic application
 of edits, and deterministic checks over the artifacts. The repository is the
-single source of truth for the whole gate toolchain: the script gate's Node
-tools (`scripts/wfcheck`, `scripts/wfdry` with their regression fixtures) and
+single source of truth for the whole gate toolchain: the script gate's two
+tools (`wfcheck`, the static check over a Workflow script's parsed program, and
+`wfdry`, which executes it with every orchestration hook stubbed) and
 the operating manual, shipped as the `workflow-gate` skill
 (`skills/workflow-gate/`) and embedded into the binary — `wf docs guide` prints
 it, `wf init` writes the gate-checks reference into every workspace, and
@@ -32,14 +33,14 @@ After a `git pull`: `make install && claude plugin marketplace update wfgate-too
 `scripts/install.sh --uninstall` reverses everything. Piecemeal:
 
 ```bash
-make build          # ./wf, version-stamped via -ldflags
-make install        # ~/.local/bin/wf (copy) + wfcheck/wfdry symlinks
+make build          # ./wf ./wfcheck ./wfdry, version-stamped via -ldflags
+make install        # all three into ~/.local/bin
 make test           # go test -race
-make check-tools    # wfcheck/wfdry parse + wfdry fixtures (meta-guard must FAIL)
+make check-tools    # the built binaries against the banked fixtures (meta-guard must FAIL)
 ```
 
-Stdlib only; `git` is taken from `PATH`. The Node scripts are co-located for
-versioning and review — `wf` never calls them and the Go module has no
+`git` is taken from `PATH`. One dependency, `goja`: it is the JavaScript
+parser `wfcheck` reads a script with and the engine `wfdry` runs it on. The
 dependencies.
 
 ## The quick cycle
@@ -63,7 +64,7 @@ wf delta                                   # the delta round's brief: findings +
 
 | command | what it does |
 |---|---|
-| `wf init <name> -target <repo>` | workspace: git init, `gate.json`, `artifacts/`, `rounds/`, first commit |
+| `wf init <name> -target <repo> [-dir D]` | workspace: git init, `gate.json`, `artifacts/`, `rounds/`, first commit |
 | `wf add <file>...` | bring an authored artifact under the workspace and commit it; adopts an untracked draft already in place |
 | `wf status` | manifest, current round, who last touched each artifact, dirt, tool version |
 | `wf apply -f <edits> [-m msg] [--dry-run]` | all-or-nothing batch of edits (JSON or text blocks), then a commit of only the touched files |
@@ -72,7 +73,7 @@ wf delta                                   # the delta round's brief: findings +
 | `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
-| `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules) |
+| `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules); `dup` takes `-since REF`, `-threshold F` and `-min-words N` |
 | `wf stats` | per-round findings, closures, apply batches and edits (with findings/edit — the batch cost meter), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
@@ -154,14 +155,25 @@ derived artifacts wrapping the same sentence at different columns are compared
 as sentences, not as whatever fit on a line. Copies that agree except for a
 number or number-word ("four checks" vs "FIVE checks") are flagged `NUMERIC`
 and fail the check: no similarity threshold separates that class from
-agreement, masking the number does.
+agreement, masking the number does. Copies that agree except for a COMPARISON
+(`== 3` beside `!= 3`) are flagged `OPERATOR` for the same reason — the
+normaliser erases every symbol, so without this the pair reported as `sim 1.00`,
+an exact match, which reads as agreement over a direct contradiction.
+
+The near-match pass is candidate-filtered by rare tokens, so a sentence built
+entirely of common words has no candidate at all; the count of such sentences is
+printed, because a filtered corpus must not read as an empty one.
 
 ### `wf check drift`
 
 When the target moved after a freeze, intersects its `frozen..HEAD` diff with
 the cited ranges: `edited` — the cited lines changed, re-read the claim;
 `shifted` — the citation moved, the re-aimed range is printed; `gone` — the
-file left the tree. The only mechanical signal an unanchored citation gets.
+file left the tree; `unresolved` — the path names no single file at the frozen
+revision. The only mechanical signal an unanchored citation gets. It refuses a
+target whose tracked files differ from HEAD: "the target has not moved" is a
+claim about HEAD, and a cited line rewritten without a commit leaves HEAD where
+it was.
 
 ### `wf check rules`
 
