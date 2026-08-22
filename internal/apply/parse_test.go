@@ -49,6 +49,7 @@ func TestParseText_errors(t *testing.T) {
 		{"=== a.md flag=1\n<<<<\no\n====\nn\n>>>>\n", "unknown header field"},
 		{"=== a.md count=zero\n<<<<\no\n====\nn\n>>>>\n", "not a positive number"},
 		{"===\n<<<<\no\n====\nn\n>>>>\n", "header"},
+		{"=== a.md count=2\n<<<<\no\n====\nn\n>>>>\n<<<<\no2\n====\nn2\n>>>>\n", "its own `=== <file>` header"},
 		{"\n\n", "no edit blocks"},
 	}
 	for _, c := range cases {

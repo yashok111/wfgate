@@ -254,13 +254,16 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-21 — read before trusting
+## State as of 2026-08-22 — read before trusting
 
-- **One real gate has now run entirely through `wf`** — mocker slice P2d:
-  10 rounds, 98 findings, 26 blockers, 11 freezes; the measurements are banked
-  in `FEEDBACK-p2d.md` and resolved the whole idea queue. Still unexercised
-  live: `check drift` (P2d's target never moved mid-gate) and `check rules`
-  (markers did not exist yet).
+- **Two real gates have now run entirely through `wf`.** P2d (10 rounds, 98
+  findings — `FEEDBACK-p2d.md`) and P2e, the first over a workflow SCRIPT
+  (17 rounds, 235 findings, 293 KB of artifacts — `FEEDBACK-p2e.md`). P2e
+  confirmed live: the anchor check turning a wrong citation into a patch, the
+  ratchet firing on a real regression, record rejecting a placeholder sha,
+  fix-induced share deciding the stop, delta briefs at ~1/10 of a re-read.
+  `check rules` ran but yielded zero (both runs marked ids retrospectively —
+  recorded in `IDEAS.md`); `check drift` is STILL unexercised live.
 - **The validation corpus does not survive a session** (it lived in a scratch
   directory). To rebuild: `git clone --no-hardlinks ~/projects/mocker
   <lab>/head`, then a workspace over any set of documents.

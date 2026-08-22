@@ -88,9 +88,12 @@ the replacement
 >>>>
 ```
 
-Assembling the JSON was the measured bottleneck of the first live gate: a
-35-edit batch under three layers of quoting failed on escaping more often than
-on substance. The format is detected by the first byte (`[` means JSON).
+Each replacement block carries its own `=== <file>` header — `count` is scoped
+to that one replacement, not to the file; fifteen replacements in one file are
+fifteen headers. Assembling the JSON was the measured bottleneck of the first
+live gate: a 35-edit batch under three layers of quoting failed on escaping
+more often than on substance. The format is detected by the first byte (`[`
+means JSON).
 
 ### `wf check cite`
 

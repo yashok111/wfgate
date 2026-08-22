@@ -39,6 +39,12 @@ func ParseText(b []byte) ([]Edit, error) {
 			continue
 		}
 		if !strings.HasPrefix(line, "=== ") {
+			// The one shape operators actually reach for (measured on the P2e
+			// gate: one header, fifteen blocks) gets the rule spelled out at
+			// the point of failure, not a generic complaint.
+			if line == "<<<<" {
+				return nil, fmt.Errorf("line %d: each replacement block carries its own `=== <file>` header — count= is scoped to one replacement, not to the file", i+1)
+			}
 			return nil, fmt.Errorf("line %d: expected `=== <file>` header, got %q", i+1, line)
 		}
 		e := Edit{}
