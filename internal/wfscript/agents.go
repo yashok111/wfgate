@@ -32,9 +32,20 @@ type Wrapper struct {
 	// `effort: 'nonsense'` beside them went unreported.
 	PromptExpr ast.Expression
 	OptsExpr   ast.Expression
-	LabelIdx   int  // a parameter neither expression references, -1 if none
-	Opaque     bool // the wrapper forwards a rest parameter: present but unreadable
-	Body       span // so a call inside the wrapper is not counted as a call site
+	Defaults   []ast.Expression // each parameter's default initialiser, if any
+	LabelIdx   int              // a parameter neither expression references, -1 if none
+	Body       span             // so a call inside the wrapper is not counted as a call site
+
+	// Opaque means the whole wiring is unreadable — a rest parameter, a
+	// destructured one, a forward to another wrapper. PromptOpaque and
+	// OptsOpaque mark ONE position of a wrapper that forwards from several
+	// branches disagreeing there: a guard that varies only the options still
+	// forwards one prompt, and blinding the prompt too would cost the ownership
+	// and footgun checks for nothing.
+	Opaque       bool
+	PromptOpaque bool
+	OptsOpaque   bool
+	Forwards     int // how many `agent()` calls its body makes
 }
 
 type span struct{ from, to file.Idx }
@@ -66,6 +77,16 @@ type AgentCall struct {
 	Opts         map[string]ast.Expression
 	OptsComplete bool
 	OptsFound    bool
+
+	// optText holds each option's value resolved IN SCOPE. A caller that
+	// re-resolves Opts later does so with the wrapper's binding popped.
+	optText map[string]string
+}
+
+// OptStr returns an option's statically known value.
+func (a AgentCall) OptStr(name string) (string, bool) {
+	v, ok := a.optText[name]
+	return v, ok
 }
 
 // Opt returns one option's expression.
@@ -112,6 +133,35 @@ func (s *Script) Wrappers() []Wrapper {
 			}
 		}
 	})
+	// A wrapper ON a wrapper is a wrapper: `const review = (p, o) => spawn(p,
+	// {...o, effort:'max'})` forwards to `agent` one hop further out, and
+	// without this its call sites vanished while the inner forwarding call was
+	// inventoried in their place.
+	for grew := true; grew; {
+		grew = false
+		known := map[string]bool{}
+		for _, w := range out {
+			known[w.Name] = true
+		}
+		s.Walk(func(n ast.Node) {
+			lex, ok := n.(*ast.LexicalDeclaration)
+			if !ok {
+				return
+			}
+			for _, b := range lex.List {
+				id, ok := b.Target.(*ast.Identifier)
+				if !ok || b.Initializer == nil || seen[string(id.Name)] {
+					continue
+				}
+				if w, ok := s.wrapperOfCalling(string(id.Name), b.Initializer, known); ok {
+					w.Line = s.Line(id.Idx)
+					seen[w.Name] = true
+					out = append(out, w)
+					grew = true
+				}
+			}
+		})
+	}
 	// An ALIAS is a call site under another name: `const route = spawn` made
 	// half a script's calls invisible with no warning.
 	for again := true; again; {
@@ -156,6 +206,39 @@ func (s *Script) Wrappers() []Wrapper {
 	return out
 }
 
+// wrapperOfCalling is wrapperOf for a function that forwards to another wrapper
+// rather than to `agent` directly. Its own wiring is not readable here, so it is
+// opaque: present, and unreadable.
+func (s *Script) wrapperOfCalling(name string, e ast.Expression, known map[string]bool) (Wrapper, bool) {
+	var body ast.Node
+	switch fn := e.(type) {
+	case *ast.ArrowFunctionLiteral:
+		body = fn.Body
+	case *ast.FunctionLiteral:
+		body = fn.Body
+	default:
+		return Wrapper{}, false
+	}
+	if body == nil {
+		return Wrapper{}, false
+	}
+	found := false
+	walk(body, func(n ast.Node) {
+		c, ok := n.(*ast.CallExpression)
+		if !ok {
+			return
+		}
+		if id, ok := c.Callee.(*ast.Identifier); ok && known[string(id.Name)] {
+			found = true
+		}
+	})
+	if !found {
+		return Wrapper{}, false
+	}
+	return Wrapper{Name: name, Params: paramNames(paramList(e)), LabelIdx: -1, Opaque: true,
+		Body: span{body.Idx0(), body.Idx1()}}, true
+}
+
 func (s *Script) wrapperOf(name string, e ast.Expression) (Wrapper, bool) {
 	var params []string
 	var body ast.Node
@@ -172,25 +255,54 @@ func (s *Script) wrapperOf(name string, e ast.Expression) (Wrapper, bool) {
 	}
 	// The forwarding call is the one that says how this wrapper is wired: which
 	// parameter becomes the prompt and which becomes the options.
-	var fwd *ast.CallExpression
+	var fwds []*ast.CallExpression
 	walk(body, func(n ast.Node) {
-		if fwd != nil {
-			return
-		}
 		c, ok := n.(*ast.CallExpression)
 		if !ok {
 			return
 		}
 		if id, ok := c.Callee.(*ast.Identifier); ok && string(id.Name) == "agent" {
-			fwd = c
+			fwds = append(fwds, c)
 		}
 	})
-	if fwd == nil {
+	if len(fwds) == 0 {
 		return Wrapper{}, false
 	}
-	w := Wrapper{Name: name, Params: params, LabelIdx: -1, Body: span{body.Idx0(), body.Idx1()}}
-	if pl := paramList(e); pl != nil && pl.Rest != nil {
-		w.Opaque = true
+	fwd := fwds[0]
+	w := Wrapper{Name: name, Params: params, Defaults: paramDefaults(paramList(e)), LabelIdx: -1,
+		Body: span{body.Idx0(), body.Idx1()}}
+	w.Forwards = len(fwds)
+	// A wrapper that forwards from more than one place — the common shape is a
+	// guard branch falling back to a default — has no single wiring. Taking the
+	// FIRST one bound every call site to the fallback's arguments: the real
+	// options of every call went unread, and an invalid effort in them
+	// unreported.
+	//
+	// Agreement is judged PER POSITION: a guard that varies only the options
+	// still forwards one prompt, and blinding the prompt too would cost the
+	// ownership and footgun checks for no reason.
+	promptDiffers, optsDiffers := false, false
+	for _, f := range fwds[1:] {
+		if !sameArg(s, fwd, f, 0) {
+			promptDiffers = true
+		}
+		if !sameArg(s, fwd, f, 1) {
+			optsDiffers = true
+		}
+	}
+	w.PromptOpaque, w.OptsOpaque = promptDiffers, optsDiffers
+	if pl := paramList(e); pl != nil {
+		if pl.Rest != nil {
+			w.Opaque = true
+		}
+		for _, b := range pl.List {
+			if _, ok := b.Target.(*ast.Identifier); !ok {
+				// A destructured parameter binds names this resolver cannot map
+				// back to an argument position. It used to bind NOTHING, so the
+				// whole body resolved against the globals.
+				w.Opaque = true
+			}
+		}
 	}
 	for _, a := range fwd.ArgumentList {
 		if _, ok := a.(*ast.SpreadElement); ok {
@@ -224,11 +336,27 @@ func (s *Script) wrapperOf(name string, e ast.Expression) (Wrapper, bool) {
 		if p == "" || used[p] {
 			continue
 		}
-		if l := strings.ToLower(p); l == "label" || l == "name" || l == "id" || w.LabelIdx == -1 {
+		// Named like a label, or not a label. The old rule claimed ANY
+		// unforwarded parameter, so `spawn(prompt, opts, model)` labelled every
+		// agent with its model and the two that shared a file deduplicated into
+		// one.
+		if l := strings.ToLower(p); l == "label" || l == "name" || l == "id" {
 			w.LabelIdx = i
 		}
 	}
 	return w, true
+}
+
+// sameArg reports two forwarding calls that pass the same expression at
+// position i.
+func sameArg(s *Script, a, b *ast.CallExpression, i int) bool {
+	at := func(c *ast.CallExpression) string {
+		if i >= len(c.ArgumentList) {
+			return ""
+		}
+		return s.Text(c.ArgumentList[i].Idx0(), c.ArgumentList[i].Idx1())
+	}
+	return at(a) == at(b)
 }
 
 func paramList(e ast.Expression) *ast.ParameterList {
@@ -252,6 +380,20 @@ func paramNames(pl *ast.ParameterList) []string {
 			continue
 		}
 		out = append(out, "")
+	}
+	return out
+}
+
+// paramDefaults returns each parameter's default initialiser, so a call that
+// omits an argument resolves to the default rather than reporting the option
+// ABSENT — which drew "no options object" on correct code.
+func paramDefaults(pl *ast.ParameterList) []ast.Expression {
+	var out []ast.Expression
+	if pl == nil {
+		return out
+	}
+	for _, b := range pl.List {
+		out = append(out, b.Initializer)
 	}
 	return out
 }
@@ -307,7 +449,8 @@ func (s *Script) AgentCalls() []AgentCall {
 }
 
 func (s *Script) callOf(c *ast.CallExpression, name string, w Wrapper, isWrap bool) AgentCall {
-	a := AgentCall{Line: s.Line(c.Idx0()), Node: c, Opts: map[string]ast.Expression{}, OptsComplete: true}
+	a := AgentCall{Line: s.Line(c.Idx0()), Node: c, Opts: map[string]ast.Expression{},
+		OptsComplete: true, optText: map[string]string{}}
 	arg := func(i int) ast.Expression {
 		if i >= 0 && i < len(c.ArgumentList) {
 			return c.ArgumentList[i]
@@ -317,7 +460,11 @@ func (s *Script) callOf(c *ast.CallExpression, name string, w Wrapper, isWrap bo
 	read := func(promptExpr, optsExpr ast.Expression, labelIdx int) {
 		if optsExpr != nil {
 			a.OptsFound = true
-			a.Opts, a.OptsComplete = s.ObjectOf(optsExpr)
+			var text map[string]string
+			a.Opts, text, a.OptsComplete = s.ObjectText(optsExpr)
+			for k, v := range text {
+				a.optText[k] = v
+			}
 		}
 		if promptExpr != nil {
 			a.PromptSet = true
@@ -327,17 +474,29 @@ func (s *Script) callOf(c *ast.CallExpression, name string, w Wrapper, isWrap bo
 			a.PromptSet = true
 			a.Prompt, a.PromptOK = s.StaticString(e)
 		}
-		if e := arg(labelIdx); e != nil {
+		// An explicit `label:` is the script's own word and wins over a guess
+		// at which positional argument might be one.
+		if e, ok := a.Opts["label"]; ok {
+			a.Labelled = true
 			if txt, ok := s.StaticString(e); ok {
-				a.Label, a.Labelled = txt, true
+				a.Label = txt
 			}
 		}
 		if !a.Labelled {
-			if e, ok := a.Opts["label"]; ok {
-				a.Labelled = true
+			if e := arg(labelIdx); e != nil {
 				if txt, ok := s.StaticString(e); ok {
-					a.Label = txt
+					a.Label, a.Labelled = txt, true
 				}
+			}
+		}
+		// Any value the object pass could not resolve is tried once more here,
+		// where the wrapper's own binding is still in effect.
+		for k, e := range a.Opts {
+			if _, done := a.optText[k]; done {
+				continue
+			}
+			if txt, ok := s.StaticString(e); ok {
+				a.optText[k] = txt
 			}
 		}
 	}
@@ -352,15 +511,33 @@ func (s *Script) callOf(c *ast.CallExpression, name string, w Wrapper, isWrap bo
 			a.OptsFound, a.OptsComplete = true, false
 			a.PromptSet, a.PromptOK = true, false
 		} else {
+			if w.PromptOpaque {
+				a.PromptSet, a.PromptOK = true, false
+			}
+			if w.OptsOpaque {
+				a.OptsFound, a.OptsComplete = true, false
+			}
+			for _, e := range c.ArgumentList {
+				if _, ok := e.(*ast.SpreadElement); ok {
+					// `spawn(...task)` fills no position this resolver can map.
+					a.OptsFound, a.OptsComplete = true, false
+					a.PromptSet, a.PromptOK = true, false
+					a.Label = labelOr(a.Label, a.Line)
+					return a
+				}
+			}
 			sub := map[string]ast.Expression{}
 			unbound := map[string]bool{}
 			for i, p := range w.Params {
 				if p == "" {
 					continue
 				}
-				if i < len(c.ArgumentList) {
+				switch {
+				case i < len(c.ArgumentList):
 					sub[p] = c.ArgumentList[i]
-				} else {
+				case i < len(w.Defaults) && w.Defaults[i] != nil:
+					sub[p] = w.Defaults[i]
+				default:
 					unbound[p] = true
 				}
 			}
@@ -368,24 +545,58 @@ func (s *Script) callOf(c *ast.CallExpression, name string, w Wrapper, isWrap bo
 			// time — genuinely ABSENT, not merely unreadable. Forwarding it as
 			// unresolvable would downgrade "this call has no options at all"
 			// into a note.
-			absent := func(e ast.Expression) bool {
-				id, ok := e.(*ast.Identifier)
-				return ok && unbound[string(id.Name)]
+			// Absent is followed THROUGH the binding: the wrapper forwards its
+			// parameter, and the parameter is what the call bound to `null`.
+			var absent func(ast.Expression, int) bool
+			absent = func(e ast.Expression, depth int) bool {
+				if depth > 4 {
+					return false
+				}
+				switch v := e.(type) {
+				case *ast.Identifier:
+					name := string(v.Name)
+					if unbound[name] || name == "undefined" {
+						return true
+					}
+					if b, ok := sub[name]; ok {
+						return absent(b, depth+1)
+					}
+				case *ast.NullLiteral:
+					return true
+				}
+				return false
 			}
 			pe, oe := w.PromptExpr, w.OptsExpr
-			if pe != nil && absent(pe) {
+			if pe != nil && absent(pe, 0) {
 				pe = nil
 			}
-			if oe != nil && absent(oe) {
+			if oe != nil && absent(oe, 0) {
+				oe = nil
+			}
+			if w.PromptOpaque {
+				pe = nil
+			}
+			if w.OptsOpaque {
 				oe = nil
 			}
 			s.withScope(sub, w.Params, func() { read(pe, oe, w.LabelIdx) })
+			if w.PromptOpaque {
+				a.PromptSet, a.PromptOK = true, false
+			}
+			if w.OptsOpaque {
+				a.OptsFound, a.OptsComplete = true, false
+			}
 		}
 	}
-	if a.Label == "" {
-		a.Label = "agent@" + itoa(a.Line)
-	}
+	a.Label = labelOr(a.Label, a.Line)
 	return a
+}
+
+func labelOr(label string, line int) string {
+	if label != "" {
+		return label
+	}
+	return "agent@" + itoa(line)
 }
 
 func itoa(n int) string {

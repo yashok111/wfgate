@@ -243,9 +243,17 @@ func checkInventory(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 	for _, name := range append([]string{"agent"}, names...) {
 		textual += len(regexp.MustCompile(`\b`+regexp.QuoteMeta(name)+`\s*\(`).FindAllString(s.Src, -1))
 	}
-	if textual-len(ws) > len(calls) {
+	forwards := 0
+	for _, w := range ws {
+		if w.Forwards > 0 {
+			forwards += w.Forwards
+		} else {
+			forwards++ // an alias or a wrapper-on-wrapper forwards once
+		}
+	}
+	if textual-forwards > len(calls) {
 		r.add(ERROR, 1, "inventory implausible: %d call site(s) found, but the source mentions %d call(s) to agent() or a wrapper — every check below is passing over a smaller set than the script has",
-			len(calls), textual-len(ws))
+			len(calls), textual-forwards)
 	}
 	// The guide requires the wrapper to be called `spawn`. This is now a rule
 	// the checker REPORTS rather than the mechanism it depends on.
@@ -315,8 +323,11 @@ func checkOptions(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 				r.add(WARN, c.Line, "agent %s: no `%s:` in its options", c.Label, f)
 			}
 		}
-		if e, ok := c.Opt("effort"); ok && c.OptsComplete {
-			txt, known := s.StaticString(e)
+		if _, ok := c.Opt("effort"); ok && c.OptsComplete {
+			// OptStr, not a second resolution: re-resolving the expression here
+			// happens with the wrapper's parameter binding popped, so a factory
+			// parameter answered from a same-named global.
+			txt, known := c.OptStr("effort")
 			switch {
 			case !known:
 				// Named, not shrugged at: a static report that stays silent here

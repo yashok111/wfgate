@@ -23,10 +23,13 @@ import (
 	"os"
 	"strings"
 
+	"strconv"
+
 	"github.com/dop251/goja/ast"
 	"github.com/dop251/goja/file"
 	"github.com/dop251/goja/parser"
 	"github.com/dop251/goja/token"
+	"github.com/dop251/goja/unistring"
 )
 
 // wrapPrefix makes a workflow script parseable as a function body. A script
@@ -56,6 +59,23 @@ type Script struct {
 	// deduplicated away.
 	subst       map[string]ast.Expression
 	scopeParams map[string]bool
+
+	// shadowed names every binding in the program that is NOT a top-level
+	// `const`: a parameter at any nesting, a destructured or defaulted one, a
+	// loop variable, a block-scoped or mutable declaration, a catch binding.
+	//
+	// A name in this set is never resolved from the top-level consts, even
+	// where one of that name exists. The resolver models only two scopes — the
+	// top level and the wrapper or factory it is currently inlining — so any
+	// OTHER binder is a scope it cannot see, and answering from the global with
+	// a binder in between is answering wrongly. Measured, three separate ways:
+	// a `for (const target of …)` loop resolved to the top-level `target`; a
+	// wrapper parameter named like a const resolved to the const, so two agents
+	// came back with one label and their file-ownership collision was
+	// deduplicated away; and a destructured parameter bound nothing at all, so a
+	// whole wrapper body resolved against the globals and a script with a real
+	// dual ownership and an invalid effort reported zero findings.
+	shadowed map[string]bool
 }
 
 // withScope resolves fn with a parameter binding in effect.
@@ -107,6 +127,7 @@ func LoadSource(src, path string) (*Script, error) {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
 	s.Prog = prog
+	s.collectShadowed()
 	s.collectConsts()
 	return s, nil
 }
@@ -174,6 +195,80 @@ func (s *Script) NameOffset(c *Const) int {
 // Consts returns the top-level const bindings, by name.
 func (s *Script) Consts() map[string]*Const { return s.consts }
 
+func (s *Script) collectShadowed() {
+	s.shadowed = map[string]bool{}
+	top := map[ast.Node]bool{}
+	for _, st := range s.topLevel() {
+		top[st] = true
+	}
+	names := func(t ast.BindingTarget) []string {
+		var out []string
+		walk(t, func(n ast.Node) {
+			if id, ok := n.(*ast.Identifier); ok {
+				out = append(out, string(id.Name))
+			}
+		})
+		if id, ok := t.(*ast.Identifier); ok {
+			out = append(out, string(id.Name))
+		}
+		return out
+	}
+	mark := func(ns []string) {
+		for _, n := range ns {
+			if n != "" {
+				s.shadowed[n] = true
+			}
+		}
+	}
+	s.Walk(func(n ast.Node) {
+		switch v := n.(type) {
+		case *ast.ParameterList:
+			for _, b := range v.List {
+				mark(names(b.Target))
+			}
+			if v.Rest != nil {
+				walk(v.Rest, func(x ast.Node) {
+					if id, ok := x.(*ast.Identifier); ok {
+						s.shadowed[string(id.Name)] = true
+					}
+				})
+			}
+		case *ast.LexicalDeclaration:
+			for _, b := range v.List {
+				if v.Token != token.CONST || !top[ast.Statement(v)] {
+					mark(names(b.Target))
+				}
+			}
+		case *ast.VariableDeclaration:
+			for _, b := range v.List {
+				mark(names(b.Target))
+			}
+		case *ast.FunctionDeclaration:
+			if v.Function != nil {
+				s.shadowed[string(v.Function.Name.Name)] = true
+			}
+		case *ast.CatchStatement:
+			if v.Parameter != nil {
+				mark(names(v.Parameter))
+			}
+		case *ast.ForOfStatement:
+			if d, ok := v.Into.(*ast.ForIntoVar); ok && d.Binding != nil {
+				mark(names(d.Binding.Target))
+			}
+			if d, ok := v.Into.(*ast.ForDeclaration); ok {
+				mark(names(d.Target))
+			}
+		case *ast.ForInStatement:
+			if d, ok := v.Into.(*ast.ForIntoVar); ok && d.Binding != nil {
+				mark(names(d.Binding.Target))
+			}
+			if d, ok := v.Into.(*ast.ForDeclaration); ok {
+				mark(names(d.Target))
+			}
+		}
+	})
+}
+
 func (s *Script) collectConsts() {
 	s.consts = map[string]*Const{}
 	// The wrapper adds one statement: the whole script is inside it.
@@ -185,6 +280,13 @@ func (s *Script) collectConsts() {
 		for _, b := range lex.List {
 			id, ok := b.Target.(*ast.Identifier)
 			if !ok || b.Initializer == nil {
+				continue
+			}
+			if lex.Token != token.CONST {
+				// A rebindable top-level name answers with its INITIALISER,
+				// which is the value at the declaration and not necessarily at
+				// the call: `let mk = f; mk = g` resolved to f's body.
+				s.shadowed[string(id.Name)] = true
 				continue
 			}
 			c := &Const{Name: string(id.Name), Line: s.Line(id.Idx), Init: b.Initializer, nameIdx: id.Idx}
@@ -201,13 +303,11 @@ func (s *Script) collectConsts() {
 			// answering with the initialiser is a WRONG answer rather than an
 			// incomplete one — `let E = 'low'; E = 'turbo'` read as 'low' and
 			// the enum check passed over a value the runtime rejects.
-			if lex.Token == token.CONST {
-				if txt, ok := staticString(b.Initializer, s.consts); ok {
-					c.Text, c.IsStr = txt, true
-				}
-				if o, ok := b.Initializer.(*ast.ObjectLiteral); ok {
-					c.Obj = o
-				}
+			if txt, ok := s.staticStr(b.Initializer, 0); ok {
+				c.Text, c.IsStr = txt, true
+			}
+			if o, ok := b.Initializer.(*ast.ObjectLiteral); ok {
+				c.Obj = o
 			}
 			s.consts[c.Name] = c
 		}
@@ -243,10 +343,6 @@ func (s *Script) topLevel() []ast.Statement {
 // It returns false when any part is unknown — and the CALLER decides what that
 // means. The text scanner had no such distinction: an unresolvable prompt was
 // simply the empty string, so every check over it passed silently.
-func staticString(e ast.Expression, consts map[string]*Const) (string, bool) {
-	return (&Script{consts: consts}).staticStr(e, 0)
-}
-
 func (s *Script) staticStr(e ast.Expression, depth int) (string, bool) {
 	if depth > 12 {
 		return "", false
@@ -295,7 +391,7 @@ func (s *Script) staticStr(e ast.Expression, depth int) (string, bool) {
 		}
 		// A parameter with no bound argument is UNKNOWN, never the global of
 		// the same name.
-		if s.scopeParams[name] {
+		if s.scopeParams[name] || s.shadowed[name] {
 			return "", false
 		}
 		if c, ok := s.consts[name]; ok && c.IsStr {
@@ -317,13 +413,33 @@ func (s *Script) StaticString(e ast.Expression) (string, bool) { return s.static
 // reporting the properties it could not see as missing — which is what the text
 // scanner did to every `{...BASE, model:'sonnet'}` call.
 func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, complete bool) {
-	props, complete = map[string]ast.Expression{}, true
+	props, _, complete = s.objectOf(e)
+	return props, complete
+}
+
+// ObjectText resolves an object's properties AND each value's static text, in
+// the scope where that value is written. A caller that keeps the expressions
+// and resolves them later does it with the binding popped, which is how a
+// factory parameter came back as a same-named global.
+func (s *Script) ObjectText(e ast.Expression) (props map[string]ast.Expression, text map[string]string, complete bool) {
+	return s.objectOf(e)
+}
+
+func (s *Script) objectOf(e ast.Expression) (props map[string]ast.Expression, text map[string]string, complete bool) {
+	props, text, complete = map[string]ast.Expression{}, map[string]string{}, true
+	// Depth is charged per INDIRECTION — a const or a factory hop — not per
+	// node, and a visited set bounds a cycle. Charging every step made the
+	// composition the guide prescribes (a wrapper spreading its options over a
+	// factory that spreads a shared BASE) exceed the budget, so the
+	// required-option check silently did not cover that call.
+	seen := map[ast.Node]bool{}
 	var merge func(ast.Expression, int)
 	merge = func(e ast.Expression, depth int) {
-		if depth > 4 {
+		if depth > 12 || seen[e] {
 			complete = false
 			return
 		}
+		seen[e] = true
 		switch v := e.(type) {
 		case *ast.ObjectLiteral:
 			for _, p := range v.Value {
@@ -335,13 +451,20 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 					}
 					if k, ok := propKey(pv.Key); ok {
 						props[k] = s.resolveSubst(pv.Value)
+						if txt, ok := s.staticStr(pv.Value, 0); ok {
+							text[k] = txt
+						}
 					} else {
 						complete = false
 					}
 				case *ast.PropertyShort:
-					props[string(pv.Name.Name)] = s.resolveSubst(&pv.Name)
+					k := string(pv.Name.Name)
+					props[k] = s.resolveSubst(&pv.Name)
+					if txt, ok := s.staticStr(&pv.Name, 0); ok {
+						text[k] = txt
+					}
 				case *ast.SpreadElement:
-					merge(pv.Expression, depth+1)
+					merge(pv.Expression, depth)
 				default:
 					complete = false
 				}
@@ -352,7 +475,7 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 				merge(sub, depth+1)
 				return
 			}
-			if s.scopeParams[name] {
+			if s.scopeParams[name] || s.shadowed[name] {
 				complete = false
 				return
 			}
@@ -385,7 +508,7 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 		}
 	}
 	merge(e, 0)
-	return props, complete
+	return props, text, complete
 }
 
 // factoryBody returns the object literal a const arrow function returns, plus
@@ -393,6 +516,9 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 func (s *Script) factoryBody(c *ast.CallExpression) (*ast.ObjectLiteral, map[string]ast.Expression, []string, bool) {
 	id, ok := c.Callee.(*ast.Identifier)
 	if !ok {
+		return nil, nil, nil, false
+	}
+	if s.shadowed[string(id.Name)] {
 		return nil, nil, nil, false
 	}
 	cst, ok := s.consts[string(id.Name)]
@@ -425,6 +551,13 @@ func (s *Script) factoryBody(c *ast.CallExpression) (*ast.ObjectLiteral, map[str
 	sub := map[string]ast.Expression{}
 	for i, name := range params {
 		if name == "" || i >= len(c.ArgumentList) {
+			continue
+		}
+		// Resolved HERE, where the argument is written. `outer(who + '-1')`
+		// is not a bare identifier, so passing the expression on left the
+		// callee's parameter to fall through to a global of the same name.
+		if txt, ok := s.staticStr(c.ArgumentList[i], 0); ok {
+			sub[name] = &ast.StringLiteral{Value: unistring.String(txt), Literal: strconv.Quote(txt)}
 			continue
 		}
 		sub[name] = s.resolveSubst(c.ArgumentList[i])
