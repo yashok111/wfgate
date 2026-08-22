@@ -45,13 +45,13 @@ wf delta                                   # the delta round's brief: findings +
 | `wf add <file>...` | bring an authored artifact under the workspace and commit it; adopts an untracked draft already in place |
 | `wf status` | manifest, current round, who last touched each artifact, dirt, tool version |
 | `wf apply -f <edits> [-m msg] [--dry-run]` | all-or-nothing batch of edits (JSON or text blocks), then a commit of only the touched files |
-| `wf round new [-title T] [-kind full\|delta]` | open the next round, scaffold `rounds/rN/findings.md` with its scope |
+| `wf round new [-title T] [-kind full\|delta\|tool]` | open the next round, scaffold `rounds/rN/findings.md` with its scope |
 | `wf round record <file> [-round N]` | fill a round's findings.md, validating closures before writing |
 | `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules) |
-| `wf stats` | per-round findings, closures, apply batches and the opt-in `[fix-induced]` share, from the ledger and git |
+| `wf stats` | per-round findings, closures, apply batches, the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
 | `wf version` | the binary's stamped build version |
 
 Exit codes: `0` clean, `1` findings or failure, `2` usage.
@@ -122,6 +122,13 @@ Either condition alone is not enough: identical copies edited apart are a rule
 correctly restated, and diverged copies from one commit are a deliberate
 rewording the author saw side by side. `-since gate-rN` narrows the output to
 groups touched after that tag and prints how many it hid.
+
+Sentences are unwrapped from hard-wrapped paragraphs before splitting — two
+derived artifacts wrapping the same sentence at different columns are compared
+as sentences, not as whatever fit on a line. Copies that agree except for a
+number or number-word ("four checks" vs "FIVE checks") are flagged `NUMERIC`
+and fail the check: no similarity threshold separates that class from
+agreement, masking the number does.
 
 ### `wf check drift`
 

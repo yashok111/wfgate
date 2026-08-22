@@ -1,8 +1,6 @@
 package check
 
 import (
-	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -99,43 +97,111 @@ func trimMarkers(s string) string {
 // CollectStatements splits artifacts into comparable sentences. minWords drops
 // fragments: below roughly eight words, two unrelated sentences collide often
 // enough that the report stops being worth reading.
+//
+// Lines are UNWRAPPED into paragraphs before sentence-splitting. The splitter
+// used to be line-bounded, and two derived artifacts hard-wrapping the same
+// sentences at different columns turned every shared thought into differing
+// fragment pairs — measured on P2e: 92 divergent groups, ZERO real, 36 of them
+// provable prefix-pairs of a wrap split. A sentence is compared as a sentence,
+// not as whatever happened to fit on a line.
 func CollectStatements(root string, files []string, minWords int) ([]Statement, error) {
 	var out []Statement
 	for _, rel := range files {
-		f, err := os.Open(filepath.Join(root, rel))
+		b, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
 			return nil, err
 		}
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-		for n := 1; sc.Scan(); n++ {
-			for _, part := range splitSentences(trimMarkers(sc.Text())) {
-				norm, toks := normalise(part)
+		lines := strings.Split(string(b), "\n")
+		type piece struct {
+			text string
+			line int
+		}
+		var para []piece
+		flush := func() {
+			if len(para) == 0 {
+				return
+			}
+			texts := make([]string, len(para))
+			starts := make([]int, len(para))
+			off := 0
+			for i, p := range para {
+				texts[i] = p.text
+				starts[i] = off
+				off += len(p.text) + 1 // the joining space
+			}
+			joined := strings.Join(texts, " ")
+			for _, s := range splitSentencesAt(joined) {
+				norm, toks := normalise(s.text)
 				if len(strings.Fields(norm)) < minWords {
 					continue
 				}
-				out = append(out, Statement{File: rel, Line: n, Text: strings.TrimSpace(part), Norm: norm, Toks: toks})
+				// The sentence is attributed to the line it STARTS on; blame
+				// reads that line. A sentence spanning a wrap whose edit landed
+				// on its second line attributes to the first — the price of
+				// comparing sentences instead of fragments, and the smaller
+				// error of the two.
+				line := para[0].line
+				for i := len(para) - 1; i >= 0; i-- {
+					if starts[i] <= s.off {
+						line = para[i].line
+						break
+					}
+				}
+				out = append(out, Statement{File: rel, Line: line, Text: strings.TrimSpace(s.text), Norm: norm, Toks: toks})
 			}
+			para = para[:0]
 		}
-		cerr := sc.Err()
-		_ = f.Close() // read-only; the scan error above is the one that matters
-		if cerr != nil {
-			return nil, fmt.Errorf("%s: %w", rel, cerr)
+		for n := 1; n <= len(lines); n++ {
+			raw := lines[n-1]
+			t := trimMarkers(raw)
+			if t == "" {
+				flush()
+				continue
+			}
+			if startsBlock(raw) {
+				flush()
+			}
+			para = append(para, piece{t, n})
 		}
+		flush()
 	}
 	return out, nil
 }
 
-func splitSentences(line string) []string {
-	var out []string
+// startsBlock reports a line that opens a new statement even without a blank
+// line above it: list items, table rows, headings and fences are units of
+// their own, and joining two bullets would compare invented sentences nobody
+// wrote. A comment continuation (`//`, `>`) is deliberately NOT here — wrapped
+// prose inside comments and quotes is exactly what unwrapping exists for.
+func startsBlock(raw string) bool {
+	t := strings.TrimSpace(raw)
+	for _, p := range []string{"- ", "* ", "+ ", "|", "#", "```", "~~~"} {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	i := 0
+	for i < len(t) && t[i] >= '0' && t[i] <= '9' {
+		i++
+	}
+	return i > 0 && i+1 < len(t) && (t[i] == '.' || t[i] == ')') && t[i+1] == ' '
+}
+
+type sentenceAt struct {
+	text string
+	off  int
+}
+
+func splitSentencesAt(s string) []sentenceAt {
+	var out []sentenceAt
 	start := 0
-	for i := 0; i < len(line)-1; i++ {
-		if (line[i] == '.' || line[i] == ';') && line[i+1] == ' ' {
-			out = append(out, line[start:i])
+	for i := 0; i < len(s)-1; i++ {
+		if (s[i] == '.' || s[i] == ';') && s[i+1] == ' ' {
+			out = append(out, sentenceAt{s[start:i], start})
 			start = i + 1
 		}
 	}
-	out = append(out, line[start:])
+	out = append(out, sentenceAt{s[start:], start})
 	return out
 }
 
@@ -268,6 +334,86 @@ func mkGroup(sim float64, g []Statement, site func(Statement) Site) DupGroup {
 		}
 	}
 	return d
+}
+
+// Number words up to twelve: the counts artifacts state in prose. Digits of
+// any length are numeric on their own.
+var numWords = map[string]bool{
+	"zero": true, "one": true, "two": true, "three": true, "four": true,
+	"five": true, "six": true, "seven": true, "eight": true, "nine": true,
+	"ten": true, "eleven": true, "twelve": true,
+}
+
+func isNumericTok(t string) bool {
+	if numWords[t] {
+		return true
+	}
+	for i := 0; i < len(t); i++ {
+		if t[i] < '0' || t[i] > '9' {
+			return false
+		}
+	}
+	return len(t) > 0
+}
+
+// NumericConflict is one masked sentence whose copies disagree on a number.
+type NumericConflict struct {
+	Sites []Statement
+}
+
+// FindNumericDrift groups statements whose normalised forms are IDENTICAL once
+// numeric tokens are masked, but whose numbers differ, across files. Four of
+// the six real contradictions of the P2e gate differed ONLY by a count ("ONE
+// comment" vs "two comments"), and no similarity threshold separates that from
+// agreement — masking the number does. The false-positive population is
+// bounded by how often two artifacts legitimately state different counts of
+// the same thing; in the measured corpus, never.
+func FindNumericDrift(sts []Statement) []NumericConflict {
+	type entry struct {
+		nums string
+		st   Statement
+	}
+	byMask := map[string][]entry{}
+	for _, s := range sts {
+		toks := strings.Fields(s.Norm)
+		masked := make([]string, len(toks))
+		var nums []string
+		for i, t := range toks {
+			if isNumericTok(t) {
+				masked[i] = "#"
+				nums = append(nums, t)
+			} else {
+				masked[i] = t
+			}
+		}
+		if len(nums) == 0 {
+			continue
+		}
+		key := strings.Join(masked, " ")
+		byMask[key] = append(byMask[key], entry{strings.Join(nums, " "), s})
+	}
+	var keys []string
+	for k, g := range byMask {
+		distinct := map[string]bool{}
+		files := map[string]bool{}
+		for _, e := range g {
+			distinct[e.nums] = true
+			files[e.st.File] = true
+		}
+		if len(distinct) > 1 && len(files) > 1 {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	var out []NumericConflict
+	for _, k := range keys {
+		nc := NumericConflict{}
+		for _, e := range byMask[k] {
+			nc.Sites = append(nc.Sites, e.st)
+		}
+		out = append(out, nc)
+	}
+	return out
 }
 
 func jaccard(a, b []string) float64 {

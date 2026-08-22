@@ -285,6 +285,91 @@ func TestFindDuplicates_divergentCopy(t *testing.T) {
 	}
 }
 
+// The P2e class: two derived artifacts hard-wrap the same sentence at
+// different columns. Line-bounded splitting turned that into divergent
+// fragment pairs (92 flagged, zero real); unwrapping makes the copies compare
+// as the identical sentences they are — sim 1.0, never divergent.
+func TestCollectStatements_unwrapsHardWrappedParagraphs(t *testing.T) {
+	root := mkrepo(t, map[string]string{
+		"artifacts/a.md": "The override store keeps exactly one variant per\noperation and the smoke check reads it back after every write.\n",
+		"artifacts/b.md": "The override store keeps exactly one\nvariant per operation and the smoke check reads it back after\nevery write.\n",
+	})
+	sts, err := CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 2 {
+		t.Fatalf("want one unwrapped statement per file, got %d: %+v", len(sts), sts)
+	}
+	// Different commits would once have made these wrap-fragments DIVERGENT;
+	// unwrapped they are identical, and identical is never flagged.
+	commit(t, root, "rewrap b only", map[string]string{
+		"artifacts/b.md": "The override store keeps exactly one variant per operation\nand the smoke check reads it back after every write.\n",
+	})
+	sts, err = CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g) != 1 || g[0].Similarity != 1.0 || g[0].Divergent {
+		t.Fatalf("rewrapped copies must group as identical and unflagged: %+v", g)
+	}
+}
+
+// Bullets, table rows and headings stay their own statements — joining two
+// bullets would compare invented sentences nobody wrote.
+func TestCollectStatements_blocksDoNotJoin(t *testing.T) {
+	root := t.TempDir()
+	body := "- the first bullet rule states one thing about the store here\n" +
+		"- the second bullet rule states a different thing about the reader\n"
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sts, err := CollectStatements(root, []string{"a.md"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 2 {
+		t.Fatalf("want 2 bullet statements, got %d: %+v", len(sts), sts)
+	}
+	if sts[0].Line != 1 || sts[1].Line != 2 {
+		t.Fatalf("bullet lines misattributed: %+v", sts)
+	}
+}
+
+// Four of P2e's six real contradictions differed only by a number or a
+// number-word; no similarity threshold separates that from agreement, masking
+// the number does.
+func TestFindNumericDrift(t *testing.T) {
+	root := t.TempDir()
+	// The mask is exact after number-removal: a plural drifting with the count
+	// ("line" vs "lines") breaks it, which is the documented boundary of this
+	// check — it catches the count-only subset, mechanically.
+	files := map[string]string{
+		"a.md": "The smoke section carries four checks over the store today.\nExactly 3 recipe kinds ship in this slice of the generator.\n",
+		"b.md": "The smoke section carries FIVE checks over the store today.\nExactly 3 recipe kinds ship in this slice of the generator.\n",
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sts, err := CollectStatements(root, []string{"a.md", "b.md"}, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nds := FindNumericDrift(sts)
+	if len(nds) != 1 {
+		t.Fatalf("want exactly the ONE-vs-two conflict, got %d: %+v", len(nds), nds)
+	}
+	if len(nds[0].Sites) != 2 {
+		t.Fatalf("conflict must list both sites: %+v", nds[0])
+	}
+}
+
 func TestFindDuplicates_ignoresSameFileAndShortLines(t *testing.T) {
 	root := mkrepo(t, map[string]string{
 		"artifacts/a.md": "short line here\nsame sentence repeated twice in one file for emphasis today\nsame sentence repeated twice in one file for emphasis today\n",

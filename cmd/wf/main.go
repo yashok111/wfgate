@@ -24,7 +24,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -389,7 +391,7 @@ func cmdRound(args []string) error {
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
-	kind := fs.String("kind", "full", "full: re-reads the whole set; delta: reviews the diff only")
+	kind := fs.String("kind", "full", "full: re-reads the whole set; delta: reviews the diff only; tool: no reviewer dispatched")
 	if _, err := parseMixed(fs, args[1:]); err != nil {
 		return err
 	}
@@ -397,12 +399,17 @@ func cmdRound(args []string) error {
 	// at. On the first live gate seven of ten rounds were delta rounds, the
 	// scope lived only in prose titles, and twice a round reviewed less than a
 	// reader of its findings would assume — with no record of it anywhere.
+	// `tool` exists because P2e recorded two reviewer-less rounds (wfcheck/
+	// wfdry findings, and a launch death) as ordinary rounds — and the stop
+	// rule then read a blocker descent of 15→13→4→1→1 where the REVIEWER
+	// descent, the one the rule is about, was 15→13→4→1.
 	scope := map[string]string{
 		"full":  "Kind: full — this round re-reads the whole artifact set.",
 		"delta": "Kind: delta — this round reviews the delta only; state below what was NOT re-read.",
+		"tool":  "Kind: tool — findings from static/dynamic tooling or the launch itself; no reviewer was dispatched.",
 	}[*kind]
 	if scope == "" {
-		return fmt.Errorf("-kind %q: full or delta", *kind)
+		return fmt.Errorf("-kind %q: full, delta or tool", *kind)
 	}
 	w, err := open()
 	if err != nil {
@@ -1234,9 +1241,18 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 			divergent++
 		}
 	}
-	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent\n", len(sts), len(groups), divergent)
+	nums := check.FindNumericDrift(sts)
+	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent, %d numeric\n", len(sts), len(groups), divergent, len(nums))
 	if hidden > 0 {
 		fmt.Printf("  note: %d group(s) predate %s, not shown\n", hidden, since)
+	}
+	// Numeric conflicts print regardless of -since: a count contradiction is a
+	// contradiction NOW, whatever its history.
+	for _, nc := range nums {
+		fmt.Printf("  NUMERIC (copies agree except the count)\n")
+		for _, s := range nc.Sites {
+			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, trunc(s.Text, 110))
+		}
 	}
 	for _, g := range groups {
 		flag := ""
@@ -1248,10 +1264,11 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 			fmt.Printf("    %s:%d  [%s] %s\n", s.File, s.Line, s.Commit, trunc(s.Text, 110))
 		}
 	}
-	// Only a divergent group fails the check. Two copies committed together are
-	// how a rule is SUPPOSED to look when it legitimately lives in two places;
-	// failing on those would make the check noise and it would get turned off.
-	return divergent > 0, nil
+	// Only a divergent or numeric group fails the check. Two copies committed
+	// together are how a rule is SUPPOSED to look when it legitimately lives in
+	// two places; failing on those would make the check noise and it would get
+	// turned off.
+	return divergent > 0 || len(nums) > 0, nil
 }
 
 // runRules compares every site of each `[RN]` rule marker. Zero markers is a
@@ -1292,7 +1309,9 @@ func cmdStats(args []string) error {
 		return fmt.Errorf("no rounds yet")
 	}
 	fmt.Printf("## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
+	kinds := roundKinds(w)
 	totalF, totalB, totalFI := 0, 0, 0
+	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
 	for n := 1; n <= w.M.Round; n++ {
 		findings, blockers, byCommit, byProse, open, fixInduced := 0, 0, 0, 0, 0, 0
 		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
@@ -1320,10 +1339,21 @@ func cmdStats(args []string) error {
 		totalF += findings
 		totalB += blockers
 		totalFI += fixInduced
+		if kinds[n] == "tool" {
+			toolRounds++
+			toolF += findings
+			toolB += blockers
+		} else {
+			revF += findings
+			revB += blockers
+		}
 		tag := ws.RoundTag(n)
 		state := tag
 		if !w.Git.TagExists(tag) {
 			state, tag = "open", "HEAD"
+		}
+		if k := kinds[n]; k != "" {
+			state += ", " + k
 		}
 		// Batches are counted by commit subject over the round's tag window.
 		// The window is chronology, not attribution: a batch closing round
@@ -1348,6 +1378,13 @@ func cmdStats(args []string) error {
 			n, state, findings, blockers, byCommit, byProse, open, batches, fi)
 	}
 	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
+	// A tooling round restarting the stop rule's clock is the P2e distortion:
+	// the rule reads REVIEWER evidence, and a round nobody reviewed is not it.
+	if toolRounds > 0 {
+		fmt.Printf("  reviewer rounds — %d finding(s), %d blocker(s); tool rounds — %d finding(s), %d blocker(s)\n",
+			revF, revB, toolF, toolB)
+		fmt.Printf("  note: the stop rule reads the REVIEWER descent — a tooling round's blocker does not restart it\n")
+	}
 	// The marker is opt-in, so its absence must read as "unmeasured", never as
 	// "no self-inflicted findings" — the two are different claims and only the
 	// author of a finding can make the second.
@@ -1357,6 +1394,29 @@ func cmdStats(args []string) error {
 		fmt.Printf("  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
 	}
 	return nil
+}
+
+// roundKinds derives each round's kind from its opening commit subject
+// ("round N: open (kind) — title"). Derived, not stored: the manifest is small
+// on purpose, and `wf round record` overwrites the scaffold that carries the
+// kind line — the commit subject is the copy nothing rewrites.
+var roundOpenRe = regexp.MustCompile(`^round (\d+): open \((full|delta|tool)\)`)
+
+func roundKinds(w *ws.Workspace) map[int]string {
+	out := map[int]string{}
+	subjects, err := w.Git.Run("log", "--format=%s")
+	if err != nil {
+		return out
+	}
+	for _, s := range strings.Split(subjects, "\n") {
+		if m := roundOpenRe.FindStringSubmatch(s); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			if _, seen := out[n]; !seen {
+				out[n] = m[2]
+			}
+		}
+	}
+	return out
 }
 
 // fprintf writes the delta brief to stdout or to the -save buffer; neither can

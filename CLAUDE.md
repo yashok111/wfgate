@@ -193,6 +193,35 @@ measured failure, not taste:
   self-inflicted findings" are different claims, and only the second belongs
   to the finding's author.
 
+**The fourth wave, from P2e — the first script gate** (`FEEDBACK-p2e.md`;
+17 rounds, 235 findings, 293 KB of artifacts):
+
+- *`dup` unwraps hard-wrapped paragraphs before sentence-splitting* — the
+  line-bounded splitter turned two derived artifacts wrapping the same
+  sentences at different columns into 92 divergent groups with ZERO real ones
+  (36 provable prefix-pairs). A sentence is compared as a sentence. The price:
+  a sentence is attributed to the line it starts on, so blame reads that line.
+- *`NUMERIC` conflicts in `dup`* — four of P2e's six real contradictions
+  differed only by a count ("ONE comment" vs "two comments"); masking numeric
+  tokens and demanding the masked forms match exactly catches that class with
+  a population bounded by how often two artifacts legitimately state different
+  counts of one thing (measured: never). The exact-mask boundary is
+  deliberate: a plural drifting with the count breaks it, and loosening the
+  mask would trade a zero-noise check for a noisy one.
+- *`-kind tool`* — P2e recorded two reviewer-less rounds (tooling findings, a
+  launch death) as ordinary rounds, and the stop rule read 15→13→4→1→1 where
+  the reviewer descent was 15→13→4→1. Stats derives each round's kind from its
+  opening commit subject (record overwrites the scaffold that carries the kind
+  line; the subject is the copy nothing rewrites) and counts tool rounds
+  apart.
+- *Dry-run before freeze* — a guide-order inversion, not code: a dry-run
+  defect found after freezing invalidates a freeze that correctly refuses to
+  re-freeze, costing a round no reviewer ever saw (P2e r12). The freeze pins
+  what reviewers read; it comes after the set executes clean.
+- *The parser names the one-header-many-blocks trap* — the first shape a live
+  operator reached for; the error now states that `count=` is scoped to one
+  replacement.
+
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and
 printed a usage error naming the very flag that was passed.

@@ -331,8 +331,8 @@ func TestPrescribedSequence(t *testing.T) {
 	out, err = runWF(t, wsDir, "stats")
 	noErr(t, err, "stats mid-run")
 	mustContain(t, out,
-		"round 1 [gate-r1] — 1 finding(s), 1 blocker(s); closed: 0 commit, 0 prose, 1 open",
-		"round 2 [open] — 0 finding(s), 0 blocker(s)",
+		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 0 commit, 0 prose, 1 open",
+		"round 2 [open, delta] — 0 finding(s), 0 blocker(s)",
 		"no [fix-induced] markers; the self-inflicted share was not measured")
 
 	// The prescribed flow freezes a round right after opening it, so the frozen
@@ -461,8 +461,27 @@ func TestPrescribedSequence(t *testing.T) {
 	noErr(t, err, "stats")
 	mustContain(t, out,
 		"## stats — workspace demo, 2 round(s)",
-		"round 1 [gate-r1] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
-		"round 2 [gate-r2] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es); fix-induced 1",
+		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
+		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es); fix-induced 1",
 		"total — 2 finding(s), 2 blocker(s)",
 		"fix-induced — 1 of 2 finding(s)")
+
+	// A tooling round is its own kind: its blocker must not read as reviewer
+	// evidence, or it restarts the stop rule's clock (the P2e distortion).
+	out, err = runWF(t, wsDir, "round", "new", "-title", "tooling sweep", "-kind", "tool")
+	noErr(t, err, "round new tool")
+	mustContain(t, out, "round 3 opened (tool)")
+	r3 := filepath.Join(tmp, "r3-findings.md")
+	write(t, r3, `| # | level | finding | closed by |
+|---|-------|---------|-----------|
+| 1 | BLOCKER | dry runner kept a harness-only binding alive | fixed upstream in wfdry |
+`)
+	_, err = runWF(t, wsDir, "round", "record", r3)
+	noErr(t, err, "record r3")
+	out, err = runWF(t, wsDir, "stats")
+	noErr(t, err, "stats with tool round")
+	mustContain(t, out,
+		"round 3 [open, tool] — 1 finding(s), 1 blocker(s)",
+		"reviewer rounds — 2 finding(s), 2 blocker(s); tool rounds — 1 finding(s), 1 blocker(s)",
+		"the stop rule reads the REVIEWER descent")
 }
