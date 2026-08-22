@@ -26,6 +26,7 @@ import (
 	"github.com/dop251/goja/ast"
 	"github.com/dop251/goja/file"
 	"github.com/dop251/goja/parser"
+	"github.com/dop251/goja/token"
 )
 
 // wrapPrefix makes a workflow script parseable as a function body. A script
@@ -43,16 +44,40 @@ type Script struct {
 	shift  int // bytes wrapPrefix added before the source
 	consts map[string]*Const
 
-	// subst binds a factory's parameters to the arguments of the call being
-	// resolved. It is set only while ObjectOf inlines such a call.
-	subst map[string]ast.Expression
+	// subst binds a factory's or a wrapper's parameters to the arguments of the
+	// call being resolved; scopeParams names every parameter of that binding,
+	// including the ones with no argument.
+	//
+	// The pair is what gives resolution a third answer. Without scopeParams an
+	// unbound parameter fell through to a global const of the same name and
+	// came back with a WRONG value — measured: `const label = 'writer'` beside
+	// `opts = (label) => ({label, ...})` made two different agents resolve to
+	// one label, and the dual-ownership ERROR they should have raised was
+	// deduplicated away.
+	subst       map[string]ast.Expression
+	scopeParams map[string]bool
+}
+
+// withScope resolves fn with a parameter binding in effect.
+func (s *Script) withScope(sub map[string]ast.Expression, params []string, fn func()) {
+	savedSub, savedParams := s.subst, s.scopeParams
+	ps := map[string]bool{}
+	for _, p := range params {
+		if p != "" {
+			ps[p] = true
+		}
+	}
+	s.subst, s.scopeParams = sub, ps
+	fn()
+	s.subst, s.scopeParams = savedSub, savedParams
 }
 
 // Const is a top-level `const NAME = ...` binding.
 type Const struct {
-	Name string
-	Line int
-	Init ast.Expression
+	Name    string
+	Line    int
+	Init    ast.Expression
+	nameIdx file.Idx
 
 	// Text is the statically known string value, when the initialiser is a
 	// string or a template literal with no interpolation.
@@ -67,11 +92,16 @@ func Load(path string) (*Script, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Script{Path: path, Src: string(b), shift: len(wrapPrefix)}
+	return LoadSource(string(b), path)
+}
+
+// LoadSource parses a script already in memory.
+func LoadSource(src, path string) (*Script, error) {
+	s := &Script{Path: path, Src: src, shift: len(wrapPrefix)}
 	// `export` is module syntax and goja parses scripts, not modules. It is
 	// blanked rather than removed so that every byte after it keeps its offset,
 	// which is what keeps reported line numbers honest.
-	body := blankExports(s.Src)
+	body := blankExports(src)
 	prog, err := parser.ParseFile(nil, path, wrapPrefix+body+"\n})", 0)
 	if err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
@@ -120,6 +150,27 @@ func (s *Script) Text(from, to file.Idx) string {
 	return s.Src[a:b]
 }
 
+// Offset maps a node to a byte offset in the ORIGINAL source, or -1.
+func (s *Script) Offset(n ast.Node) int {
+	if n == nil {
+		return -1
+	}
+	off := int(n.Idx0()) - 1 - s.shift
+	if off < 0 || off > len(s.Src) {
+		return -1
+	}
+	return off
+}
+
+// NameOffset is the byte offset of a const's declared NAME.
+func (s *Script) NameOffset(c *Const) int {
+	off := int(c.nameIdx) - 1 - s.shift
+	if off < 0 || off > len(s.Src) {
+		return -1
+	}
+	return off
+}
+
 // Consts returns the top-level const bindings, by name.
 func (s *Script) Consts() map[string]*Const { return s.consts }
 
@@ -136,12 +187,27 @@ func (s *Script) collectConsts() {
 			if !ok || b.Initializer == nil {
 				continue
 			}
-			c := &Const{Name: string(id.Name), Line: s.Line(id.Idx), Init: b.Initializer}
-			if txt, ok := staticString(b.Initializer, nil); ok {
-				c.Text, c.IsStr = txt, true
-			}
-			if o, ok := b.Initializer.(*ast.ObjectLiteral); ok {
-				c.Obj = o
+			c := &Const{Name: string(id.Name), Line: s.Line(id.Idx), Init: b.Initializer, nameIdx: id.Idx}
+			// Resolved against the consts collected SO FAR, in declaration
+			// order: a shared contract block is routinely built out of two
+			// smaller ones (`const SIG = \u0060${SIG_HEAD}\n${SIG_TAIL}\u0060`), and
+			// passing nil here made every such const non-static — which then
+			// ERRORed as "reaches NO prompt" on the very authoring shape the
+			// guide prescribes. Only earlier consts are in scope, which is also
+			// what JavaScript says.
+			//
+			// `let`/`var` are NOT resolved: a rebindable name can hold a
+			// different value at the call than at its declaration, and
+			// answering with the initialiser is a WRONG answer rather than an
+			// incomplete one — `let E = 'low'; E = 'turbo'` read as 'low' and
+			// the enum check passed over a value the runtime rejects.
+			if lex.Token == token.CONST {
+				if txt, ok := staticString(b.Initializer, s.consts); ok {
+					c.Text, c.IsStr = txt, true
+				}
+				if o, ok := b.Initializer.(*ast.ObjectLiteral); ok {
+					c.Obj = o
+				}
 			}
 			s.consts[c.Name] = c
 		}
@@ -178,6 +244,13 @@ func (s *Script) topLevel() []ast.Statement {
 // means. The text scanner had no such distinction: an unresolvable prompt was
 // simply the empty string, so every check over it passed silently.
 func staticString(e ast.Expression, consts map[string]*Const) (string, bool) {
+	return (&Script{consts: consts}).staticStr(e, 0)
+}
+
+func (s *Script) staticStr(e ast.Expression, depth int) (string, bool) {
+	if depth > 12 {
+		return "", false
+	}
 	switch v := e.(type) {
 	case *ast.StringLiteral:
 		return v.Value.String(), true
@@ -190,7 +263,7 @@ func staticString(e ast.Expression, consts map[string]*Const) (string, bool) {
 		for i, el := range v.Elements {
 			b.WriteString(el.Parsed.String())
 			if i < len(v.Expressions) {
-				if sub, sok := staticString(v.Expressions[i], consts); sok {
+				if sub, sok := s.staticStr(v.Expressions[i], depth+1); sok {
 					b.WriteString(sub)
 				} else {
 					ok = false
@@ -202,14 +275,30 @@ func staticString(e ast.Expression, consts map[string]*Const) (string, bool) {
 		if v.Operator.String() != "+" {
 			return "", false
 		}
-		l, lok := staticString(v.Left, consts)
-		r, rok := staticString(v.Right, consts)
+		l, lok := s.staticStr(v.Left, depth+1)
+		r, rok := s.staticStr(v.Right, depth+1)
 		return l + r, lok && rok
+	case *ast.DotExpression:
+		// `o.prompt` where `o` is the caller's options object, `SCHEMAS.review`
+		// where SCHEMAS is a const map of schemas. Both are ordinary authoring
+		// shapes, and without this they resolve to nothing — which for a schema
+		// silently disabled the prompt-vs-schema check and for a prompt made
+		// every prompt check run over the empty string.
+		if e, ok := s.memberOf(v); ok {
+			return s.staticStr(e, depth+1)
+		}
+		return "", false
 	case *ast.Identifier:
-		if consts == nil {
+		name := string(v.Name)
+		if sub, ok := s.subst[name]; ok {
+			return s.staticStr(sub, depth+1)
+		}
+		// A parameter with no bound argument is UNKNOWN, never the global of
+		// the same name.
+		if s.scopeParams[name] {
 			return "", false
 		}
-		if c, ok := consts[string(v.Name)]; ok && c.IsStr {
+		if c, ok := s.consts[name]; ok && c.IsStr {
 			return c.Text, true
 		}
 		return "", false
@@ -217,10 +306,9 @@ func staticString(e ast.Expression, consts map[string]*Const) (string, bool) {
 	return "", false
 }
 
-// StaticString is staticString with this script's consts in scope.
-func (s *Script) StaticString(e ast.Expression) (string, bool) {
-	return staticString(e, s.consts)
-}
+// StaticString resolves an expression to a string with this script's consts —
+// and any parameter binding currently in scope — applied.
+func (s *Script) StaticString(e ast.Expression) (string, bool) { return s.staticStr(e, 0) }
 
 // ObjectOf resolves an expression to an object literal's own properties,
 // following an identifier to its const and merging `...SPREAD` from another
@@ -259,8 +347,23 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 				}
 			}
 		case *ast.Identifier:
-			if c, ok := s.consts[string(v.Name)]; ok && c.Obj != nil {
+			name := string(v.Name)
+			if sub, ok := s.subst[name]; ok {
+				merge(sub, depth+1)
+				return
+			}
+			if s.scopeParams[name] {
+				complete = false
+				return
+			}
+			if c, ok := s.consts[name]; ok && c.Obj != nil {
 				merge(c.Obj, depth+1)
+				return
+			}
+			complete = false
+		case *ast.DotExpression:
+			if inner, ok := s.memberOf(v); ok {
+				merge(inner, depth+1)
 				return
 			}
 			complete = false
@@ -272,11 +375,8 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 			// over an empty set. The factory's body is right there in the tree,
 			// so it is inlined with its parameters bound to this call's
 			// arguments.
-			if obj, sub, ok := s.factoryBody(v); ok {
-				saved := s.subst
-				s.subst = sub
-				merge(obj, depth+1)
-				s.subst = saved
+			if obj, sub, params, ok := s.factoryBody(v); ok {
+				s.withScope(sub, params, func() { merge(obj, depth+1) })
 				return
 			}
 			complete = false
@@ -290,18 +390,18 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 
 // factoryBody returns the object literal a const arrow function returns, plus
 // the binding of its parameters to this call's arguments.
-func (s *Script) factoryBody(c *ast.CallExpression) (*ast.ObjectLiteral, map[string]ast.Expression, bool) {
+func (s *Script) factoryBody(c *ast.CallExpression) (*ast.ObjectLiteral, map[string]ast.Expression, []string, bool) {
 	id, ok := c.Callee.(*ast.Identifier)
 	if !ok {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	cst, ok := s.consts[string(id.Name)]
 	if !ok {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	fn, ok := cst.Init.(*ast.ArrowFunctionLiteral)
 	if !ok {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	var obj *ast.ObjectLiteral
 	switch b := fn.Body.(type) {
@@ -315,16 +415,21 @@ func (s *Script) factoryBody(c *ast.CallExpression) (*ast.ObjectLiteral, map[str
 		}
 	}
 	if obj == nil {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
+	// The inner call's arguments are expressions of the ENCLOSING scope, so
+	// they are resolved through the substitution in effect right now: a factory
+	// calling a factory used to bind the inner parameter to a raw identifier,
+	// which then resolved against the globals.
+	params := paramNames(fn.ParameterList)
 	sub := map[string]ast.Expression{}
-	for i, name := range paramNames(fn.ParameterList) {
+	for i, name := range params {
 		if name == "" || i >= len(c.ArgumentList) {
 			continue
 		}
-		sub[name] = c.ArgumentList[i]
+		sub[name] = s.resolveSubst(c.ArgumentList[i])
 	}
-	return obj, sub, true
+	return obj, sub, params, true
 }
 
 // resolveSubst replaces a factory parameter with the argument it was called
@@ -342,6 +447,14 @@ func (s *Script) resolveSubst(e ast.Expression) ast.Expression {
 	return e
 }
 
+// memberOf resolves `x.y` to the expression bound to property y of x, when x
+// itself resolves to an object literal.
+func (s *Script) memberOf(d *ast.DotExpression) (ast.Expression, bool) {
+	props, _ := s.ObjectOf(d.Left)
+	e, ok := props[string(d.Identifier.Name)]
+	return e, ok
+}
+
 func propKey(e ast.Expression) (string, bool) {
 	switch k := e.(type) {
 	case *ast.Identifier:
@@ -355,3 +468,27 @@ func propKey(e ast.Expression) (string, bool) {
 // Walk calls fn for every node reachable from the program. It is a helper for
 // checks that count constructs rather than inspect one.
 func (s *Script) Walk(fn func(ast.Node)) { walk(s.Prog, fn) }
+
+// WalkNode is Walk over one subtree.
+func WalkNode(root ast.Node, fn func(ast.Node)) { walk(root, fn) }
+
+// FilterBooleanCalls counts `.filter(Boolean)` as a CALL, not as a substring.
+// Counting the source text meant a const holding that string as data suppressed
+// the warning for a genuinely unfiltered parallel() result.
+func (s *Script) FilterBooleanCalls() int {
+	n := 0
+	s.Walk(func(node ast.Node) {
+		c, ok := node.(*ast.CallExpression)
+		if !ok || len(c.ArgumentList) != 1 {
+			return
+		}
+		d, ok := c.Callee.(*ast.DotExpression)
+		if !ok || string(d.Identifier.Name) != "filter" {
+			return
+		}
+		if id, ok := c.ArgumentList[0].(*ast.Identifier); ok && string(id.Name) == "Boolean" {
+			n++
+		}
+	})
+	return n
+}

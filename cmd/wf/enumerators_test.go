@@ -5,6 +5,9 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -171,4 +174,101 @@ func TestVerifyAndDriftCatchADirtyTarget(t *testing.T) {
 	}
 	mustContain(t, out, "tracked file(s) differ from it")
 	mustNotContain(t, out, "nothing to re-read")
+}
+
+// The wiring, not the helper. Each of these was a guard whose FUNCTION had a
+// test while the line that calls it did not: delete the call and the bars stay
+// green, which is a guard that exists only in principle.
+func TestWiring(t *testing.T) {
+	t.Run("apply reads back what it wrote", func(t *testing.T) {
+		wsDir := newGate(t)
+		art := filepath.Join(wsDir, "artifacts", "decisions.md")
+		write(t, art, "alpha here\n")
+		gitIn(t, wsDir, "add", "-A")
+		gitIn(t, wsDir, "commit", "-q", "-m", "seed")
+
+		batch := filepath.Join(filepath.Dir(wsDir), "e.json")
+		write(t, batch, `[{"file":"artifacts/decisions.md","old":"alpha","new":"beta"}]`)
+		out, err := runWF(t, wsDir, "apply", "-f", batch)
+		noErr(t, err, "apply")
+		// The read-back is asserted by its own report line: asserting only that
+		// the edit landed would pass with the read-back deleted.
+		mustContain(t, out, "verified 1 file(s) byte-for-byte", "committed")
+		b, _ := os.ReadFile(art)
+		if string(b) != "beta here\n" {
+			t.Fatalf("the edit must land, got %q", b)
+		}
+	})
+
+	t.Run("an unknown check is refused", func(t *testing.T) {
+		wsDir := newGate(t)
+		if out, err := runWF(t, wsDir, "check", "nonsense"); err == nil {
+			t.Fatalf("want a refusal, got:\n%s", out)
+		}
+	})
+
+	t.Run("an unknown field in the batch is refused", func(t *testing.T) {
+		wsDir := newGate(t)
+		batch := filepath.Join(filepath.Dir(wsDir), "bad.json")
+		write(t, batch, `[{"file":"artifacts/decisions.md","old":"a","new":"b","reason":"typo'd key"}]`)
+		if out, err := runWF(t, wsDir, "apply", "-f", batch); err == nil {
+			t.Fatalf("want a refusal, got:\n%s", out)
+		}
+	})
+
+	t.Run("verify names an artifact added after the freeze", func(t *testing.T) {
+		wsDir := newGate(t)
+		_, err := runWF(t, wsDir, "freeze")
+		noErr(t, err, "freeze")
+		write(t, filepath.Join(wsDir, "artifacts", "late.md"), "added after the freeze\n")
+		gitIn(t, wsDir, "add", "-A")
+		gitIn(t, wsDir, "commit", "-q", "-m", "late artifact")
+		out, err := runWF(t, wsDir, "verify")
+		if err == nil {
+			t.Fatalf("want a mismatch, got:\n%s", out)
+		}
+		mustContain(t, out, "not in the manifest (added after the freeze)")
+	})
+
+	t.Run("a rewritten manifest does not verify against its own tag", func(t *testing.T) {
+		wsDir := newGate(t)
+		_, err := runWF(t, wsDir, "freeze")
+		noErr(t, err, "freeze")
+		// Rewrite an artifact AND its recorded hash, then commit both — the
+		// shape a manifest read only from the worktree cannot see.
+		art := filepath.Join(wsDir, "artifacts", "decisions.md")
+		write(t, art, "SMUGGLED\n")
+		sum := sha256.Sum256([]byte("SMUGGLED\n"))
+		mf := filepath.Join(wsDir, "rounds", "r1", "freeze.json")
+		b, err := os.ReadFile(mf)
+		noErr(t, err, "read manifest")
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		m["artifacts"].(map[string]any)["artifacts/decisions.md"] = hex.EncodeToString(sum[:])
+		nb, _ := json.MarshalIndent(m, "", "  ")
+		write(t, mf, string(nb)+"\n")
+		gitIn(t, wsDir, "add", "-A")
+		gitIn(t, wsDir, "commit", "-q", "-m", "rewrite the artifact and its hash")
+
+		out, err := runWF(t, wsDir, "verify")
+		if err == nil {
+			t.Fatalf("a manifest that records its own rewrite must not verify, got:\n%s", out)
+		}
+		mustContain(t, out, "differs from the copy tagged")
+	})
+
+	t.Run("an operator conflict fails the dup check", func(t *testing.T) {
+		wsDir := newGate(t)
+		write(t, filepath.Join(wsDir, "artifacts", "a.md"), "The client retries when retry_count == 3 in every environment.\n")
+		write(t, filepath.Join(wsDir, "artifacts", "b.md"), "The client retries when retry_count != 3 in every environment.\n")
+		gitIn(t, wsDir, "add", "-A")
+		gitIn(t, wsDir, "commit", "-q", "-m", "two copies")
+		out, err := runWF(t, wsDir, "check", "dup")
+		if err == nil {
+			t.Fatalf("an operator conflict must fail the check, got:\n%s", out)
+		}
+		mustContain(t, out, "OPERATOR")
+	})
 }

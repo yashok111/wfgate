@@ -11,7 +11,9 @@ specification a gate reviewed — do not act from memory of it; read the
 reference for what you are about to do, in full.
 
 All references live in `references/` next to this file; `wf docs <name>` prints
-the same text from the installed binary (`wf docs guide` = the whole manual).
+the same text from the installed binary (`wf docs guide` concatenates the five
+authoring references; the gate-checks list is `wf docs checks`, because it is a
+reviewer's checklist rather than part of the manual's argument).
 
 ## Read before you act — by activity
 

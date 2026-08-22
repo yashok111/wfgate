@@ -89,13 +89,17 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    deliberate escape, not a verified commit. A hex-looking English word is not read as a sha: a commit
    claim needs at least one digit. A comma-separated list of shas is fine, and case does not matter.
 
-0. **`wfcheck <script>`** (`~/.local/bin/wfcheck`) — a static checker for these scripts. It must report
+0. **`wfcheck -root <the repository the script will run in> <script>`** (`~/.local/bin/wfcheck`) — a
+   static checker for these scripts. `-root` defaults to the working directory and is load-bearing:
+   with the wrong one, the ownership check WARNs that every owned path is missing and the
+   drifted-test-name check silently does not apply. It must report
    **zero ERRORs** before the gate runs. It catches, for free, what four phases of opus gating kept
    spending rounds on: a report field named in a prompt that the agent's schema does not declare; a
    SIG/contract block interpolated into the writer but not its callers; one file claimed by two agents;
    `git add -N X && git diff` (which hides the diff entirely); a lister used as a gate that exits 0
    whether or not it printed (`gofmt -l X &&` and its equivalents in other formatters); a
-   `<placeholder>` inside a fenced command; `phase()` titles that do not match `meta.phases`; a missing
+   `<placeholder>` inside a fenced command; `phase()` titles that do not match `meta.phases`; a call
+   that goes straight to `agent()` with no wrapper; a missing
    `model:`/`effort:`/`schema:`, and an `effort` outside `low|medium|high|xhigh|max`; an unused const;
    per-agent prompt sizes and per-blob multiplicity; a required
    schema field no consumer's prompt explains; a test name the tree does not declare. It reads the
@@ -178,9 +182,12 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `git status --porcelain` printed nothing while verify reported HEAD one commit past the tag and a
    changed sha256. Verify re-hashes every artifact against the frozen manifest and FAILS on a changed
    hash, an artifact ADDED after the freeze (a manifest over three files and a set of four looks
-   exactly like a manifest over four), one that vanished, anything uncommitted, a missing tag, or a
-   target repository that has moved — every line number the artifacts cite is a claim about one
-   revision of the repository under review. A HEAD past the round's tag is printed as a NOTE, not a
+   exactly like a manifest over four), one that vanished, anything uncommitted, a missing tag, a
+   frozen manifest that differs from the copy stored under its own tag (a record the thing it records
+   can edit is no record), or a target repository that has moved, whose tracked files differ from its
+   HEAD, or whose HEAD does not resolve at all — every line number the artifacts cite is a claim about
+   one revision of the repository under review, and untracked files there are a note rather than a
+   refusal, since build output beside a repository cites nothing. A HEAD past the round's tag is printed as a NOTE, not a
    mismatch: recording findings and opening the next round move HEAD without touching an artifact, and
    a check that failed on those would make the bookkeeping break its own gate. A freeze written by a
    different `wf` version is a NOTE for the same reason — a rebuilt binary legitimately verifies an
@@ -194,7 +201,9 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    citation: EDITED — the cited lines themselves changed, so the claim beside them must be re-read;
    SHIFTED — insertions or deletions above moved it, and the re-aimed range is printed, a patch
    instead of a search; GONE — the file no longer exists at the current head (a rename is reported as
-   gone on purpose: the citation names the old path). This is the only mechanical signal the
+   gone on purpose: the citation names the old path); UNRESOLVED — the path names no single tracked
+   file at the FROZEN revision, so there is nothing to measure drift against. This is the only
+   mechanical signal the
    unanchored majority get — their range check stays green forever, because both lines keep existing —
    while anchored citations also self-report through `wf check cite` once they shift. Drift is
    measured from the newest frozen round (name another with `-round N`) and is not part of
@@ -207,15 +216,17 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
 2b. **Dry-run the artifact set with stubbed hooks, BEFORE the freeze: `wfdry <script>`**
    (`~/.local/bin/wfdry`). It executes
    the script body with the `agent`, `parallel`, `pipeline`, `phase`, `log`, `args` and `budget` hooks
-   replaced by stubs that derive each report from the `schema` the script hands that call — the schema
+   replaced by stubs (`agent`, `phase`, `log`, `parallel`, `pipeline`, `workflow`, `budget`, `args`)
+   that derive each report from the `schema` the script hands that call — the schema
    IS the fixture contract, so nothing is hand-authored per run. Your own `spawn` wrapper is NOT
    stubbed: it is left in place and exercised, which is what makes the note below about a swallowed
    throw true. It must complete every mode before the gate runs. The seven modes are `clean`, `blockers`
    (every gate returns one), `acceptfail`, `unfixed` (a fix round that leaves blockers open),
    `throw-serial`, `dead-reviews` and `no-args` (the script runs with no `args`; every other mode hands
    it a representative object). Killing a named agent is not a mode: `--dead <label>[,<label>…]`
-   kills those labels in every one of the seven, and `--args <json>` replaces what the six
-   args-carrying modes pass. A mode that completes having spawned NO agent FAILS: every stub check is
+   kills those labels in every one of the seven; `--args <json>` replaces what the six args-carrying
+   modes pass, `--budget N` sets what the script sees as `budget.total`, and `--quiet` prints
+   verdicts only. A mode that completes having spawned NO agent FAILS: every stub check is
    then a guard over the empty set, and that is indistinguishable from a clean run — the one exception
    is `no-args` on a script that gates its body on `args`, which is correct behaviour and is noted
    instead. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
@@ -341,7 +352,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   UNWRAPPED from hard-wrapped paragraphs before splitting (P2e: 92 divergent groups, zero real —
   every one a wrap artifact of two files filling lines at different columns), and copies that agree
   except for a NUMBER or number-word are flagged NUMERIC: four of P2e's six real contradictions
-  differed only by a count, a class no similarity threshold separates from agreement.
+  differed only by a count, a class no similarity threshold separates from agreement. Copies that
+  agree except for a COMPARISON (`== 3` beside `!= 3`) are flagged OPERATOR for the same reason —
+  the normaliser erases every symbol, so without this the pair reported as `sim 1.00`, an exact
+  match, which reads as agreement over a direct contradiction. Both classes FAIL the check.
+
+  The near-match pass is candidate-filtered by rare tokens, so a sentence built entirely of common
+  words has no candidate at all; the report prints how many sentences that leaves invisible, because
+  a filtered corpus must not read as an empty one.
 
   **What no similarity metric reaches, `[RN]` rule markers make mechanical.** Copies that CONTRADICT
   in different words share no wording — eight of those on the first live gate, every one found by a

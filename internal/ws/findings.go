@@ -28,6 +28,7 @@ type FindingRow struct {
 	// froze green. The caller must refuse it out loud.
 	Malformed bool
 	Raw       string // the line as written, so the refusal can quote it
+	Cells     int    // how many cells the splitter produced, for the refusal to state
 }
 
 // Blocker matches by word, not by list: levels beyond BLOCKER are free text,
@@ -89,11 +90,11 @@ func ParseFindings(b []byte) []FindingRow {
 			continue
 		}
 		if len(cells) != 4 {
-			rows = append(rows, FindingRow{Line: i + 1, Malformed: true, Raw: t})
+			rows = append(rows, FindingRow{Line: i + 1, Malformed: true, Raw: t, Cells: len(cells)})
 			continue
 		}
 		rows = append(rows, FindingRow{
-			Line: i + 1, Num: cells[0], Level: cells[1], Text: cells[2], ClosedBy: cells[3],
+			Line: i + 1, Num: cells[0], Level: cells[1], Text: cells[2], ClosedBy: cells[3], Cells: 4,
 		})
 	}
 	return rows

@@ -117,9 +117,8 @@ func checkMeta(r *Report, s *wfscript.Script) {
 		r.add(ERROR, c.Line, "meta must be an object literal")
 		return
 	}
-	metaSrc := s.Text(c.Obj.Idx0(), c.Obj.Idx1())
-	if strings.Contains(metaSrc, "${") {
-		r.add(ERROR, c.Line, "meta contains a template interpolation — it must be a PURE literal")
+	if bad := impureNode(s, c.Obj); bad != "" {
+		r.add(ERROR, c.Line, "meta is not a PURE literal: %s — it must be readable without running the script", bad)
 	}
 	props, complete := s.ObjectOf(c.Obj)
 	if !complete {
@@ -148,7 +147,21 @@ func checkMeta(r *Report, s *wfscript.Script) {
 			}
 		}
 	}
-	called := s.PhaseTitles()
+	all := s.PhaseTitles()
+	var called []string
+	computed := 0
+	for _, t := range all {
+		if t == "<computed>" {
+			computed++
+			continue
+		}
+		called = append(called, t)
+	}
+	if computed > 0 {
+		// Named, not guessed at: comparing a title the checker could not read
+		// against the declared set manufactures a conflict on both sides.
+		r.add(INFO, c.Line, "%d phase() title(s) are computed at run time and are left out of the comparison below", computed)
+	}
 	if len(declared) == 0 && len(called) == 0 {
 		return
 	}
@@ -163,6 +176,32 @@ func checkMeta(r *Report, s *wfscript.Script) {
 		r.add(WARN, c.Line, "meta.phases and phase() calls have the same titles in a DIFFERENT order — meta: %s / calls: %s",
 			strings.Join(declared, " > "), strings.Join(called, " > "))
 	}
+}
+
+// impureNode names the first thing inside meta that is not a literal. The
+// previous test searched the meta SOURCE for `${`, which both missed
+// `name: getName()` (accepted as a pure literal) and rejected a description
+// legitimately containing the two characters.
+func impureNode(s *wfscript.Script, root ast.Node) string {
+	found := ""
+	wfscript.WalkNode(root, func(n ast.Node) {
+		if found != "" {
+			return
+		}
+		switch v := n.(type) {
+		case *ast.CallExpression:
+			found = "a function call"
+		case *ast.Identifier:
+			found = "the identifier " + string(v.Name)
+		case *ast.TemplateLiteral:
+			if len(v.Expressions) > 0 {
+				found = "a template interpolation"
+			}
+		case *ast.BinaryExpression:
+			found = "an expression"
+		}
+	})
+	return found
 }
 
 func diff(a, b []string) []string {
@@ -195,8 +234,30 @@ func checkInventory(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 	if len(calls) == 0 {
 		r.add(ERROR, 1, "no agent() call sites found — a workflow script that spawns nothing is either wrong or not a workflow; every check below would pass over an empty set")
 	}
+	// A SECOND, independent population. The inventory above is structural and
+	// should not miss anything — but "should not" is what the previous checker
+	// also believed while reporting one call site out of nineteen, so the count
+	// is cross-checked against a textual one. Each wrapper legitimately
+	// contributes its own forwarding call, which the inventory excludes.
+	textual := 0
+	for _, name := range append([]string{"agent"}, names...) {
+		textual += len(regexp.MustCompile(`\b`+regexp.QuoteMeta(name)+`\s*\(`).FindAllString(s.Src, -1))
+	}
+	if textual-len(ws) > len(calls) {
+		r.add(ERROR, 1, "inventory implausible: %d call site(s) found, but the source mentions %d call(s) to agent() or a wrapper — every check below is passing over a smaller set than the script has",
+			len(calls), textual-len(ws))
+	}
 	// The guide requires the wrapper to be called `spawn`. This is now a rule
 	// the checker REPORTS rather than the mechanism it depends on.
+	direct := 0
+	for _, c := range calls {
+		if c.Wrapper == "" {
+			direct++
+		}
+	}
+	if direct > 0 {
+		r.add(WARN, 1, "%d call(s) go straight to agent() with no wrapper — an unhandled throw at a serial step aborts the whole run, which is why the guide requires one", direct)
+	}
 	for _, w := range ws {
 		if w.Name != "spawn" {
 			r.add(WARN, w.Line, "the spawn wrapper is named %q — the guide's canonical name is `spawn`, and a reader greps for it", w.Name)
@@ -215,6 +276,14 @@ func listSuffix(names []string) string {
 
 func checkOptions(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 	for _, c := range calls {
+		// The prompt is checked FIRST, so a call missing both still reports
+		// both: the options branch below returns early to keep a call with no
+		// options object from also drawing one line per option it lacks.
+		if !c.PromptSet {
+			r.add(ERROR, c.Line, "agent %s: no prompt argument", c.Label)
+		} else if !c.PromptOK {
+			r.add(INFO, c.Line, "agent %s: its prompt is composed at run time — size and content checks below cover only the static part", c.Label)
+		}
 		if !c.OptsFound {
 			r.add(ERROR, c.Line, "agent %s: no options object — model, effort and schema have nowhere to be", c.Label)
 			continue
@@ -246,7 +315,7 @@ func checkOptions(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 				r.add(WARN, c.Line, "agent %s: no `%s:` in its options", c.Label, f)
 			}
 		}
-		if e, ok := c.Opt("effort"); ok {
+		if e, ok := c.Opt("effort"); ok && c.OptsComplete {
 			txt, known := s.StaticString(e)
 			switch {
 			case !known:
@@ -256,11 +325,6 @@ func checkOptions(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 			case !contains(effortTiers, txt):
 				r.add(ERROR, c.Line, "agent %s: effort %q is not one of %s", c.Label, txt, strings.Join(effortTiers, ", "))
 			}
-		}
-		if !c.PromptSet {
-			r.add(ERROR, c.Line, "agent %s: no prompt argument", c.Label)
-		} else if !c.PromptOK {
-			r.add(INFO, c.Line, "agent %s: its prompt is composed at run time — size and content checks below cover only the static part", c.Label)
 		}
 	}
 }
@@ -290,7 +354,11 @@ func checkPromptsVsSchemas(r *Report, s *wfscript.Script, calls []wfscript.Agent
 			name = string(id.Name)
 		}
 		props, complete := schemaProps(s, e)
-		if !complete || len(props) == 0 {
+		if !complete {
+			r.add(INFO, c.Line, "agent %s: its schema (%s) could not be read statically — the prompt-vs-schema checks below do not cover this call", c.Label, name)
+			continue
+		}
+		if len(props) == 0 {
 			continue
 		}
 		// The predecessor only reported a field that some OTHER schema declared
@@ -302,7 +370,10 @@ func checkPromptsVsSchemas(r *Report, s *wfscript.Script, calls []wfscript.Agent
 			if props[f] {
 				continue
 			}
-			if negated.MatchString(lineAround(c.Prompt, m[0])) {
+			// Only the text PRECEDING the field: "report it in \"x\" — do not
+			// summarise" is an instruction with a trailing clause, and matching
+			// the whole line let the commonest such clause disable the check.
+			if negated.MatchString(lineBefore(c.Prompt, m[0])) {
 				continue
 			}
 			r.add(ERROR, c.Line, "agent %s: its prompt tells it to report in %q, but its schema (%s) has no such field (it has: %s)",
@@ -324,13 +395,8 @@ var genericRequired = map[string]bool{
 	"findings": true, "output": true,
 }
 
-func lineAround(s string, i int) string {
-	start := strings.LastIndexByte(s[:i], '\n') + 1
-	end := strings.IndexByte(s[i:], '\n')
-	if end == -1 {
-		return s[start:]
-	}
-	return s[start : i+end]
+func lineBefore(s string, i int) string {
+	return s[strings.LastIndexByte(s[:i], '\n')+1 : i]
 }
 
 func sortedKeys(m map[string]bool) []string {
@@ -505,7 +571,7 @@ func checkPromptFootguns(r *Report, calls []wfscript.AgentCall) {
 func checkResultSafety(r *Report, s *wfscript.Script) {
 	par := s.CallsTo("parallel")
 	pipe := s.CallsTo("pipeline")
-	filt := strings.Count(s.Src, ".filter(Boolean)")
+	filt := s.FilterBooleanCalls()
 	if par > 0 && filt < par {
 		r.add(WARN, 1, "%d parallel() call(s) but only %d .filter(Boolean) — a thunk that throws resolves to null in the result array", par, filt)
 	}
@@ -538,16 +604,25 @@ func checkConsts(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 		if !c.IsStr || (!strings.Contains(c.Text, "\n") && len(c.Text) < 200) {
 			continue
 		}
-		in := 0
+		in, unread := 0, 0
 		for _, a := range calls {
-			if strings.Contains(a.Prompt, c.Text) && c.Text != "" {
+			if !a.PromptOK {
+				unread++
+				continue
+			}
+			if c.Text != "" && strings.Contains(a.Prompt, c.Text) {
 				in++
 			}
 		}
-		switch in {
-		case 0:
+		switch {
+		case unread > 0 && in == 0:
+			// The report says two lines up that it could not read those
+			// prompts; erroring on what it could not see would contradict its
+			// own note.
+			r.add(INFO, c.Line, "%s reaches no prompt this check could read — %d of %d prompts are composed at run time", name, unread, len(calls))
+		case in == 0:
 			r.add(ERROR, c.Line, "%s is defined but reaches NO prompt", name)
-		case 1:
+		case in == 1 && unread == 0 && len(calls) > 1:
 			r.add(WARN, c.Line, "%s reaches exactly ONE prompt — a shared contract block must reach the writer AND every caller; one that reached neither of its callers shipped a contract two agents then guessed differently", name)
 		}
 	}
@@ -566,8 +641,12 @@ func checkCost(r *Report, calls []wfscript.AgentCall) {
 			r.add(WARN, c.Line, "agent %s: composed prompt is %s — over the ~40 KB mark, split its scope or move a blob to a file", c.Label, kb(n))
 		}
 	}
-	if len(calls) > 0 {
+	switch {
+	case biggestLabel != "":
 		r.add(INFO, 1, "largest composed prompt: %s at %s", biggestLabel, kb(biggest))
+	case len(calls) > 0:
+		// 0.0 KB with no name attached is the founding symptom restated.
+		r.add(INFO, 1, "no statically readable prompt in %d call site(s) — the size and content checks covered nothing", len(calls))
 	}
 }
 

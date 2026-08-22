@@ -76,9 +76,13 @@ becomes a wrong instruction that no downstream step questions.
       an error, not silently counted as unanchored (15 Cyrillic anchors once hid inside "17 unverified",
       one of them factually wrong).
       When the TARGET repository itself moves after a freeze, `wf check drift` intersects its diff with
-      the cited ranges and says which citations were EDITED (re-read the claim) and which merely
-      SHIFTED (re-aim; the new range is printed) — the only mechanical signal an unanchored citation
-      gets, since both its lines keep existing and the range check stays green forever.
+      the cited ranges and says which citations were EDITED (re-read the claim), which merely
+      SHIFTED (re-aim; the new range is printed), which are GONE (the file left the tree) and which
+      are UNRESOLVED (the path names no single file at the frozen revision) — the only mechanical
+      signal an unanchored citation gets, since both its lines keep existing and the range check
+      stays green forever. It refuses a target whose tracked files differ from its HEAD: "the target
+      has not moved" is a claim about HEAD, and a cited line rewritten without a commit leaves HEAD
+      where it was.
       Whether the cited lines SAY what the sentence beside them claims is the half no tool reaches, and
       it is the half this bullet is about; run the check to clear the mechanical noise first, then read.
 - [ ] **Every symbol named in a prompt exists** with that exact name, arity and parameter order.
@@ -346,10 +350,13 @@ compiles, passes every test, and does nothing.
 - [ ] **Dry-run the script with stubbed hooks BEFORE the freeze (and again before launching):
       `wfdry <script>`.** A dry-run defect found after freezing invalidates a freeze that correctly
       refuses to re-freeze — a whole round for a defect no reviewer ever saw. It must
-      complete EVERY one of the six modes — `clean`, `blockers`, `acceptfail`, `unfixed`,
-      `throw-serial`, `dead-reviews` — not the three an earlier version of this entry prescribed by
-      hand. Killing named agents is a flag, `--dead <label>[,<label>…]`, applied inside every mode,
-      not a seventh mode. Seconds of cost, and it evaluates every
+      complete EVERY one of the seven modes — `clean`, `blockers`, `acceptfail`, `unfixed`,
+      `throw-serial`, `dead-reviews`, `no-args` — not the three an earlier version of this entry
+      prescribed by hand. The last one runs the script with no `args`; the other six hand it a
+      representative object, which `--args <json>` replaces. Killing named agents is a flag,
+      `--dead <label>[,<label>…]`, applied inside every mode, not a mode of its own. A mode that
+      completes having spawned NO agent FAILS: every check in the runner is then a guard over the
+      empty set. Seconds of cost, and it evaluates every
       template literal on every path, catching the class above plus any unreachable binding a linter
       cannot type-check. A parse is not an execution. The clean path is the one that matters most:
       reviewers read the failure branches, because that is where the risk looks like it lives.
@@ -584,7 +591,10 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       never reached the file, and the next review round re-files the identical blocker. A partially
       applied batch is worse than a rejected one, because a rejected one announces itself. `wf apply`
       is this rule made mandatory: it validates every replacement against the evolving buffer first,
-      writes nothing if one misses, then re-reads the files from disk and searches for each change.
+      writes nothing if one misses, then re-reads every written file and compares it BYTE FOR BYTE with
+      the buffer it planned. (It searched for each change once, which verified every pure DELETION
+      vacuously — `strings.Count(body, "")` is never zero — and rejected chained edits that had
+      landed perfectly.)
       A hand edit followed by `git commit` gives up both halves.
       (Measured: one whole gate round spent re-finding a defect whose fix had thrown before the write.)
 - [ ] **The same rule living in two artifacts with different quoting is a seam.** When one prose rule

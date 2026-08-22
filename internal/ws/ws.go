@@ -87,7 +87,9 @@ func Create(root, name, target string, now time.Time) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	if st, err := os.Stat(filepath.Join(abs, ".git")); err != nil || !st.IsDir() {
+	// `.git` is a FILE in a linked worktree and a submodule, so requiring a
+	// directory refused a perfectly ordinary target.
+	if _, err := os.Stat(filepath.Join(abs, ".git")); err != nil {
 		return nil, fmt.Errorf("target %s is not a git repository", abs)
 	}
 	for _, d := range []string{"artifacts", "rounds"} {

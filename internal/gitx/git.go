@@ -248,8 +248,16 @@ func (r Repo) BlameLines(path string) ([]string, error) {
 		// 64 hex characters, every header was skipped, every line got the empty
 		// commit, and dup's divergence — which needs two DIFFERENT commits —
 		// silently became "these copies were edited together".
+		// A blame CONTENT line is tab-prefixed, and its text may itself begin
+		// with something that reads like a header: `\tdeadbee 1 2` survived the
+		// checks below and then panicked on the eight-character slice. Content
+		// lines are excluded by their tab, and the id must be long enough to
+		// slice.
+		if strings.HasPrefix(l, "\t") {
+			continue
+		}
 		f := strings.Fields(l)
-		if len(f) < 3 || len(f[0]) < 7 || !isHex(f[0]) {
+		if len(f) < 3 || len(f[0]) < 8 || !isHex(f[0]) {
 			continue
 		}
 		final := atoi(f[2])

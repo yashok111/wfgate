@@ -22,11 +22,11 @@ only the second.
 
 ## Install
 
-On any machine with Claude Code (needs git, go, node, claude):
+On any machine with Claude Code (needs git, go, claude):
 
 ```bash
 git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git ~/projects/wfgate
-~/projects/wfgate/scripts/install.sh      # binary + script symlinks + plugin (skill + hook)
+~/projects/wfgate/scripts/install.sh      # three binaries + plugin (skill + hook) (skill + hook)
 ```
 
 After a `git pull`: `make install && claude plugin marketplace update wfgate-tools`.
@@ -97,7 +97,7 @@ number differs, the whole batch is rejected and no file is written. That is the
 command's point: a rule living in two artifacts and corrected in one becomes a
 hard error at apply time, not a finding three rounds later.
 
-After the write the files are re-read from disk and every edit is searched for.
+After the write every written file is re-read and compared byte-for-byte with the buffer the plan produced.
 An apply is verified by finding each change, not by the absence of an error.
 
 For multi-line or quote-bearing `old` strings, prefer the plain-text block

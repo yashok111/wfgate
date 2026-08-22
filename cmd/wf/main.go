@@ -300,6 +300,10 @@ func cmdApply(args []string) error {
 	if bad > 0 {
 		return fmt.Errorf("%d file(s) differ from the planned batch after write; the tree is inconsistent, inspect `git diff`", bad)
 	}
+	// The population, printed. A read-back nobody can see in the output is a
+	// read-back whose absence nobody notices either — deleting the loop above
+	// left every bar green.
+	fmt.Printf("  verified %d file(s) byte-for-byte against the planned batch\n", len(bufs))
 	subject := *msg
 	if subject == "" {
 		subject = fmt.Sprintf("apply: %d edit(s) across %d file(s)", len(edits), len(written))
@@ -359,6 +363,13 @@ func cmdAdd(args []string) error {
 		if err != nil {
 			return fmt.Errorf("-as %s: %w", name, err)
 		}
+		// Inside the WORKSPACE is not enough: `-as ../notes/x.md` stayed in the
+		// workspace and landed a tracked file outside artifacts/, which the
+		// freeze manifest never covers and verify never classes — the same hole
+		// a dot-named artifact used to open, through another door.
+		if rel != "artifacts" && !strings.HasPrefix(rel, "artifacts"+string(filepath.Separator)) {
+			return fmt.Errorf("-as %s: an artifact lives under artifacts/, and only what lives there is frozen and verified", name)
+		}
 		b, err := os.ReadFile(src)
 		if err != nil {
 			return err
@@ -371,7 +382,7 @@ func cmdAdd(args []string) error {
 			// remove, three times on the first live gate — so it is adopted:
 			// committed as it lies, never overwritten with different bytes.
 			if tracked, _ := w.Git.Run("ls-files", "--", rel); tracked != "" {
-				return fmt.Errorf("%s is already a reviewed artifact; change it with `wf apply`, not `wf add`", name)
+				return fmt.Errorf("%s is already tracked in this workspace; change it with `wf apply`, not `wf add`", rel)
 			}
 			onDisk, err := os.ReadFile(dst)
 			if err != nil {
@@ -517,8 +528,8 @@ func cmdRoundRecord(args []string) error {
 	byCommit, byProse, open, blockers := 0, 0, 0, 0
 	for _, r := range rows {
 		if r.Malformed {
-			return fmt.Errorf("line %d is a table row of %d cells, not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
-				r.Line, len(strings.Split(r.Raw, "|"))-1, trunc(r.Raw, 60))
+			return fmt.Errorf("line %d is a table row of %d cell(s), not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
+				r.Line, r.Cells, trunc(r.Raw, 60))
 		}
 		if r.Placeholder() {
 			continue
@@ -652,8 +663,8 @@ func cmdFreeze(args []string) error {
 		open := 0
 		for _, r := range rows {
 			if r.Malformed {
-				return fmt.Errorf("round %d: %s line %d is a table row of %d cells, not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\|",
-					rn, fp, r.Line, len(strings.Split(r.Raw, "|"))-1, trunc(r.Raw, 60))
+				return fmt.Errorf("round %d: %s line %d is a table row of %d cell(s), not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\|",
+					rn, fp, r.Line, r.Cells, trunc(r.Raw, 60))
 			}
 			if r.Placeholder() {
 				continue
@@ -856,6 +867,7 @@ func cmdVerify(args []string) error {
 	if n == 0 {
 		return fmt.Errorf("no frozen round to verify against; run `wf freeze` first")
 	}
+	rel := filepath.ToSlash(filepath.Join("rounds", "r"+strconv.Itoa(n), "freeze.json"))
 	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
 	if err != nil {
 		return err
@@ -864,7 +876,24 @@ func cmdVerify(args []string) error {
 	if err := json.Unmarshal(b, &fm); err != nil {
 		return err
 	}
+	manifestDrift := false
 	fmt.Printf("## verify round %d\n", n)
+	// The manifest is read back from the TAG as well. A manifest read only from
+	// the worktree is a record the thing it records can edit: rewrite an
+	// artifact, rewrite its hash beside it, commit both, and verify compares the
+	// new bytes against the new hash and calls it clean.
+	frozenManifest, terr := w.Git.Run("show", ws.RoundTag(n)+":"+rel)
+	switch {
+	case terr != nil:
+		fmt.Printf("  note: the frozen manifest is not readable at tag %s (%v) — verifying against the working copy alone\n", ws.RoundTag(n), terr)
+	case strings.TrimSpace(frozenManifest) != strings.TrimSpace(string(b)):
+		var fmTag freezeManifest
+		if json.Unmarshal([]byte(frozenManifest), &fmTag) == nil {
+			fm = fmTag
+		}
+		fmt.Printf("  MISMATCH %s differs from the copy tagged %s; the tagged manifest is the one reviewers read, and it is what the checks below use\n", rel, ws.RoundTag(n))
+		manifestDrift = true
+	}
 	// Provenance, not a mismatch: a rebuilt binary legitimately verifies an
 	// older freeze. What the note kills is the silent version: a stale
 	// installed binary whose run is indistinguishable from the new one's.
@@ -872,6 +901,9 @@ func cmdVerify(args []string) error {
 		fmt.Printf("  note: frozen by %s, verifying with %s\n", fm.Tool, toolID())
 	}
 	bad := 0
+	if manifestDrift {
+		bad++
+	}
 	fail := func(format string, a ...any) {
 		bad++
 		fmt.Printf("  MISMATCH "+format+"\n", a...)
@@ -945,7 +977,7 @@ func cmdVerify(args []string) error {
 	// repository under review, and a target that moved silently invalidates all
 	// of them.
 	if now, err := targetHead(w.M.Target); err != nil {
-		fail("target %s: %v (frozen against %s)", w.M.Target, err, fm.TargetRef)
+		fail("%v (frozen against %s)", err, fm.TargetRef)
 	} else if now != fm.TargetRef {
 		fail("target is at %s, frozen against %s", now, fm.TargetRef)
 	} else if modified, untracked, err := targetDirt(w.M.Target); err != nil {

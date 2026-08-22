@@ -16,14 +16,20 @@
 package wfdry
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
+	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dop251/goja"
+
+	"git.sumka.site/yakov/wfgate/internal/wfscript"
 )
 
 // Modes are the states a real run can enter. `clean` matters most: reviewers
@@ -41,9 +47,10 @@ var Modes = []string{
 
 // Options configure one run.
 type Options struct {
-	Dead   []string // labels whose spawn returns null
-	Budget *int     // budget.total; nil means the script sees null
-	Args   string   // JSON handed to the script as `args` (every mode but no-args)
+	Dead    []string      // labels whose spawn returns null
+	Budget  *int          // budget.total; nil means the script sees null
+	Args    string        // JSON handed to the script as `args` (every mode but no-args)
+	Timeout time.Duration // per-mode deadline; 0 means the default
 }
 
 // DefaultArgs is what a parameterised workflow sees. It is NOT undefined, and
@@ -64,12 +71,13 @@ type Result struct {
 	Return     any
 	ReturnOK   bool
 	Err        error
+
+	killed    int            // labels this mode actually stubbed dead
+	defaulted map[string]int // report fields the fixture contract did not recognise
 }
 
 // OK reports a mode that completed with nothing to answer for.
 func (r Result) OK() bool { return r.Err == nil && len(r.Violations) == 0 && r.ReturnOK }
-
-var metaRe = regexp.MustCompile(`(?m)^export const meta\b`)
 
 // effortTiers mirrors the closed set the Workflow tool accepts.
 var effortTiers = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
@@ -80,12 +88,20 @@ func Run(path string, modes []string, o Options) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The meta binding is STRIPPED, not renamed to a live one: the real harness
-	// parses `export const meta` out before the body runs, so a body that
-	// touches `meta` must die here the way it dies at launch. A renamed binding
-	// left in scope produced a measured false green — six modes, six rounds,
-	// over a guard reading meta.phases — while the launch died in 29 ms.
-	src := metaRe.ReplaceAllString(string(raw), "const __wfdry_meta_stripped")
+	// The meta binding is neutralised so that a body touching `meta` dies here
+	// the way it dies at launch: the real harness parses `export const meta` out
+	// before the body runs. A binding left in scope produced a measured false
+	// green — six modes, six rounds, over a guard reading meta.phases — while
+	// the launch died in 29 ms.
+	//
+	// It is done through the PARSER and in place, byte for byte. A line-anchored
+	// regex over the source rewrote any line that merely BEGAN with `export ` —
+	// including one inside a prompt — and it disagreed with wfcheck, which
+	// accepts a second `export const`, about what the same file even is.
+	src, err := neutraliseMeta(string(raw), path)
+	if err != nil {
+		return nil, err
+	}
 
 	known := map[string]bool{}
 	for _, m := range Modes {
@@ -137,8 +153,51 @@ func forgiveArgsGate(rs []Result) {
 	}
 }
 
+// neutraliseMeta blanks the `export` keyword of every top-level declaration and
+// renames the `meta` binding to an equally long dead name, so every other byte —
+// and therefore every reported line and column — stays where it was.
+func neutraliseMeta(src, path string) (string, error) {
+	sc, err := wfscript.LoadSource(src, path)
+	if err != nil {
+		return "", err
+	}
+	out := []byte(src)
+	blankKeyword := func(at int) {
+		// walk back over whitespace to a preceding `const`/`let`/`var`, then to
+		// `export`, and blank only that keyword.
+		i := at
+		for i > 0 && out[i-1] != '\n' {
+			i--
+		}
+		line := string(out[i:min(len(out), at)])
+		if k := strings.Index(line, "export "); k >= 0 {
+			copy(out[i+k:i+k+7], "       ")
+		}
+	}
+	for name, c := range sc.Consts() {
+		off := sc.Offset(c.Init)
+		if off < 0 {
+			continue
+		}
+		blankKeyword(off)
+		if name == "meta" {
+			if at := sc.NameOffset(c); at >= 0 && at+4 <= len(out) && string(out[at:at+4]) == "meta" {
+				copy(out[at:at+4], "_mtA")
+			}
+		}
+	}
+	return string(out), nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func runMode(src, mode string, o Options) Result {
-	r := Result{Mode: mode}
+	r := Result{Mode: mode, defaulted: map[string]int{}}
 	vm := goja.New()
 
 	dead := map[string]bool{}
@@ -186,6 +245,11 @@ func runMode(src, mode string, o Options) Result {
 		if goja.IsUndefined(p) || goja.IsNull(p) {
 			bad(label, "prompt is undefined, not a string")
 		}
+		// ExportType, not String(): every value coerces to a string, so a
+		// prompt composed to a number or an object passed silently.
+		if t := p.ExportType(); t == nil || t.Kind() != reflect.String {
+			bad(label, fmt.Sprintf("prompt is %v, not a string", p.ExportType()))
+		}
 		if strings.TrimSpace(p.String()) == "" {
 			bad(label, "empty prompt")
 		}
@@ -211,9 +275,10 @@ func runMode(src, mode string, o Options) Result {
 			panic(vm.ToValue("stubbed throw at the first spawn"))
 		}
 		if mode == "dead-reviews" && reviewish(label) {
+			r.killed++
 			return promiseOf(vm, goja.Null())
 		}
-		return promiseOf(vm, vm.ToValue(synth(opts.Get("schema"), mode, label, 0)))
+		return promiseOf(vm, vm.ToValue(synth(opts.Get("schema"), mode, label, 0, r.defaulted)))
 	}
 
 	must := func(name string, v any) {
@@ -270,9 +335,24 @@ func runMode(src, mode string, o Options) Result {
 		return r
 	}
 
-	v, err := vm.RunString("(async function(){\n" + src + "\n})()")
+	// A per-mode deadline. wfcheck refuses an unguarded `while`, but a `for`
+	// with a decrementing counter is a plain typo it does not judge — and a
+	// runner that hangs forever, silently, is worse than any finding it could
+	// have printed.
+	timeout := o.Timeout
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
+	stop := time.AfterFunc(timeout, func() { vm.Interrupt("wfdry: deadline") })
+	v, err := vm.RunString("(async function(){" + src + "\n})()")
+	stop.Stop()
 	if err != nil {
-		r.Err = err
+		var ie *goja.InterruptedError
+		if errors.As(err, &ie) {
+			r.Err = fmt.Errorf("the script did not finish within %s — an unbounded loop, or work a dry run cannot satisfy", timeout)
+		} else {
+			r.Err = jsErr(vm, err)
+		}
 		return r
 	}
 	p, ok := v.Export().(*goja.Promise)
@@ -282,7 +362,7 @@ func runMode(src, mode string, o Options) Result {
 	}
 	switch p.State() {
 	case goja.PromiseStateRejected:
-		r.Err = fmt.Errorf("%v", p.Result())
+		r.Err = rejection(vm, p.Result())
 		return r
 	case goja.PromiseStatePending:
 		r.Err = fmt.Errorf("the script never settled — an await with nothing to resolve it")
@@ -302,7 +382,40 @@ func runMode(src, mode string, o Options) Result {
 	if r.Spawned == 0 {
 		r.Violations = append(r.Violations, "run: "+zeroSpawn)
 	}
+	if mode == "dead-reviews" && r.Spawned > 0 && r.killed == 0 {
+		// The mode is supposed to walk the unreviewed-gate accounting. If no
+		// label looked like a review, it walked nothing and said OK — a guard
+		// over an empty set wearing a green verdict.
+		r.Logs = append(r.Logs, "note: no label matched review/fix/closeout/verify/accept — this mode killed nobody and proved nothing")
+	}
+	if len(r.defaulted) > 0 {
+		names := make([]string, 0, len(r.defaulted))
+		for n := range r.defaulted {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		r.Logs = append(r.Logs, "note: the fixture contract did not recognise "+strconv.Itoa(len(names))+" report field(s) and defaulted them ("+strings.Join(names, ", ")+") — a script branching on one of these is not being exercised as it thinks")
+	}
 	return r
+}
+
+// jsErr and rejection keep the LOCATION. Printing only the message left a
+// TypeError on line 7 of a 900-line script reporting no line at all.
+func jsErr(vm *goja.Runtime, err error) error {
+	var ex *goja.Exception
+	if errors.As(err, &ex) {
+		return fmt.Errorf("%s", ex.String())
+	}
+	return err
+}
+
+func rejection(vm *goja.Runtime, v goja.Value) error {
+	if o, ok := v.(*goja.Object); ok && o != nil {
+		if st := o.Get("stack"); st != nil && !goja.IsUndefined(st) {
+			return fmt.Errorf("%s", st.String())
+		}
+	}
+	return fmt.Errorf("%v", v)
 }
 
 func or(a, b string) string {
@@ -356,10 +469,16 @@ var failArrays = map[string]bool{
 	"violations": true, "gaps": true, "risks": true,
 }
 
-var failBools = regexp.MustCompile(`(?i)fail|broken|vacuous|missing|stale|dead|unreviewed`)
+var failBools = regexp.MustCompile(`(?i)fail|broken|vacuous|missing|stale|dead|unreviewed|block|defect|error|violation|unfixed|open`)
+
+// failArrayRe widens the closed list to the shape of the NAME. The list alone
+// made `defects` a "good" array — one element even in `clean` — so the mode the
+// package calls the one that matters most walked the failure branch, and the
+// happy path was executed in no mode at all.
+var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|concern|dead|unverified|violation|gap|risk|defect|error|issue|problem`)
 var passBools = regexp.MustCompile(`(?i)^(passed|ok|green|clean|verified|proven)$`)
 
-func synth(schema goja.Value, mode, label string, depth int) any {
+func synth(schema goja.Value, mode, label string, depth int, rec map[string]int) any {
 	if schema == nil || goja.IsUndefined(schema) || goja.IsNull(schema) || depth > 6 {
 		return map[string]any{}
 	}
@@ -368,7 +487,7 @@ func synth(schema goja.Value, mode, label string, depth int) any {
 		return map[string]any{}
 	}
 	if t, _ := obj["type"].(string); t == "array" {
-		return arrayOf("", obj, mode, label, depth)
+		return arrayOf("", obj, mode, label, depth, rec)
 	}
 	props, _ := obj["properties"].(map[string]any)
 	out := map[string]any{}
@@ -379,15 +498,15 @@ func synth(schema goja.Value, mode, label string, depth int) any {
 	sort.Strings(keys)
 	for _, k := range keys {
 		pv, _ := props[k].(map[string]any)
-		out[k] = value(k, pv, mode, label, depth)
+		out[k] = value(k, pv, mode, label, depth, rec)
 	}
 	return out
 }
 
-func arrayOf(name string, v map[string]any, mode, label string, depth int) []any {
+func arrayOf(name string, v map[string]any, mode, label string, depth int, rec map[string]int) []any {
 	low := strings.ToLower(name)
 	n := 1
-	if failArrays[low] {
+	if failArrays[low] || failArrayRe.MatchString(low) {
 		if mode == "clean" {
 			n = 0
 		}
@@ -408,7 +527,7 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int) []any
 	out := make([]any, 0, n)
 	for i := 0; i < n; i++ {
 		if t, _ := items["type"].(string); t == "object" {
-			out = append(out, synthMap(items, mode, label, depth+1))
+			out = append(out, synthMap(items, mode, label, depth+1, rec))
 		} else {
 			out = append(out, fmt.Sprintf("<%s from %s>", or(name, "item"), label))
 		}
@@ -416,7 +535,7 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int) []any
 	return out
 }
 
-func synthMap(schema map[string]any, mode, label string, depth int) any {
+func synthMap(schema map[string]any, mode, label string, depth int, rec map[string]int) any {
 	props, _ := schema["properties"].(map[string]any)
 	out := map[string]any{}
 	keys := make([]string, 0, len(props))
@@ -426,18 +545,18 @@ func synthMap(schema map[string]any, mode, label string, depth int) any {
 	sort.Strings(keys)
 	for _, k := range keys {
 		pv, _ := props[k].(map[string]any)
-		out[k] = value(k, pv, mode, label, depth)
+		out[k] = value(k, pv, mode, label, depth, rec)
 	}
 	return out
 }
 
-func value(name string, v map[string]any, mode, label string, depth int) any {
+func value(name string, v map[string]any, mode, label string, depth int, rec map[string]int) any {
 	t, _ := v["type"].(string)
 	switch t {
 	case "array":
-		return arrayOf(name, v, mode, label, depth)
+		return arrayOf(name, v, mode, label, depth, rec)
 	case "object":
-		return synthMap(v, mode, label, depth+1)
+		return synthMap(v, mode, label, depth+1, rec)
 	case "integer", "number":
 		return 1
 	case "boolean":
@@ -447,7 +566,14 @@ func value(name string, v map[string]any, mode, label string, depth int) any {
 		if failBools.MatchString(name) {
 			return mode != "clean"
 		}
-		return mode == "clean"
+		// An unrecognised boolean defaults to FALSE in every mode, not to "true
+		// in clean": a script branching on `if (r.blocking)` was pushed onto its
+		// failure path by the mode meant to walk the happy one. The name is
+		// recorded and printed rather than guessed at.
+		if rec != nil {
+			rec[name]++
+		}
+		return false
 	default:
 		return fmt.Sprintf("<%s from %s>", name, label)
 	}

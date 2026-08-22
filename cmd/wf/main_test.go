@@ -202,10 +202,10 @@ func TestPrescribedSequence(t *testing.T) {
 	noErr(t, err, "add")
 	mustContain(t, out, "added artifacts/context.md", "added artifacts/script.md", "committed ")
 
-	// Re-adding a REVIEWED artifact must refuse: an overwrite-by-add would be
+	// Re-adding a TRACKED artifact must refuse: an overwrite-by-add would be
 	// an unvalidated, uncounted whole-file replacement, the exact thing apply
 	// exists to prevent.
-	if _, err = runWF(t, wsDir, "add", filepath.Join(tmp, "context.md")); err == nil || !strings.Contains(err.Error(), "already a reviewed artifact") {
+	if _, err = runWF(t, wsDir, "add", filepath.Join(tmp, "context.md")); err == nil || !strings.Contains(err.Error(), "already tracked in this workspace") {
 		t.Fatalf("re-add: want the reviewed-artifact refusal, got %v", err)
 	}
 

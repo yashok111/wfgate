@@ -53,6 +53,12 @@ check-tools: build
 		echo "wfdry meta-guard fixture: FALSE GREEN — the stub resurrected meta"; exit 1; \
 	else echo "wfdry meta-guard fixture: fails as it must"; fi
 	@./wfcheck -root . testdata/clean.mjs >/dev/null && echo "wfcheck clean fixture: no errors"
+	@if ./wfcheck -root . testdata/one-error.mjs >/dev/null 2>&1; then \
+		echo "wfcheck one-error fixture: EXIT 0 over an ERROR — the exit code is decorative"; exit 1; \
+	else echo "wfcheck one-error fixture: exits non-zero as it must"; fi
+	@if ./wfdry testdata/zero-spawn.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry zero-spawn fixture: EXIT 0 over a run that spawned nothing"; exit 1; \
+	else echo "wfdry zero-spawn fixture: fails as it must"; fi
 
 clean:
 	rm -f $(BINS)

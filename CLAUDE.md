@@ -49,7 +49,7 @@ judgement.
 
 ## Architecture
 
-Five packages, each one decision.
+Ten units, each one decision.
 
 - `internal/gitx` — the only place that runs `git`. Git is not an integration
   here, it is the storage layer; the wrapper exists so that "the workspace is a
@@ -103,8 +103,10 @@ this gate's most frequent defect, and a declared `count: 2` turns it into an
 apply-time error instead of a finding three rounds later.
 
 **Re-reading from disk after the write.** An apply is verified not by the
-absence of an error but by searching for each change. Same story, its other
-end.
+absence of an error but by reading back what landed: every written file,
+compared BYTE FOR BYTE with the buffer the plan produced. It searched for each
+edit once, which verified every pure deletion vacuously and rejected chained
+edits that had landed perfectly. Same story, its other end.
 
 **`Commit` stages only the named paths, never `git add -A`.** The workspace
 often holds a half-written artifact the operator is still drafting by hand, and
@@ -206,7 +208,9 @@ measured failure, not taste:
   Zero markers prints as a population: a corpus nobody marked did not "pass".
 - *`dup -since <tag>`* — the derived `context.md` yields 21–25 groups per one
   real contradiction; the OUTPUT is narrowed, never the threshold, and the
-  hidden count is printed.
+  hidden count is printed. (`-threshold` and `-min-words` exist as calibration
+  flags, documented in the README; the shipped behaviour narrows the output, and
+  a gate that moves the threshold is doing something it must say out loud.)
 - *The anchor ratchet in `freeze.json`* — a direction, not a threshold: a share
   that fell against the previous freeze prints a note, because an author who
   stopped anchoring writes citations the gate cannot really verify.
@@ -393,11 +397,18 @@ prescribe `wf ...` commands, and a run against the stale binary looks exactly
 like a run against the new one. The stamp in `freeze.json` and the note in
 `verify` catch it after the fact; they do not replace the reinstall.
 
-Tests: `internal/apply/apply_test.go` (the core lost-batch regression),
-`internal/check/check_test.go` (citation parsing, path resolution, the anchor
-with its nearest-line hint, divergence on a real git repo, rule markers, drift),
-`internal/ws/findings_test.go` (the ledger parser), and the end-to-end
-`cmd/wf/main_test.go` driving the prescribed sequence and asserting on OUTPUT.
+Tests live beside what they pin: `internal/apply` (the lost-batch regression,
+the vacuous deletion, two spellings of one path, the chained batch),
+`internal/check` (citations, anchors, divergence on a real git repo, rule
+markers, the operator conflict, drift), `internal/ws` (the ledger parser),
+`internal/gitx` (porcelain quoting), `internal/wfscript` (every script shape
+that defeated the text scanner), `internal/wfcheck` and `internal/wfdry` (one
+case per finding and per guard), and three end-to-end files under `cmd/wf`
+driving the prescribed sequence and asserting on OUTPUT.
+
+Coverage is NOT complete and the claim that it is has been wrong once: a
+mutation sweep after the first fix round found 33 guards deletable with the
+bars green. Before claiming a guard is proven, delete it and run the bars.
 
 ## Style
 

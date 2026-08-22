@@ -3,7 +3,8 @@
 Full operating manual for the `Workflow` multi-agent orchestration tool: model routing, the opus
 pre-flight script-review gate, the per-section dual-review gate, and cost/context discipline. It is
 delivered as the `workflow-gate` skill; **before authoring or running any Workflow, read every
-reference the SKILL.md maps to your activity — in full.** `wf docs guide` prints the whole manual.
+reference the SKILL.md maps to your activity — in full.** `wf docs guide` prints the five authoring
+references; the reviewer checklist is `wf docs checks`.
 
 Four companions, all used by the pre-flight gate below and none auto-loaded:
 the gate-checks reference (`wf docs checks`; `wf init` writes a pinned copy into every workspace — the standing list of failure modes from previous runs — reviewers
@@ -46,12 +47,13 @@ Mark it as a quote and keep the surrounding instruction in English.
 
 **Name the spawn wrapper `spawn`.** A script must wrap the spawn call — an unhandled throw at a serial
 step aborts the run (see the gate-checks' failure-handling section) — and `wfcheck` reads every later
-check off its inventory of call sites. A wrapper under an unrecognised name collapses that inventory to
-nothing, so every check silently passes over an empty set and the tool exits clean. Measured: a 100 KB
-script with nineteen spawn sites was reported as **one call site with a largest prompt of 0.0 KB, zero
-errors**. A rule enforced by a tool has to name the thing the tool looks for; `wfcheck` now also ERRORs
-when its own inventory is implausible against a second count of the same population, but do not rely on
-the backstop — use the name.
+check off its inventory of call sites. The name is a CONVENTION the checker reports, not the mechanism
+it depends on: a wrapper is identified structurally, by its body calling `agent()`, under any name,
+declared anywhere, and through an alias. That is a repair, not a relaxation — the checker used to keep
+a list of acceptable names, and a 100 KB script with nineteen spawn sites was reported as **one call
+site with a largest prompt of 0.0 KB, zero errors**. It also ERRORs when its inventory is implausible
+against a second, textual count of the same population, and WARNs on a call that goes straight to
+`agent()` with no wrapper at all. Use the name anyway: a reader greps for it.
 
 ---
 

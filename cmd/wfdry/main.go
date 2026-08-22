@@ -76,6 +76,12 @@ modes: %s
 		case r.Err != nil:
 			failed++
 			fmt.Printf("\n=== %s: THREW ===\n%s\n", r.Mode, trunc(r.Err.Error()))
+			// A recorded violation is why the mode threw as often as not, and
+			// dropping it here loses the actual defect behind whatever error
+			// surfaced afterwards.
+			for _, v := range r.Violations {
+				fmt.Println("  " + v)
+			}
 		case len(r.Violations) > 0:
 			failed++
 			fmt.Printf("\n=== %s: %d VIOLATION(S) — the script's spawn wrapper swallowed these ===\n", r.Mode, len(r.Violations))

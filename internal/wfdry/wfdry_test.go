@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func script(t *testing.T, body string) string {
@@ -208,4 +209,98 @@ return { done: true, blockers: r.blockers.length }`
 	if get(blocked) != 1 {
 		t.Fatalf("the blockers mode must yield one, got %v", get(blocked))
 	}
+}
+
+// The mode machinery itself. Each of these was deletable with the bars green:
+// a mode that kills nobody, a throw that never happens, a promise that never
+// settles — every one of them turns its mode into a green report over an
+// exercise that did not occur.
+func TestModeMachinery(t *testing.T) {
+	body := preamble + `phase('P')
+const a = await spawn(` + "`one`" + `, { model: 'sonnet', effort: 'low', label: 'reviewer', schema: S, phase: 'P' })
+const b = await spawn(` + "`two`" + `, { model: 'sonnet', effort: 'low', label: 'worker', schema: S, phase: 'P' })
+return { done: true, dead: [a, b].filter((x) => !x).length }`
+
+	t.Run("dead-reviews kills the review labels", func(t *testing.T) {
+		r := run1(t, body, "dead-reviews")
+		m, _ := r.Return.(map[string]any)
+		if n, _ := m["dead"].(int64); n != 1 {
+			t.Fatalf("exactly the reviewer must come back null, got %v (%+v)", n, r.Return)
+		}
+	})
+
+	t.Run("dead-reviews that matches nothing says so", func(t *testing.T) {
+		none := preamble + `phase('P')
+await spawn(` + "`one`" + `, { model: 'sonnet', effort: 'low', label: 'auditor', schema: S, phase: 'P' })
+return { done: true }`
+		r := run1(t, none, "dead-reviews")
+		if !strings.Contains(strings.Join(r.Logs, "\n"), "killed nobody") {
+			t.Fatalf("a mode that stubbed no death must say so: %+v", r.Logs)
+		}
+	})
+
+	t.Run("throw-serial throws at the first spawn", func(t *testing.T) {
+		r := run1(t, body, "throw-serial")
+		m, _ := r.Return.(map[string]any)
+		if n, _ := m["dead"].(int64); n != 1 {
+			t.Fatalf("the first spawn must come back null, got %v", n)
+		}
+	})
+
+	t.Run("--dead kills the named label", func(t *testing.T) {
+		rs, err := Run(script(t, body), []string{"clean"}, Options{Dead: []string{"worker"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, _ := rs[0].Return.(map[string]any)
+		if n, _ := m["dead"].(int64); n != 1 {
+			t.Fatalf("the named label must come back null, got %v", n)
+		}
+	})
+
+	t.Run("a promise that never settles is caught", func(t *testing.T) {
+		r := run1(t, preamble+`phase('P')
+await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', schema: S, phase: 'P' })
+await new Promise(() => {})
+return { done: true }`, "clean")
+		if r.Err == nil || !strings.Contains(r.Err.Error(), "never settled") {
+			t.Fatalf("want the never-settled verdict, got %v", r.Err)
+		}
+	})
+
+	t.Run("an unbounded loop hits the deadline", func(t *testing.T) {
+		rs, err := Run(script(t, preamble+`phase('P')
+await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', schema: S, phase: 'P' })
+for (let i = 0; i < 3; i--) {}
+return { done: true }`), []string{"clean"}, Options{Timeout: 300 * time.Millisecond})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rs[0].Err == nil || !strings.Contains(rs[0].Err.Error(), "did not finish") {
+			t.Fatalf("want the deadline verdict, got %v", rs[0].Err)
+		}
+	})
+
+	t.Run("a call with no options object", func(t *testing.T) {
+		r := run1(t, preamble+`phase('P')
+await agent(`+"`go`"+`)
+return { done: true }`, "clean")
+		wantViolation(t, r, "no options object")
+	})
+
+	t.Run("an unrecognised report field does not push clean onto the failure branch", func(t *testing.T) {
+		r := run1(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { escalated: { type: 'boolean' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', schema: S, phase: 'P' })
+return { done: true, tookFailure: Boolean(r.escalated) }`, "clean")
+		m, _ := r.Return.(map[string]any)
+		if b, _ := m["tookFailure"].(bool); b {
+			t.Fatalf("the clean mode must walk the happy path: %+v", r.Return)
+		}
+		if !strings.Contains(strings.Join(r.Logs, "\n"), "did not recognise") {
+			t.Fatalf("a defaulted field must be named: %+v", r.Logs)
+		}
+	})
 }
