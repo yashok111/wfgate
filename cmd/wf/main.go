@@ -223,7 +223,7 @@ func cmdStatus(args []string) error {
 	}
 	fmt.Printf("  DIRTY (%d)\n", len(dirty))
 	for _, d := range dirty {
-		fmt.Println("    " + d)
+		fmt.Println("    " + d.String())
 	}
 	return nil
 }
@@ -263,6 +263,13 @@ func cmdApply(args []string) error {
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&edits); err != nil {
 			return fmt.Errorf("edits: %w", err)
+		}
+		// Decode stops at the end of the FIRST value and the rest is discarded
+		// in silence, so a file holding two concatenated arrays applied half the
+		// batch and reported success — a partial batch presented as landed, one
+		// layer above the failure this whole command exists to prevent.
+		if _, err := dec.Token(); err != io.EOF {
+			return fmt.Errorf("edits: trailing data after the batch array; a batch is ONE array, not several")
 		}
 	} else {
 		if edits, err = apply.ParseText(raw); err != nil {
@@ -614,7 +621,7 @@ func cmdFreeze(args []string) error {
 	}
 	if len(dirty) > 0 {
 		for _, d := range dirty {
-			fmt.Fprintln(os.Stderr, "  "+d)
+			fmt.Fprintln(os.Stderr, "  "+d.String())
 		}
 		return fmt.Errorf("artifacts are dirty; commit them with `wf apply` before freezing")
 	}
@@ -697,7 +704,24 @@ func cmdFreeze(args []string) error {
 	// The target's HEAD is recorded too. A frozen gate that cites line numbers
 	// is only meaningful against one revision of the repository it reviews, and
 	// without this the citations silently rot the moment the target moves.
-	fm.TargetRef = targetHead(w.M.Target)
+	tref, err := targetHead(w.M.Target)
+	if err != nil {
+		return fmt.Errorf("%w; a gate whose citations name no revision has no baseline to verify against", err)
+	}
+	fm.TargetRef = tref
+	modified, untracked, err := targetDirt(w.M.Target)
+	if err != nil {
+		return err
+	}
+	if len(modified) > 0 {
+		for _, c := range modified {
+			fmt.Fprintln(os.Stderr, "  "+c.String())
+		}
+		return fmt.Errorf("the target has %d modified tracked file(s); the citations name lines in %s, so commit or stash them before freezing", len(modified), tref)
+	}
+	if len(untracked) > 0 {
+		fmt.Printf("  note: %d untracked file(s) in the target — not part of %s, and cited by nothing\n", len(untracked), tref)
+	}
 	for _, a := range arts {
 		b, err := os.ReadFile(filepath.Join(w.Root, a))
 		if err != nil {
@@ -785,12 +809,41 @@ func newestFrozen(w *ws.Workspace) int {
 	return 0
 }
 
-func targetHead(dir string) string {
+// targetHead resolves the revision every citation is a claim ABOUT. The error
+// is returned rather than folded into the string "(unknown)": that string went
+// into the manifest, and verify then compared "(unknown)" with "(unknown)" and
+// printed clean — a frozen gate with no baseline at all verified green forever,
+// and only started failing once the target came back. `check drift` already
+// refused such a manifest by name; freeze and verify now refuse it too.
+func targetHead(dir string) (string, error) {
 	sha, err := gitx.Repo{Dir: dir}.Head()
 	if err != nil {
-		return "(unknown)"
+		return "", fmt.Errorf("target %s: %w", dir, err)
 	}
-	return short(sha)
+	return short(sha), nil
+}
+
+// targetDirt separates the two states a target's working tree can be in that
+// the frozen revision does not describe. A MODIFIED tracked file is the one
+// that matters: the citations name lines in HEAD, so a tree whose tracked files
+// differ from HEAD is not the tree the reviewers will read — measured, a cited
+// line rewritten without a commit left HEAD unchanged, so `wf check drift` said
+// "nothing to re-read" and `wf verify` said "clean" over it. Untracked files
+// are noted, not refused: build output beside a repository under review is
+// normal and cites nothing.
+func targetDirt(dir string) (modified, untracked []gitx.Change, err error) {
+	cs, err := gitx.Repo{Dir: dir}.Dirty(".")
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, c := range cs {
+		if c.Untracked() {
+			untracked = append(untracked, c)
+		} else {
+			modified = append(modified, c)
+		}
+	}
+	return modified, untracked, nil
 }
 
 // cmdVerify answers the only question that matters immediately before a launch:
@@ -851,12 +904,8 @@ func cmdVerify(args []string) error {
 	// one the operator has.
 	bookkeeping := 0
 	for _, d := range dirty {
-		fail("uncommitted: %s", d)
-		p := d
-		if i := strings.LastIndexByte(d, ' '); i >= 0 {
-			p = d[i+1:]
-		}
-		if !strings.HasPrefix(p, "artifacts/") {
+		fail("uncommitted: %s", d.String())
+		if !strings.HasPrefix(d.Path, "artifacts/") {
 			bookkeeping++
 		}
 	}
@@ -912,8 +961,23 @@ func cmdVerify(args []string) error {
 	// every line number the artifacts cite is a claim about one revision of the
 	// repository under review, and a target that moved silently invalidates all
 	// of them.
-	if now := targetHead(w.M.Target); now != fm.TargetRef {
+	if now, err := targetHead(w.M.Target); err != nil {
+		fail("target %s: %v (frozen against %s)", w.M.Target, err, fm.TargetRef)
+	} else if now != fm.TargetRef {
 		fail("target is at %s, frozen against %s", now, fm.TargetRef)
+	} else if modified, untracked, err := targetDirt(w.M.Target); err != nil {
+		return err
+	} else {
+		// HEAD matching is not the whole question. A cited line rewritten
+		// WITHOUT a commit leaves HEAD where it was, so the tag, the manifest
+		// and the target ref all still agree while the bytes a reviewer opens
+		// have changed underneath them.
+		for _, c := range modified {
+			fail("target is dirty: %s — %s says what %s does not", c.String(), c.Path, fm.TargetRef)
+		}
+		if len(untracked) > 0 {
+			fmt.Printf("  note: %d untracked file(s) in the target, cited by nothing\n", len(untracked))
+		}
 	}
 
 	if bad > 0 {
@@ -1143,8 +1207,26 @@ func runDrift(w *ws.Workspace, arts []string, round int) error {
 	if fm.TargetRef == "" || fm.TargetRef == "(unknown)" {
 		return fmt.Errorf("round %d froze without a resolvable target ref; drift has no baseline", n)
 	}
-	now := targetHead(w.M.Target)
+	now, err := targetHead(w.M.Target)
+	if err != nil {
+		return err
+	}
 	if now == fm.TargetRef {
+		// "The target has not moved" is a claim about HEAD, and HEAD is not the
+		// whole tree: a cited line rewritten without a commit leaves this branch
+		// printing "nothing to re-read" over exactly the change drift exists to
+		// find.
+		modified, _, err := targetDirt(w.M.Target)
+		if err != nil {
+			return err
+		}
+		if len(modified) > 0 {
+			fmt.Printf("## drift — target still at %s, but %d tracked file(s) differ from it:\n", now, len(modified))
+			for _, c := range modified {
+				fmt.Printf("  %s\n", c.String())
+			}
+			return fmt.Errorf("the target's working tree is not %s; commit or stash it, then re-run", now)
+		}
 		fmt.Printf("## drift — target still at %s — nothing to re-read\n", now)
 		return nil
 	}

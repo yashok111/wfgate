@@ -159,7 +159,13 @@ func (w *Workspace) ArtifactList() ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || strings.HasPrefix(d.Name(), ".") {
+		// `.gitkeep` is the only dot-entry that is bookkeeping rather than an
+		// artifact, and it is named rather than pattern-matched: skipping every
+		// dot-prefixed NAME hid a real artifact completely — `artifacts/.rules.md`
+		// was tracked and committed, absent from the freeze manifest, and absent
+		// from verify's changed/added/gone classes, so its content could be
+		// rewritten after the freeze and `wf verify` still printed "clean".
+		if d.IsDir() || d.Name() == ".gitkeep" {
 			return nil
 		}
 		rel, err := filepath.Rel(w.Root, p)

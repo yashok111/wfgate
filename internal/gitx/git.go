@@ -58,7 +58,13 @@ func (r Repo) Commit(msg string, paths []string) (string, error) {
 	if staged == "" {
 		return "", ErrNothingStaged
 	}
-	if _, err := r.Run("commit", "-q", "-m", msg); err != nil {
+	// The pathspec is not decoration: `git commit` without one commits the whole
+	// INDEX, so a half-written draft the operator had staged by hand rode into
+	// the same commit — and, being tracked from then on, passed freeze's dirty
+	// check and was hashed into the manifest as a reviewed artifact. Naming the
+	// paths keeps the property the whole tool is for: one commit is one reviewed
+	// change.
+	if _, err := r.Run(append([]string{"commit", "-q", "-m", msg, "--"}, paths...)...); err != nil {
 		return "", err
 	}
 	return r.Head()
@@ -72,14 +78,48 @@ var ErrNothingStaged = fmt.Errorf("nothing staged")
 func (r Repo) Head() (string, error) { return r.Run("rev-parse", "HEAD") }
 
 // Dirty returns the porcelain status lines under pathspec, empty when clean.
-func (r Repo) Dirty(pathspec ...string) ([]string, error) {
-	args := append([]string{"status", "--porcelain", "--"}, pathspec...)
+func (r Repo) Dirty(pathspec ...string) ([]Change, error) {
+	// -z, not plain porcelain: git QUOTES a path containing a space or a
+	// non-ASCII byte ("artifacts/my draft.md"), and the caller that split such a
+	// line on its last space read `draft.md"` as the path — so a dirty artifact
+	// was counted as round bookkeeping and verify printed the reassuring "commit
+	// it, do not re-freeze" over it. With -z the path is raw and the record
+	// boundary is a NUL.
+	args := append([]string{"status", "--porcelain", "-z", "--"}, pathspec...)
 	out, err := r.Run(args...)
 	if err != nil || out == "" {
 		return nil, err
 	}
-	return strings.Split(out, "\n"), nil
+	var cs []Change
+	recs := strings.Split(strings.TrimRight(out, "\x00"), "\x00")
+	for i := 0; i < len(recs); i++ {
+		rec := recs[i]
+		if len(rec) < 4 {
+			continue
+		}
+		c := Change{Status: rec[:2], Path: rec[3:]}
+		// A rename record is followed by its ORIGIN path as a separate NUL
+		// field; consume it so it is not read as a change of its own.
+		if c.Status[0] == 'R' || c.Status[0] == 'C' {
+			i++
+		}
+		cs = append(cs, c)
+	}
+	return cs, nil
 }
+
+// Change is one line of `git status --porcelain`, split where git splits it
+// rather than where a space happens to fall.
+type Change struct {
+	Status string // the two-letter XY code, as git prints it
+	Path   string // raw, never quoted
+}
+
+func (c Change) String() string { return c.Status + " " + c.Path }
+
+// Untracked reports the `??` code, the one class that is dirt without being a
+// change to something under review.
+func (c Change) Untracked() bool { return c.Status == "??" }
 
 func (r Repo) Tag(name, msg string) error {
 	_, err := r.Run("tag", "-a", name, "-m", msg)
