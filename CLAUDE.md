@@ -250,6 +250,15 @@ measured failure, not taste:
 - *The parser names the one-header-many-blocks trap* — the first shape a live
   operator reached for; the error now states that `count=` is scoped to one
   replacement.
+- *The batch-size cost meter* — P2e measured ~0.25 findings per applied edit,
+  stable across a 12x range of batch sizes; a 60-edit batch bought four extra
+  rounds. `wf stats` derives each round's edits from the apply commit subjects
+  it already parses and prints findings/edit per round and across the gate —
+  the workspace's OWN number, the only form in which it is believed. `wf apply`
+  prints a note (never a refusal) when a batch's size, against that history,
+  predicts more than a handful of next-round findings; no history, no claim.
+  An automatic split is deliberately absent: which edits belong together is
+  judgement — one rule and all its copies must land or fail as a unit.
 
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and

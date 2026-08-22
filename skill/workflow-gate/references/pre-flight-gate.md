@@ -362,7 +362,11 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   after making it; sweep with
   `wf check dup` for copies that DRIFTED, then hand-check for copies that CONTRADICT, which no
   similarity metric reaches; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
-  `wf freeze`, and `wf verify` before launching.
+  `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
+  `wf stats` prints each round's edits and findings-per-edit (P2e measured ~0.25, stable across a
+  12x range of batch sizes — a 60-edit batch bought four extra rounds), and `wf apply` notes when a
+  batch's size predicts a costly next round. Split by RULE — one rule and all its copies per batch —
+  never mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
 - **Vacuity is a BLOCKER, at classification time.** A finding that makes an observation, a guard or a
   tripwire *vacuous* — it passes whether or not the thing it checks exists — is a blocker, not a major.
   Classified there, it loops the gate under the rule below and its fix is reviewed like any other; no

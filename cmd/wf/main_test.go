@@ -144,6 +144,21 @@ func wantFindings(t *testing.T, err error, step string) {
 	}
 }
 
+// The apply-side cost meter: a note, never a refusal, and no claim without
+// history — an unmeasured workspace predicts nothing.
+func TestBatchNote(t *testing.T) {
+	if note, warn := batchNote(60, 200, 50); !warn ||
+		!strings.Contains(note, "predicts ~15 finding(s)") || !strings.Contains(note, "split by RULE") {
+		t.Fatalf("a 60-edit batch at 0.25/edit must predict ~15 and say how to split: %q", note)
+	}
+	if _, warn := batchNote(3, 200, 50); warn {
+		t.Fatal("a small batch must pass silently")
+	}
+	if _, warn := batchNote(60, 0, 0); warn {
+		t.Fatal("no history, no claim")
+	}
+}
+
 func TestPrescribedSequence(t *testing.T) {
 	setGitEnv(t)
 	tmp := t.TempDir()
@@ -349,7 +364,7 @@ func TestPrescribedSequence(t *testing.T) {
 	noErr(t, err, "stats mid-run")
 	mustContain(t, out,
 		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 0 commit, 0 prose, 1 open",
-		"round 2 [open, delta] — 0 finding(s), 0 blocker(s)",
+		"round 2 [open, delta] — 0 finding(s), 0 blocker(s); closed: 0 commit, 0 prose, 0 open; 2 apply batch(es), 3 edit(s)",
 		"no [fix-induced] markers; the self-inflicted share was not measured")
 
 	// The prescribed flow freezes a round right after opening it, so the frozen
@@ -479,9 +494,10 @@ func TestPrescribedSequence(t *testing.T) {
 	mustContain(t, out,
 		"## stats — workspace demo, 2 round(s)",
 		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
-		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es); fix-induced 1",
+		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es), 3 edit(s) (0.33 finding(s)/edit); fix-induced 1",
 		"total — 2 finding(s), 2 blocker(s)",
-		"fix-induced — 1 of 2 finding(s)")
+		"fix-induced — 1 of 2 finding(s)",
+		"cost — 3 edit(s) applied, 0.67 finding(s)/edit across the gate")
 
 	// A tooling round is its own kind: its blocker must not read as reviewer
 	// evidence, or it restarts the stop rule's clock (the P2e distortion).

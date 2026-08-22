@@ -64,7 +64,7 @@ wf delta                                   # the delta round's brief: findings +
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules) |
-| `wf stats` | per-round findings, closures, apply batches, the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
+| `wf stats` | per-round findings, closures, apply batches and edits (with findings/edit — the batch cost meter), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
 
@@ -104,7 +104,10 @@ the replacement
 
 Each replacement block carries its own `=== <file>` header — `count` is scoped
 to that one replacement, not to the file; fifteen replacements in one file are
-fifteen headers. Assembling the JSON was the measured bottleneck of the first
+fifteen headers. When a batch is large enough that the workspace's own history
+(findings per edit, from the ledger and the apply commits) predicts a costly
+next round, `apply` prints a note suggesting a split by rule — a note, never a
+refusal. Assembling the JSON was the measured bottleneck of the first
 live gate: a 35-edit batch under three layers of quoting failed on escaping
 more often than on substance. The format is detected by the first byte (`[`
 means JSON).

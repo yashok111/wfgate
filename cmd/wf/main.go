@@ -285,6 +285,10 @@ func cmdApply(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nbatch REJECTED — nothing was written. Fix every FAIL above and re-run.\n")
 		return errFindings
 	}
+	histEdits, histFindings := batchHistory(w)
+	if note, warn := batchNote(len(edits), histEdits, histFindings); warn {
+		fmt.Println(note)
+	}
 	if *dry {
 		fmt.Printf("\ndry run: %d file(s) would change\n", len(bufs))
 		return nil
@@ -1326,7 +1330,7 @@ func cmdStats(args []string) error {
 	}
 	fmt.Printf("## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
 	kinds := roundKinds(w)
-	totalF, totalB, totalFI := 0, 0, 0
+	totalF, totalB, totalFI, totalEdits := 0, 0, 0, 0
 	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
 	for n := 1; n <= w.M.Round; n++ {
 		findings, blockers, byCommit, byProse, open, fixInduced := 0, 0, 0, 0, 0, 0
@@ -1378,20 +1382,36 @@ func cmdStats(args []string) error {
 		if prev := ws.RoundTag(n - 1); n > 1 && w.Git.TagExists(prev) {
 			rng = prev + ".." + tag
 		}
-		batches := 0
+		batches, edits := 0, 0
 		if subjects, err := w.Git.Run("log", "--format=%s", rng); err == nil && subjects != "" {
 			for _, s := range strings.Split(subjects, "\n") {
 				if strings.HasPrefix(s, "apply") {
 					batches++
 				}
+				if m := applySubjectRe.FindStringSubmatch(s); m != nil {
+					e, _ := strconv.Atoi(m[1])
+					edits += e
+				}
+			}
+		}
+		totalEdits += edits
+		// The window's edits precede the window's findings: the fixes land
+		// after the previous freeze, the findings come from reviewing this one
+		// — so findings/edits on one line IS "what this batch cost", the P2e
+		// planning number (~0.25) measured per workspace.
+		ed := ""
+		if edits > 0 {
+			ed = fmt.Sprintf(", %d edit(s)", edits)
+			if findings > 0 {
+				ed += fmt.Sprintf(" (%.2f finding(s)/edit)", float64(findings)/float64(edits))
 			}
 		}
 		fi := ""
 		if fixInduced > 0 {
 			fi = fmt.Sprintf("; fix-induced %d", fixInduced)
 		}
-		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s\n",
-			n, state, findings, blockers, byCommit, byProse, open, batches, fi)
+		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s\n",
+			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi)
 	}
 	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
 	// A tooling round restarting the stop rule's clock is the P2e distortion:
@@ -1408,6 +1428,12 @@ func cmdStats(args []string) error {
 		fmt.Printf("  fix-induced — %d of %d finding(s); the share climbs toward 100%% when the gate is exhausted\n", totalFI, totalF)
 	} else {
 		fmt.Printf("  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
+	}
+	// The workspace's own cost meter: what a batch of edits costs in next-round
+	// findings, measured here rather than recalled from another gate's anecdote.
+	if totalEdits > 0 && totalF > 0 {
+		fmt.Printf("  cost — %d edit(s) applied, %.2f finding(s)/edit across the gate\n",
+			totalEdits, float64(totalF)/float64(totalEdits))
 	}
 	return nil
 }
@@ -1469,6 +1495,53 @@ func cmdDocs(args []string) error {
 	}
 	_, _ = os.Stdout.Write(b)
 	return nil
+}
+
+// applySubjectRe reads the edit count back out of an apply commit subject.
+// The count is already recorded there; the meter below is derivation, not new
+// state.
+var applySubjectRe = regexp.MustCompile(`^apply: (\d+) edit\(s\)`)
+
+// batchHistory sums what this workspace has already measured about itself:
+// edits applied (from apply commit subjects) and findings filed (from the
+// ledger). P2e produced the number the meter exists for — roughly one finding
+// per four edits, stable across a 12x range of batch sizes — but a workspace's
+// OWN ratio is the only form in which that number will be believed.
+func batchHistory(w *ws.Workspace) (edits, findings int) {
+	if subjects, err := w.Git.Run("log", "--format=%s"); err == nil {
+		for _, s := range strings.Split(subjects, "\n") {
+			if m := applySubjectRe.FindStringSubmatch(s); m != nil {
+				n, _ := strconv.Atoi(m[1])
+				edits += n
+			}
+		}
+	}
+	for n := 1; n <= w.M.Round; n++ {
+		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
+			for _, r := range ws.ParseFindings(b) {
+				if !r.Placeholder() {
+					findings++
+				}
+			}
+		}
+	}
+	return edits, findings
+}
+
+// batchNote is the apply-side half of the cost meter: a NOTE, never a refusal
+// — the operator may have a reason, and a tool that blocks a legal operation
+// on a heuristic gets worked around rather than heeded. No history, no claim:
+// an unmeasured workspace predicts nothing.
+func batchNote(batch, histEdits, histFindings int) (string, bool) {
+	if histEdits == 0 || histFindings == 0 {
+		return "", false
+	}
+	predicted := float64(batch) * float64(histFindings) / float64(histEdits)
+	if predicted < 5 {
+		return "", false
+	}
+	return fmt.Sprintf("  note: %d edit(s) in one batch; this workspace's own history (%d finding(s) / %d edit(s), %.2f per edit) predicts ~%.0f finding(s) in the next round — split by RULE (one rule and all its copies per batch) to keep all-or-nothing intact",
+		batch, histFindings, histEdits, float64(histFindings)/float64(histEdits), predicted), true
 }
 
 // roundKinds derives each round's kind from its opening commit subject
