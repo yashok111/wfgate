@@ -1,0 +1,9 @@
+{
+  "name": "wfgate",
+  "description": "Workflow gate harness: the workflow-gate skill (operating manual) and the pre-flight reminder hook on the Workflow tool. The wf/wfcheck/wfdry binaries are installed separately by `make install` from this same repo.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Yakov Kurbatov"
+  },
+  "homepage": "https://git.sumka.site/yakov/wfgate"
+}

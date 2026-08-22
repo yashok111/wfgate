@@ -175,7 +175,7 @@ func cmdInit(args []string) error {
 	// this gate's reviewers is pinned with the gate, the way the target's
 	// HEAD is pinned by a freeze. Generated from the binary, never hand-edited
 	// — a snapshot, not a divergent copy.
-	if checks, err := wfgate.Docs.ReadFile("skill/workflow-gate/references/gate-checks.md"); err == nil {
+	if checks, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/gate-checks.md"); err == nil {
 		stamped := append([]byte(fmt.Sprintf("<!-- written by %s at init; regenerate with `wf docs checks`, do not edit -->\n", toolID())), checks...)
 		if err := os.WriteFile(filepath.Join(root, "gate-checks.md"), stamped, 0o644); err != nil {
 			return err
@@ -1454,7 +1454,7 @@ var docNames = map[string]string{
 var guideOrder = []string{"authoring", "routing", "preflight", "section-gate", "cost"}
 
 func readDoc(name string) ([]byte, error) {
-	return wfgate.Docs.ReadFile("skill/workflow-gate/references/" + docNames[name])
+	return wfgate.Docs.ReadFile("skills/workflow-gate/references/" + docNames[name])
 }
 
 // cmdDocs serves the operating manual from the binary itself. It exists so the

@@ -15,16 +15,22 @@ exactly those — see "Why each command is the way it is" below.
 (consolidated 2026-08-22, made self-shipping the same day): the `wf` binary,
 the two Node scripts of the script gate (`scripts/wfcheck`, `scripts/wfdry`),
 and the operating manual, which lives as the `workflow-gate` SKILL
-(`skill/workflow-gate/SKILL.md` + `references/`). Nothing about workflows
+(`skills/workflow-gate/SKILL.md` + `references/`). Nothing about workflows
 stands in an agent's always-on context any more: the skill self-triggers from
 its one-line description, the binary EMBEDS the references (`go:embed`,
 stdlib) and serves them via `wf docs`, `wf init` writes the gate-checks
 reference into every workspace so the rules version that briefed a gate's
-reviewers is pinned with the gate, and an optional PreToolUse hook on the
-Workflow tool (`scripts/hooks/workflow-preflight.sh`) injects the reminder
-deterministically. `make install` maintains the symlinks
-(`~/.local/bin/{wfcheck,wfdry}`, `~/.claude/skills/workflow-gate`) and removes
-the retired `~/.claude/workflow-*.md` ones. Before consolidation, 866 lines of
+reviewers is pinned with the gate, and a PreToolUse hook on the Workflow tool
+(`scripts/hooks/workflow-preflight.sh`) injects the reminder
+deterministically. The skill and the hook ship as the **wfgate plugin**
+(`.claude-plugin/plugin.json`, `hooks/hooks.json`, `skills/` — the repo root
+IS the plugin, and its own `.claude-plugin/marketplace.json` makes the local
+clone the marketplace): plugin hooks activate on install, so settings.json is
+never edited, by anyone. `scripts/install.sh` is the one-command bootstrap
+for any machine — `make install` for what a plugin cannot carry (the built
+binary, the wfcheck/wfdry symlinks), `claude plugin` for the rest; it also
+removes the retired `~/.claude/skills/workflow-gate` and
+`~/.claude/workflow-*.md` symlinks. Before consolidation, 866 lines of
 gate-guarding tooling and both specs had no version control at all, and the
 P2e false green lived in exactly such a file. The mechanics/judgement split
 stands: this repo is the mechanics, the gate-checks reference is the
@@ -51,7 +57,7 @@ Five packages, each one decision.
   with its regression fixtures in `testdata/` — the meta-guard fixture is the
   P2e false green, banked). The no-deps doctrine covers the Go module; these
   are co-located for history and review, not linked in.
-- `skill/workflow-gate/` — the operating manual as a Claude Code skill: a thin
+- `skills/workflow-gate/` — the operating manual as a Claude Code skill: a thin
   SKILL.md front door and the gated spec split byte-exact into `references/`
   (authoring, model-routing, pre-flight-gate, section-gate, cost-discipline,
   gate-checks). The split preserved the gated text verbatim — cutting at
@@ -280,14 +286,14 @@ stopped here, not discovered by a commit in the wrong tree.
   fifth mechanises (wrong citations, stale copies). The rest is a model's
   judgement over a specific tree. A tool claiming to replace that would be the
   worst outcome: it would look like coverage.
-- **The rules index is not auto-generated.** `~/.claude/workflow-gate-checks.md`
+- **The rules index is not auto-generated.** The gate-checks reference
   is valuable because it is short enough for every reviewer to read. The tool
   may propose a line; a human must write it in — otherwise the file becomes a
   log and stops being a checklist.
 - **Artifacts are changed through `wf apply`, never by hand.** A hand edit plus
   `git commit` gives up both all-or-nothing and the declared `count` — the two
   reasons the command exists.
-- **Command semantics are specification.** The `skill/workflow-gate/references`
+- **Command semantics are specification.** The `skills/workflow-gate/references`
   passed a gate and describe what each command does and why. Changing
   semantics or output means reconciling the references against the source, in
   the same commit (8 of that gate's 22 blockers were text-code divergences,

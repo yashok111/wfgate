@@ -5,13 +5,12 @@ of edits, and deterministic checks over the artifacts. The repository is the
 single source of truth for the whole gate toolchain: the script gate's Node
 tools (`scripts/wfcheck`, `scripts/wfdry` with their regression fixtures) and
 the operating manual, shipped as the `workflow-gate` skill
-(`skill/workflow-gate/`) and embedded into the binary — `wf docs guide` prints
+(`skills/workflow-gate/`) and embedded into the binary — `wf docs guide` prints
 it, `wf init` writes the gate-checks reference into every workspace, and
-nothing needs to stand in an agent's always-on context. `make install`
-maintains the symlinks (`~/.local/bin/{wfcheck,wfdry}`,
-`~/.claude/skills/workflow-gate`); an optional PreToolUse hook
-(`scripts/hooks/workflow-preflight.sh`) injects the pre-flight reminder on
-every Workflow call.
+nothing needs to stand in an agent's always-on context. The skill and the
+PreToolUse hook (`scripts/hooks/workflow-preflight.sh`, fires on every
+Workflow call) ship as the **wfgate plugin** — the repo root is the plugin,
+and `.claude-plugin/marketplace.json` makes the local clone its marketplace.
 
 A gate over a large change spends effort on two different things. One is the
 reviewing itself — that is judgement, and it is what the rounds are for. The
@@ -22,9 +21,19 @@ only the second.
 
 ## Install
 
+On any machine with Claude Code (needs git, go, node, claude):
+
+```bash
+git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git ~/projects/wfgate
+~/projects/wfgate/scripts/install.sh      # binary + script symlinks + plugin (skill + hook)
+```
+
+After a `git pull`: `make install && claude plugin marketplace update wfgate-tools`.
+`scripts/install.sh --uninstall` reverses everything. Piecemeal:
+
 ```bash
 make build          # ./wf, version-stamped via -ldflags
-make install        # ~/.local/bin/wf (copy) + symlinks for the scripts and specs
+make install        # ~/.local/bin/wf (copy) + wfcheck/wfdry symlinks
 make test           # go test -race
 make check-tools    # wfcheck/wfdry parse + wfdry fixtures (meta-guard must FAIL)
 ```

@@ -9,5 +9,5 @@ package wfgate
 
 import "embed"
 
-//go:embed skill/workflow-gate/references
+//go:embed skills/workflow-gate/references
 var Docs embed.FS

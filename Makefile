@@ -27,12 +27,15 @@ fmt:
 # second copy of a spec is this project's most-repeated defect class, and a
 # stale interpreted script is how the P2e false green shipped. Consumer paths
 # (~/.local/bin, ~/.claude) do not change — only what stands behind them.
+# install covers what the PLUGIN cannot: the built binary and the two script
+# symlinks. The skill and the hook ship via the plugin (`scripts/install.sh`
+# registers it) — the legacy user-level skill symlink and doc symlinks are
+# removed here so the plugin's copy is the only one a session sees.
 install: build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/$(BIN)
 	ln -sfn $(CURDIR)/scripts/wfcheck $(HOME)/.local/bin/wfcheck
 	ln -sfn $(CURDIR)/scripts/wfdry $(HOME)/.local/bin/wfdry
-	mkdir -p $(HOME)/.claude/skills
-	ln -sfn $(CURDIR)/skill/workflow-gate $(HOME)/.claude/skills/workflow-gate
+	@[ -L $(HOME)/.claude/skills/workflow-gate ] && rm $(HOME)/.claude/skills/workflow-gate || true
 	@[ -L $(HOME)/.claude/workflow-guide.md ] && rm $(HOME)/.claude/workflow-guide.md || true
 	@[ -L $(HOME)/.claude/workflow-gate-checks.md ] && rm $(HOME)/.claude/workflow-gate-checks.md || true
 
