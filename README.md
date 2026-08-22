@@ -1,7 +1,12 @@
 # wfgate — gate harness
 
 The `wf` CLI: a review gate's workspace as a git repository, atomic application
-of edits, and deterministic checks over the artifacts.
+of edits, and deterministic checks over the artifacts. The repository is also
+the single source of truth for the rest of the gate toolchain: the script
+gate's Node tools (`scripts/wfcheck`, `scripts/wfdry` with their regression
+fixtures) and the two gated spec documents (`docs/workflow-guide.md`,
+`docs/workflow-gate-checks.md`), which `make install` symlinks to the paths
+their consumers read (`~/.local/bin`, `~/.claude`).
 
 A gate over a large change spends effort on two different things. One is the
 reviewing itself — that is judgement, and it is what the rounds are for. The
@@ -14,11 +19,14 @@ only the second.
 
 ```bash
 make build          # ./wf, version-stamped via -ldflags
-make install        # ~/.local/bin/wf
+make install        # ~/.local/bin/wf (copy) + symlinks for the scripts and specs
 make test           # go test -race
+make check-tools    # wfcheck/wfdry parse + wfdry fixtures (meta-guard must FAIL)
 ```
 
-Stdlib only; `git` is taken from `PATH`.
+Stdlib only; `git` is taken from `PATH`. The Node scripts are co-located for
+versioning and review — `wf` never calls them and the Go module has no
+dependencies.
 
 ## The quick cycle
 

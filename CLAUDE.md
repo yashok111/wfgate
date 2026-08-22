@@ -9,10 +9,19 @@ people's artifact supply chain does not grow one of its own.
 
 The tool grew out of the measured losses of one real gate (mocker, slice P2c:
 7 decision rounds / 94 blockers, 7 script rounds / 14 blockers) and treats
-exactly those — see "Why each command is the way it is" below. The shared index
-of rules and recurring blockers lives **not here** but in
-`~/.claude/workflow-gate-checks.md`; this repository is the mechanics, that
-file is the judgement.
+exactly those — see "Why each command is the way it is" below.
+
+**This repository is the single source of truth for the whole gate toolchain**
+(consolidated 2026-08-22): the `wf` binary, the two Node scripts of the script
+gate (`scripts/wfcheck`, `scripts/wfdry`), and the two gated spec documents
+(`docs/workflow-guide.md`, `docs/workflow-gate-checks.md`). The consumer paths
+did not move — `~/.local/bin/{wfcheck,wfdry}` and `~/.claude/workflow-*.md` are
+symlinks `make install` maintains — so a fix to a tool or a spec is a commit
+here, never a hand edit of an installed copy. Before consolidation, 866 lines
+of gate-guarding tooling and both specs had no version control at all, and the
+P2e false green lived in exactly such a file. The mechanics/judgement split
+stands: this repo is the mechanics, `docs/workflow-gate-checks.md` is the
+judgement.
 
 ## Architecture
 
@@ -30,6 +39,14 @@ Five packages, each one decision.
 - `internal/check` — the deterministic checks: `cite.go`, `dup.go`,
   `drift.go`, `rules.go`.
 - `cmd/wf` — the subcommand dispatcher.
+- `scripts/` — the script gate's Node tools, versioned here, NOT part of the
+  Go module and never called by `wf`: `wfcheck` (static), `wfdry` (dynamic,
+  with its regression fixtures in `testdata/` — the meta-guard fixture is the
+  P2e false green, banked). The no-deps doctrine covers the Go module; these
+  are co-located for history and review, not linked in.
+- `docs/` — the two gated spec documents, symlinked into `~/.claude/` by
+  `make install`. Symlink, not copy: a second copy of a spec is this project's
+  most-repeated defect class.
 
 ## Why each command is the way it is
 
@@ -249,19 +266,20 @@ stopped here, not discovered by a commit in the wrong tree.
 - **Artifacts are changed through `wf apply`, never by hand.** A hand edit plus
   `git commit` gives up both all-or-nothing and the declared `count` — the two
   reasons the command exists.
-- **Command semantics are specification.** `~/.claude/workflow-guide.md` and
-  `~/.claude/workflow-gate-checks.md` passed a gate and describe what each
-  command does and why. Changing semantics or output means reconciling both
-  documents against the source (8 of that gate's 22 blockers were text-code
-  divergences, and the 2026-08-21 reconciliation by the same method found the
-  vacuous enforcement in freeze).
+- **Command semantics are specification.** `docs/workflow-guide.md` and
+  `docs/workflow-gate-checks.md` (symlinked at `~/.claude/`) passed a gate and
+  describe what each command does and why. Changing semantics or output means
+  reconciling both documents against the source, in the same commit (8 of that
+  gate's 22 blockers were text-code divergences, and the 2026-08-21
+  reconciliation by the same method found the vacuous enforcement in freeze).
 
 ## Bars
 
 ```bash
-make test    # go test ./cmd/... ./internal/... -race -count=1
-make lint    # go vet + gofmt (+ golangci-lint when installed)
-make build   # ./wf with the version stamp (-ldflags)
+make test        # go test ./cmd/... ./internal/... -race -count=1
+make lint        # go vet + gofmt (+ golangci-lint when installed)
+make build       # ./wf with the version stamp (-ldflags)
+make check-tools # wfcheck/wfdry parse + wfdry fixtures (the meta-guard must FAIL)
 ```
 
 After any code change — `make install` (`~/.local/bin/wf`): the documents
