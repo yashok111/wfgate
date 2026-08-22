@@ -108,6 +108,8 @@ function value(name, v, mode, label, depth) {
   }
 }
 
+const EFFORT_TIERS = ['low', 'medium', 'high', 'xhigh', 'max']
+
 async function run(mode) {
   const calls = []
   const phases = []
@@ -118,7 +120,7 @@ async function run(mode) {
   const agent = async (prompt, opts = {}) => {
     spawned++
     const label = opts.label || `agent@${spawned}`
-    calls.push(`${label} [${opts.model || 'NO MODEL'}]`)
+    calls.push(`${label} [${opts.model || 'NO MODEL'}/${opts.effort || 'NO EFFORT'}]`)
     // A runtime restatement of three static checks — free once the harness runs,
     // and it catches a prompt composed to `undefined` on one branch only.
     //
@@ -133,6 +135,12 @@ async function run(mode) {
     if (!prompt.trim()) bad('empty prompt')
     if (!opts.schema) bad('no schema')
     if (!opts.model) bad('no model')
+    // An absent effort is the only one of these the real harness accepts: it
+    // silently takes the launching session's setting, so a script reviewed at
+    // one cost runs at another. The enum is closed, and a typo is rejected at
+    // the call — mid-run, after the earlier phases have been paid for.
+    if (!opts.effort) bad('no effort (the call would inherit the launching session)')
+    if (!EFFORT_TIERS.includes(opts.effort)) bad(`effort '${opts.effort}' is not one of ${EFFORT_TIERS.join(', ')}`)
     if (DEAD.has(label)) throw new Error(`stubbed death of ${label}`)
     if (mode === 'throw-serial' && spawned === 1) throw new Error(`stubbed throw at the first spawn`)
     if (mode === 'dead-reviews' && /review|fix|closeout|verify|accept/i.test(label)) return null

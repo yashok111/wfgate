@@ -7,5 +7,5 @@ export const meta = { name: 'fixture-meta-guard', description: 'wfdry fixture: t
 const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
 phase('P')
 if (meta.phases.length !== 1) throw new Error('unreachable')
-const r = await spawn('do the thing', { model: 'sonnet', label: 'worker', schema: { type: 'object' } })
+const r = await spawn('do the thing', { model: 'sonnet', effort: 'low', label: 'worker', schema: { type: 'object' } })
 return { done: true, dead: r ? [] : ['worker'] }

@@ -190,7 +190,7 @@ func TestPrescribedSequence(t *testing.T) {
 	mustContain(t, out, "guide", "checks", "routing")
 	out, err = runWF(t, wsDir, "docs", "guide")
 	noErr(t, err, "docs guide")
-	mustContain(t, out, "# Workflow model routing", "# Workflow cost & context discipline")
+	mustContain(t, out, "# Workflow model and effort routing", "# Workflow cost & context discipline")
 
 	// Two artifacts carrying the same rule. `wf add` is the only way to make an
 	// artifact's first commit — apply rejects an empty `old` — so the sequence

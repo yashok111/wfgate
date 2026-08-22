@@ -18,7 +18,7 @@ the same text from the installed binary (`wf docs guide` = the whole manual).
 | you are about to | read first |
 |---|---|
 | author or edit a workflow script | `references/authoring.md`, then `references/model-routing.md` |
-| choose models for agents | `references/model-routing.md` |
+| choose models or reasoning effort for agents | `references/model-routing.md` |
 | review a script or gate its artifacts (the pre-flight gate) | `references/pre-flight-gate.md` + `references/gate-checks.md` |
 | add per-section review gates inside a script | `references/section-gate.md` |
 | estimate or cut cost, plan fan-out width | `references/cost-discipline.md` |
@@ -28,8 +28,10 @@ the same text from the installed binary (`wf docs guide` = the whole manual).
 
 - Everything agent-facing is English, Latin script; quotation is the one
   carve-out. Gate artifacts ARE agent-facing.
-- Every `agent()` call carries an explicit `model`. Producers inside a fan-out
-  are cheap; opus is the exception that must argue for itself.
+- Every `agent()` call carries an explicit `model` AND an explicit `effort` —
+  an omitted one inherits the launching session, so the script's cost is not
+  written in the script. Producers inside a fan-out are cheap on both axes;
+  opus and `high`+ are the exceptions that must argue for themselves.
 - No Workflow launches without the pre-flight gate: static check (`wfcheck`),
   dry-run (`wfdry`, BEFORE the freeze), freeze, `wf verify` green.
 - The gate's bookkeeping goes through `wf` (workspace, rounds, apply, freeze,

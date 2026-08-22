@@ -66,3 +66,13 @@ remaining work is mechanical, surface this and suggest dropping the main-loop mo
 **8. Pre-launch cost estimate.** Before calling `Workflow`, estimate total-agents × per-agent-read-size.
 If each agent re-reads a large shared corpus, the design is read-amplifying — redesign (map-once,
 scope-slices, `Explore`) BEFORE launching, not after. This is a pre-flight gate (vector 1) blocker.
+
+**9. Effort is the OTHER multiplier, and it is the one nobody sees.** A model tier is visible in the
+script; `opts.effort` is visible only when it is written there, and an omitted one takes the launching
+session's setting — a gate opened from an `xhigh` session runs its whole fan-out at `xhigh`, including
+the grep-and-report agents, and the script that was reviewed says nothing about it. Reasoning tokens are
+output tokens: raising the effort of a per-item agent multiplies across every item, so the axis is at
+its most expensive exactly where the tier list already says to be cheap. Write the effort on every call
+(`references/model-routing.md`); mechanical stages are `low`, ordinary producers `medium`, and `high`+
+is for the once-only steps nothing downstream re-checks. The same applies to the main loop of a long
+mechanical session — point 7's argument holds for effort as much as for tier.

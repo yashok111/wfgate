@@ -1467,7 +1467,7 @@ func cmdDocs(args []string) error {
 
   guide         the whole manual (authoring + routing + preflight + section-gate + cost)
   authoring     language rule, companions, the spawn wrapper name
-  routing       model routing: explicit per-agent tiers
+  routing       model and effort routing: explicit per-agent tiers
   preflight     the pre-flight script-review gate and the wf round loop
   section-gate  the per-section dual-review gate inside a script
   cost          cost & context discipline

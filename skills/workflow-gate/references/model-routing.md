@@ -1,4 +1,4 @@
-# Workflow model routing
+# Workflow model and effort routing
 
 No `CLAUDE_CODE_SUBAGENT_MODEL` env override — removed 2026-05-29 (it silently overrode per-call
 `opts.model`, contrary to documented order, so a `model:'opus'` agent quietly ran on sonnet). Do NOT
@@ -50,3 +50,53 @@ phase with one top-tier and one default-tier reviewer is the common case — has
 models, and mirroring is not expressible: leave `meta.phases[].model` off that entry and name the tiers
 in its `detail` string instead. Do not flatten a phase to one tier just to satisfy the metadata.
 
+
+---
+
+## Effort routing
+
+`opts.effort` (`'low' | 'medium' | 'high' | 'xhigh' | 'max'`) sets how much reasoning a subagent spends
+per call. It is a SECOND axis, orthogonal to `model`: the model is the capability class the task needs,
+the effort is how much deliberation is spent reaching the answer. A cheap model at high effort and a top
+model at low effort are both legitimate assignments — coupling the two axes, so that every opus call is
+also `max` and every haiku call is `low`, is the common authoring error and it costs on the wide side of
+a fan-out.
+
+**HARD RULE — every `agent()` call MUST carry an explicit `effort`**, for the same reason it must carry a
+`model`. An omitted `effort` inherits the LAUNCHING SESSION's setting: the same script then costs a
+multiple of itself depending on who ran it and what they last typed into `/effort`, and neither the
+author nor the pre-flight gate can read the run's cost off the script it is reviewing. An effort-less
+`agent()` is a bug; fix before running. Resolution order: per-call `opts.effort` > session effort, and
+nothing else — there is no `meta.phases[].effort` to mirror it on, so a phase that deliberately mixes
+efforts names them in that entry's `detail` string, exactly as a mixed-tier phase names its models.
+
+**Tier by how the answer is REACHED, not by how important the step is:**
+- **low** — mechanical, single pass, nothing to weigh: grep-and-report, extraction, rename, a
+  format-preserving tweak, a yes/no check, harvesting a log. The same population the tier list gives to
+  haiku.
+- **medium** — DEFAULT for ordinary producers: a localized edit, a single-file TDD slice, test writing,
+  structured extraction, routine review.
+- **high** — a step whose error is NOT cheaply caught downstream: a section-gate reviewer, adversarial
+  verification, the single fan-in agent reconciling genuinely conflicting inputs, a top-level design
+  call.
+- **xhigh / max** — a step that runs ONCE, that nothing re-checks, and whose one wrong answer burns the
+  fan-out. `max` is an escalation the script argues for in a comment or a `log()` line; a per-item
+  fan-out agent never gets it.
+
+**Inside a fan-out, effort is cheap for the same reason models are.** Per-item producers under
+`parallel()`/`pipeline()` are `medium`, or `low` where the item work is mechanical — never above; the
+only high-effort role is the SINGLE fan-in or gate agent that runs once. N same-role high-effort
+producers in parallel is the same defect as N opus producers, and it bites harder: effort multiplies the
+output tokens of every one of the N.
+
+**Unmeasured, and stated as such.** No gate has yet run one script at two efforts and compared the
+findings, so the tiers above are derived from the cost model — reasoning tokens are output tokens,
+billed per call and multiplied by the fan-out width — and from the reproducibility hole, not from a
+measurement of quality lost. Until a run measures it, an over-powered effort is treated the way an
+over-powered model is: an ADVISORY downgrade, never a blocker. A MISSING effort is a blocker, because
+that is not a tier judgement — it is a script whose cost is written in someone else's session.
+
+**The pre-flight gate's own reviewers carry no effort knob.** They are out-of-band `Agent` calls, whose
+options are the model and the agent type; their depth comes from the reviewing session and from the
+agent definition. Do not report a missing `effort` on them — and do not drop the session's effort while
+a gate round is running, because that is the one place the setting silently reaches.

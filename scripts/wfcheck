@@ -395,7 +395,9 @@ report(INFO, 1, `${agents.length} agent() call sites${forwarders ? ` (+${forward
 // against a SECOND, independent population: the option keys that occur once per
 // call site and nowhere else. `model:` is deliberately not among them — it also
 // appears on `meta.phases[]` entries, so it cannot separate the two cases.
-const optionKeys = ['schema:', 'prompt:', 'phase:']
+// `effort:` can: there is no `meta.phases[].effort`, and the guide requires the
+// key on every call, so it counts the same population the inventory should.
+const optionKeys = ['schema:', 'prompt:', 'phase:', 'effort:']
 const keyFloor = Math.max(...optionKeys.map((k) => code.split(k).length - 1))
 // Slack of 1: a wrapper's own forwarding call carries the same keys.
 if (agents.length + forwarders < keyFloor - 1) {
@@ -404,18 +406,35 @@ if (agents.length + forwarders < keyFloor - 1) {
     1,
     `inventory implausible: ${agents.length} call site(s) found, but the script has ${keyFloor} ` +
       `agent-option key(s) — it almost certainly wraps the spawn call under a name this checker ` +
-      `does not recognise, and EVERY check below (model, schema, prompt size, ownership, ` +
+      `does not recognise, and EVERY check below (model, effort, schema, prompt size, ownership, ` +
       `prompt-vs-schema fields) is passing over an empty set. Rename the wrapper to \`spawn\`.`,
   )
 }
 
+// `effort` is the one option whose absence is invisible at runtime: the call
+// still runs, at whatever the LAUNCHING SESSION was last set to. The same
+// script then costs a multiple of itself depending on who ran it, and the
+// pre-flight gate cannot read the run's cost off the script it reviewed — so
+// it is an ERROR here, at the same level as a missing model. A wrong value is
+// the other half: the enum is closed and a typo is rejected at the call,
+// mid-run, after the phases before it have already been paid for.
+const EFFORT_TIERS = ['low', 'medium', 'high', 'xhigh', 'max']
+
 for (const a of agents) {
-  for (const field of ['model', 'label', 'schema', 'phase']) {
+  for (const field of ['model', 'effort', 'label', 'schema', 'phase']) {
     if (field === 'label' && a.labelled) continue
     if (!new RegExp(`\\b${field}\\s*:`).test(a.optsSrc)) {
-      const level = field === 'model' || field === 'schema' ? ERROR : WARN
-      report(level, a.line, `agent ${a.label}: no \`${field}:\` in its options`)
+      const level = field === 'label' || field === 'phase' ? WARN : ERROR
+      const why =
+        field === 'effort'
+          ? ' — it then inherits the launching session, so the script does not say what the run costs'
+          : ''
+      report(level, a.line, `agent ${a.label}: no \`${field}:\` in its options${why}`)
     }
+  }
+  const eff = (a.optsSrc.match(/\beffort\s*:\s*[`'"]([^`'"]*)/) || [])[1]
+  if (eff !== undefined && !EFFORT_TIERS.includes(eff)) {
+    report(ERROR, a.line, `agent ${a.label}: effort '${eff}' is not one of ${EFFORT_TIERS.join(', ')}`)
   }
   const schemaName = (a.optsSrc.match(/schema:\s*([A-Za-z_$][\w$]*)/) || [])[1]
   if (schemaName && schemaProps.has(schemaName)) {
