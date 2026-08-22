@@ -598,3 +598,47 @@ func TestRuleMarkers_wrappedRuleIsComparedWhole(t *testing.T) {
 		t.Fatalf("three times vs five times is a conflict, got %+v", c)
 	}
 }
+
+// The blame half of the two-condition rule. Divergence needs BOTH conditions:
+// the copies read differently AND git last touched them in different commits.
+// The first version used `git log -1 -- <file>` and flagged 161 groups of 176 —
+// a check that paints 92% of its output is a check that gets switched off. Only
+// the similarity half had a test; removing the commit comparison left the bars
+// green.
+func TestFindDuplicates_differingCopiesFromOneCommitAreNotDivergent(t *testing.T) {
+	a := "The reviewer must record every blocker in the findings ledger before the freeze.\n"
+	b := "The reviewer must record each blocker in the findings ledger before the freeze.\n"
+	root := mkrepo(t, map[string]string{"artifacts/a.md": a, "artifacts/b.md": b})
+
+	files := []string{"artifacts/a.md", "artifacts/b.md"}
+	sts, err := CollectStatements(root, files, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, _, err := FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("want the near-match pair, got %+v", groups)
+	}
+	if groups[0].Divergent {
+		t.Fatal("copies written in ONE commit were seen side by side: a deliberate rewording, not a divergence")
+	}
+
+	// Edit one of them in a second commit and the same pair IS divergent.
+	commit(t, root, "reword one copy alone", map[string]string{
+		"artifacts/b.md": "The reviewer must record any blocker in the findings ledger before the freeze.\n",
+	})
+	sts, err = CollectStatements(root, files, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, _, err = FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || !groups[0].Divergent {
+		t.Fatalf("copies that differ AND were edited apart are divergent, got %+v", groups)
+	}
+}

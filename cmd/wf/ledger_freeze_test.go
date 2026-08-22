@@ -189,3 +189,69 @@ func TestStatsNamesAnUnparsableRow(t *testing.T) {
 	// The malformed row must not inflate the count.
 	mustContain(t, out, "total — 1 finding(s)")
 }
+
+// Guards that existed with nothing proving they fire. Each case below fails if
+// its guard is removed — which was the audit's finding about all of them.
+func TestRefusals(t *testing.T) {
+	t.Run("freeze refuses a dirty artifact", func(t *testing.T) {
+		wsDir := newGate(t)
+		write(t, filepath.Join(wsDir, "artifacts", "decisions.md"), "edited by hand, never applied\n")
+		if out, err := runWF(t, wsDir, "freeze"); err == nil {
+			t.Fatalf("want a refusal, got:\n%s", out)
+		} else {
+			mustContain(t, err.Error(), "artifacts are dirty")
+		}
+	})
+
+	t.Run("freeze refuses a closure naming a commit that does not exist", func(t *testing.T) {
+		wsDir := newGate(t)
+		ledger(t, wsDir, 1, "| 1 | BLOCKER | the thing | deadbeef1 |\n")
+		if out, err := runWF(t, wsDir, "freeze"); err == nil {
+			t.Fatalf("want a refusal, got:\n%s", out)
+		} else {
+			mustContain(t, err.Error(), "not a commit in this workspace")
+		}
+	})
+
+	t.Run("round new refuses a kind outside the set", func(t *testing.T) {
+		wsDir := newGate(t)
+		if out, err := runWF(t, wsDir, "round", "new", "-kind", "quick"); err == nil {
+			t.Fatalf("want a refusal, got:\n%s", out)
+		}
+	})
+
+	t.Run("add refuses two untracked drafts that differ", func(t *testing.T) {
+		wsDir := newGate(t)
+		write(t, filepath.Join(wsDir, "artifacts", "notes.md"), "the draft in place\n")
+		other := filepath.Join(filepath.Dir(wsDir), "notes.md")
+		write(t, other, "a DIFFERENT draft with the same name\n")
+		if out, err := runWF(t, wsDir, "add", other); err == nil {
+			t.Fatalf("want a refusal, got:\n%s", out)
+		} else {
+			mustContain(t, err.Error(), "differs from")
+		}
+	})
+
+	t.Run("verify names an artifact gone from the tree", func(t *testing.T) {
+		wsDir := newGate(t)
+		_, err := runWF(t, wsDir, "freeze")
+		noErr(t, err, "freeze")
+		gitIn(t, wsDir, "rm", "-q", "artifacts/decisions.md")
+		gitIn(t, wsDir, "commit", "-q", "-m", "drop the artifact")
+		out, err := runWF(t, wsDir, "verify")
+		if err == nil {
+			t.Fatalf("want a mismatch, got:\n%s", out)
+		}
+		mustContain(t, out, "gone from the tree")
+	})
+
+	t.Run("cite states the non-ASCII anchor population in its header", func(t *testing.T) {
+		wsDir := newGate(t)
+		write(t, filepath.Join(wsDir, "artifacts", "decisions.md"),
+			"# Decisions\n\nEntry: `src/main.go:3#якорь` and `src/main.go:3#NeedleFn`.\n")
+		gitIn(t, wsDir, "add", "-A")
+		gitIn(t, wsDir, "commit", "-q", "-m", "cyrillic anchor")
+		out, _ := runWF(t, wsDir, "check", "cite")
+		mustContain(t, out, "anchor(s) not ASCII")
+	})
+}
