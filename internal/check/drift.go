@@ -128,24 +128,40 @@ var hunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@`)
 
 // parseUnified reads a --unified=0 diff into old-side hunks per old path, plus
 // the set of deleted files (new side /dev/null).
+//
+// The `--- ` and `+++ ` headers are read ONLY inside a file's header block,
+// which begins at `diff --git` and ends at the first `+++` or `@@`. Outside it
+// those prefixes belong to CONTENT: in a unified diff every deleted line starts
+// with `-`, so a deleted line reading `-- a sql comment` is indistinguishable
+// from a file header by prefix alone. Measured: one such line in a .sql target
+// re-pointed the parser at a phantom path, every later hunk of that file was
+// filed under it, and `wf check drift` called an invalidated citation clean.
+// The milder shape is worse than silence — a real `edited` degrades to
+// `shifted`, which tells the reviewer to re-aim the line number instead of
+// re-reading the claim.
 func parseUnified(raw string) (map[string][]hunk, map[string]bool) {
 	hunks := map[string][]hunk{}
 	deleted := map[string]bool{}
 	cur := ""
+	inHeader := false
 	for _, l := range strings.Split(raw, "\n") {
 		switch {
-		case strings.HasPrefix(l, "--- "):
+		case strings.HasPrefix(l, "diff --git "):
+			cur, inHeader = "", true
+		case inHeader && strings.HasPrefix(l, "--- "):
 			cur = strings.TrimPrefix(l, "--- ")
 			if cur == "/dev/null" {
 				cur = "" // an added file has no old side to drift
 			} else {
 				cur = strings.TrimPrefix(cur, "a/")
 			}
-		case strings.HasPrefix(l, "+++ "):
+		case inHeader && strings.HasPrefix(l, "+++ "):
 			if cur != "" && strings.TrimPrefix(l, "+++ ") == "/dev/null" {
 				deleted[cur] = true
 			}
+			inHeader = false
 		case strings.HasPrefix(l, "@@ "):
+			inHeader = false
 			if cur == "" {
 				continue
 			}

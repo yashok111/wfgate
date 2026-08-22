@@ -152,3 +152,22 @@ func TestRefusedRefreezeLeavesTheManifestIntact(t *testing.T) {
 	}
 	mustContain(t, out, "MISMATCH", "Do not launch")
 }
+
+// `wf add -as` takes a name from the operator and joined it raw, so a
+// traversing name wrote into the repository under review — the one tree the
+// hard rule says no command may touch — and left it there untracked, where
+// verify (which only compares the target's HEAD) cannot see it.
+func TestAddRefusesAnEscapingName(t *testing.T) {
+	wsDir := newGate(t)
+	src := filepath.Join(filepath.Dir(wsDir), "src.md")
+	write(t, src, "smuggled\n")
+
+	out, err := runWF(t, wsDir, "add", src, "-as", "../../target/PWNED.md")
+	if err == nil {
+		t.Fatalf("add must refuse a name that escapes the workspace, got:\n%s", out)
+	}
+	mustContain(t, err.Error(), "escapes the workspace")
+	if _, e := os.Stat(filepath.Join(filepath.Dir(wsDir), "target", "PWNED.md")); e == nil {
+		t.Fatal("the target repository was written into")
+	}
+}

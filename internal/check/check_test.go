@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -250,7 +251,7 @@ func TestFindDuplicates_divergentCopy(t *testing.T) {
 	}
 	// Both copies are still in the initial commit: a rule that legitimately
 	// lives in two artifacts is not a finding.
-	g, err := FindDuplicates(root, sts, 0.82)
+	g, _, err := FindDuplicates(root, sts, 0.82)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +274,7 @@ func TestFindDuplicates_divergentCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err = FindDuplicates(root, sts, 0.82)
+	g, _, err = FindDuplicates(root, sts, 0.82)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +311,7 @@ func TestCollectStatements_unwrapsHardWrappedParagraphs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := FindDuplicates(root, sts, 0.82)
+	g, _, err := FindDuplicates(root, sts, 0.82)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,11 +380,91 @@ func TestFindDuplicates_ignoresSameFileAndShortLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := FindDuplicates(root, sts, 0.82)
+	g, _, err := FindDuplicates(root, sts, 0.82)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(g) != 0 {
 		t.Fatalf("want no cross-file groups, got %+v", g)
+	}
+}
+
+// A deleted line whose CONTENT begins with `-- ` reaches the parser as
+// `--- ...`, indistinguishable from a file header by prefix alone. It used to
+// re-point the parser at a phantom path, so every later hunk of that file was
+// filed under it and an invalidated citation was reported clean.
+func TestFindDrift_deletedDashDashLineIsNotAFileHeader(t *testing.T) {
+	body := "CREATE TABLE t (id int);\n-- a sql comment\n"
+	for i := 3; i <= 20; i++ {
+		body += "INSERT INTO t VALUES (" + strconv.Itoa(i) + ");\n"
+	}
+	dir := mkrepo(t, map[string]string{"db.sql": body})
+	frozen := head(t, dir)
+
+	// The comment changes AND the cited line 20 is rewritten, in one commit.
+	changed := strings.Replace(body, "-- a sql comment", "-- a different comment", 1)
+	changed = strings.Replace(changed, "INSERT INTO t VALUES (20);", "DELETE FROM t WHERE id = 20;", 1)
+	commit(t, dir, "edit the comment and line 20", map[string]string{"db.sql": changed})
+
+	cits := []Citation{{Artifact: "artifacts/a.md", AtLine: 1, Raw: "db.sql:20", Path: "db.sql", Start: 20, End: 20}}
+	ds, clean, err := FindDrift(dir, frozen, cits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clean != 0 || len(ds) != 1 {
+		t.Fatalf("the cited line was rewritten; want 1 drift and 0 clean, got %d drift(s) and %d clean: %+v", len(ds), clean, ds)
+	}
+	if ds[0].Kind != "edited" {
+		t.Fatalf("a rewritten cited line is `edited`, not %q — `shifted` tells the reviewer to re-aim a number instead of re-reading the claim", ds[0].Kind)
+	}
+}
+
+func head(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// The shape this check was built for: one rule living in a decision document, a
+// context document and a prompt string. Two copies are verbatim, the third
+// contradicts. Excluding members of an exact group from the near-match pass
+// made recall FALL as the rule spread — the same corpus reported the
+// contradiction once a verbatim copy was deleted, and nothing while all three
+// were present.
+func TestFindDuplicates_thirdCopyIsStillCompared(t *testing.T) {
+	rule := "The composition stays a pure function called from buildRuntime at startup.\n"
+	contra := "The composition never stays a pure function called from buildRuntime at startup.\n"
+	root := mkrepo(t, map[string]string{
+		"artifacts/decisions.md": rule,
+		"artifacts/context.md":   rule,
+	})
+	commit(t, root, "the prompt restates it, differently", map[string]string{"artifacts/prompt.md": contra})
+
+	files := []string{"artifacts/decisions.md", "artifacts/context.md", "artifacts/prompt.md"}
+	sts, err := CollectStatements(root, files, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, _, err := FindDuplicates(root, sts, 0.82)
+	if err != nil {
+		t.Fatal(err)
+	}
+	near, divergent := 0, 0
+	for _, g := range groups {
+		if g.Similarity < 1.0 {
+			near++
+			if g.Divergent {
+				divergent++
+			}
+		}
+	}
+	if near == 0 {
+		t.Fatalf("the contradicting third copy must be compared against the verbatim ones, got groups: %+v", groups)
+	}
+	if divergent == 0 {
+		t.Fatalf("the third copy was committed apart and reads differently — that is DIVERGENT: %+v", groups)
 	}
 }

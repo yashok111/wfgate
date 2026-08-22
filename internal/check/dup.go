@@ -207,7 +207,7 @@ func splitSentencesAt(s string) []sentenceAt {
 
 // FindDuplicates groups statements that appear in more than one file, exactly or
 // above the similarity threshold.
-func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup, error) {
+func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup, int, error) {
 	repo := gitx.Repo{Dir: root}
 	blame := map[string][]string{}
 	site := func(s Statement) Site {
@@ -230,19 +230,25 @@ func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup
 		byNorm[s.Norm] = append(byNorm[s.Norm], s)
 	}
 	var groups []DupGroup
-	exact := map[string]bool{}
-	for norm, g := range byNorm {
+	for _, g := range byNorm {
 		if len(g) < 2 || !multiFile(g) {
 			continue
 		}
-		exact[norm] = true
 		groups = append(groups, mkGroup(1.0, g, site))
 	}
 
-	// Near matches. Candidates come from an inverted index over rare tokens: a
-	// pair that shares no rare token cannot reach the threshold, and skipping it
-	// turns an O(n^2) scan over every artifact sentence into something that
-	// finishes instantly on a real workspace.
+	// Near matches. Candidates come from an inverted index over rare tokens,
+	// which turns an O(n^2) scan over every artifact sentence into something
+	// that finishes instantly on a real workspace.
+	//
+	// This is a RECALL trade, not a free one, and the comment here used to claim
+	// otherwise ("a pair that shares no rare token cannot reach the threshold" —
+	// false: two eleven-token statements sharing ten COMMON tokens reach 0.83).
+	// Measured: the same near-duplicate pair is reported, or not, depending on
+	// how many unrelated statements elsewhere in the corpus happen to use its
+	// words. So the statements this filter leaves with NO candidate are counted
+	// and returned, and the report prints them: a corpus the near pass could not
+	// see is not a corpus it found nothing in.
 	df := map[string]int{}
 	for _, s := range sts {
 		for _, t := range s.Toks {
@@ -257,25 +263,42 @@ func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup
 			}
 		}
 	}
+	// A statement that belongs to an exact cross-file group is NOT excluded from
+	// this pass. Excluding it — in either role — is how the check's recall FELL
+	// as a rule spread: two verbatim copies plus a third that contradicts them
+	// reported nothing, while deleting one of the verbatim copies made the same
+	// corpus report the contradiction at sim 0.94. The rule living in a decision
+	// document, a context document and a prompt string is the shape this check
+	// was built for, so the third copy is exactly the one it must reach. Only
+	// the pair the exact pass already reported is skipped, below.
 	seen := map[[2]int]bool{}
+	blind := 0
 	for i, s := range sts {
-		if exact[s.Norm] {
-			continue
-		}
 		cand := map[int]bool{}
+		rare := 0
 		for _, t := range s.Toks {
 			if df[t] > rareDF {
 				continue
 			}
+			rare++
 			for _, j := range inv[t] {
 				if j != i {
 					cand[j] = true
 				}
 			}
 		}
+		// A statement built entirely from words the corpus uses often has no
+		// candidate at all: the near-match pass cannot see it, whatever it says.
+		if rare == 0 {
+			blind++
+		}
 		for j := range cand {
 			o := sts[j]
-			if o.File == s.File || exact[o.Norm] {
+			// Identical normalised forms are the exact pass's business. A rule
+			// present verbatim in three artifacts and reworded in a fourth
+			// yields one near-match pair per verbatim copy: the multiplicity is
+			// the price of naming every site of the contradiction.
+			if o.File == s.File || o.Norm == s.Norm {
 				continue
 			}
 			key := [2]int{min(i, j), max(i, j)}
@@ -298,12 +321,15 @@ func FindDuplicates(root string, sts []Statement, threshold float64) ([]DupGroup
 		}
 		return groups[a].Sites[0].File < groups[b].Sites[0].File
 	})
-	return groups, nil
+	return groups, blind, nil
 }
 
 // rareDF is the document-frequency cap above which a token is considered too
-// common to narrow candidates. It is a performance knob only: raising it costs
-// time, never recall of an exact match, which the pass above already has.
+// common to narrow candidates. Raising it costs time and buys recall; it never
+// affects the exact pass, which is complete on its own. FindDuplicates returns
+// how many statements the cap left with no candidate at all, because a
+// threshold that silently hides part of the corpus is the one thing this
+// project refuses to let a green report imply.
 const rareDF = 12
 
 func multiFile(g []Statement) bool {

@@ -149,14 +149,108 @@ func TestWriteAndVerify(t *testing.T) {
 	if len(written) != 1 || written[0] != "a.md" {
 		t.Fatalf("written = %v", written)
 	}
-	for _, v := range Verify(root, edits) {
+	for _, v := range Verify(root, bufs) {
 		if !v.OK {
 			t.Fatalf("verify failed: %s", v.Reason)
 		}
 	}
 	// Verify reads from disk, so a file reverted behind the tool's back fails.
 	write(t, root, "a.md", "alpha\n")
-	if v := Verify(root, edits); v[0].OK {
+	if v := Verify(root, bufs); v[0].OK {
 		t.Fatal("verify passed on a reverted file")
+	}
+}
+
+// A pure DELETION was verified by strings.Count(body, ""), which is len+1 and
+// therefore never zero: the whole class was checked vacuously, and a deletion
+// that never reached disk reported as landed.
+func TestVerify_deletionIsNotVacuous(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.md", "keep\nDELETEME \ntail\n")
+	edits := []Edit{{File: "a.md", Old: "DELETEME ", New: ""}}
+	_, bufs, err := Plan(root, edits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Write(root, bufs); err != nil {
+		t.Fatal(err)
+	}
+	// Something else puts the deleted text back, the way a second edit planned
+	// from a stale buffer did.
+	write(t, root, "a.md", "keep\nDELETEME \ntail\n")
+	v := Verify(root, bufs)
+	if len(v) != 1 || v[0].OK {
+		t.Fatalf("a deletion that did not land must fail verification, got %+v", v)
+	}
+}
+
+// Two spellings of one path are one file. Keyed by the raw string they were
+// two: both planned against the pristine bytes, both written, and the second
+// write silently discarded the first edit while the batch reported success.
+func TestPlan_pathSpellingsAreOneBuffer(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.md", "DELETEME PPP\n")
+	edits := []Edit{
+		{File: "a.md", Old: "DELETEME ", New: ""},
+		{File: "./a.md", Old: "PPP", New: "QQQ"},
+	}
+	results, bufs, err := Plan(root, edits)
+	if err != nil {
+		t.Fatalf("both edits must plan: %v (%+v)", err, results)
+	}
+	if len(bufs) != 1 {
+		t.Fatalf("two spellings of one path must share one buffer, got %d: %v", len(bufs), bufs)
+	}
+	if _, err := Write(root, bufs); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range Verify(root, bufs) {
+		if !v.OK {
+			t.Fatalf("verify failed: %s", v.Reason)
+		}
+	}
+	b, _ := os.ReadFile(root + "/a.md")
+	if string(b) != "QQQ\n" {
+		t.Fatalf("both edits must land, got %q", b)
+	}
+}
+
+// A chained batch lands correctly and must VERIFY correctly: searching for each
+// edit's New found the intermediate text missing and rejected a perfect apply,
+// leaving an uncommitted artifact and a batch that could not be re-run.
+func TestVerify_chainedEditsAreNotAFalseFailure(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "b.md", "alpha\n")
+	edits := []Edit{
+		{File: "b.md", Old: "alpha", New: "beta"},
+		{File: "b.md", Old: "beta", New: "gamma"},
+	}
+	_, bufs, err := Plan(root, edits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Write(root, bufs); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range Verify(root, bufs) {
+		if !v.OK {
+			t.Fatalf("a chained batch that landed must verify, got %s", v.Reason)
+		}
+	}
+	b, _ := os.ReadFile(root + "/b.md")
+	if string(b) != "gamma\n" {
+		t.Fatalf("got %q", b)
+	}
+}
+
+// The absolute-path half of SafeJoin's refusal. Without it an absolute path is
+// silently re-rooted under the workspace instead of refused — safe in
+// direction, but the refusal the comment promises was unproven.
+func TestSafeJoin_absoluteRefused(t *testing.T) {
+	if _, _, err := SafeJoin(t.TempDir(), "/etc/passwd"); err == nil {
+		t.Fatal("an absolute path must be refused")
+	}
+	if _, _, err := SafeJoin(t.TempDir(), "../outside.md"); err == nil {
+		t.Fatal("an escaping path must be refused")
 	}
 }

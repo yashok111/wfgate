@@ -14,10 +14,12 @@
 package apply
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -79,22 +81,22 @@ func Plan(root string, edits []Edit) ([]Result, map[string][]byte, error) {
 			results, ok = append(results, r), false
 			continue
 		}
-		abs, err := safeJoin(root, e.File)
+		abs, key, err := SafeJoin(root, e.File)
 		if err != nil {
 			r.Reason = err.Error()
 			results, ok = append(results, r), false
 			continue
 		}
-		if _, seen := bufs[e.File]; !seen {
+		if _, seen := bufs[key]; !seen {
 			b, err := os.ReadFile(abs)
 			if err != nil {
 				r.Reason = fmt.Sprintf("read: %v", err)
 				results, ok = append(results, r), false
 				continue
 			}
-			bufs[e.File] = b
+			bufs[key] = b
 		}
-		body := string(bufs[e.File])
+		body := string(bufs[key])
 		got := strings.Count(body, e.Old)
 		r.Got = got
 		switch {
@@ -104,7 +106,7 @@ func Plan(root string, edits []Edit) ([]Result, map[string][]byte, error) {
 			r.Reason = fmt.Sprintf("expected %d occurrence(s), found %d", e.want(), got)
 		default:
 			r.OK = true
-			bufs[e.File] = []byte(strings.ReplaceAll(body, e.Old, e.New))
+			bufs[key] = []byte(strings.ReplaceAll(body, e.Old, e.New))
 		}
 		if !r.OK {
 			ok = false
@@ -126,7 +128,7 @@ func Plan(root string, edits []Edit) ([]Result, map[string][]byte, error) {
 func Write(root string, bufs map[string][]byte) ([]string, error) {
 	written := make([]string, 0, len(bufs))
 	for rel, b := range bufs {
-		abs, err := safeJoin(root, rel)
+		abs, _, err := SafeJoin(root, rel)
 		if err != nil {
 			return written, err
 		}
@@ -138,39 +140,53 @@ func Write(root string, bufs map[string][]byte) ([]string, error) {
 	return written, nil
 }
 
-// Verify re-reads the files from disk and confirms each edit's New is present.
-// This is the second half of the lesson: an apply is not verified by the
-// absence of an error, it is verified by searching for each change.
-func Verify(root string, edits []Edit) []Result {
-	cache := map[string]string{}
-	out := make([]Result, 0, len(edits))
-	for i, e := range edits {
-		r := Result{Index: i, Edit: e}
-		body, seen := cache[e.File]
-		if !seen {
-			abs, err := safeJoin(root, e.File)
-			if err != nil {
-				r.Reason = err.Error()
-				out = append(out, r)
-				continue
-			}
-			b, err := os.ReadFile(abs)
-			if err != nil {
-				r.Reason = fmt.Sprintf("read back: %v", err)
-				out = append(out, r)
-				continue
-			}
-			body = string(b)
-			cache[e.File] = body
+// FileVerdict is one file's read-back result.
+type FileVerdict struct {
+	File   string
+	OK     bool
+	Reason string
+}
+
+// Verify re-reads every file the batch wrote and compares it BYTE FOR BYTE with
+// the buffer Plan produced. This is the second half of the lesson: an apply is
+// not verified by the absence of an error, it is verified by reading back what
+// landed.
+//
+// It compares buffers rather than searching for each edit's New, because
+// searching was wrong in both directions. A deletion (`new` empty) was verified
+// by strings.Count(body, ""), which is len(body)+1 and therefore never zero: the
+// whole class of pure-deletion edits was checked vacuously. And a CHAINED batch
+// — `alpha`→`beta` then `beta`→`gamma` in one file — landed perfectly and then
+// failed verification, because the intermediate text the search looked for no
+// longer exists on disk; the operator was left with an uncommitted artifact and
+// a batch that could not be re-run, which pushes them to the hand edit this tool
+// forbids. The planned buffer is what the batch MEANT to produce, so comparing
+// against it is both stricter and free of either error.
+func Verify(root string, bufs map[string][]byte) []FileVerdict {
+	out := make([]FileVerdict, 0, len(bufs))
+	for rel, want := range bufs {
+		v := FileVerdict{File: rel}
+		abs, _, err := SafeJoin(root, rel)
+		if err != nil {
+			v.Reason = err.Error()
+			out = append(out, v)
+			continue
 		}
-		r.Got = strings.Count(body, e.New)
-		if r.Got == 0 {
-			r.Reason = "new text absent after write"
-		} else {
-			r.OK = true
+		got, err := os.ReadFile(abs)
+		if err != nil {
+			v.Reason = fmt.Sprintf("read back: %v", err)
+			out = append(out, v)
+			continue
 		}
-		out = append(out, r)
+		if !bytes.Equal(got, want) {
+			v.Reason = fmt.Sprintf("on disk it is %d byte(s), the planned batch is %d", len(got), len(want))
+			out = append(out, v)
+			continue
+		}
+		v.OK = true
+		out = append(out, v)
 	}
+	sort.Slice(out, func(a, b int) bool { return out[a].File < out[b].File })
 	return out
 }
 
@@ -198,18 +214,29 @@ func atomicWrite(path string, b []byte) error {
 	return os.Rename(tmp, path)
 }
 
-// safeJoin refuses a path that escapes the workspace. The edit list is usually
-// machine-written by an agent, and an agent that has confused the workspace with
-// the repository under review must be stopped here rather than discovered by a
-// stray commit in the wrong tree.
-func safeJoin(root, rel string) (string, error) {
+// SafeJoin refuses a path that escapes the workspace and returns both the
+// absolute path and the workspace-relative KEY that names it. The edit list is
+// usually machine-written by an agent, and an agent that has confused the
+// workspace with the repository under review must be stopped here rather than
+// discovered by a stray commit in the wrong tree. It is exported because `wf
+// add -as` takes a path from the operator too, and joined it raw: `-as
+// ../../target/x.md` wrote into the repository under review, which no command
+// may touch.
+//
+// The key matters as much as the refusal. Buffers used to be keyed by the path
+// string as the author WROTE it, so `artifacts/a.md` and `./artifacts/a.md` in
+// one batch were two files: both planned against the pristine bytes, both
+// written, and whichever landed second silently discarded the other's edits — a
+// lost edit reported as committed, the exact failure this package exists to
+// prevent.
+func SafeJoin(root, rel string) (abs, key string, err error) {
 	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("%s: absolute paths are not allowed", rel)
+		return "", "", fmt.Errorf("%s: absolute paths are not allowed", rel)
 	}
-	abs := filepath.Join(root, rel)
-	r, err := filepath.Rel(root, abs)
-	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%s: escapes the workspace", rel)
+	abs = filepath.Join(root, rel)
+	key, err = filepath.Rel(root, abs)
+	if err != nil || key == ".." || strings.HasPrefix(key, ".."+string(filepath.Separator)) {
+		return "", "", fmt.Errorf("%s: escapes the workspace", rel)
 	}
-	return abs, nil
+	return abs, key, nil
 }

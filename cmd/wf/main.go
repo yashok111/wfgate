@@ -297,17 +297,18 @@ func cmdApply(args []string) error {
 	if err != nil {
 		return err
 	}
-	// Read back and search for each change. An apply is not verified by the
-	// absence of an error; it is verified by finding every edit on disk.
+	// Read back and compare every written file with the buffer the plan
+	// produced. An apply is not verified by the absence of an error; it is
+	// verified by reading back what landed.
 	bad := 0
-	for _, v := range apply.Verify(w.Root, edits) {
+	for _, v := range apply.Verify(w.Root, bufs) {
 		if !v.OK {
 			bad++
-			fmt.Fprintf(os.Stderr, "  [%d] VERIFY %s: %s\n", v.Index, v.Edit.File, v.Reason)
+			fmt.Fprintf(os.Stderr, "  VERIFY %s: %s\n", v.File, v.Reason)
 		}
 	}
 	if bad > 0 {
-		return fmt.Errorf("%d edit(s) not found on disk after write; the tree is inconsistent, inspect `git diff`", bad)
+		return fmt.Errorf("%d file(s) differ from the planned batch after write; the tree is inconsistent, inspect `git diff`", bad)
 	}
 	subject := *msg
 	if subject == "" {
@@ -360,7 +361,14 @@ func cmdAdd(args []string) error {
 		if *as != "" {
 			name = *as
 		}
-		dst := filepath.Join(w.Artifacts(), name)
+		// -as is operator input and was joined raw: `-as ../../target/x.md`
+		// wrote into the repository under review — the one tree no command may
+		// touch — and left the file there, untracked and invisible to verify.
+		// The same refusal apply has, for the same reason.
+		dst, rel, err := apply.SafeJoin(w.Root, filepath.Join("artifacts", name))
+		if err != nil {
+			return fmt.Errorf("-as %s: %w", name, err)
+		}
 		b, err := os.ReadFile(src)
 		if err != nil {
 			return err
@@ -372,7 +380,6 @@ func cmdAdd(args []string) error {
 			// refusing it forced the hand `git commit` this command exists to
 			// remove, three times on the first live gate — so it is adopted:
 			// committed as it lies, never overwritten with different bytes.
-			rel, _ := filepath.Rel(w.Root, dst)
 			if tracked, _ := w.Git.Run("ls-files", "--", rel); tracked != "" {
 				return fmt.Errorf("%s is already a reviewed artifact; change it with `wf apply`, not `wf add`", name)
 			}
@@ -387,10 +394,12 @@ func cmdAdd(args []string) error {
 			fmt.Printf("  added %s (%d bytes, already in place)\n", rel, len(onDisk))
 			continue
 		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
 		if err := os.WriteFile(dst, b, 0o644); err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(w.Root, dst)
 		added = append(added, rel)
 		fmt.Printf("  added %s (%d bytes)\n", rel, len(b))
 	}
@@ -1239,7 +1248,7 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	if err != nil {
 		return false, err
 	}
-	groups, err := check.FindDuplicates(w.Root, sts, thr)
+	groups, blind, err := check.FindDuplicates(w.Root, sts, thr)
 	if err != nil {
 		return false, err
 	}
@@ -1289,6 +1298,14 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent, %d numeric\n", len(sts), len(groups), divergent, len(nums))
 	if hidden > 0 {
 		fmt.Printf("  note: %d group(s) predate %s, not shown\n", hidden, since)
+	}
+	// The near-match pass is candidate-filtered by rare tokens, so a statement
+	// built entirely from words the corpus uses often has no candidate at all.
+	// Measured: the same pair is reported or not depending on how many unrelated
+	// statements elsewhere happen to share its words — so the blind population
+	// is named rather than left to read as "nothing there".
+	if blind > 0 {
+		fmt.Printf("  note: %d statement(s) share no rare token — invisible to the near-match pass, exact matches unaffected\n", blind)
 	}
 	// Numeric conflicts print regardless of -since: a count contradiction is a
 	// contradiction NOW, whatever its history.
