@@ -224,14 +224,36 @@ type sentenceAt struct {
 	off  int
 }
 
+// A terminator may be followed by CLOSING MARKUP before the space. Measured on
+// P2f: one rule was marked `**[R1] … never of \`route.Path\` alone.**` in the
+// derived artifact and plainly in the source one. The normaliser erases `*`, so
+// the two sites should have compared equal — but the closing `**` sat between
+// the full stop and the space, so the sentence never ended and swallowed the
+// whole paragraph after it. `wf check rules` then reported five sites of one
+// rule as disagreeing, printed five byte-identical lines (the difference was
+// past the truncation), and cost two cycles: the first fix — breaking the line
+// — changed nothing, because unwrapping rejoins it.
+var sentenceClosers = "*_`\"')]}"
+
 func splitSentencesAt(s string) []sentenceAt {
 	var out []sentenceAt
 	start := 0
 	for i := 0; i < len(s)-1; i++ {
-		if (s[i] == '.' || s[i] == ';') && s[i+1] == ' ' {
-			out = append(out, sentenceAt{s[start:i], start})
-			start = i + 1
+		if s[i] != '.' && s[i] != ';' {
+			continue
 		}
+		j := i + 1
+		for j < len(s) && strings.IndexByte(sentenceClosers, s[j]) >= 0 {
+			j++
+		}
+		if j >= len(s) || s[j] != ' ' {
+			continue
+		}
+		// The closers ride with the NEXT sentence, where the normaliser drops
+		// them: cutting at i keeps this sentence identical to the same sentence
+		// written without the emphasis, which is the whole point.
+		out = append(out, sentenceAt{s[start:i], start})
+		start = i + 1
 	}
 	out = append(out, sentenceAt{s[start:], start})
 	return out

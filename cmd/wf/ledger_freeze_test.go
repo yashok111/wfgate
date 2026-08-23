@@ -255,3 +255,36 @@ func TestRefusals(t *testing.T) {
 		mustContain(t, out, "anchor(s) not ASCII")
 	})
 }
+
+// The cost meter counts an apply by what NOTHING can overwrite. P2f applied all
+// 27 of its batches with `wf apply -m "<what the batch closes>"`, and `-m`
+// replaces the subject the meter used to read: `wf stats` printed "0 apply
+// batch(es)" for all thirteen rounds, the findings-per-edit number the tool
+// exists to produce had no population at all, and `wf apply`'s split note never
+// fired once because it had no history to predict from.
+func TestStatsCountsABatchAppliedWithItsOwnSubject(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=reword\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	out, err := runWF(t, wsDir, "apply", "-f", edits, "-m", "r1: close the seam finding (closes 3)")
+	noErr(t, err, "apply with a written subject")
+	mustContain(t, out, "committed ")
+
+	out, err = runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "1 apply batch(es), 1 edit(s)")
+}
+
+// And zero over a whole workspace is a POPULATION. P2f's meter printed "0 apply
+// batch(es)" on thirteen rounds without a word, so a number that was absent
+// looked measured, and the operator rebuilt it by counting headers in his own
+// scratch files.
+func TestStatsNamesAnEmptyCostMeter(t *testing.T) {
+	wsDir := newGate(t)
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "the cost meter has NO population")
+}

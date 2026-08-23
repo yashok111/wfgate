@@ -3,6 +3,7 @@ package check
 import (
 	"regexp"
 	"sort"
+	"strings"
 )
 
 // Rule markers close the gap dup structurally cannot reach. dup finds copies
@@ -84,5 +85,92 @@ func RuleConflicts(sites map[string][]RuleSite) []RuleConflict {
 		}
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].ID < out[b].ID })
+	return out
+}
+
+// Divergence renders each text focused on the FIRST place the set stops
+// agreeing, instead of on its opening characters.
+//
+// Measured on P2f: five sites of one rule were reported as disagreeing and
+// printed as five byte-identical lines, because the truncation cut at 110
+// characters and the difference started past 130. The operator found it with
+// `cat -A`. A report that shows only what its own subjects agree about is
+// telling the reader the opposite of what it found.
+//
+// The comparison is by WORD, so a wrap or a run of spaces does not read as a
+// difference, and a few words of the shared prefix are kept as an anchor — the
+// divergence has to be locatable in the artifact, not merely visible.
+func Divergence(texts []string, width int) []string {
+	if len(texts) == 0 {
+		return nil
+	}
+	words := make([][]string, len(texts))
+	shortest := -1
+	for i, t := range texts {
+		words[i] = strings.Fields(t)
+		if shortest < 0 || len(words[i]) < shortest {
+			shortest = len(words[i])
+		}
+	}
+	pre := 0
+	for pre < shortest {
+		same := true
+		for i := 1; i < len(words); i++ {
+			if words[i][pre] != words[0][pre] {
+				same = false
+				break
+			}
+		}
+		if !same {
+			break
+		}
+		pre++
+	}
+	// The common SUFFIX is trimmed too: two sites differing by one inserted
+	// clause otherwise print the whole tail after it, and the tail is the part
+	// they agree about.
+	suf := 0
+	for pre+suf < shortest {
+		same := true
+		for i := 1; i < len(words); i++ {
+			if words[i][len(words[i])-1-suf] != words[0][len(words[0])-1-suf] {
+				same = false
+				break
+			}
+		}
+		if !same {
+			break
+		}
+		suf++
+	}
+	const anchor = 4 // words of agreed text kept before the divergence
+	out := make([]string, len(texts))
+	for i, ws := range words {
+		from := pre - anchor
+		if from < 0 {
+			from = 0
+		}
+		to := len(ws) - suf
+		if to < pre {
+			to = pre // a site that IS the common prefix plus suffix
+		}
+		mid := strings.Join(ws[from:to], " ")
+		if to <= pre {
+			// This site has nothing where the others differ — the difference is
+			// that its text STOPS. Saying so is the finding, and the anchor
+			// words before it are what makes the place locatable.
+			mid = strings.TrimSpace(mid + " ⟨nothing here⟩")
+		}
+		if len(mid) > width {
+			mid = mid[:width] + "…"
+		}
+		if from > 0 {
+			mid = "…" + mid
+		}
+		if to < len(ws) {
+			mid += "…"
+		}
+		out[i] = mid
+	}
 	return out
 }

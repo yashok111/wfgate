@@ -170,7 +170,17 @@ func checkMeta(r *Report, s *wfscript.Script) {
 		r.add(ERROR, c.Line, "phase() titles with no meta.phases entry: %s", strings.Join(miss, ", "))
 	}
 	if len(extra) > 0 {
-		r.add(WARN, c.Line, "meta.phases entries with no phase() call: %s", strings.Join(extra, ", "))
+		// "no phase() call" is what the operator reads, and it is not what the
+		// checker means: the title is matched as a LITERAL argument. P2f
+		// factored five gates into one `gate(name, phaseTitle, …)` helper whose
+		// body calls `phase(phaseTitle)`, and spent an investigation on four
+		// entries the script does call. The computed count is on its own INFO
+		// line above; the sentence that sends the reader there belongs here.
+		hint := ""
+		if computed > 0 {
+			hint = fmt.Sprintf(" — %d phase() call(s) pass a computed title, which cannot be matched by text; move the title to a literal at the call site", computed)
+		}
+		r.add(WARN, c.Line, "meta.phases entries with no LITERAL phase() call: %s%s", strings.Join(extra, ", "), hint)
 	}
 	if len(miss) == 0 && len(extra) == 0 && strings.Join(declared, "|") != strings.Join(called, "|") {
 		r.add(WARN, c.Line, "meta.phases and phase() calls have the same titles in a DIFFERENT order — meta: %s / calls: %s",
@@ -239,9 +249,32 @@ func checkInventory(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 	// also believed while reporting one call site out of nineteen, so the count
 	// is cross-checked against a textual one. Each wrapper legitimately
 	// contributes its own forwarding call, which the inventory excludes.
+	//
+	// The population is counted over CODE only, and a wrapper's own declaration
+	// is not a call. Both were measured on P2f: `async function spawn(prompt,
+	// opts)` matches `spawn(`, so every conforming script — the guide REQUIRES
+	// the wrapper — reported exactly one call site too few and this ERROR fired
+	// on all six scripts of the run. A prose comment (`// one agent() call, no
+	// loop`) and a log string (`'2 agent(s) came back'`) did the same. An
+	// operator who launches five workflows over a standing ERROR is an operator
+	// trained to ignore the word, which costs the run the day it means
+	// something.
+	code := stripNonCode(s.Src)
+	declared := map[string]map[int]bool{}
+	for _, w := range ws {
+		if declared[w.Name] == nil {
+			declared[w.Name] = map[int]bool{}
+		}
+		declared[w.Name][w.Line] = true
+	}
 	textual := 0
 	for _, name := range append([]string{"agent"}, names...) {
-		textual += len(regexp.MustCompile(`\b`+regexp.QuoteMeta(name)+`\s*\(`).FindAllString(s.Src, -1))
+		for _, loc := range regexp.MustCompile(`\b`+regexp.QuoteMeta(name)+`\s*\(`).FindAllStringIndex(code, -1) {
+			if declared[name][lineAt(code, loc[0])] {
+				continue
+			}
+			textual++
+		}
 	}
 	forwards := 0
 	for _, w := range ws {

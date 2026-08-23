@@ -229,7 +229,17 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    verdicts only. A mode that completes having spawned NO agent FAILS: every stub check is
    then a guard over the empty set, and that is indistinguishable from a clean run — the one exception
    is `no-args` on a script that gates its body on `args`, which is correct behaviour and is noted
-   instead. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
+   instead. **A `clean` run that returns a not-green verdict FAILS the mode**, and so does one that
+   returns a failure flag set: no fixture in that mode can produce either, so the script is deriving the
+   verdict from something it should not. Measured — the shape it caught: a repair agent spawned only
+   when acceptance FAILS, counted in the liveness ledger, so the one run everyone wants logged
+   `dead: repair` and returned `green: false`. Seven modes were green over it, because acceptance failed
+   in all seven and repair was therefore always alive; an opus reviewer found it in the end by copying
+   the script's tail into a file and executing it with green values by hand.
+   A report field whose name the fixture contract does not recognise as pass-shaped or fail-shaped is
+   FALSE in every mode, and the runner prints a WARN naming it — including under `--quiet`, and again
+   after the tally. That WARN means "no mode exercised the branch guarded by this field": act on it,
+   because a green tally standing over it is the false green this whole runner exists against. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
    template literal on every path and walks branches a parse cannot reach. **The clean path is the one
    that matters most** — reviewers read the failure branches, because that is where the risk looks like
    it lives, so the defects that survive a gate are the ones on the happy path. It is a DISTINCT dynamic
@@ -321,6 +331,22 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   current round has itself been frozen, so "the newest tag" would diff against the very state under
   review and print nothing, and an empty diff looks exactly like a round that changed nothing. Name a
   different base with `-from gate-rN` only when you mean to.
+- **Run the DECISION gate to exhaustion BEFORE the script exists.** Measured across three phases: the
+  decision gate is cheaper per finding than the script gate, and a script written from a document whose
+  architecture has already been inverted four times gets a script gate that is about the machine rather
+  than about the design. The run that ordered it that way closed its decision gate in eight reviewer
+  rounds and its script gate in three (against ten and six on the run that overlapped them), and every
+  script-gate finding was ownership, liveness, coordinates or the fixture — which is the division of
+  labour the two gates are supposed to have.
+- **The decision gate asks whether the design is RIGHT; the script gate asks whether the REPOSITORY
+  WILL LET YOU BUILD IT.** They find different things and neither substitutes. On one run, eight
+  reviewer rounds over the decision document missed a hand-pinned total in
+  `internal/admin/autocheckpoint_test.go` (`if len(mutating) != 27`) that the slice's one new POST
+  route would have turned red — the document had correctly recorded that the two labelled sets it
+  changed stayed the same size, and the total was pinned separately. The script gate's FIRST round
+  found it, because its reviewer read the tree with the implementing run's file-ownership list in hand.
+  That is a question only a script can ask, and it is the argument for not treating the script gate as
+  a formality after a decision gate that closed at zero.
 - **The two gates have different SHAPES, and the script gate's late rounds collapse into one defect
   class.** Measured on one phase, both gated to exhaustion: the DECISION gate produced **94 blockers
   over seven rounds** (31, 18, 13, 14, 12, 6, 0) and inverted eight decisions — the architecture
@@ -366,7 +392,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   reviewer and none by dup. Mark the sites of one rule with the same `[R12]` and `wf check rules`
   (part of `wf check` with no argument) demands they normalise identically, quoting and case erased
   as in dup. The population line prints the marker count, because zero markers is a corpus that opted
-  out, not one that passed; the unmarked contradictions stay a reviewer's find.
+  out, not one that passed; the unmarked contradictions stay a reviewer's find. **Mark the rules while
+  the gate is still running, not afterwards** — this is where the check earns its keep, and it earned
+  it on the first run that did: two rules marked after they had bitten in three consecutive rounds
+  produced a divergence across the DERIVED pair on the check's first run over it, which is exactly the
+  place `dup` is structurally blind (23 flagged groups on that pair, all false). Markup is free: a site
+  may carry emphasis, sit in a bullet or a table cell, and share its line with other prose — sites are
+  compared as sentences. Every conflict prints at the point the copies stop agreeing, so read the
+  printed line, not the file.
 - **A reviewer of an INSERTED block gets semantic anchors, not line numbers.** Any coordinate you hand
   it is one the producer's own insertion invalidated by the length of what it inserted, so a reviewer
   checking it literally reads the middle of the new block and reports the wrong thing. Name the
@@ -392,10 +425,25 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   `wf check dup` for copies that DRIFTED, then hand-check for copies that CONTRADICT, which no
   similarity metric reaches; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
-  `wf stats` prints each round's edits and findings-per-edit (P2e measured ~0.25, stable across a
-  12x range of batch sizes — a 60-edit batch bought four extra rounds), and `wf apply` notes when a
-  batch's size predicts a costly next round. Split by RULE — one rule and all its copies per batch —
-  never mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
+  `wf stats` prints each round's edits and findings-per-edit, and `wf apply` notes when a batch's size
+  predicts a costly next round. Split by RULE — one rule and all its copies per batch — never
+  mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
+- **What a fix costs is decided by whether it changes a RULE, not by how many edits it has.** One gate
+  measured ~0.25 findings per edit and called it stable across a 12x range of batch sizes; the next
+  ranged 0.15 to 1.75 over 150 edits, and batch size predicted nothing — its FOUR-edit batch produced
+  the most findings of the run and its thirteen-edit batch the fewest, closing the gate. What separated
+  them: the expensive batches each changed one rule (every declared path parameter becomes REQUIRED;
+  the declared set is derived from `basePath + route.Path`, not `route.Path`), and the cheap one was
+  thirteen edits of renumbering and prose. **A fix that changes a rule re-opens every consumer of that
+  rule, and the consumers are not in the diff.** Round 5 of that gate was the only round in which the
+  blocker count ROSE, and four of round 7's seven findings were sentences arguing from the superseded
+  form.
+- **After a rule change, sweep for restatements of the OLD rule, not for the rule's name.** Three of
+  four rule-change ripples on that run were sentences that argued from the old rule while containing
+  none of its keywords — `grep -ni parallel context.md` returned nothing while a paragraph two lines
+  below a corrected bar still described the parallel shape in other words. `wf check dup` finds the
+  copies that drifted; this class needs a read of every paragraph the rule's CONCLUSION touches, and it
+  is cheaper than the round it otherwise costs.
 - **Vacuity is a BLOCKER, at classification time.** A finding that makes an observation, a guard or a
   tripwire *vacuous* — it passes whether or not the thing it checks exists — is a blocker, not a major.
   Classified there, it loops the gate under the rule below and its fix is reviewed like any other; no

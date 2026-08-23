@@ -642,3 +642,86 @@ func TestFindDuplicates_differingCopiesFromOneCommitAreNotDivergent(t *testing.T
 		t.Fatalf("copies that differ AND were edited apart are divergent, got %+v", groups)
 	}
 }
+
+// Markdown emphasis around a marked rule must not manufacture a conflict.
+// Measured on P2f: two sites of one rule were written `**[R1] … alone.**` for
+// visual weight and three plainly, and `wf check rules` reported all five as
+// disagreeing. The normaliser erases `*` — the closing `**` sat between the full
+// stop and the space, so the sentence never ended and swallowed the paragraph
+// after it. It cost two cycles, the first of which (breaking the line) changed
+// nothing, because unwrapping rejoins a wrap.
+func TestRuleMarkers_emphasisDoesNotEndAStatement(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"a.md": "**[R1] The declared set is the segments of basePath plus route path, never of route path alone.**\nThe router compiles the full pattern from both halves, so a workspace with a parameter in its base has one in every route.\n",
+		"b.md": "[R1] The declared set is the segments of basePath plus route path, never of route path alone.\nThe editor needs two values it does not have today, so they arrive as properties rather than as state.\n",
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := RuleConflicts(sites); len(c) != 0 {
+		t.Fatalf("one rule written twice, once in bold, is one rule: %+v", c)
+	}
+}
+
+// And the same corpus with a REAL difference still conflicts: the fix above
+// must not have bought its silence by comparing less.
+func TestRuleMarkers_emphasisDoesNotHideARealConflict(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"a.md": "**[R1] The declared set is the segments of basePath plus route path, never of route path alone.**\n",
+		"b.md": "[R1] The declared set is the segments of route path alone, never of basePath plus route path.\n",
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := RuleConflicts(sites); len(c) != 1 {
+		t.Fatalf("two sites that state opposite rules must conflict: %+v", c)
+	}
+}
+
+// The report has to show what it found. P2f printed five sites of one rule as
+// five byte-identical lines, because the truncation cut at 110 characters and
+// the difference started past 130 — the operator found it with `cat -A`.
+func TestDivergence_showsWhereTheTextsPartCompany(t *testing.T) {
+	shared := "The declared path parameter set is the segments of the base path joined to the route path and it is never derived from the route path"
+	views := Divergence([]string{shared + " alone.", shared + " by itself."}, 110)
+	if len(views) != 2 {
+		t.Fatalf("one view per text, got %d", len(views))
+	}
+	if views[0] == views[1] {
+		t.Fatalf("two differing texts must not render identically: %q", views[0])
+	}
+	if !strings.Contains(views[0], "alone") || !strings.Contains(views[1], "itself") {
+		t.Fatalf("each view must carry its own divergence: %q / %q", views[0], views[1])
+	}
+	// The shared opening is what the reader already knows; a few words of it are
+	// the anchor, the rest is not worth the width.
+	if strings.Contains(views[0], "The declared path parameter set") {
+		t.Fatalf("the agreed opening must be trimmed away: %q", views[0])
+	}
+}
+
+// A site that simply STOPS where the others continue has to say so rather than
+// render as an empty string, which reads as a bug in the report.
+func TestDivergence_namesTheSiteThatHasNothingThere(t *testing.T) {
+	views := Divergence([]string{"the retry count is three", "the retry count is three and the backoff doubles"}, 110)
+	if !strings.Contains(views[0], "nothing here") {
+		t.Fatalf("the shorter site must be named, got %q", views[0])
+	}
+	if !strings.Contains(views[1], "backoff") {
+		t.Fatalf("the longer site must show what it adds, got %q", views[1])
+	}
+}

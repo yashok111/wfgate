@@ -23,7 +23,6 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -66,6 +65,7 @@ type Result struct {
 	Calls      []string
 	Phases     []string
 	Logs       []string
+	Notes      []string // the RUNNER's own notes, never the script's log() output
 	Spawned    int
 	Violations []string
 	Return     any
@@ -375,6 +375,35 @@ func runMode(src, mode string, o Options) Result {
 	} else {
 		r.ReturnOK = true
 	}
+	// The `clean` mode IS the run everyone wants: every producer alive, every
+	// gate clean, acceptance green. A verdict field that comes back false there
+	// is the script contradicting the only fixture it cannot argue with, and
+	// P2f shipped exactly that — a repair agent spawned only when acceptance
+	// FAILS was counted in the liveness ledger, so the happy path logged
+	// `dead: repair` and returned `green: false`. Seven modes were green because
+	// acceptance failed in all seven and repair was therefore always spawned;
+	// the defect was found by an opus reviewer hand-executing the script's tail
+	// with green values. That is the technique this check makes unnecessary.
+	if mode == "clean" && r.ReturnOK {
+		m, _ := r.Return.(map[string]any)
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			b, isBool := m[k].(bool)
+			if !isBool {
+				continue
+			}
+			switch {
+			case passBools.MatchString(k) && !b:
+				r.Violations = append(r.Violations, "clean: the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
+			case !passBools.MatchString(k) && failBools.MatchString(k) && b:
+				r.Violations = append(r.Violations, "clean: the run returned `"+k+": true` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
+			}
+		}
+	}
 	// A mode that completes having spawned NOTHING is indistinguishable from a
 	// clean run, and every stub check above it is then a guard over the empty
 	// set. Measured: a script whose only spawn sat behind a false flag passed
@@ -386,15 +415,24 @@ func runMode(src, mode string, o Options) Result {
 		// The mode is supposed to walk the unreviewed-gate accounting. If no
 		// label looked like a review, it walked nothing and said OK — a guard
 		// over an empty set wearing a green verdict.
-		r.Logs = append(r.Logs, "note: no label matched review/fix/closeout/verify/accept — this mode killed nobody and proved nothing")
+		r.Notes = append(r.Notes, "no label matched review/fix/closeout/verify/accept — this mode killed nobody and proved nothing")
 	}
+	// The consequence, not the observation. P2f: `done` is the completion flag of
+	// every BUILD_SCHEMA in that project, it matched neither boolean list, and
+	// so it was false in all seven modes — including `clean`. The clean path was
+	// therefore never executed by any mode, and the defect living there (a
+	// repair agent, spawned only when acceptance fails, counted in the liveness
+	// ledger, so the one run everyone wants returned not-green) survived seven
+	// green modes. The note existed and said "defaulted them"; it was the
+	// sixteenth line of a fifteen-hundred-line dump, filed under `log:` beside
+	// the script's own output, and the operator read past it three times.
 	if len(r.defaulted) > 0 {
 		names := make([]string, 0, len(r.defaulted))
 		for n := range r.defaulted {
 			names = append(names, n)
 		}
 		sort.Strings(names)
-		r.Logs = append(r.Logs, "note: the fixture contract did not recognise "+strconv.Itoa(len(names))+" report field(s) and defaulted them ("+strings.Join(names, ", ")+") — a script branching on one of these is not being exercised as it thinks")
+		r.Notes = append(r.Notes, "unrecognised report field(s) — "+strings.Join(names, ", ")+" — were FALSE in this mode: no branch guarded by one of them was exercised, and the mode's OK covers none of it")
 	}
 	return r
 }
@@ -476,7 +514,14 @@ var failBools = regexp.MustCompile(`(?i)fail|broken|vacuous|missing|stale|dead|u
 // package calls the one that matters most walked the failure branch, and the
 // happy path was executed in no mode at all.
 var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|concern|dead|unverified|violation|gap|risk|defect|error|issue|problem`)
-var passBools = regexp.MustCompile(`(?i)^(passed|ok|green|clean|verified|proven)$`)
+
+// `done` and its synonyms belong here for the same reason `ok` and `green` do:
+// they are the completion flag of a report, and a completion flag that reads
+// false in the mode named `clean` inverts every branch downstream of it. P2f
+// measured the cost — seven green modes over a script whose happy path returned
+// not-green, found in the end by an opus reviewer copying the script's tail into
+// a file and executing it with green values by hand.
+var passBools = regexp.MustCompile(`(?i)^(passed|ok|green|clean|verified|proven|done|complete|completed|succeeded|finished)$`)
 
 func synth(schema goja.Value, mode, label string, depth int, rec map[string]int) any {
 	if schema == nil || goja.IsUndefined(schema) || goja.IsNull(schema) || depth > 6 {

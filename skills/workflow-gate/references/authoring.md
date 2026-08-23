@@ -57,3 +57,46 @@ against a second, textual count of the same population, and WARNs on a call that
 
 ---
 
+
+**Declare file ownership in the form the checker parses.** A producer's prompt says what it owns, and
+`wfcheck` reads those declarations to find two sections writing into one file — a collision that is a
+LOST WRITE, not a merge conflict, when the two run in parallel. The form is a `YOU OWN` heading
+followed by one path per line, each line STARTING with the path:
+
+```
+YOU OWN
+  internal/api/preview.go — the handler and its request struct
+  web/src/components/PreviewPanel.tsx
+```
+
+A path in the middle of a sentence ("read `internal/router/router.go` for context") is prose and is not
+counted; a `file:line` citation owns nothing; a line under `DO NOT`/`must not` is read as an exclusion.
+The block ends at the next SHOUTY heading. `wfcheck` prints the population it parsed — `0 owned path(s)
+parsed from 4 prompt(s) declaring YOU OWN` is a check going unrun over a script that thought it had
+declared ownership, and one live run shipped exactly that: adopting the form turned the note into `12
+owned path(s) parsed from 8 prompt(s)` and found two pairs of sections writing into the same Go package.
+
+**Write `phase()` titles as LITERALS at the call site.** A gate helper that takes the title as a
+parameter (`gate(name, phaseTitle, …)` calling `phase(phaseTitle)`) is unmatchable against `meta.phases`
+by any static reader, and `wfcheck` reports the declared entries as uncalled. Hoisting the four calls
+back out to literal `phase('Gate 1')` at each call site is also better for the progress display, which
+is the same argument from the other end.
+
+**A coordinate into a document the same gate edits must come from the document's STRUCTURE.** Handing
+each agent `sed -n 'A,Bp' context.md` for its own section is correct exactly once: the next round's fix
+grew one brief by 65 lines and left six of nine sections pointing at the wrong text — one truncated, one
+starting inside its predecessor, one missing the block it had just been given, and the acceptance step
+receiving the smoke section in place of the number table. Every agent would have read someone else's
+task with no way to know. Anchor on the headings instead, which move with the text they name:
+
+```js
+D: "sed -n '/^## §D\\./,/^## §E\\./p' " + CTX,
+```
+
+**A command written in a markdown table is read RAW by its consumer.** The agent reads its section
+through `sed`, not through a renderer, so the cell escaping survives into the shell. Escape only the
+cell separator, and never put a `|` inside a regex in a table cell: GNU `grep -E` reads `\|` as a
+LITERAL pipe, so the alternation matches nothing and the command prints `0` and exits 1. That is the
+dangerous half — six other rows carrying `\|` in the same table failed LOUDLY (`sed: invalid option`),
+and only the two inside a regex returned a plausible number, on an acceptance step whose whole job is
+re-deriving numbers. Put such commands in a fenced block, or write the alternation without a pipe.

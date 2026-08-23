@@ -103,8 +103,31 @@ modes: %s
 				fmt.Println("  return:", string(b))
 			}
 		}
+		// The runner's own notes are not the script's log output and are not
+		// printed beside it: a note saying "this mode proved less than it looks
+		// like it did" that arrives inside a 1500-line dump, under the same
+		// `log:` prefix as the script's own chatter, is a note nobody reads.
+		// P2f read past one three times. They print after the mode's detail and
+		// they print under --quiet, because --quiet asks for the verdicts and
+		// this IS one.
+		for _, n := range r.Notes {
+			fmt.Println("  WARN:", n)
+		}
 	}
 	fmt.Printf("\n%s: %d/%d modes completed\n", path, len(results)-failed, len(results))
+	// And once more at the very end, deduplicated: the last line of the output
+	// is the one an operator acts on, and a green tally standing alone over
+	// modes that admitted they exercised nothing is the false green this whole
+	// tool was written against.
+	seen := map[string]bool{}
+	for _, r := range results {
+		for _, n := range r.Notes {
+			if !seen[n] {
+				seen[n] = true
+				fmt.Println("WARN:", n)
+			}
+		}
+	}
 	if failed > 0 {
 		os.Exit(1)
 	}

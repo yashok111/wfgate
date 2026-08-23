@@ -313,6 +313,14 @@ func cmdApply(args []string) error {
 	for _, e := range edits {
 		body += fmt.Sprintf("- %s: %s\n", e.File, firstLine(e.Note, e.Old))
 	}
+	// The batch's size, recorded where NOTHING the operator writes can erase it.
+	// It used to live in the default subject alone, and `-m` replaces the
+	// subject: P2f applied all 27 of its batches with a written subject, so
+	// `wf stats` printed "0 apply batch(es)" on every one of thirteen rounds and
+	// the cost meter — the tool's own headline planning number — had no
+	// population at all. A trailer is derivation from git like the subject was,
+	// only from the half a message cannot take over.
+	body += fmt.Sprintf("\n%s %d edit(s) in %d file(s)\n", applyTrailer, len(edits), len(written))
 	sha, err := w.Git.Commit(body, written)
 	if err != nil {
 		return err
@@ -1419,16 +1427,18 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	// other NOW, whatever their history.
 	for _, oc := range ops {
 		fmt.Printf("  OPERATOR (copies agree except the comparison)\n")
-		for _, s := range oc.Sites {
-			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, trunc(s.Text, 110))
+		views := divergenceOf(oc.Sites)
+		for i, s := range oc.Sites {
+			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, views[i])
 		}
 	}
 	// Numeric conflicts print regardless of -since: a count contradiction is a
 	// contradiction NOW, whatever its history.
 	for _, nc := range nums {
 		fmt.Printf("  NUMERIC (copies agree except the count)\n")
-		for _, s := range nc.Sites {
-			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, trunc(s.Text, 110))
+		views := divergenceOf(nc.Sites)
+		for i, s := range nc.Sites {
+			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, views[i])
 		}
 	}
 	for _, g := range groups {
@@ -1437,8 +1447,9 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 			flag = "  DIVERGENT (copies last touched by different commits)"
 		}
 		fmt.Printf("  sim %.2f%s\n", g.Similarity, flag)
-		for _, s := range g.Sites {
-			fmt.Printf("    %s:%d  [%s] %s\n", s.File, s.Line, s.Commit, trunc(s.Text, 110))
+		views := divergenceOf(g.Sites)
+		for i, s := range g.Sites {
+			fmt.Printf("    %s:%d  [%s] %s\n", s.File, s.Line, s.Commit, views[i])
 		}
 	}
 	// Only a divergent or numeric group fails the check. Two copies committed
@@ -1461,8 +1472,21 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 	fmt.Printf("## rules — %d marker(s), %d id(s), %d conflict(s)\n", markers, len(sites), len(conflicts))
 	for _, c := range conflicts {
 		fmt.Printf("  %s: sites disagree\n", c.ID)
-		for _, s := range c.Sites {
-			fmt.Printf("    %s:%d  %s\n", s.File, s.Line, trunc(s.Text, 110))
+		texts := make([]string, len(c.Sites))
+		for i, s := range c.Sites {
+			texts[i] = s.Text
+		}
+		// Each site is printed at the DIVERGENCE, not at its opening: the
+		// truncated-from-the-start form printed five identical lines over five
+		// sites that differed past the cut, which reads as the check being
+		// broken rather than as the corpus being wrong.
+		views := check.Divergence(texts, 110)
+		for i, s := range c.Sites {
+			ops := ""
+			if s.Ops != "" {
+				ops = "  [ops: " + s.Ops + "]"
+			}
+			fmt.Printf("    %s:%d  %s%s\n", s.File, s.Line, views[i], ops)
 		}
 	}
 	return len(conflicts) > 0, nil
@@ -1549,16 +1573,9 @@ func cmdStats(args []string) error {
 			rng = prev + ".." + tag
 		}
 		batches, edits := 0, 0
-		if subjects, err := w.Git.Run("log", "--format=%s", rng); err == nil && subjects != "" {
-			for _, s := range strings.Split(subjects, "\n") {
-				if strings.HasPrefix(s, "apply") {
-					batches++
-				}
-				if m := applySubjectRe.FindStringSubmatch(s); m != nil {
-					e, _ := strconv.Atoi(m[1])
-					edits += e
-				}
-			}
+		for _, n := range applyBatches(w, rng) {
+			batches++
+			edits += n
 		}
 		totalEdits += edits
 		// The window's edits precede the window's findings: the fixes land
@@ -1580,6 +1597,14 @@ func cmdStats(args []string) error {
 			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi)
 	}
 	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
+	// Zero over a whole gate is a POPULATION, and it has to say so. P2f applied
+	// 27 batches and this meter printed "0 apply batch(es)" thirteen times
+	// without a word, so the number that decides the next batch's size looked
+	// measured and was not — the operator reconstructed it by counting headers
+	// in his own scratch files.
+	if totalEdits == 0 {
+		fmt.Printf("  note: no apply commit was found in this workspace — the cost meter has NO population, and the findings/edit numbers above are absent rather than zero. Artifacts changed by hand are invisible to it; a batch applied by `wf apply` records its own size and is counted whatever subject you give it\n")
+	}
 	if unparsable > 0 {
 		fmt.Printf("  note: %d ledger row(s) are not four cells and were counted as nothing — a hand-awk once closed a gate on 99/27 against a true 98/26, and a row the parser cannot read is the same error with a different sign\n", unparsable)
 	}
@@ -1666,10 +1691,44 @@ func cmdDocs(args []string) error {
 	return nil
 }
 
-// applySubjectRe reads the edit count back out of an apply commit subject.
-// The count is already recorded there; the meter below is derivation, not new
-// state.
+// An apply commit records its own size twice: in the default subject, which
+// `-m` replaces, and in a trailer, which nothing does. The subject form is kept
+// because workspaces created before the trailer existed still carry it, and a
+// meter that stopped reading them would answer "0" for a different reason.
+const applyTrailer = "wf-apply:"
+
 var applySubjectRe = regexp.MustCompile(`^apply: (\d+) edit\(s\)`)
+var applyTrailerRe = regexp.MustCompile(`(?m)^` + applyTrailer + ` (\d+) edit\(s\)`)
+
+// applyBatches reads every apply commit in a revision range and returns each
+// one's edit count. A commit counts as an apply when it carries the trailer, or
+// — for workspaces older than it — when its subject is the default one.
+func applyBatches(w *ws.Workspace, rng string) []int {
+	msgs, err := w.Git.Run("log", "--format=%B%x00", rng)
+	if err != nil {
+		return nil
+	}
+	var out []int
+	for _, m := range strings.Split(msgs, "\x00") {
+		if m = strings.TrimSpace(m); m == "" {
+			continue
+		}
+		if t := applyTrailerRe.FindStringSubmatch(m); t != nil {
+			n, _ := strconv.Atoi(t[1])
+			out = append(out, n)
+			continue
+		}
+		subject := m
+		if i := strings.IndexByte(m, '\n'); i >= 0 {
+			subject = m[:i]
+		}
+		if sm := applySubjectRe.FindStringSubmatch(subject); sm != nil {
+			n, _ := strconv.Atoi(sm[1])
+			out = append(out, n)
+		}
+	}
+	return out
+}
 
 // batchHistory sums what this workspace has already measured about itself:
 // edits applied (from apply commit subjects) and findings filed (from the
@@ -1677,13 +1736,8 @@ var applySubjectRe = regexp.MustCompile(`^apply: (\d+) edit\(s\)`)
 // per four edits, stable across a 12x range of batch sizes — but a workspace's
 // OWN ratio is the only form in which that number will be believed.
 func batchHistory(w *ws.Workspace) (edits, findings int) {
-	if subjects, err := w.Git.Run("log", "--format=%s"); err == nil {
-		for _, s := range strings.Split(subjects, "\n") {
-			if m := applySubjectRe.FindStringSubmatch(s); m != nil {
-				n, _ := strconv.Atoi(m[1])
-				edits += n
-			}
-		}
+	for _, n := range applyBatches(w, "HEAD") {
+		edits += n
 	}
 	for n := 1; n <= w.M.Round; n++ {
 		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
@@ -1747,6 +1801,23 @@ func short(s string) string {
 		return s[:8]
 	}
 	return s
+}
+
+// divergenceOf is the dup-side spelling of check.Divergence: every conflict this
+// command prints is a set of copies that AGREE almost everywhere, so the shared
+// opening is the least informative window there is. A NUMERIC conflict differs
+// by one token, which sat past the old truncation as often as not.
+func divergenceOf[T check.Site | check.Statement](sites []T) []string {
+	texts := make([]string, len(sites))
+	for i, s := range sites {
+		switch v := any(s).(type) {
+		case check.Site:
+			texts[i] = v.Text
+		case check.Statement:
+			texts[i] = v.Text
+		}
+	}
+	return check.Divergence(texts, 110)
 }
 
 func trunc(s string, n int) string {

@@ -279,8 +279,9 @@ measured failure, not taste:
   replacement.
 - *The batch-size cost meter* — P2e measured ~0.25 findings per applied edit,
   stable across a 12x range of batch sizes; a 60-edit batch bought four extra
-  rounds. `wf stats` derives each round's edits from the apply commit subjects
-  it already parses and prints findings/edit per round and across the gate —
+  rounds. `wf stats` derives each round's edits from a `wf-apply:` trailer in
+  every apply commit (the subject carried it until P2f, and `-m` replaces the
+  subject) and prints findings/edit per round and across the gate —
   the workspace's OWN number, the only form in which it is believed. `wf apply`
   prints a note (never a refusal) when a batch's size, against that history,
   predicts more than a handful of next-round findings; no history, no claim.
@@ -345,6 +346,70 @@ to catch:
 - *8 of 9 `wfdry` guards had no test* — including the single `if
   (violations.length)` that turns a recorded defect into a failing mode. Every
   guard in both tools now has a case that fails without it.
+
+**The sixth wave — P2f, the first run carrying a decision gate AND a script
+gate to exhaustion in ONE workspace** (`FEEDBACK-p2f.md`; 13 rounds, 111
+findings, 28 blockers, three artifacts at 180 KB, 27 apply batches over 150
+edits). Every item below was measured by a command, and two of the four tool
+defects were the tool reporting a population of ZERO and saying nothing about
+it:
+
+- *`wfcheck`'s inventory backstop fired on EVERY script written to the manual's
+  own rule* — the manual REQUIRES a `spawn` wrapper, and `async function
+  spawn(prompt, opts)` matches `spawn(`, so the textual population was always
+  exactly one larger than the structural one. Six scripts, six unclearable
+  ERRORs; five workflows launched over a standing one. The forwarding
+  `agent(...)` was already subtracted — it was the DECLARATION that counted. The
+  same population also counted a prose comment and a log string, so it now reads
+  CODE, with comments and string literals blanked (`internal/wfcheck/text.go`).
+  An ERROR nobody can clear is an ERROR nobody reads, and the day it means
+  something it reads as the usual noise.
+- *`wf stats` read ZERO apply batches over 27* — the meter parsed the DEFAULT
+  commit subject, and `-m` replaces the subject; P2f wrote one for every batch.
+  The headline planning number the tool exists to produce had no population at
+  all, and `wf apply`'s split note never fired once for want of history. The
+  count now lives in a `wf-apply:` trailer, which nothing overwrites; the
+  subject form is still read so older workspaces still measure.
+- *`wfdry`'s fixture decided which branch ran* — `done` is the completion flag of
+  every schema in the project, matched neither boolean list, and was therefore
+  FALSE in all seven modes including `clean`. The happy path was executed by no
+  mode, and the defect living there survived seven green runs: a repair agent
+  spawned only when acceptance FAILS was counted in the liveness ledger, so the
+  run everyone wants logged `dead: repair` and returned `green: false`. Three
+  fixes, and the third is the general one: the completion synonyms joined the
+  pass list; the runner's own notes left the script's `log()` stream for a WARN
+  that prints under `--quiet` and again after the tally; and a `clean` mode that
+  returns a not-green verdict — or a failure flag set — now FAILS, because no
+  fixture in that mode can produce either. `testdata/false-green.mjs` is that
+  script, banked. It is P2e's finding 8 in a new costume, and the same sentence
+  covers both: the runner's fixture, not the script, decided what was exercised.
+- *`wf check rules` reported five identical-looking lines* — two sites of one
+  rule were written `**[R1] … alone.**` and three plainly. The normaliser erases
+  `*`; what broke was the SENTENCE splitter, because the closing `**` sat
+  between the full stop and the space, so the statement never ended and swallowed
+  the paragraph after it. It cost two cycles, and the first fix — breaking the
+  line — changed nothing, because unwrapping rejoins a wrap. Terminators now
+  tolerate closing markup. The actionable half was the REPORT: every conflict
+  (`rules`, and dup's `NUMERIC`/`OPERATOR`/near-match) prints at the point the
+  copies stop agreeing, with the shared opening trimmed to a few anchor words —
+  the difference had to be found with `cat -A`.
+- *`wfcheck`'s phase matcher and its ownership check* — "meta.phases entries with
+  no phase() call" over four gates the script does call, because the title came
+  through a helper's parameter: the message now says "no LITERAL phase() call"
+  and names the computed count. The `YOU OWN` format the ownership check parses
+  was documented nowhere but a test; it is in `authoring.md` now, and adopting it
+  took a live script from `0 owned path(s) parsed from 4 prompt(s)` to 12 from 8,
+  finding two pairs of sections writing into one Go package.
+- *Three findings changed the MANUAL, not the tool* — the batch-size cost meter
+  is measuring the wrong variable (P2e's ~0.25 "stable across a 12x range" came
+  out 0.15–1.75 on P2f, with the four-edit batch the most expensive of the run
+  and the thirteen-edit batch the cheapest): what predicts the cost is whether a
+  fix changed a RULE, whose consumers are not in the diff. Also written down:
+  run the decision gate to exhaustion BEFORE the script exists, and the sharper
+  form of why both gates exist — the decision gate asks whether the design is
+  right, the script gate asks whether the repository will let you build it. The
+  second found a hand-pinned total in a test file that eight decision rounds
+  missed.
 
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and
@@ -418,16 +483,22 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-22 — read before trusting
+## State as of 2026-08-23 — read before trusting
 
-- **Two real gates have now run entirely through `wf`.** P2d (10 rounds, 98
-  findings — `FEEDBACK-p2d.md`) and P2e, the first over a workflow SCRIPT
-  (17 rounds, 235 findings, 293 KB of artifacts — `FEEDBACK-p2e.md`). P2e
+- **Three real gates have now run entirely through `wf`.** P2d (10 rounds, 98
+  findings — `FEEDBACK-p2d.md`), P2e, the first over a workflow SCRIPT
+  (17 rounds, 235 findings, 293 KB of artifacts — `FEEDBACK-p2e.md`), and P2f,
+  the first carrying both gates in one workspace (13 rounds, 111 findings, 180
+  KB over three artifacts — `FEEDBACK-p2f.md`; its implementing run then
+  executed 20 agents over 149 minutes and came back green). P2e
   confirmed live: the anchor check turning a wrong citation into a patch, the
   ratchet firing on a real regression, record rejecting a placeholder sha,
-  fix-induced share deciding the stop, delta briefs at ~1/10 of a re-read.
-  `check rules` ran but yielded zero (both runs marked ids retrospectively —
-  recorded in `IDEAS.md`); `check drift` is STILL unexercised live.
+  fix-induced share deciding the stop, delta briefs at ~1/10 of a re-read. P2f
+  added the first live yield from `check rules` — marked before the gate closed,
+  it found a divergence across the derived pair on its FIRST run, which is the
+  case the feature was built for — plus eight mis-aimed anchors and three
+  citations that resolved, sat inside the file and pointed at the wrong lines.
+  `check drift` is STILL unexercised live.
 - **The validation corpus does not survive a session** (it lived in a scratch
   directory). To rebuild: `git clone --no-hardlinks ~/projects/mocker
   <lab>/head`, then a workspace over any set of documents.

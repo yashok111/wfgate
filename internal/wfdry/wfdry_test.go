@@ -234,8 +234,8 @@ return { done: true, dead: [a, b].filter((x) => !x).length }`
 await spawn(` + "`one`" + `, { model: 'sonnet', effort: 'low', label: 'auditor', schema: S, phase: 'P' })
 return { done: true }`
 		r := run1(t, none, "dead-reviews")
-		if !strings.Contains(strings.Join(r.Logs, "\n"), "killed nobody") {
-			t.Fatalf("a mode that stubbed no death must say so: %+v", r.Logs)
+		if !strings.Contains(strings.Join(r.Notes, "\n"), "killed nobody") {
+			t.Fatalf("a mode that stubbed no death must say so: %+v", r.Notes)
 		}
 	})
 
@@ -299,8 +299,79 @@ return { done: true, tookFailure: Boolean(r.escalated) }`, "clean")
 		if b, _ := m["tookFailure"].(bool); b {
 			t.Fatalf("the clean mode must walk the happy path: %+v", r.Return)
 		}
-		if !strings.Contains(strings.Join(r.Logs, "\n"), "did not recognise") {
-			t.Fatalf("a defaulted field must be named: %+v", r.Logs)
+		if !strings.Contains(strings.Join(r.Notes, "\n"), "unrecognised report field") {
+			t.Fatalf("a defaulted field must be named: %+v", r.Notes)
 		}
 	})
+}
+
+// The clean mode is the run everyone wants. P2f shipped a script whose happy
+// path returned `green: false` — a repair agent spawned only when acceptance
+// FAILS was counted in the liveness ledger — and seven modes reported OK,
+// because acceptance failed in every one of them and repair was therefore
+// always alive. The defect was found by an opus reviewer copying the script's
+// tail into a file and executing it by hand with green values.
+func TestCleanModeRefusesANotGreenVerdict(t *testing.T) {
+	t.Run("a pass field that is false", func(t *testing.T) {
+		r := run1(t, preamble+`phase('P')
+const a = await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+const repair = null
+return { green: a !== null && repair !== null }`, "clean")
+		wantViolation(t, r, "`green: false` on the path where nothing failed")
+	})
+
+	t.Run("a fail field that is true", func(t *testing.T) {
+		r := run1(t, preamble+`phase('P')
+await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { blocked: true }`, "clean")
+		wantViolation(t, r, "`blocked: true` on the path where nothing failed")
+	})
+
+	t.Run("the same script with the ledger right passes", func(t *testing.T) {
+		r := run1(t, preamble+`phase('P')
+const a = await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { green: a !== null, blocked: false }`, "clean")
+		if len(r.Violations) > 0 {
+			t.Fatalf("a clean run returning green must pass: %v", r.Violations)
+		}
+	})
+}
+
+// `done` is the completion flag of every schema in the project this runner was
+// written for, and it matched neither boolean list — so it was FALSE in all
+// seven modes, `clean` included, and the branch guarded by it was executed by no
+// mode at all.
+func TestCompletionBooleanIsAPassField(t *testing.T) {
+	r := run1(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { done: { type: 'boolean' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { finished: Boolean(r.done) }`, "clean")
+	m, _ := r.Return.(map[string]any)
+	if b, _ := m["finished"].(bool); !b {
+		t.Fatalf("the clean mode must report a producer as done: %+v", r.Return)
+	}
+	if len(r.Notes) > 0 {
+		t.Fatalf("a recognised field needs no note: %v", r.Notes)
+	}
+}
+
+// And the note that names an unrecognised one is the RUNNER's, not the script's:
+// it used to be appended to the script's own log() output, arriving as the
+// sixteenth line of a fifteen-hundred-line dump under the same `log:` prefix.
+func TestRunnerNotesAreNotScriptLogs(t *testing.T) {
+	r := run1(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { escalated: { type: 'boolean' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+log('the script said this')
+return { ok: true, took: Boolean(r.escalated) }`, "clean")
+	if strings.Contains(strings.Join(r.Logs, "\n"), "unrecognised") {
+		t.Fatalf("the runner's note must not sit in the script's log: %v", r.Logs)
+	}
+	if !strings.Contains(strings.Join(r.Notes, "\n"), "escalated") {
+		t.Fatalf("the unrecognised field must be named in the notes: %v", r.Notes)
+	}
 }

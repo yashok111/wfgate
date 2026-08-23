@@ -74,7 +74,7 @@ wf delta                                   # the delta round's brief: findings +
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules); `dup` takes `-since REF`, `-threshold F` and `-min-words N` |
-| `wf stats` | per-round findings, closures, apply batches and edits (with findings/edit — the batch cost meter), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
+| `wf stats` | per-round findings, closures, apply batches and edits (with findings/edit — the batch cost meter; a workspace with no apply commit is named as an absent population, not printed as zero), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
 
@@ -117,7 +117,10 @@ to that one replacement, not to the file; fifteen replacements in one file are
 fifteen headers. When a batch is large enough that the workspace's own history
 (findings per edit, from the ledger and the apply commits) predicts a costly
 next round, `apply` prints a note suggesting a split by rule — a note, never a
-refusal. Assembling the JSON was the measured bottleneck of the first
+refusal. Every apply commit records its own edit count in a `wf-apply:` trailer,
+which is what the meter reads: it used to read the default subject, and `-m`
+replaces the subject, so a gate that wrote a subject for all 27 of its batches
+measured nothing at all. Assembling the JSON was the measured bottleneck of the first
 live gate: a 35-edit batch under three layers of quoting failed on escaping
 more often than on substance. The format is detected by the first byte (`[`
 means JSON).
@@ -180,7 +183,22 @@ it was.
 Sites of one rule marked `[RN]` must normalise identically across the
 artifacts. This is the reach into what `dup` structurally cannot see — copies
 that contradict in different words — and it works only where an author marked
-the rule, so the marker population is always printed.
+the rule, so the marker population is always printed. It pays off across a
+DERIVED artifact pair, where `dup` reports tens of false groups per real
+contradiction: on the first run that marked rules before the gate closed, the
+check found a divergence between a source document and its derived brief on its
+first run over the pair.
+
+A marked rule may be written with any markdown around it — emphasis, a bullet,
+a table cell — and may share its line with other prose: sites are compared as
+SENTENCES, and the normaliser erases the markup.
+
+Every conflict — here, and `dup`'s `NUMERIC`, `OPERATOR` and near-match groups
+— is printed at the point the copies STOP agreeing, with the shared opening
+trimmed to a few anchor words. Copies that conflict agree almost everywhere, so
+truncating them from the start prints the same characters for every site: one
+gate reported five sites of one rule as five byte-identical lines, and the
+difference was found with `cat -A`.
 
 ## Boundaries
 

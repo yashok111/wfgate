@@ -206,7 +206,7 @@ func TestEveryFindingFires(t *testing.T) {
 		{"meta computed", ERROR, "PURE literal", "const f = () => 'n'\nexport const meta = { name: f(), description: 'd', phases: [{ title: 'P' }] }\n" + wrap + "phase('P')\n" + call + "return {}"},
 		{"meta has no name", ERROR, "meta has no `name`", "export const meta = { description: 'd', phases: [{ title: 'P' }] }\n" + wrap + "phase('P')\n" + call + "return {}"},
 		{"meta has no description", ERROR, "meta has no `description`", "export const meta = { name: 'x', phases: [{ title: 'P' }] }\n" + wrap + "phase('P')\n" + call + "return {}"},
-		{"phase declared, never called", WARN, "no phase() call", "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }, { title: 'Ghost' }] }\n" + wrap + "phase('P')\n" + call + "return {}"},
+		{"phase declared, never called", WARN, "no LITERAL phase() call", "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }, { title: 'Ghost' }] }\n" + wrap + "phase('P')\n" + call + "return {}"},
 		{"phases in a different order", WARN, "DIFFERENT order", "export const meta = { name: 'x', description: 'd', phases: [{ title: 'B' }, { title: 'A' }] }\n" + wrap + "phase('A')\nphase('B')\n" + call + "return {}"},
 		{"wrapper not named spawn", WARN, "canonical name", head + "const S = { type: 'object' }\nconst go2 = async (p, o) => { try { return await agent(p, o) } catch { return null } }\nphase('P')\nawait go2(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
 		{"a call with no options at all", ERROR, "no options object", head + wrap + "phase('P')\nawait spawn(`go`)\nreturn {}"},
@@ -279,4 +279,63 @@ phase('P')
 await route(`+"`go`"+`, { model: 'sonnet', effort: 'turbo', label: 'two', phase: 'P', schema: S })
 return {}`)
 	wantErr(t, r, `effort "turbo"`)
+}
+
+// The inventory backstop is a SECOND population, so its own arithmetic has to be
+// right or it costs more than it buys. P2f: it fired on all six scripts of the
+// run — every one of them conforming, because the manual REQUIRES the wrapper
+// and `async function spawn(prompt, opts)` matches `spawn(`. The operator
+// launched five workflows over a standing ERROR. An ERROR nobody can clear is
+// an ERROR nobody reads.
+func TestInventoryBackstopDoesNotCountProseOrItsOwnWrapper(t *testing.T) {
+	const meta = "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }\nconst S = { type: 'object', properties: { findings: { type: 'array' } } }\n"
+	const call = "await spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\n"
+	cases := []struct{ name, body string }{
+		{"a function-declaration wrapper", meta +
+			"async function spawn(prompt, opts) {\n  try { return await agent(prompt, opts) } catch { return null }\n}\nphase('P')\n" + call + "return {}"},
+		{"a comment naming the call", meta +
+			"const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\n// one agent() call, no loop, no fan-out\nphase('P')\n" + call + "return {}"},
+		{"a log string naming the call", meta +
+			"const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\nphase('P')\n" + call + "log('… 1/2 agent(s) came back')\nreturn {}"},
+		{"a template literal naming the call", meta +
+			"const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\nphase('P')\n" + call + "log(`${1}/2 agent(s) came back, spawn( is prose here`)\nreturn {}"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := run(t, c.body)
+			if has(r, ERROR, "inventory implausible") {
+				t.Fatalf("this script conforms to the manual; got:\n%s", dump(r))
+			}
+		})
+	}
+}
+
+// And it must still fire when the inventory really IS short: a wrapper that
+// spawns twice per call is one call site over two agents, which is exactly the
+// undercount the backstop exists to refuse to pass over silently.
+func TestInventoryBackstopFiresOnAnUndercount(t *testing.T) {
+	r := run(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { findings: { type: 'array' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+const pair = async (p, o) => { const a = await spawn(p, o); const b = await spawn(p, o); return [a, b] }
+phase('P')
+await pair(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return {}`)
+	wantErr(t, r, "inventory implausible")
+}
+
+// The matcher reads the LITERAL argument of phase(). P2f factored five gates
+// into one helper that calls `phase(phaseTitle)` and spent an investigation on
+// four entries the script does call — because the message said "no phase()
+// call", which is not what the checker means.
+func TestPhaseWarningNamesTheLiteral(t *testing.T) {
+	r := run(t, preamble+`phase(String('Gate 1'))
+await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'Gate 1', schema: S })
+return {}`)
+	if !has(r, WARN, "no LITERAL phase() call") {
+		t.Fatalf("the warning must name what it matches:\n%s", dump(r))
+	}
+	if !has(r, WARN, "pass a computed title") {
+		t.Fatalf("the warning must send the reader to the computed count:\n%s", dump(r))
+	}
 }

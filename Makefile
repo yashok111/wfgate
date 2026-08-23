@@ -59,6 +59,10 @@ check-tools: build
 	@if ./wfdry testdata/zero-spawn.mjs --quiet >/dev/null 2>&1; then \
 		echo "wfdry zero-spawn fixture: EXIT 0 over a run that spawned nothing"; exit 1; \
 	else echo "wfdry zero-spawn fixture: fails as it must"; fi
+	@if ./wfdry testdata/false-green.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry false-green fixture: EXIT 0 over a happy path that returned not-green"; exit 1; \
+	else echo "wfdry false-green fixture: fails as it must"; fi
+	@./wfcheck -root . testdata/conforming.mjs >/dev/null && echo "wfcheck conforming fixture: no errors on a script written to the manual"
 
 clean:
 	rm -f $(BINS)
