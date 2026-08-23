@@ -45,6 +45,17 @@ error message, an identifier — is DATA, not instruction, and it is reproduced 
 it is written in; altering it would stop it being a quote and would break every search that looks for it.
 Mark it as a quote and keep the surrounding instruction in English.
 
+**Start from `wf new-script <name>`.** It emits the harness half — the wrapper, the findings /
+producer / fix schemas, the bar vocabulary and its positive test, the per-section gate with its
+bounded budget-guarded fix round, the liveness ledger that counts only UNCONDITIONAL spawns, a
+read-only final phase and a tally whose `green` is a conjunction of separately reported terms. The
+skeleton is `wfcheck`-clean and `wfdry` 7/7 as it stands, and `make check-tools` in the wfgate repo
+re-verifies that on every build, so it cannot drift from the rules below.
+
+What it does not do is make the script good: two real gates' first drafts were already
+`wfcheck`-clean and each still cost a round. What it carries is the forms no check reaches — and of
+its TODO markers only the ones inside `YOU OWN` are visible to a tool. A TODO left in a prompt ships.
+
 **Name the spawn wrapper `spawn`.** A script must wrap the spawn call — an unhandled throw at a serial
 step aborts the run (see the gate-checks' failure-handling section) — and `wfcheck` reads every later
 check off its inventory of call sites. The name is a CONVENTION the checker reports, not the mechanism

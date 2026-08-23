@@ -530,7 +530,12 @@ var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|con
 // rather than a loose one that has to be argued about.
 var failVerdicts = regexp.MustCompile(`(?i)^(failed|failing|blocked|broken|vacuous|dead|unfixed|stale|unreviewed)$`)
 
-var passBools = regexp.MustCompile(`(?i)^(passed|ok|green|clean|verified|proven|done|complete|completed|succeeded|finished)$`)
+// The optional qualifier and the `met` family were added when a skeleton the
+// tool itself emits returned `goalMet` — completion vocabulary the list did not
+// carry, so the CLEAN mode read false and correctly failed a script that was
+// correct. Still anchored, and still a list: the alternative is the substring
+// regex the comment above rejects, which matches `fail` inside `noFailures`.
+var passBools = regexp.MustCompile(`(?i)^(goal|scope|slice|section|acceptance|criteria|criterion)?(passed|ok|green|clean|verified|proven|done|complete|completed|succeeded|finished|met|satisfied|achieved)$`)
 
 func synth(schema goja.Value, mode, label string, depth int, rec map[string]int) any {
 	if schema == nil || goja.IsUndefined(schema) || goja.IsNull(schema) || depth > 6 {

@@ -16,3 +16,11 @@ import "embed"
 //
 //go:embed skills/workflow-gate
 var Docs embed.FS
+
+// The orchestration-script skeleton. Embedded for the same reason the manual
+// is: a template on disk beside the binary is a copy that drifts from the tool
+// that emits it, and `make check-tools` runs wfcheck and wfdry over the emitted
+// result on every build so it cannot.
+//
+//go:embed templates
+var Templates embed.FS

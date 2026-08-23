@@ -528,6 +528,18 @@ func checkOwnership(r *Report, s *wfscript.Script, calls []wfscript.AgentCall, r
 				break
 			}
 			if forbidRe.MatchString(t) {
+				// A forbidding line with NO path in it is the heading of an
+				// exclusion block ("DO NOT"), and everything under it is
+				// excluded — shoutyRe cannot end the block there because it
+				// demands nine characters and "DO NOT" is six, so every
+				// excluded path was being recorded as OWNED. That is the
+				// dual-ownership ERROR firing on a script that declared the
+				// separation correctly, which is the one kind of ERROR this
+				// checker must never invent. A forbidding line that DOES carry
+				// a path is an inline exclusion and only that line is skipped.
+				if pathRe.FindString(t) == "" {
+					break
+				}
 				continue
 			}
 			first := pathRe.FindString(t)

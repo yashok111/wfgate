@@ -62,6 +62,11 @@ check-tools: build
 	@if ./wfdry testdata/false-green.mjs --quiet >/dev/null 2>&1; then \
 		echo "wfdry false-green fixture: EXIT 0 over a happy path that returned not-green"; exit 1; \
 	else echo "wfdry false-green fixture: fails as it must"; fi
+	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null \
+		&& ./wfcheck -root . .check-skel/skeleton.mjs >/dev/null \
+		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \
+		&& rm -rf .check-skel \
+		&& echo "wf new-script skeleton: wfcheck clean and wfdry all modes"
 	@./wfcheck -root . testdata/conforming.mjs >/dev/null && echo "wfcheck conforming fixture: no errors on a script written to the manual"
 	@d=$$(mktemp -d); printf '{"session_id":"mk","tool_name":"Write","tool_input":{"file_path":"/tmp/notes.md","content":"prose"}}' \
 		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \

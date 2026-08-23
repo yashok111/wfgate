@@ -51,6 +51,7 @@ const usage = `wf — gate harness
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
   wf check [cite|dup|drift|rules] deterministic checks over the artifacts
   wf stats [-time]                per-round findings, closures and batches, from the ledger and git
+  wf new-script <name>            emit the orchestration-script harness: wrapper, schemas, gate, ledger
   wf close [-archive DIR]         bank the gate's own record — history, stats, findings, a feedback scaffold
   wf prune [-yes]                 delete .git and artifacts once the record is banked; not reversible
   wf docs [name]                  print the embedded operating manual (guide, checks, routing, ...)
@@ -106,6 +107,8 @@ func run(args []string) error {
 		return cmdCheck(args[1:])
 	case "stats":
 		return cmdStats(args[1:])
+	case "new-script":
+		return cmdNewScript(args[1:])
 	case "close":
 		return cmdClose(args[1:])
 	case "prune":

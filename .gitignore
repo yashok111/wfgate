@@ -2,3 +2,5 @@
 /dist/
 /wfcheck
 /wfdry
+
+.check-skel/

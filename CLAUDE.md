@@ -68,6 +68,16 @@ Ten units, each one decision.
 - `internal/apply` — the all-or-nothing batch of textual edits.
 - `internal/check` — the deterministic checks: `cite.go`, `dup.go`,
   `drift.go`, `rules.go`.
+- `templates/script.mjs` — the orchestration-script harness, embedded and
+  emitted by `wf new-script`. Measured over the seven real scripts of one
+  repository (11 662 lines): the blocks recurring in five or more of them hold
+  about a quarter of the lines and are RE-AUTHORED, not copied — two gate
+  functions implement one algorithm at 0.05 textual similarity — and on one
+  script gate four of eight round-1 blockers were harness shape rather than
+  task content. It is NOT a claim that the result is reviewed: two real first
+  drafts were already `wfcheck`-clean and cost a round each. `make check-tools`
+  runs both tools over the emitted skeleton on every build, so the template
+  cannot drift from the rules it instantiates.
 - `cmd/wf` — the subcommand dispatcher, and `close.go`: the gate's own record
   and the pruning that record makes safe. ONE dispatch — the test harness used
   to keep a hand-copied switch, which went stale the first time a command was

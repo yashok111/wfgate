@@ -392,3 +392,33 @@ return { `+name+`: true }`, "clean")
 		})
 	}
 }
+
+// A completion flag the pass list does not carry reads FALSE in every mode
+// including `clean`, so the happy path returns not-green and the mode correctly
+// fails a script that is correct. Found by the skeleton `wf new-script` emits,
+// which named its acceptance flag `goalMet`: completion vocabulary the list had
+// no entry for. The list stays anchored — the substring form matches `fail`
+// inside `noFailures`.
+func TestCompletionVocabularyCoversTheMetFamily(t *testing.T) {
+	for _, field := range []string{"goalMet", "met", "satisfied", "achieved", "scopeComplete"} {
+		t.Run(field, func(t *testing.T) {
+			body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const A = { type: 'object', properties: { ` + field + `: { type: 'boolean' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: A })
+return { done: true, green: Boolean(r && r.` + field + `) }`
+			r := run1(t, body, "clean")
+			m, ok := r.Return.(map[string]any)
+			if !ok {
+				t.Fatalf("return is %T: %+v", r.Return, r)
+			}
+			if got, _ := m["green"].(bool); !got {
+				t.Fatalf("%s must synthesise TRUE in the clean mode, got green=%v (violations=%v)", field, m["green"], r.Violations)
+			}
+			if len(r.Violations) > 0 {
+				t.Fatalf("a clean run of a correct script must not violate: %v", r.Violations)
+			}
+		})
+	}
+}

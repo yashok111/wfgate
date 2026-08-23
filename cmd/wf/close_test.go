@@ -187,3 +187,40 @@ func read(t *testing.T, p string) string {
 	}
 	return string(b)
 }
+
+// The skeleton is emitted with the workspace's own target and its own name, and
+// never over a file that exists — a skeleton written onto an authored script is
+// the whole-file overwrite `wf add` refuses, with the same consequence.
+func TestNewScriptSubstitutesAndNeverOverwrites(t *testing.T) {
+	wsDir := newGate(t)
+	dst := filepath.Join(wsDir, "artifacts", "run.mjs")
+
+	out, err := runWF(t, wsDir, "new-script", "slice-a", "-o", dst)
+	noErr(t, err, "new-script")
+	mustContain(t, out, "wrote ", "TODO(s)", "that no check can see")
+
+	body := read(t, dst)
+	if !strings.Contains(body, "name: 'slice-a'") {
+		t.Fatalf("the name was not substituted: %.200s", body)
+	}
+	target := read(t, filepath.Join(wsDir, "gate.json"))
+	if !strings.Contains(target, "target") {
+		t.Fatal("the manifest has no target to read")
+	}
+	if strings.Contains(body, "TARGET_REPO") || strings.Contains(body, "SCRIPT_NAME") {
+		t.Fatal("a placeholder survived substitution")
+	}
+	// The harness the tools cannot check, and which is why this exists at all.
+	for _, form := range []string{"async function spawn(", "function live(", "function barFailed(", "YOU OWN", "READ-ONLY"} {
+		if !strings.Contains(body, form) {
+			t.Fatalf("the skeleton is missing %q", form)
+		}
+	}
+
+	if _, err := runWF(t, wsDir, "new-script", "slice-a", "-o", dst); err == nil {
+		t.Fatal("want a refusal over an existing file")
+	}
+	if got := read(t, dst); got != body {
+		t.Fatal("the refused write changed the file")
+	}
+}

@@ -287,6 +287,38 @@ return {}`)
 // and `async function spawn(prompt, opts)` matches `spawn(`. The operator
 // launched five workflows over a standing ERROR. An ERROR nobody can clear is
 // an ERROR nobody reads.
+// A path under a DO NOT heading is an EXCLUSION, and counting it as owned made
+// the dual-ownership ERROR fire on a script that had declared the separation
+// exactly as the manual prescribes. shoutyRe could not end the block there: it
+// demands nine characters and "DO NOT" is six. A false ERROR is the one kind
+// this checker must never invent.
+func TestExclusionBlockEndsOwnership(t *testing.T) {
+	preamble := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { ok: { type: 'boolean' } } }
+async function spawn(p, o) { try { return await agent(p, o) } catch { return null } }
+`
+	body := preamble + `phase('P')
+await spawn(` + "`YOU OWN\n  src/app/one.ts — the entry point\n\nDO NOT\n  src/app/two.ts\n`" + `, { model: 'sonnet', effort: 'low', label: 'one', phase: 'P', schema: S })
+await spawn(` + "`YOU OWN\n  src/app/two.ts — the other section owns it\n`" + `, { model: 'sonnet', effort: 'low', label: 'two', phase: 'P', schema: S })
+return { done: true }`
+	rep := run(t, body)
+	if has(rep, ERROR, "owned by 2 agents") {
+		t.Fatalf("the excluded path was counted as owned:\n%s", dump(rep))
+	}
+	if !has(rep, INFO, "2 owned path(s) parsed") {
+		t.Fatalf("want exactly the two declared owners, got:\n%s", dump(rep))
+	}
+
+	// An inline exclusion carries its path on the forbidding line itself, and
+	// only that line is skipped — the owners after it still count.
+	inline := preamble + `phase('P')
+await spawn(` + "`YOU OWN\n  src/app/one.ts — the entry point\n  src/app/three.ts — do not reformat it\n`" + `, { model: 'sonnet', effort: 'low', label: 'one', phase: 'P', schema: S })
+return { done: true }`
+	if rep := run(t, inline); !has(rep, INFO, "1 owned path(s) parsed") {
+		t.Fatalf("an inline exclusion must skip only its own line, got:\n%s", dump(rep))
+	}
+}
+
 func TestInventoryBackstopDoesNotCountProseOrItsOwnWrapper(t *testing.T) {
 	const meta = "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }\nconst S = { type: 'object', properties: { findings: { type: 'array' } } }\n"
 	const call = "await spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\n"
