@@ -113,16 +113,15 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    round's fixes: it has caught an unescaped apostrophe inside a quoted string that would have failed a
    run at launch.
 
-   **Run a JS linter beside it, for the coordinate.** `wfcheck` extracts the script body into a temp
-   wrapper before parsing it, so a syntax error is reported at that wrapper's line number, offset from
-   the file you are editing — measured on a 1700-line script: `body.mjs:939` for what was really line
-   959. A plain `oxlint --deny-warnings <script>` (or any parser: `node --check` on the body) takes
-   about a tenth of a second and prints a true `file:line:col`. It catches exactly one class, and it is
-   the class that actually recurs: a backtick or a `${` written into prompt PROSE, where the
-   surrounding template literal treats it as syntax. It cannot see the other two failure modes of
-   editing these scripts — a replacement pattern that no longer matches because the same rule also
-   lives in a markdown companion with different escaping, and a patch script that throws before it
-   writes — so run it as a coordinate finder, not as a second opinion.
+   **The one class that actually recurs is a syntax error inside prompt PROSE** — a backtick or a
+   `${` written into a sentence, where the surrounding template literal treats it as syntax. `wfcheck`
+   reports it at the coordinate in the file you are editing: the temp wrapper it parses carries no
+   newline, so every line number in the parsed program is the file's own
+   (`internal/wfscript/wfscript.go:36-38`). A second parser was prescribed here beside it purely for
+   that coordinate, against a measured twenty-line offset; the offset no longer exists, and neither
+   does the second tool. `wfcheck` still cannot see the other two failure modes of editing these
+   scripts — a replacement pattern that no longer matches because the same rule also lives in a
+   markdown companion with different escaping, and a patch script that throws before it writes.
 1. **Gate the DECISIONS before the prompts.** The run-level `log()` block — slice boundaries, what is
    deferred and why, the architectural calls — is a few KB and is where the expensive mistakes live.
    Measured on one phase gated this way: 8 KB of decision list, two independent reviewers, **six
@@ -140,6 +139,15 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    Redirect stdin or it blocks forever on "reading additional input"; write to a file, never pipe to
    `tail`, or progress is hidden and a hang looks like work; keep it read-only — a second opinion must
    not mutate the tree.
+
+   **Bound what it READS, not only how long it runs.** `timeout` is a backstop, not a budget. Measured
+   on one live gate: the external lens spent its whole 25 minutes reading, produced 1.4 MB of trace and
+   no verdict, and was killed by its own timeout — one of round 1's two vectors lost inside a
+   46.7-minute round. The repair that worked was a NARROWER BRIEF, not a longer timeout. So name the
+   frozen artifact paths absolutely in the prompt, say what the lens is not to read, and put the read
+   budget in the prompt itself rather than only in the shell. Launch it BEFORE the in-process
+   reviewers: it is the one step of a round whose wall clock does not have to be serialized against
+   them, and a lens that returns nothing has still spent the round.
 
    **This gate has ROUNDS, and they run the same discipline as the script gate below** — barrier per
    round, delta rounds (hand the reviewer the document's diff plus the findings it was meant to close,
@@ -459,8 +467,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   round's findings, blockers, closure split and apply batches from the ledger and git, and it knows the
   open round's scaffold placeholder is not a finding — the hand count on the first live gate closed the
   gate on 99/27 against a true 98/26 for exactly that reason. The share of a round's findings that are
-  self-inflicted (fix-induced) is the companion number: it climbs toward 100% precisely when the gate is
-  exhausted (measured: the last two rounds of the first live gate were 100%). Mark such findings with
+  self-inflicted (fix-induced) is the companion number, and it is a CONTINUE signal, never a stop
+  signal: it says what THIS round found, not whether the next one will be empty. Measured against on
+  three gates — a round that was 4 of 4 fix-induced and carried one blocker was followed by a round
+  filing seven findings and another blocker; a 3-of-3 fix-induced round carried a blocker itself; and
+  on a third gate reading the share as "exhausted" bought one extra round whose only finding was a
+  blocker. The blocker descent is not monotone either — 7, 5, 1, 0, 2, 5, 3, 2, 1, 0 on one gate — so a
+  zero is not a trend. The stop rule stays exactly what it says above and nothing else does: a round
+  that produces no BLOCKER ends the gate. Mark such findings with
   a literal `[fix-induced]` in the finding text — `wf stats` counts the marker per round and in total,
   and prints "not measured" when nobody marked, because an unmarked corpus is a different claim from
   "no self-inflicted findings".

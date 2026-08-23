@@ -625,9 +625,12 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       all. `wf verify` is the check. The linter caught an unescaped apostrophe inside a quoted string
       that would have failed the run at launch, for free.
 - [ ] **Mark fix-induced findings `[fix-induced]` in the ledger.** The share of a round's findings
-      introduced by the previous round's own fix is the number that says the gate is exhausted (100%
-      on the first live gate's last two rounds), and `wf stats` can only print it where the author
-      marked it — an unmarked corpus reads as "not measured", never as "none".
+      introduced by the previous round's own fix describes what THIS round found; it is a continue
+      signal, never a stop signal. Measured on three gates: a 4-of-4 fix-induced round carrying one
+      blocker was followed by a round filing seven findings and another blocker, and a 3-of-3 round
+      carried a blocker itself. The gate ends on a round with no BLOCKER, and on nothing else.
+      `wf stats` can only print the share where the author marked it — an unmarked corpus reads as
+      "not measured", never as "none".
 - [ ] **Budget rounds, not perfection.** Reviewer COUNT descends (3 → 2 → 1); the round count does not cap.
       The gate ends on a round that produces no blocker — the last phase needed four.
 

@@ -29,6 +29,7 @@ reviewer's checklist rather than part of the manual's argument).
 | you are about to | read first |
 |---|---|
 | author or edit a workflow script | `references/authoring.md`, then `references/model-routing.md` |
+| open and RUN the gate workspace (`wf`, `wfcheck`, `wfdry`) | `references/pre-flight-gate.md` — steps -1, -1b, 0, 2 and 2b are the operator mechanics, 13 KB of its 50; step 1 and step 3 onward are the reviewer's half. The file is written in step order, which is NOT the order you execute |
 | choose models or reasoning effort for agents | `references/model-routing.md` |
 | review a script or gate its artifacts (the pre-flight gate) | `references/pre-flight-gate.md` + `references/gate-checks.md` |
 | add per-section review gates inside a script | `references/section-gate.md` |
