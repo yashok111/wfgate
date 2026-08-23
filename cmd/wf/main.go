@@ -1519,6 +1519,7 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 // open round was counted as a finding; the ledger parser knows better.
 func cmdStats(args []string) error {
 	fs := flag.NewFlagSet("stats", flag.ExitOnError)
+	showTime := fs.Bool("time", false, "per-round wall clock, derived from the workspace's commit times")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1536,6 +1537,10 @@ func cmdStats(args []string) error {
 	// batch report that no apply commit existed, which is a stronger and false
 	// claim.
 	gateBatches := len(applyBatches(w, "HEAD"))
+	var times map[int]roundTime
+	if *showTime {
+		times = roundTimes(w)
+	}
 	kinds := roundKinds(w)
 	totalF, totalB, totalFI, totalEdits, totalLines := 0, 0, 0, 0, 0
 	unattributed := 0
@@ -1643,8 +1648,15 @@ func cmdStats(args []string) error {
 		if fixInduced > 0 {
 			fi = fmt.Sprintf("; fix-induced %d", fixInduced)
 		}
-		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s\n",
-			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi)
+		tm := ""
+		if rt, ok := times[n]; ok {
+			tm = fmt.Sprintf("; %.1f min", rt.Span)
+			if rt.Split {
+				tm += fmt.Sprintf(" (review %.1f, fix %.1f, tail %.1f)", rt.Review, rt.Fix, rt.Tail)
+			}
+		}
+		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s\n",
+			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi, tm)
 	}
 	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
 	// Zero over a whole gate is a POPULATION, and it has to say so. P2f applied
@@ -1685,6 +1697,31 @@ func cmdStats(args []string) error {
 			fmt.Printf(", %.1f per 100 changed line(s)", 100*float64(totalF)/float64(totalLines))
 		}
 		fmt.Printf(" across the gate\n")
+	}
+	if *showTime {
+		spans := make([]float64, 0, len(times))
+		longest, longestN := 0.0, 0
+		for n, rt := range times {
+			spans = append(spans, rt.Span)
+			if rt.Span > longest {
+				longest, longestN = rt.Span, n
+			}
+		}
+		sort.Float64s(spans)
+		auth := ""
+		if m, ok := authoringWindow(w); ok {
+			auth = fmt.Sprintf("authoring %.1f min (init -> first artifact); ", m)
+		}
+		if len(spans) > 0 {
+			recs := commitLog(w, "HEAD")
+			gate := float64(recs[len(recs)-1].At-recs[0].At) / 3600
+			fmt.Printf("  time — %s%d round(s) over %.1f h, median round %.1f min, longest %.1f min (round %d)\n",
+				auth, len(spans), gate, spans[len(spans)/2], longest, longestN)
+			// The median, not the mean: a span of several hours is the operator
+			// away from the desk, and three of the four measured gates carry one.
+			// A mean over those describes nobody's round.
+			fmt.Printf("  note: read the median — a span far above it is a break, not work, and it is in the total\n")
+		}
 	}
 	return nil
 }
@@ -1930,20 +1967,146 @@ func changedLines(w *ws.Workspace, sha string) int {
 // applyBatches reads every apply commit in a revision range and returns each
 // one's edit count. A commit counts as an apply when it carries the trailer, or
 // — for workspaces older than it — when its subject is the default one.
-func applyBatches(w *ws.Workspace, rng string) []applyBatch {
-	msgs, err := w.Git.Run("log", "--format=%H%x1f%B%x00", rng)
+// commitRec is one commit as this file's derivations read it: the cost meter
+// needs the message, the timing needs the time, and both walk the same log.
+type commitRec struct {
+	SHA  string
+	At   int64
+	Subj string
+	Msg  string
+}
+
+func commitLog(w *ws.Workspace, rng string) []commitRec {
+	out, err := w.Git.Run("log", "--reverse", "--format=%H%x1f%at%x1f%B%x00", rng)
 	if err != nil {
 		return nil
 	}
+	var recs []commitRec
+	for _, r := range strings.Split(out, "\x00") {
+		f := strings.SplitN(strings.TrimSpace(r), "\x1f", 3)
+		if len(f) < 3 {
+			continue
+		}
+		msg := strings.TrimSpace(f[2])
+		if msg == "" {
+			continue
+		}
+		at, _ := strconv.ParseInt(f[1], 10, 64)
+		subj := msg
+		if i := strings.IndexByte(msg, '\n'); i >= 0 {
+			subj = msg[:i]
+		}
+		recs = append(recs, commitRec{SHA: f[0], At: at, Subj: subj, Msg: msg})
+	}
+	return recs
+}
+
+// The kind is optional here, unlike roundKinds' pattern: the earliest gates
+// opened rounds before `-kind` existed, and their wall clock is data too.
+var roundOpenAnyRe = regexp.MustCompile(`^round (\d+): open`)
+
+// roundTime is one round's wall clock, derived from the workspace's own commit
+// times — there is no second ledger and none is wanted: a round opens with a
+// commit, its fixes are commits, and the next round opens with one.
+//
+// Measured need: "a round costs 10-40 minutes and the round COUNT is the cost
+// function" had to be computed outside the tool, with awk over `git log`, before
+// anything about the gate's cost could be argued at all. The split says where
+// the minutes are: across 35 clean rounds of three gates the review segment is
+// 72-87% of a round and the bookkeeping tail is under 1%.
+type roundTime struct {
+	Span   float64 // open -> next open (or -> the last commit, for the open round)
+	Review float64 // open -> first apply: the reviewers, plus writing the findings up
+	Fix    float64 // first apply -> last apply
+	Tail   float64 // last apply -> next open: record, freeze, verify, delta
+	Split  bool    // false when the round applied nothing and only Span is real
+}
+
+func roundTimes(w *ws.Workspace) map[int]roundTime {
+	recs := commitLog(w, "HEAD")
+	if len(recs) == 0 {
+		return nil
+	}
+	opens := map[int]int64{}
+	order := []int{}
+	for _, c := range recs {
+		if m := roundOpenAnyRe.FindStringSubmatch(c.Subj); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			if _, seen := opens[n]; !seen {
+				opens[n] = c.At
+				order = append(order, n)
+			}
+		}
+	}
+	out := map[int]roundTime{}
+	for i, n := range order {
+		from := opens[n]
+		to := recs[len(recs)-1].At
+		if i+1 < len(order) {
+			to = opens[order[i+1]]
+		}
+		rt := roundTime{Span: float64(to-from) / 60}
+		var first, last int64
+		for _, c := range recs {
+			if c.At < from || c.At > to {
+				continue
+			}
+			if !isApply(c.Msg, c.Subj) {
+				continue
+			}
+			if first == 0 {
+				first = c.At
+			}
+			last = c.At
+		}
+		if first != 0 {
+			rt.Review = float64(first-from) / 60
+			rt.Fix = float64(last-first) / 60
+			rt.Tail = float64(to-last) / 60
+			rt.Split = true
+		}
+		out[n] = rt
+	}
+	return out
+}
+
+// authoringWindow is init -> the first commit that puts a file under
+// artifacts/: the largest block of a gate that no round covers, because it
+// happens before round 1 opens. Measured at 31.7 and 46.2 minutes on two gates
+// and reported by nothing. Derived from the TREE rather than a commit subject —
+// the earliest workspaces predate `wf add` and seeded artifacts by hand.
+func authoringWindow(w *ws.Workspace) (float64, bool) {
+	recs := commitLog(w, "HEAD")
+	if len(recs) == 0 {
+		return 0, false
+	}
+	out, err := w.Git.Run("log", "--reverse", "--format=%at", "--diff-filter=A", "--", "artifacts")
+	if err != nil {
+		return 0, false
+	}
+	f := strings.Fields(out)
+	if len(f) == 0 {
+		return 0, false
+	}
+	at, err := strconv.ParseInt(f[0], 10, 64)
+	if err != nil || at < recs[0].At {
+		return 0, false
+	}
+	return float64(at-recs[0].At) / 60, true
+}
+
+// isApply is the meter's classification, reused by the timing so the two never
+// disagree about what an apply commit is.
+func isApply(msg, subj string) bool {
+	return applyTrailerRe.MatchString(msg) ||
+		applySubjectRe.MatchString(subj) ||
+		applyBodyEdits(msg) > 0
+}
+
+func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 	var out []applyBatch
-	for _, rec := range strings.Split(msgs, "\x00") {
-		sha, m, ok := strings.Cut(strings.TrimSpace(rec), "\x1f")
-		if !ok {
-			continue
-		}
-		if m = strings.TrimSpace(m); m == "" {
-			continue
-		}
+	for _, c := range commitLog(w, rng) {
+		sha, m := c.SHA, c.Msg
 		add := func(n int) {
 			out = append(out, applyBatch{Edits: n, Lines: changedLines(w, sha)})
 		}

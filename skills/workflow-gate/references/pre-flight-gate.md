@@ -425,6 +425,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   monotonically** — one gate ran 1050 / 374 / 169 lines, the next 583 / 236 / 342 / 167, where the third
   round was 45% LARGER than the second because the second's fix opened a seam the third had to close
   across several consumers. Budget for the round COUNT; do not plan on later rounds being cheap.
+  **`wf stats -time` prints what a round actually cost**, derived from the workspace's own commit
+  times — the span, and its split into review, fix and bookkeeping tail. Measured over three closed
+  gates: a round runs 10 to 40 minutes, the median is around 20, the review segment is 72-87% of it
+  and the tail is under 1%, so the round COUNT is the cost function and the bookkeeping is not.
+  Read the median: a span of several hours is the operator away from the desk, and three of the four
+  measured workspaces carry one. The same line prints the AUTHORING window — init to the first
+  artifact, 42 and 10 minutes on two gates — which no round covers because it happens before round 1
+  opens.
 - **Drop FACTS first when the count descends.** One gate's round 1 returned: SEAMS 3 blockers,
   CRITERION 3 blockers, FACTS 0 blockers (every citation and count in a 150 KB script was correct). Run FACTS once —
   its one major was an invariant asserted in another reviewer's own prompt that the code did not hold —
