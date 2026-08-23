@@ -526,9 +526,17 @@ fixtures for the non-ASCII anchor detector).
   case the feature was built for — plus eight mis-aimed anchors and three
   citations that resolved, sat inside the file and pointed at the wrong lines.
   `check drift` is STILL unexercised live.
-- **The validation corpus does not survive a session** (it lived in a scratch
-  directory). To rebuild: `git clone --no-hardlinks ~/projects/mocker
-  <lab>/head`, then a workspace over any set of documents.
+- **The validation corpus DOES survive, and it is the best evidence this
+  repository has.** The claim that it did not was stale and cost an
+  investigation an hour of archaeology before it was checked: four gate
+  workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
+  `~/gates/p2f` (82 / 102 / 87 commits) and `~/projects/gates/mocker-a-mcp`,
+  live. The seven real orchestration scripts are in
+  `~/projects/mocker/.claude/workflows/` (769-2658 lines each). Run `wf stats
+  -time` inside a workspace before reasoning about cost; the commit timestamps
+  are what price a round, and nothing else records them. To rebuild a lab from
+  scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
+  workspace over any set of documents.
 - The history of decisions and measurements is in the git log; this file keeps
   only what the commits cannot reconstruct.
 - The idea queue and the do-not-build list — `IDEAS.md`; as of 2026-08-21 the
