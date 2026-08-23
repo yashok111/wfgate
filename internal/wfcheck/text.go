@@ -21,11 +21,14 @@ package wfcheck
 // literals keep their `${...}` interpolations — those ARE code, and a spawn call
 // written inside one must stay counted.
 //
-// It is a scanner, not a lexer: a regex literal containing `agent(` would still
-// be counted. That is the safe direction for a backstop — it can only ever make
-// the textual population LARGER than the truth, which the caller's own
-// subtractions then have to explain, and this check's whole job is to be
-// suspicious of a population that is too small.
+// It is a scanner, not a lexer, and the one construct it does not know is the
+// regex literal: `/agent\(/` is still counted (harmless — the caller's own
+// subtractions have to explain a population that is too large), but a LONE
+// quote inside one (`/'/`) opens a literal that runs to the end of its line and
+// blanks the code after it, which is the direction a backstop cannot report.
+// Both are bounded by a line, and neither has appeared in a real orchestration
+// script; teaching it regex literals means tracking the preceding token, which
+// is a lexer, which is the thing the parsed program already is.
 func stripNonCode(src string) string {
 	out := []byte(src)
 	scanCode(src, out, 0, false)

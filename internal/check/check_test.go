@@ -749,3 +749,16 @@ func TestDivergence_truncatesOnARuneBoundary(t *testing.T) {
 		}
 	}
 }
+
+// The cut carries its own ellipsis and the tail marker used to add a second one
+// beside it. A report that prints "……" reads as a bug in the report, which is
+// what this whole view exists to stop.
+func TestDivergence_oneEllipsisPerEnd(t *testing.T) {
+	long := strings.Repeat("alpha ", 40)
+	views := Divergence([]string{long + "one tail here and more words after it", long + "another tail here and more words after it"}, 20)
+	for _, v := range views {
+		if strings.Contains(v, "……") {
+			t.Fatalf("doubled ellipsis: %q", v)
+		}
+	}
+}

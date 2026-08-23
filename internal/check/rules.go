@@ -156,7 +156,7 @@ func Divergence(texts []string, width int) []string {
 	if same {
 		out := make([]string, len(texts))
 		for i, t := range texts {
-			out[i] = cut(strings.Join(strings.Fields(t), " "), width)
+			out[i], _ = cut(strings.Join(strings.Fields(t), " "), width)
 		}
 		return out
 	}
@@ -172,17 +172,23 @@ func Divergence(texts []string, width int) []string {
 			to = pre // a site that IS the common prefix plus suffix
 		}
 		mid := strings.Join(ws[from:to], " ")
+		tail := to < len(ws)
 		if to <= pre {
 			// This site has nothing where the others differ — the difference is
 			// that its text STOPS. Saying so is the finding, and the anchor
 			// words before it are what makes the place locatable.
 			mid = strings.TrimSpace(mid + " ⟨nothing here⟩")
+			tail = false
 		}
-		mid = cut(mid, width)
+		// The cut carries its own ellipsis, so the tail marker would print a
+		// second one beside it.
+		if c, ok := cut(mid, width); ok {
+			mid, tail = c, false
+		}
 		if from > 0 {
 			mid = "…" + mid
 		}
-		if to < len(ws) {
+		if tail {
 			mid += "…"
 		}
 		out[i] = mid
@@ -194,13 +200,13 @@ func Divergence(texts []string, width int) []string {
 // a quoted identifier or an em dash is not ASCII, and a byte cut through one
 // prints a replacement character in the middle of the very text the reader was
 // sent here to compare.
-func cut(s string, width int) string {
+func cut(s string, width int) (string, bool) {
 	if len(s) <= width {
-		return s
+		return s, false
 	}
 	r := []rune(s)
 	if len(r) <= width {
-		return s
+		return s, false
 	}
-	return string(r[:width]) + "…"
+	return string(r[:width]) + "…", true
 }
