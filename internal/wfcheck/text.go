@@ -35,9 +35,6 @@ func stripNonCode(src string) string {
 			}
 		}
 	}
-	// tmpl tracks the template literals whose interpolations we are inside, so
-	// the closing brace of `${...}` returns to the template rather than to code.
-	var tmpl []int
 	i := 0
 	for i < len(src) {
 		c := src[i]
@@ -58,13 +55,14 @@ func stripNonCode(src string) string {
 			blank(i, j)
 			i = j
 		case c == '\'' || c == '"':
+			// The bound is on the LOOP, not inside it: an escape at the end of
+			// the file would otherwise index one past it. A newline ends the
+			// scan too — an unterminated literal is not a licence to eat the
+			// rest of the file.
 			j := i + 1
-			for j < len(src) && src[j] != c {
+			for j < len(src) && src[j] != c && src[j] != '\n' {
 				if src[j] == '\\' {
 					j++
-				}
-				if src[j] == '\n' { // an unterminated literal is not a licence to eat the file
-					break
 				}
 				j++
 			}
@@ -73,11 +71,6 @@ func stripNonCode(src string) string {
 			i = j
 		case c == '`':
 			i = blankTemplate(src, out, i, blank)
-		case c == '{' && len(tmpl) > 0:
-			tmpl[len(tmpl)-1]++
-			i++
-		case c == '}' && len(tmpl) > 0:
-			i++
 		default:
 			i++
 		}

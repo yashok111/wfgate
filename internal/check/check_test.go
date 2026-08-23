@@ -725,3 +725,27 @@ func TestDivergence_namesTheSiteThatHasNothingThere(t *testing.T) {
 		t.Fatalf("the longer site must show what it adds, got %q", views[1])
 	}
 }
+
+// dup prints EXACT cross-file groups too, and those are not a divergence: the
+// first version of this view rendered both sites of a verbatim copy as
+// "⟨nothing here⟩" and deleted the sentence from its own report.
+func TestDivergence_identicalCopiesStillShowTheirText(t *testing.T) {
+	one := "The client retries a failed request three times before it gives up."
+	views := Divergence([]string{one, one}, 110)
+	for _, v := range views {
+		if !strings.Contains(v, "retries a failed request") {
+			t.Fatalf("an exact copy must print as itself, got %q", v)
+		}
+	}
+}
+
+// The truncation cuts on a rune boundary: a byte cut through an em dash prints a
+// replacement character in the middle of the text the reader is here to compare.
+func TestDivergence_truncatesOnARuneBoundary(t *testing.T) {
+	views := Divergence([]string{"x ——ay", "x ——bz"}, 4)
+	for _, v := range views {
+		if strings.ContainsRune(v, '�') {
+			t.Fatalf("the cut split a rune: %q", v)
+		}
+	}
+}

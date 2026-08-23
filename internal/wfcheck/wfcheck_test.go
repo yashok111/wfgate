@@ -339,3 +339,45 @@ return {}`)
 		t.Fatalf("the warning must send the reader to the computed count:\n%s", dump(r))
 	}
 }
+
+// The scanner blanks a literal, not the rest of the file. Every shape below is
+// one an author writes, and each one used to hand the next state the wrong
+// offset: an escaped quote, an escaped backslash at the very end of a literal, a
+// nested template inside an interpolation, and a spawn call written INSIDE an
+// interpolation — which is code and must still be counted.
+func TestStripNonCodeKeepsItsPlace(t *testing.T) {
+	const meta = "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }\nconst S = { type: 'object', properties: { findings: { type: 'array' } } }\nconst spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\n"
+	cases := []struct{ name, body string }{
+		{"an escaped quote inside a string", meta + "const q = 'it\\'s an agent( in prose'\nphase('P')\nawait spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
+		{"a backslash ending a string", meta + "const q = 'a trailing pair \\\\'\nphase('P')\nawait spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
+		{"a template nested in an interpolation", meta + "const n = 1\nconst q = `outer ${`inner ${n} agent(` } tail`\nphase('P')\nawait spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := run(t, c.body)
+			if has(r, ERROR, "inventory implausible") {
+				t.Fatalf("prose is not a call site; got:\n%s", dump(r))
+			}
+			if !has(r, INFO, "1 agent() call site(s)") {
+				t.Fatalf("the real call site must still be found:\n%s", dump(r))
+			}
+		})
+	}
+	// A call written inside an interpolation IS code. Blanking it would make the
+	// backstop's population smaller than the truth, which is the one direction a
+	// backstop must never move.
+	t.Run("a call inside an interpolation is code", func(t *testing.T) {
+		r := run(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { findings: { type: 'array' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const out = `+"`result: ${await spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })}`"+`
+return { out }`)
+		if !has(r, INFO, "1 agent() call site(s)") {
+			t.Fatalf("an interpolated call must be inventoried:\n%s", dump(r))
+		}
+		if has(r, ERROR, "inventory implausible") {
+			t.Fatalf("and counted textually too; got:\n%s", dump(r))
+		}
+	})
+}

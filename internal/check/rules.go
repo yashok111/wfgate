@@ -143,6 +143,23 @@ func Divergence(texts []string, width int) []string {
 		}
 		suf++
 	}
+	// Copies that agree ENTIRELY are not a conflict — `dup` prints exact
+	// cross-file groups too, and rendering those as a divergence deleted the
+	// sentence from its own report.
+	same := true
+	for _, ws := range words {
+		if len(ws) != pre {
+			same = false
+			break
+		}
+	}
+	if same {
+		out := make([]string, len(texts))
+		for i, t := range texts {
+			out[i] = cut(strings.Join(strings.Fields(t), " "), width)
+		}
+		return out
+	}
 	const anchor = 4 // words of agreed text kept before the divergence
 	out := make([]string, len(texts))
 	for i, ws := range words {
@@ -161,9 +178,7 @@ func Divergence(texts []string, width int) []string {
 			// words before it are what makes the place locatable.
 			mid = strings.TrimSpace(mid + " ⟨nothing here⟩")
 		}
-		if len(mid) > width {
-			mid = mid[:width] + "…"
-		}
+		mid = cut(mid, width)
 		if from > 0 {
 			mid = "…" + mid
 		}
@@ -173,4 +188,19 @@ func Divergence(texts []string, width int) []string {
 		out[i] = mid
 	}
 	return out
+}
+
+// cut truncates on a RUNE boundary. The corpus is English by workflow rule, but
+// a quoted identifier or an em dash is not ASCII, and a byte cut through one
+// prints a replacement character in the middle of the very text the reader was
+// sent here to compare.
+func cut(s string, width int) string {
+	if len(s) <= width {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= width {
+		return s
+	}
+	return string(r[:width]) + "…"
 }
