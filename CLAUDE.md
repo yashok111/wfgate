@@ -567,6 +567,29 @@ fixtures for the non-ASCII anchor detector).
   are what price a round, and nothing else records them. To rebuild a lab from
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
   workspace over any set of documents.
+- **The cost of a gate is now measured by the tool, and the answer moved the
+  work.** `wf stats -time` over the three closed gates: a round is 10-40
+  minutes, the pooled median 15.5, the review segment 70-87% of it and the
+  bookkeeping tail about 3%. So the ROUND COUNT is the cost function, the
+  ~9-command sequence is not worth compressing (1.4 minutes across p2d's eleven
+  rounds), and the largest measured saving in the whole investigation is a
+  DOCUMENT change already in the manual: running the decision gate to exhaustion
+  before the script exists took one gate from 10+6 rounds to 8+3, about an hour.
+  The authoring window — init to the first artifact, 31.7 and 42.2 minutes — is
+  the largest block no round covers.
+- **The 2026-08-23 tooling wave was reviewed by three disjoint vectors, and the
+  review is why it is trustworthy.** Two opus agents (one on Go correctness, one
+  on the claimed measurements and the specification) and one external model on
+  the whole diff. Each found what the other two missed: the correctness vector
+  found a defeated guard in front of `wf prune`; the claims vector found that
+  `wf stats` was still printing a rule the same session had retired from the
+  manual, and that nine of the session's own numbers were wrong; the external
+  one found that the emitted skeleton could report green over a gate nobody
+  reviewed. The session had introduced TWO false greens into the toolchain built
+  to refuse them — including a strict regression that silenced a real
+  dual-ownership ERROR — and no bar, test or self-review caught either. Budget a
+  review round for a tooling change the way a gate budgets one for an artifact;
+  it cost about one round and paid three times.
 - The history of decisions and measurements is in the git log; this file keeps
   only what the commits cannot reconstruct.
 - The idea queue and the do-not-build list — `IDEAS.md`; as of 2026-08-21 the
