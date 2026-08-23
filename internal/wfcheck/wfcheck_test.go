@@ -309,6 +309,29 @@ return { done: true }`
 		t.Fatalf("want exactly the two declared owners, got:\n%s", dump(rep))
 	}
 
+	// Forbidding text on the HEADER line is prose about the block, not a
+	// heading: ending the scan there lost every owner of the prompt and
+	// silenced a dual-ownership ERROR the previous release reported. A checker
+	// may neither invent an ERROR nor lose one.
+	header := preamble + `phase('P')
+await spawn(` + "`YOU OWN these files and must not write anywhere else.\n  internal/shared.go — the seam\n`" + `, { model: 'sonnet', effort: 'low', label: 'one', phase: 'P', schema: S })
+await spawn(` + "`YOU OWN these files and must not write anywhere else.\n  internal/shared.go — also the seam\n`" + `, { model: 'sonnet', effort: 'low', label: 'two', phase: 'P', schema: S })
+return { done: true }`
+	if rep := run(t, header); !has(rep, ERROR, "owned by 2 agents") {
+		t.Fatalf("a forbidding phrase on the header line must not lose the owners:\n%s", dump(rep))
+	}
+
+	// The exclusion is a REGION ended by a blank line, not the rest of the
+	// prompt: an owner listed after the DO NOT block still counts. (A SHOUTY
+	// heading ends the whole block instead, which is the documented rule and is
+	// why this case uses a blank line rather than one.)
+	after := preamble + `phase('P')
+await spawn(` + "`YOU OWN\n  src/app/one.ts — the entry point\n\nDO NOT\n  src/app/two.ts\n\n  src/app/three.ts — the tail\n`" + `, { model: 'sonnet', effort: 'low', label: 'one', phase: 'P', schema: S })
+return { done: true }`
+	if rep := run(t, after); !has(rep, INFO, "2 owned path(s) parsed") {
+		t.Fatalf("an owner after an exclusion region must still count:\n%s", dump(rep))
+	}
+
 	// An inline exclusion carries its path on the forbidding line itself, and
 	// only that line is skipped — the owners after it still count.
 	inline := preamble + `phase('P')

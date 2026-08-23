@@ -48,7 +48,10 @@ Mark it as a quote and keep the surrounding instruction in English.
 **Start from `wf new-script <name>`.** It emits the harness half — the wrapper, the findings /
 producer / fix schemas, the bar vocabulary and its positive test, the per-section gate with its
 bounded budget-guarded fix round, the liveness ledger that counts only UNCONDITIONAL spawns, a
-read-only final phase and a tally whose `green` is a conjunction of separately reported terms. The
+read-only final phase and a tally whose `green` is a conjunction of separately reported terms —
+dead agents (the REVIEWERS included: filtering a dead one out let an entirely unreviewed gate report
+clean), open blockers, failed or unreported bars from every agent rather than the acceptance step's
+alone, and a review that contradicted its own verdict. The
 skeleton is `wfcheck`-clean and `wfdry` 7/7 as it stands, and `make check-tools` in the wfgate repo
 re-verifies that on every build, so it cannot drift from the rules below.
 

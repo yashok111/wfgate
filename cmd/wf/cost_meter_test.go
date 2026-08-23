@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"git.sumka.site/yakov/wfgate/internal/ws"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -162,4 +164,65 @@ func TestApplyNotePricesLinesNotEdits(t *testing.T) {
 	out, err := runWF(t, wsDir, "apply", "-f", second)
 	noErr(t, err, "apply")
 	mustContain(t, out, "1 edit(s) changing 31 line(s)", "predicts ~", "consumers are NOT in this diff")
+}
+
+// `wf stats`' gate-wide cost line and `wf apply`'s note are two readings of one
+// number and must share a basis. They did not: the note read every batch at
+// HEAD while the total summed only attributable windows, and on a live gate the
+// two disagreed by 60%. A second derivation of one number is this project's
+// most frequent defect.
+func TestStatsTotalAndApplyNoteShareABasis(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=seed\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", edits); err != nil {
+		t.Fatal(err)
+	}
+	ledger(t, wsDir, 1, "| 1 | MAJOR | one finding | prose |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	// A round with no tag of its own and no predecessor tag: its window is not
+	// attributable, so summing windows would drop this batch from the total.
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "second", "-kind", "delta"); err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(tmp, "second.txt")
+	write(t, second, "=== artifacts/decisions.md  count=1  note=again\n"+
+		"<<<<\nThe entry point is:\n====\nEntry point:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", second); err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := ws.Find(wsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	histLines, _ := batchHistory(w)
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	want := fmt.Sprintf("over %d changed line(s)", histLines)
+	if !strings.Contains(out, want) {
+		t.Fatalf("the cost line must state the same population the apply note predicts from (%s), got:\n%s", want, out)
+	}
+	mustContain(t, out, "apply window not attributable")
+}
+
+// The tool's own output is a copy of the spec, and it was the STALE copy: the
+// manual retired "the share climbs toward 100% when the gate is exhausted" and
+// `wf stats` went on printing it every round. Pinned here because the operator
+// reads the output, not the reference.
+func TestStatsPrintsTheFixInducedRuleTheManualHas(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | MAJOR | a finding [fix-induced] | prose |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "fix-induced — 1 of 1 finding(s)", "CONTINUE signal, never a stop signal")
+	mustNotContain(t, out, "climbs toward 100%")
 }

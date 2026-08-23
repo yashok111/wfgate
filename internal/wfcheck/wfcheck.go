@@ -519,6 +519,7 @@ func checkOwnership(r *Report, s *wfscript.Script, calls []wfscript.AgentCall, r
 		}
 		declaring++
 		lines := strings.Split(c.Prompt[i:], "\n")
+		excluding := false
 		for n, l := range lines {
 			if n >= 40 {
 				break
@@ -527,19 +528,30 @@ func checkOwnership(r *Report, s *wfscript.Script, calls []wfscript.AgentCall, r
 			if n > 0 && shoutyRe.MatchString(t) {
 				break
 			}
+			// A blank line ends an exclusion region. The region is a REGION and
+			// not the rest of the prompt: ending the whole scan at "DO NOT" lost
+			// every owner declared after it, and — because the header line
+			// itself often reads "YOU OWN these files and must not write
+			// anywhere else" — lost every owner of such a prompt outright. That
+			// silenced a real dual-ownership ERROR the previous release
+			// reported, which is a worse defect than the false one it was
+			// fixing: this checker may neither invent an ERROR nor lose one.
+			if t == "" {
+				excluding = false
+				continue
+			}
 			if forbidRe.MatchString(t) {
-				// A forbidding line with NO path in it is the heading of an
-				// exclusion block ("DO NOT"), and everything under it is
-				// excluded — shoutyRe cannot end the block there because it
-				// demands nine characters and "DO NOT" is six, so every
-				// excluded path was being recorded as OWNED. That is the
-				// dual-ownership ERROR firing on a script that declared the
-				// separation correctly, which is the one kind of ERROR this
-				// checker must never invent. A forbidding line that DOES carry
-				// a path is an inline exclusion and only that line is skipped.
-				if pathRe.FindString(t) == "" {
-					break
+				// Pathless and below the header: the heading of an exclusion
+				// block ("DO NOT"), which shoutyRe cannot end because it demands
+				// nine characters and "DO NOT" is six. Carrying a path: an
+				// inline exclusion, and only that line is skipped. On the header
+				// line itself: prose about the block, never a heading.
+				if n > 0 && pathRe.FindString(t) == "" {
+					excluding = true
 				}
+				continue
+			}
+			if excluding {
 				continue
 			}
 			first := pathRe.FindString(t)

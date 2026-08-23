@@ -18,7 +18,14 @@ export const meta = {
 
 const REPO = 'TARGET_REPO'
 
-const BARS = 'TODO: one line per bar, e.g. make test / make lint. A bar is a command with a pass and a fail.'
+// A LIST, not a paragraph: a bar nobody ran and a bar nobody reported look the
+// same in a prose blob, and the tally below checks that every one of these came
+// back by name.
+const BARS = [
+  'TODO make test',
+  'TODO make lint',
+]
+const BARS_TEXT = BARS.map((b) => '  ' + b).join('\n')
 
 const GOAL = 'TODO: what this slice must be true of when it is done. One paragraph, no implementation.'
 
@@ -138,8 +145,8 @@ const FIX_SCHEMA = {
 // bounded fix round, then a recheck of the FIX rather than of the section. A
 // fix is unreviewed code and the largest single source of new defects.
 async function runGate(cfg) {
-  const reviews = await parallel(cfg.reviewers.map((rev) => () =>
-    spawn(
+  const reviews = await parallel(cfg.reviewers.map((rev) => async () =>
+    live('review:' + cfg.slug + ':' + rev.slug, await spawn(
       'You are reviewing one section of a slice in the repository at ' + REPO + '.\n\n' +
       'SECTION GOAL\n' + cfg.goal + '\n\n' +
       'YOUR REVIEW VECTOR: ' + rev.vector + '\n\n' +
@@ -152,8 +159,19 @@ async function runGate(cfg) {
       'For each finding give the file, a one-sentence summary, the concrete failure it produces, and a fix.\n' +
       'Set verdict to blockers when any finding is a blocker, otherwise pass. An empty findings array is a legitimate result.',
       { label: 'review:' + cfg.slug + ':' + rev.slug, phase: cfg.phase, schema: FINDINGS_SCHEMA, model: rev.model, effort: 'high' }
-    )
+    ))
   ))
+
+  // A reviewer that returned verdict `blockers` with no blocker in its findings
+  // contradicts itself, and the cheap reading of that is "pass". Fail closed:
+  // the disagreement is banked as an open blocker of its own.
+  for (const r of reviews.filter(Boolean)) {
+    const has = (r.findings || []).some((f) => f.severity === 'blocker')
+    if ((r.verdict === 'blockers') !== has) {
+      log(cfg.slug + ': a review contradicted itself — verdict ' + r.verdict + ' with ' + (has ? 'a' : 'no') + ' blocker finding')
+      inconsistent.push(cfg.slug)
+    }
+  }
 
   const all = reviews.filter(Boolean).flatMap((r) => r.findings || [])
   const blockers = all.filter((f) => f.severity === 'blocker')
@@ -182,7 +200,7 @@ async function runGate(cfg) {
       'RULES\n' +
       '- Fix exactly these findings. Do not refactor anything else, do not rename, do not reformat untouched code.\n' +
       '- If a finding is WRONG about the code, do not "fix" it: leave the code alone and say so, with the file:line that refutes it.\n' +
-      '- Every bar below must be green when you are done. Run them.\n' + BARS + '\n\n' +
+      '- Every bar below must be green when you are done. Run them.\n' + BARS_TEXT + '\n\n' +
       'YOU OWN\n' + cfg.owns.map((p) => '  ' + p).join('\n') + '\n\n' +
       'RETURN\n' +
       '- perFinding: one entry per blocker you were handed, each with its summary, an action of fixed or refused, and a why.\n' +
@@ -193,9 +211,7 @@ async function runGate(cfg) {
       log(cfg.slug + ': fix agent died — blockers stay open')
       break
     }
-    for (const bar of fixed.bars || []) {
-      if (barFailed(bar)) log(cfg.slug + ': fix left ' + bar.command + ' ' + bar.result)
-    }
+    bars('fix:' + cfg.slug, fixed.bars)
     const recheck = await spawn(
       'You are re-reviewing ONE fix in the repository at ' + REPO + '.\n\n' +
       'The fix claims to close these blockers:\n' + JSON.stringify(open, null, 2) + '\n\n' +
@@ -218,8 +234,34 @@ async function runGate(cfg) {
 }
 
 const openBlockers = []
+const barFailures = []
+const inconsistent = []
 function bank(section, result) {
   for (const f of result.open) openBlockers.push({ section, ...f })
+}
+
+// Every bar failure, from every agent, in ONE place. Logging a producer's red
+// bar and then computing `green` from the acceptance step's bars alone is a
+// report that knows something it does not say.
+function bars(section, reported) {
+  for (const bar of reported || []) {
+    if (barFailed(bar)) barFailures.push({ section, command: bar.command, result: bar.result })
+  }
+  // A bar nobody reported is not a bar that passed, and the schema is satisfied
+  // by an EMPTY array — so an agent that ran nothing and said nothing looks
+  // exactly like one whose bars were green. That is the failure, and it fails.
+  if (!(reported || []).length) {
+    barFailures.push({ section, command: BARS.join(', '), result: 'not-reported' })
+    return
+  }
+  // Names are only WARNED about. A green run must stay reachable, and no
+  // report-shaped fixture can be made to echo these literal strings back —
+  // a check nothing can satisfy is a check that gets switched off.
+  for (const want of BARS) {
+    if (!reported.some((b) => b.command && b.command.includes(want))) {
+      log(section + ': no bar reported matching ' + want)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -241,16 +283,12 @@ const build = live('build', await spawn(
   '  TODO/path/two.go\n\n' +
   'DO NOT\n' +
   '  TODO/path/owned-by-another-section.go\n\n' +
-  'BARS — every one must be green before you report done. Run them.\n' + BARS + '\n\n' +
+  'BARS — every one must be green before you report done. Run them.\n' + BARS_TEXT + '\n\n' +
   'RETURN a summary of what you changed, the files list naming every repo-relative path you wrote, and bars: every bar you ran, with its command and result.',
   { label: 'build', phase: 'Build', schema: PRODUCER_SCHEMA, model: 'sonnet', effort: 'medium' }
 ))
 
-if (build) {
-  for (const bar of build.bars || []) {
-    if (barFailed(bar)) log('build left ' + bar.command + ' ' + bar.result)
-  }
-}
+if (build) bars('build', build.bars)
 
 phase('Gate 1')
 bank('build', await runGate({
@@ -297,13 +335,12 @@ const ACCEPT_SCHEMA = {
 const accept = live('accept', await spawn(
   'You are the acceptance step for a slice in the repository at ' + REPO + '. You are READ-ONLY: you do not edit, you do not fix, you do not commit. If something is wrong you report it.\n\n' +
   'THE SLICE GOAL\n' + GOAL + '\n\n' +
-  'RUN EVERY BAR and report them in bars, each with its command and result, and the verbatim output when it fails. A bar you did not run is reported as not-run, never as passing.\n' + BARS + '\n\n' +
+  'RUN EVERY BAR and report them in bars, each with its command and result, and the verbatim output when it fails. A bar you did not run is reported as not-run, never as passing.\n' + BARS_TEXT + '\n\n' +
   'Then set goalMet to true only if every part of the goal is demonstrably satisfied, and report a finding per part that is not, with its severity and a one-sentence summary.',
   { label: 'accept', phase: 'Accept', schema: ACCEPT_SCHEMA, model: 'sonnet', effort: 'medium' }
 ))
 
-const barsFailed = accept ? (accept.bars || []).filter(barFailed) : []
-for (const bar of barsFailed) log('ACCEPT: ' + bar.command + ' ' + bar.result)
+if (accept) bars('accept', accept.bars)
 const acceptBlockers = accept ? (accept.findings || []).filter((f) => f.severity === 'blocker') : []
 
 phase('Gate 2')
@@ -326,12 +363,21 @@ bank('accept', await runGate({
 log(spawned.length - dead.length + '/' + spawned.length + ' agent(s) came back')
 if (dead.length) log('DEAD: ' + dead.join(', '))
 if (openBlockers.length) log('OPEN BLOCKERS: ' + openBlockers.length)
+if (barFailures.length) log('BAR FAILURES: ' + barFailures.map((b) => b.section + ' ' + b.command + ' ' + b.result).join('; '))
+if (inconsistent.length) log('SELF-CONTRADICTING REVIEWS: ' + inconsistent.join(', '))
 
 return {
-  green: dead.length === 0 && openBlockers.length === 0 && barsFailed.length === 0 && acceptBlockers.length === 0 && Boolean(accept && accept.goalMet),
+  green:
+    dead.length === 0 &&
+    openBlockers.length === 0 &&
+    barFailures.length === 0 &&
+    inconsistent.length === 0 &&
+    acceptBlockers.length === 0 &&
+    Boolean(accept && accept.goalMet),
   dead,
   openBlockers,
-  barsFailed,
+  barFailures,
+  inconsistent,
   acceptBlockers,
   goalMet: Boolean(accept && accept.goalMet),
 }

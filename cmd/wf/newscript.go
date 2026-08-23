@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ import (
 
 // cmdNewScript emits the harness half of an orchestration script.
 //
-// Measured across the seven real scripts of one repository (11 662 lines): the
+// Measured across the six tracked scripts of one repository (10 823 lines): the
 // blocks whose names recur in five or more of them — the spawn wrapper, the
 // findings/producer/fix schemas, the bar vocabulary, the per-section gate —
 // hold about a quarter of the lines, and they are RE-AUTHORED rather than
@@ -70,12 +71,37 @@ func cmdNewScript(args []string) error {
 	if err != nil {
 		return err
 	}
-	body := strings.ReplaceAll(string(b), "SCRIPT_NAME", name)
-	body = strings.ReplaceAll(body, "TARGET_REPO", repo)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil && filepath.Dir(dst) != "." {
+	// JSON-encoded, because both land inside single-quoted JavaScript string
+	// literals: an apostrophe in a path — or a newline — emits a script that
+	// does not parse, or worse, one that parses into something else.
+	quote := func(v string) string {
+		q, err := json.Marshal(v)
+		if err != nil {
+			return "''"
+		}
+		// JSON gives double quotes; the template's literals are single-quoted,
+		// so strip them and keep the escaping JSON did.
+		return "'" + strings.ReplaceAll(strings.Trim(string(q), `"`), `'`, `\'`) + "'"
+	}
+	body := strings.ReplaceAll(string(b), "'SCRIPT_NAME'", quote(name))
+	body = strings.ReplaceAll(body, "'TARGET_REPO'", quote(repo))
+	if d := filepath.Dir(dst); d != "." {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	// O_EXCL, not Stat-then-Write: the check above is a race, and WriteFile
+	// truncates through a dangling symlink at dst. The kernel enforces "never
+	// over a file that exists" and this one cannot.
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("%s: %w — a skeleton must never land on an authored script", dst, err)
+	}
+	if _, err := f.WriteString(body); err != nil {
+		_ = f.Close()
 		return err
 	}
-	if err := os.WriteFile(dst, []byte(body), 0o644); err != nil {
+	if err := f.Close(); err != nil {
 		return err
 	}
 
@@ -85,9 +111,12 @@ func cmdNewScript(args []string) error {
 	fmt.Printf("  read `wf docs authoring` before the first edit, then:\n")
 	fmt.Printf("    wfcheck -root %s %s\n", repo, dst)
 	fmt.Printf("    wfdry %s\n", dst)
-	// Only the TODOs inside YOU OWN blocks reach a check, as missing paths. The
-	// rest are prose, and a TODO left in a prompt SHIPS: saying so is the point,
-	// because the tool being green over it is exactly what makes it dangerous.
-	fmt.Printf("  two of those TODOs stand as wfcheck WARNs (missing owned paths); the other %d are PROSE that no check can see, and a TODO left in a prompt ships\n", todos-2)
+	// No count of "how many a tool can see". It was hand-pinned once and then
+	// derived wrongly once — `TODO/` appears in owns: arrays that produce no
+	// WARN — and a number nobody re-derives is the defect one of this project's
+	// own gates found in a test file. The claim that matters carries no number:
+	// most of these are PROSE, no check reaches prose, and a TODO left in a
+	// prompt ships.
+	fmt.Printf("  only the ones that are owned PATHS reach a check at all; the rest are PROSE, and a TODO left in a prompt ships\n")
 	return nil
 }

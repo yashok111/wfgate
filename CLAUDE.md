@@ -69,8 +69,8 @@ Ten units, each one decision.
 - `internal/check` — the deterministic checks: `cite.go`, `dup.go`,
   `drift.go`, `rules.go`.
 - `templates/script.mjs` — the orchestration-script harness, embedded and
-  emitted by `wf new-script`. Measured over the seven real scripts of one
-  repository (11 662 lines): the blocks recurring in five or more of them hold
+  emitted by `wf new-script`. Measured over the six tracked scripts of one
+  repository (10 823 lines): the blocks recurring in five or more of them hold
   about a quarter of the lines and are RE-AUTHORED, not copied — two gate
   functions implement one algorithm at 0.05 textual similarity — and on one
   script gate four of eight round-1 blockers were harness shape rather than
@@ -262,8 +262,9 @@ measured failure, not taste:
   `rounds/r<open>/brief.md` and commits it, killing the class at its source.
   An unchanged re-save is reported, not re-committed.
 - *`[fix-induced]` in `wf stats`* — the share of findings introduced by the
-  previous round's own fix is the close signal (100% on P2d's last two
-  rounds), and the ledger can carry it only where the author marks it. Stats
+  previous round's own fix is a CONTINUE signal, not a stop signal — three
+  gates produced a round that was wholly self-inflicted and still carried, or
+  was followed by, a blocker, and the ledger can carry it only where the author marks it. Stats
   prints "not measured" when nobody marked: an unmarked corpus and "no
   self-inflicted findings" are different claims, and only the second belongs
   to the finding's author.
@@ -430,6 +431,32 @@ it:
   second found a hand-pinned total in a test file that eight decision rounds
   missed.
 
+**`wf close` and `wf prune`, and why the record is not the repository.** Three
+gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
+structure, each landing in this repository by a manual commit — the p2d file
+ends "*the commit is yours*". The section that turned out to be the most
+valuable is called "One observation about the process, not the tool" in two of
+them and "One number for the planning table" in the third, so the corpus cannot
+be grepped for its own best section. And the numbers were retyped: the first of
+those post-mortems closed its gate on 99 findings and 27 blockers against a true
+98 and 26. So the scaffold has fixed headings and the derived half already in
+it, and a filled scaffold is never overwritten — that is the `findings.md`
+lesson applied to the form that comes after.
+
+What the snapshot takes is what nothing else holds. On the three closed gates
+`.git` is 61-84% of the workspace (3.8-4.4 MB) and the entire history anyone has
+ever read out of it — every commit's time and subject, which is what prices a
+round — is 8.7 to 11.9 KB of text. So `close` writes that, `wf stats -time`
+verbatim, the freeze manifests minus the artifact hashes that stop meaning
+anything, and every round's ledger. `prune` then deletes `artifacts/`, `rounds/` and — LAST, so every
+intermediate failure is still a `git checkout` away — `.git`. It refuses without
+a record, refuses one committed together with the work it describes (a commit is
+its own ancestor, so `--is-ancestor X X` passed), and reports without `-yes`.
+Deletion is the one operation in this tool that a later command cannot announce,
+so it also names every artifact by name before removing it: the artifacts'
+CONTENT is what the record deliberately does not hold, and `wf close -artifacts`
+is there for a gate that wants it kept.
+
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and
 printed a usage error naming the very flag that was passed.
@@ -520,7 +547,7 @@ fixtures for the non-ASCII anchor detector).
   executed 20 agents over 149 minutes and came back green). P2e
   confirmed live: the anchor check turning a wrong citation into a patch, the
   ratchet firing on a real regression, record rejecting a placeholder sha,
-  fix-induced share deciding the stop, delta briefs at ~1/10 of a re-read. P2f
+  the fix-induced share measured at all, delta briefs at ~1/10 of a re-read. P2f
   added the first live yield from `check rules` — marked before the gate closed,
   it found a divergence across the derived pair on its FIRST run, which is the
   case the feature was built for — plus eight mis-aimed anchors and three
@@ -531,8 +558,9 @@ fixtures for the non-ASCII anchor detector).
   investigation an hour of archaeology before it was checked: four gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
   `~/gates/p2f` (82 / 102 / 87 commits) and `~/projects/gates/mocker-a-mcp`,
-  live. The seven real orchestration scripts are in
-  `~/projects/mocker/.claude/workflows/` (769-2658 lines each). Run `wf stats
+  live. The six tracked orchestration scripts are in
+  `~/projects/mocker/.claude/workflows/` (769-2658 lines each, 10 823 total; a
+  live gate's own script sits there untracked while it runs). Run `wf stats
   -time` inside a workspace before reasoning about cost; the commit timestamps
   are what price a round, and nothing else records them. To rebuild a lab from
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
@@ -549,28 +577,6 @@ Not forgotten — deferred, so the gap does not read as an oversight:
 - **No MCP server.** CLI first — and the live run measured the question: zero
   agent↔CLI seam errors over 10 rounds. The bottleneck was assembling the JSON
   edit batch, which is a different layer. Reopen only with new data.
-**`wf close` and `wf prune`, and why the record is not the repository.** Three
-gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
-structure, each landing in this repository by a manual commit — the p2d file
-ends "*the commit is yours*". The section that turned out to be the most
-valuable is called "One observation about the process, not the tool" in two of
-them and "One number for the planning table" in the third, so the corpus cannot
-be grepped for its own best section. And the numbers were retyped: the first of
-those post-mortems closed its gate on 99 findings and 27 blockers against a true
-98 and 26. So the scaffold has fixed headings and the derived half already in
-it, and a filled scaffold is never overwritten — that is the `findings.md`
-lesson applied to the form that comes after.
-
-What the snapshot takes is what nothing else holds. On the three closed gates
-`.git` is 61-84% of the workspace (3.8-4.4 MB) and the entire history anyone has
-ever read out of it — every commit's time and subject, which is what prices a
-round — is 8.7 to 11.9 KB of text. So `close` writes that, `wf stats -time`
-verbatim, the freeze manifests minus the artifact hashes that stop meaning
-anything, and every round's ledger. `prune` then deletes `.git`, `artifacts/`
-and `rounds/`: measured 4.5 MB down to 176 KB. It refuses without a record,
-refuses a record older than the artifacts, and reports without `-yes` —
-deletion is the one operation in this tool that a later command cannot announce.
-
 - **Still no findings registry as data — only a parser.** `findings.md` is
   filled by hand; `ws.ParseFindings` reads the table to validate closures
   (record/freeze) and to print the delta checklist, but generates nothing and

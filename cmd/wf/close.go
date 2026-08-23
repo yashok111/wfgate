@@ -43,6 +43,8 @@ func cmdClose(args []string) error {
 	fs := flag.NewFlagSet("close", flag.ExitOnError)
 	archive := fs.String("archive", os.Getenv("WF_ARCHIVE"),
 		"also copy the snapshot into DIR/<name>/ (default $WF_ARCHIVE)")
+	withArts := fs.Bool("artifacts", false,
+		"bank the artifacts themselves too — their CONTENT is the one thing prune destroys that the record does not hold")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
@@ -84,7 +86,7 @@ func cmdClose(args []string) error {
 	}
 
 	dir := filepath.Join(w.Root, closeDir)
-	if err := os.MkdirAll(filepath.Join(dir, "findings"), 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 
@@ -97,6 +99,9 @@ func cmdClose(args []string) error {
 	written := []string{}
 	put := func(rel string, b []byte) error {
 		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return err
+		}
 		if err := os.WriteFile(p, b, 0o644); err != nil {
 			return err
 		}
@@ -115,13 +120,49 @@ func cmdClose(args []string) error {
 		return err
 	}
 
+	// EVERY file of every round, not just findings.md. `wf delta -save` commits
+	// the round's brief into rounds/rN/brief.md — the actual input the next
+	// round's reviewer was handed — and prune deletes rounds/, so copying one
+	// file out of the directory destroyed the rest. The rule two paragraphs
+	// down says what is not reconstructable must be copied before it; this is
+	// that rule applied to its own violation.
 	for n := 1; n <= last; n++ {
-		b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md"))
+		dir := w.RoundDir(n)
+		ents, err := os.ReadDir(dir)
+		// A `continue` here is the vacuous skip this repository has a scar
+		// from: freeze passed a findings file it could not read and printed its
+		// success block. A round the snapshot cannot read is a round `wf prune`
+		// would then delete with no record of it anywhere.
 		if err != nil {
-			continue
+			return fmt.Errorf("round %d cannot be read (%v) — the snapshot would be missing it and prune would delete the original", n, err)
 		}
-		if err := put(filepath.Join("findings", fmt.Sprintf("r%d.md", n)), b); err != nil {
+		for _, e := range ents {
+			if e.IsDir() {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				continue
+			}
+			if err := put(filepath.Join("rounds", fmt.Sprintf("r%d", n), e.Name()), b); err != nil {
+				return err
+			}
+		}
+	}
+
+	if *withArts {
+		arts, err := w.ArtifactList()
+		if err != nil {
 			return err
+		}
+		for _, a := range arts {
+			b, err := os.ReadFile(filepath.Join(w.Root, a))
+			if err != nil {
+				return fmt.Errorf("artifact %s cannot be read (%v) — a partial bank is worse than none", a, err)
+			}
+			if err := put(a, b); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -189,10 +230,14 @@ func cmdClose(args []string) error {
 
 	if *archive != "" {
 		dst := filepath.Join(*archive, w.M.Name)
+		// A WARNING, not an error: the record is written and committed by now,
+		// and returning non-zero would report a command that succeeded as one
+		// that failed — after which the operator's natural move is to re-run it.
 		if err := copyTree(dir, dst); err != nil {
-			return fmt.Errorf("archive: %w", err)
+			fmt.Printf("  WARNING: the record is committed, but archiving to %s failed: %v\n", dst, err)
+		} else {
+			fmt.Printf("  archived to %s\n", dst)
 		}
-		fmt.Printf("  archived to %s\n", dst)
 	}
 	return nil
 }
@@ -303,18 +348,29 @@ func cmdPrune(args []string) error {
 		lastClose, _ := w.Git.Run("log", "--format=%H", "-1", "--", closeDir)
 		lastWork, _ := w.Git.Run("log", "--format=%H", "-1", "--", "artifacts", "rounds")
 		if lastClose != "" && lastWork != "" {
-			out, err := w.Git.Run("merge-base", "--is-ancestor", lastWork, lastClose)
-			_ = out
-			if err != nil {
+			// A commit is its own ancestor, so `--is-ancestor X X` exits 0: ONE
+			// commit touching both rounds/ and close/ — which is what a hand
+			// `git commit -a` after filling feedback.md produces — walked
+			// straight through this guard into an irreversible delete, with the
+			// snapshot holding the pre-edit rows. Same-commit is not older.
+			if lastWork == lastClose {
+				return fmt.Errorf("the last commit touched artifacts or rounds AND the record, so the record cannot be older than what it describes — run `wf close` again before pruning")
+			}
+			if _, err := w.Git.Run("merge-base", "--is-ancestor", lastWork, lastClose); err != nil {
 				return fmt.Errorf("artifacts or rounds changed after the last `wf close` — re-run it, or the snapshot records a gate that no longer exists")
 			}
 		}
 	}
 
-	// rounds/ goes too: every findings.md is in the snapshot verbatim and every
-	// freeze.json's surviving half is in freezes.tsv. What is NOT reconstructable
-	// must be copied before this line, not left behind by it.
-	victims := []string{".git", "artifacts", "rounds"}
+	// rounds/ goes too: every file of every round is in the snapshot verbatim.
+	// What is NOT reconstructable must be copied before this line, not left
+	// behind by it.
+	//
+	// The repository is removed LAST. Removing it first and then failing on
+	// artifacts/ or rounds/ — EACCES, EBUSY, a full disk — leaves tracked
+	// content gone with nothing left to restore it from; in this order every
+	// intermediate state is still a `git checkout .` away.
+	victims := []string{"artifacts", "rounds", ".git"}
 	var present []string
 	for _, v := range victims {
 		if _, err := os.Stat(filepath.Join(w.Root, v)); err == nil {
@@ -328,6 +384,19 @@ func cmdPrune(args []string) error {
 	fmt.Printf("prune %s — the snapshot in %s/ is what survives\n", w.M.Name, closeDir)
 	for _, v := range present {
 		fmt.Printf("  would remove %s (%s)\n", v, dirSize(filepath.Join(w.Root, v)))
+	}
+	// The artifacts are the one thing here that the record does NOT hold, and
+	// once the repository is gone their CONTENT exists nowhere. Naming them by
+	// name is the difference between a decision and an accident; `wf close
+	// -artifacts` banks them for a gate that wants them kept.
+	if arts, err := w.ArtifactList(); err == nil && len(arts) > 0 {
+		if _, err := os.Stat(filepath.Join(dir, "artifacts")); err != nil {
+			fmt.Printf("  the record does NOT hold the artifacts themselves — these leave the world:\n")
+			for _, a := range arts {
+				fmt.Printf("    %s\n", a)
+			}
+			fmt.Printf("  (`wf close -artifacts` banks them; findings, history, freezes and stats are kept either way)\n")
+		}
 	}
 	if !*yes {
 		fmt.Printf("  nothing removed — re-run with -yes. This is not reversible and the repository is not recoverable\n")

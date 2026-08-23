@@ -62,6 +62,9 @@ check-tools: build
 	@if ./wfdry testdata/false-green.mjs --quiet >/dev/null 2>&1; then \
 		echo "wfdry false-green fixture: EXIT 0 over a happy path that returned not-green"; exit 1; \
 	else echo "wfdry false-green fixture: fails as it must"; fi
+	@if ./wfcheck -root . testdata/own-forbid.mjs >/dev/null 2>&1; then \
+		echo "wfcheck own-forbid fixture: LOST a dual-ownership ERROR beside a forbidding phrase"; exit 1; \
+	else echo "wfcheck own-forbid fixture: reports the collision as it must"; fi
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfcheck -root . .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \

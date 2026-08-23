@@ -427,8 +427,11 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   across several consumers. Budget for the round COUNT; do not plan on later rounds being cheap.
   **`wf stats -time` prints what a round actually cost**, derived from the workspace's own commit
   times — the span, and its split into review, fix and bookkeeping tail. Measured over three closed
-  gates: a round runs 10 to 40 minutes, the median is around 20, the review segment is 72-87% of it
-  and the tail is under 1%, so the round COUNT is the cost function and the bookkeeping is not.
+  gates, over the 35 rounds whose span is under two hours (the rest are breaks): a round runs 10 to
+  40 minutes, the pooled median is 15.5, the review segment is 70-87% of it and the bookkeeping tail
+  is about 3% — so the round COUNT is the cost function and the bookkeeping is not. The ~1% figure
+  quoted for the command sequence measures a narrower span (the last apply to the next round's open)
+  and is not the `tail` column.
   Read the median: a span of several hours is the operator away from the desk, and three of the four
   measured workspaces carry one. The same line prints the AUTHORING window — init to the first
   artifact, 42 and 10 minutes on two gates — which no round covers because it happens before round 1
@@ -449,8 +452,9 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
   `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines, and
   `wf apply` notes when a batch's CHANGED LINES predict a costly next round — measured, the case that
-  matters is few edits over many lines: one edit of one gate rewrote 933 lines, and a per-edit meter
-  called it "38.00 finding(s)/edit". The note also says the half no tool can check: if the batch
+  matters is few edits over many lines: one gate's two-edit window changed 933 lines, 931 of them in
+  a single commit, and the per-edit meter — which had seen only the other, one-line edit — called the
+  window "38.00 finding(s)/edit". The note also says the half no tool can check: if the batch
   changed a rule, its consumers are not in the diff. Split by RULE — one rule and all its copies per batch — never
   mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
 - **What a fix costs is decided by whether it changes a RULE, not by how many edits it has.** One gate
@@ -460,11 +464,13 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   them: the expensive batches each changed one rule (every declared path parameter becomes REQUIRED;
   the declared set is derived from `basePath + route.Path`, not `route.Path`), and the cheap one was
   thirteen edits of renumbering and prose. **The separation is visible in the denominator the tool now
-  prints.** Across the three closed gates a prose fix runs roughly 2 to 5 findings per 100 changed
-  lines and a rule-changing fix roughly 6 to 15 — the four-edit batch above reads 14.9 and the
-  twenty-seven-edit prose batch of the same gate reads 3.4. An edit is not a unit and never was: one
-  edit of another gate rewrote 933 lines, and the per-edit ratio printed it as `38.00
-  finding(s)/edit`. Read the per-100-lines figure and read your own workspace's, not this paragraph's. **A fix that changes a rule re-opens every consumer of that
+  prints.** Across the three closed gates the MIDDLE of the distribution has a prose fix at roughly 2
+  to 5 findings per 100 changed lines and a rule-changing fix at roughly 6 to 15 — the four-edit batch
+  above reads 14.9 and the twenty-seven-edit prose batch of the same gate reads 3.4. The tails are
+  real and are not the rule: a round whose window is the authoring commit, or one whose few changed
+  lines are post-gate tidying, reads in the hundreds and says nothing about a fix. An edit is not a unit and never was: one
+  two-edit window of another gate changed 933 lines, 931 of them in one commit, and the per-edit
+  ratio printed the window as `38.00 finding(s)/edit`. Read the per-100-lines figure and read your own workspace's, not this paragraph's. **A fix that changes a rule re-opens every consumer of that
   rule, and the consumers are not in the diff.** Round 5 of that gate was the only round in which the
   blocker count ROSE, and four of round 7's seven findings were sentences arguing from the superseded
   form.
@@ -490,11 +496,10 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   open round's scaffold placeholder is not a finding — the hand count on the first live gate closed the
   gate on 99/27 against a true 98/26 for exactly that reason. The share of a round's findings that are
   self-inflicted (fix-induced) is the companion number, and it is a CONTINUE signal, never a stop
-  signal: it says what THIS round found, not whether the next one will be empty. Measured against on
-  three gates — a round that was 4 of 4 fix-induced and carried one blocker was followed by a round
-  filing seven findings and another blocker; a 3-of-3 fix-induced round carried a blocker itself; and
-  on a third gate reading the share as "exhausted" bought one extra round whose only finding was a
-  blocker. The blocker descent is not monotone either — 7, 5, 1, 0, 2, 5, 3, 2, 1, 0 on one gate — so a
+  signal: it says what THIS round found, not whether the next one will be empty. Measured on two
+  gates — a round that was 4 of 4 fix-induced and carried one blocker was followed by a round filing
+  seven findings and another blocker, and a 3-of-3 fix-induced round carried a blocker itself. The
+  blocker descent is not monotone either — 7, 5, 1, 0, 2, 5, 3, 2, 1, 0 on one gate — so a
   zero is not a trend. The stop rule stays exactly what it says above and nothing else does: a round
   that produces no BLOCKER ends the gate. Mark such findings with
   a literal `[fix-induced]` in the finding text — `wf stats` counts the marker per round and in total,
@@ -502,8 +507,11 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   "no self-inflicted findings".
 4. **When the gate is done: `wf close`.** It writes the gate's own record into the workspace and
    commits it — the commit log as text (the timings that price every round live there and nowhere
-   else), `wf stats -time` verbatim, the freeze manifests' surviving half, every round's findings
-   ledger, and a feedback scaffold with the derived numbers already filled in. Fill the scaffold and
+   else), `wf stats -time` verbatim, the freeze manifests' surviving half, every FILE of every round
+   — the findings ledger and the delta brief that round's reviewer was actually handed — and a
+   feedback scaffold with the derived numbers already filled in. `-artifacts` banks the artifacts
+   too: their CONTENT is the one thing prune destroys that the record does not hold, and prune names
+   each of them before it does. Fill the scaffold and
    run `wf close` again to bank it; a filled form is never overwritten. `-archive DIR` (or
    `$WF_ARCHIVE`) copies the record out to a corpus that outlives the workspace.
 
@@ -516,9 +524,10 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
    `wf prune -yes` then deletes `.git`, `artifacts/` and `rounds/`, leaving the record and the
    gate-checks copy that briefed the reviewers. It refuses without a record, refuses when the record
    is older than the artifacts, and reports without `-yes`: the deletion is not reversible. Measured
-   on one closed gate: 4.5 MB down to 176 KB, and everything anyone has ever read out of the
-   repository is in what stays — the `.git` was 84% of the bytes and the whole of its history as text
-   is 12 KB.
+   on one closed gate: the command reports 1.2 MB of `.git`, 175 KB of artifacts and 338 KB of rounds
+   removed, leaving 134 KB of record — and everything anyone has ever read out of the repository is
+   in what stays, because `.git` was 84% of the workspace's blocks and the whole of its history as
+   text is 12 KB.
 
 - **An edit after the gate closes is still an edit.** The stop rule permits majors to ride; it does not
   make applying them free. Measured: four "text-only" major fixes applied after a clean closing round

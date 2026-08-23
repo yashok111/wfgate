@@ -63,7 +63,7 @@ func TestCloseBanksWhatTheRepositoryAloneHolds(t *testing.T) {
 	out, err := runWF(t, wsDir, "close")
 	noErr(t, err, "close")
 	mustContain(t, out, "close/history.tsv", "close/stats.txt", "close/freezes.tsv",
-		"close/findings/r1.md", "close/feedback.md", "committed ")
+		"close/rounds/r1/findings.md", "close/rounds/r1/freeze.json", "close/feedback.md", "committed ")
 
 	hist := read(t, filepath.Join(wsDir, closeDir, "history.tsv"))
 	if !strings.Contains(hist, "gate: init demo") {
@@ -72,6 +72,12 @@ func TestCloseBanksWhatTheRepositoryAloneHolds(t *testing.T) {
 	fz := read(t, filepath.Join(wsDir, closeDir, "freezes.tsv"))
 	if !strings.HasPrefix(fz, "round\tfrozen\tcommit\ttargetRef\ttool\tciteAnchored\tciteTotal\n") {
 		t.Fatalf("freezes.tsv header: %q", fz)
+	}
+	// wf delta -save commits the round's brief into rounds/rN/, and prune
+	// deletes rounds/: a snapshot that copied only findings.md destroyed the
+	// reviewer input the next round was actually handed.
+	if _, err := os.Stat(filepath.Join(wsDir, closeDir, "rounds", "r1", "freeze.json")); err != nil {
+		t.Fatalf("every file of a round must be banked, not just findings.md: %v", err)
 	}
 	fb := read(t, filepath.Join(wsDir, closeDir, "feedback.md"))
 	for _, s := range closeFeedbackSections {
@@ -197,7 +203,7 @@ func TestNewScriptSubstitutesAndNeverOverwrites(t *testing.T) {
 
 	out, err := runWF(t, wsDir, "new-script", "slice-a", "-o", dst)
 	noErr(t, err, "new-script")
-	mustContain(t, out, "wrote ", "TODO(s)", "that no check can see")
+	mustContain(t, out, "wrote ", "TODO(s)", "the rest are PROSE", "a TODO left in a prompt ships")
 
 	body := read(t, dst)
 	if !strings.Contains(body, "name: 'slice-a'") {
@@ -222,5 +228,134 @@ func TestNewScriptSubstitutesAndNeverOverwrites(t *testing.T) {
 	}
 	if got := read(t, dst); got != body {
 		t.Fatal("the refused write changed the file")
+	}
+}
+
+// A commit is its own ancestor, so `merge-base --is-ancestor X X` exits 0: ONE
+// commit touching both a round and the record — what a hand `git commit -a`
+// after filling feedback.md produces — walked through the staleness guard into
+// an irreversible delete while the snapshot held the pre-edit rows.
+func TestPruneRefusesARecordCommittedWithTheWorkItDescribes(t *testing.T) {
+	wsDir := newGate(t)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "close"); err != nil {
+		t.Fatal(err)
+	}
+
+	// One commit, both trees.
+	write(t, filepath.Join(wsDir, closeDir, "feedback.md"), "# Gate feedback\n\nfilled by hand\n")
+	ledger(t, wsDir, 1, "| 1 | ADVISORY | filed after the record was written | prose |\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "close: fill the form and tidy the ledger")
+
+	_, err := runWF(t, wsDir, "prune", "-yes")
+	if err == nil {
+		t.Fatal("want a refusal: the record cannot be older than a commit it shares")
+	}
+	if !strings.Contains(err.Error(), "wf close") {
+		t.Fatalf("the refusal must name the repair: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, ".git")); err != nil {
+		t.Fatal("the refusal deleted the repository")
+	}
+}
+
+// The delta brief is the input the next round's reviewer was actually handed,
+// and it lives in rounds/rN/, which prune deletes.
+func TestCloseBanksTheDeltaBrief(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=reword\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", edits); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "second", "-kind", "delta"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "delta", "-save"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "close"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(wsDir, closeDir, "rounds", "r2", "brief.md")); err != nil {
+		t.Fatalf("the delta brief was not banked and prune would destroy it: %v", err)
+	}
+}
+
+// The artifacts' CONTENT is the one thing prune destroys that the record does
+// not hold. The default stands — their role ends when the reviewers are done —
+// but prune must name them, and -artifacts must bank them.
+func TestArtifactsAreNamedOrBanked(t *testing.T) {
+	t.Run("prune names what leaves the world", func(t *testing.T) {
+		wsDir := newGate(t)
+		if _, err := runWF(t, wsDir, "freeze"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runWF(t, wsDir, "close"); err != nil {
+			t.Fatal(err)
+		}
+		out, err := runWF(t, wsDir, "prune")
+		noErr(t, err, "prune")
+		mustContain(t, out, "the record does NOT hold the artifacts themselves",
+			"artifacts/decisions.md", "-artifacts` banks them")
+	})
+
+	t.Run("-artifacts banks them", func(t *testing.T) {
+		wsDir := newGate(t)
+		if _, err := runWF(t, wsDir, "freeze"); err != nil {
+			t.Fatal(err)
+		}
+		out, err := runWF(t, wsDir, "close", "-artifacts")
+		noErr(t, err, "close -artifacts")
+		mustContain(t, out, "close/artifacts/decisions.md")
+		if got := read(t, filepath.Join(wsDir, closeDir, "artifacts", "decisions.md")); !strings.Contains(got, "Entry point") {
+			t.Fatalf("the artifact was banked empty: %q", got)
+		}
+		out, err = runWF(t, wsDir, "prune")
+		noErr(t, err, "prune")
+		mustNotContain(t, out, "the record does NOT hold the artifacts themselves")
+	})
+}
+
+// A round the snapshot cannot read is a round prune would delete with no record
+// of it. `wf freeze` once skipped an unreadable findings file with `continue`
+// and printed its success block; a snapshot may not repeat that.
+func TestCloseRefusesAnUnreadableRound(t *testing.T) {
+	wsDir := newGate(t)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "second", "-kind", "delta"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	// An EARLIER round, unreadable: the last round's ledger still parses, so
+	// the blocker check passes and this guard is the one that must speak.
+	// Unreadable rather than absent — removing it makes the tree dirty and the
+	// first refusal fires instead, correctly, but on a different question.
+	rd := filepath.Join(wsDir, "rounds", "r1")
+	if err := os.Chmod(rd, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(rd, 0o755) })
+	_, err := runWF(t, wsDir, "close")
+	if err == nil {
+		t.Fatal("want a refusal over a round the snapshot cannot read")
+	}
+	if !strings.Contains(err.Error(), "prune would delete the original") {
+		t.Fatalf("the refusal must name the consequence: %v", err)
 	}
 }

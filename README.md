@@ -86,8 +86,8 @@ wf delta                                   # the delta round's brief: findings +
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules); `dup` takes `-since REF`, `-threshold F` and `-min-words N` |
 | `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
 | `wf new-script <name> [-target REPO] [-o FILE]` | emit the orchestration-script harness — wrapper, schemas, per-section gate, liveness ledger, read-only accept, tally; `wfcheck`-clean and `wfdry` 7/7 as emitted, and re-verified by `make check-tools`. Never writes over an existing file |
-| `wf close [-archive DIR]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten |
-| `wf prune [-yes]` | delete `.git`, `artifacts/` and `rounds/` once the record is banked; refuses without one, refuses a stale one, and reports without `-yes`. Measured: 4.5 MB to 176 KB |
+| `wf close [-archive DIR] [-artifacts]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and every file of every round, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten. `-artifacts` banks the artifacts themselves — their CONTENT is the one thing `prune` destroys that the record does not hold, and `prune` names them by name before it does |
+| `wf prune [-yes]` | delete `artifacts/`, `rounds/` and then `.git` once the record is banked; refuses without one, refuses a stale one (including a record committed together with the work it describes), and reports without `-yes`. Measured on one closed gate: the command reports 1.2 MB + 175 KB + 338 KB removed and leaves 134 KB of record |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
 
@@ -133,9 +133,11 @@ predicts a costly next round, `apply` prints a note suggesting a split by rule,
 and says that a rule's consumers are not in the diff — a note, never a refusal.
 It counts what git sees changed in the files just written, so a dry run says the
 estimate is absent rather than printing one on a different basis. The meter's denominator is CHANGED LINES, not edits: measured across
-three closed gates, findings correlate with edits at +0.26..+0.49 and with
-changed lines at +0.47..+0.82, because one edit can rewrite one word or nine
-hundred lines. Every apply commit records its own edit count in a `wf-apply:`
+three closed gates and excluding each gate's round 1 — whose window is the
+authoring commit rather than a fix — findings correlate with edits at
++0.26..+0.49 and with changed lines at +0.47..+0.82, because one edit can
+rewrite one word or nine hundred lines. Lines win on two of the three gates and
+tie on the third; including round 1, the edit count wins on one. Every apply commit records its own edit count in a `wf-apply:`
 trailer, then in the default subject, then in the per-edit lines of its body —
 three sources in falling order of how hard they are to erase, and the third is
 all that survives in a workspace older than the trailer whose operator wrote

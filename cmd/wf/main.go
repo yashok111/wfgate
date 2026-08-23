@@ -53,7 +53,7 @@ const usage = `wf — gate harness
   wf stats [-time]                per-round findings, closures and batches, from the ledger and git
   wf new-script <name>            emit the orchestration-script harness: wrapper, schemas, gate, ledger
   wf close [-archive DIR]         bank the gate's own record — history, stats, findings, a feedback scaffold
-  wf prune [-yes]                 delete .git and artifacts once the record is banked; not reversible
+  wf prune [-yes]                 delete artifacts/, rounds/ and .git once the record is banked; not reversible
   wf docs [name]                  print the embedded operating manual (guide, checks, routing, ...)
   wf version                      the stamped build version of this binary
 
@@ -331,7 +331,8 @@ func cmdApply(args []string) error {
 	// The estimate is computed from what GIT sees changed, not from the edit
 	// count and not from the declared old/new sizes: the history it is compared
 	// against comes from --numstat, and a ratio whose two halves count different
-	// things is worse than no ratio. Measured: one edit of P2e rewrote 933 lines.
+	// things is worse than no ratio. Measured: a P2e window of two edits changed
+	// 933 lines, 931 of them in one commit the subject-only meter never saw.
 	histLines, histFindings := batchHistory(w)
 	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), histLines, histFindings); warn {
 		fmt.Println(note)
@@ -1534,8 +1535,9 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 	// live gate reported four ids in conflict, every one of them a sentence
 	// that POINTED at the rule ("Because of [R2]", "forced by [R4]", "so [R8]
 	// is satisfied by") sitting beside the sentence that stated it. The
-	// operator reworded the artifact instead — 14 edits — until each id had one
-	// site left and the check compared nothing at all.
+	// operator's repair batch carried fourteen edits, six of them marker work,
+	// and it left every id with a single site — so the check then compared
+	// nothing at all and printed that as a clean line.
 	if len(conflicts) > 0 {
 		fmt.Printf("  note: a site that REFERS to a rule states nothing, and disagrees with every " +
 			"statement of it. Drop the marker from the reference — do not reword the artifact to " +
@@ -1651,18 +1653,21 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		if n > 1 {
 			rng = ws.RoundTag(n-1) + ".." + tag
 		}
-		batches, edits, lines := 0, 0, 0
+		batches, edits, lines, unknown := 0, 0, 0, 0
 		if attributable {
 			for _, b := range applyBatches(w, rng) {
 				batches++
 				edits += b.Edits
 				lines += b.Lines
+				if !b.Known {
+					unknown++
+				}
 			}
 		} else {
 			unattributed++
 		}
-		totalEdits += edits
-		totalLines += lines
+		_ = edits
+		_ = lines
 		// The window's edits precede the window's findings: the fixes land
 		// after the previous freeze, the findings come from reviewing this one
 		// — so findings/edits on one line IS "what this batch cost", the P2e
@@ -1678,7 +1683,13 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			// that changed a RULE runs 6.3-14.9, a separation the edit count
 			// cannot see.
 			ed = fmt.Sprintf(", %d edit(s) / %d changed line(s)", edits, lines)
-			if findings > 0 && lines > 0 {
+			if unknown > 0 {
+				// An unreadable batch is an unknown denominator, and a ratio
+				// over a denominator that is short by an unknown amount is not
+				// a smaller ratio, it is no ratio.
+				ed += fmt.Sprintf(" (%d batch(es) unreadable — no ratio)", unknown)
+			}
+			if findings > 0 && lines > 0 && unknown == 0 {
 				ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
 					100*float64(findings)/float64(lines))
 			}
@@ -1720,20 +1731,60 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// "no self-inflicted findings" — the two are different claims and only the
 	// author of a finding can make the second.
 	if totalFI > 0 {
-		_, _ = fmt.Fprintf(out, "  fix-induced — %d of %d finding(s); the share climbs toward 100%% when the gate is exhausted\n", totalFI, totalF)
+		_, _ = fmt.Fprintf(out, "  fix-induced — %d of %d finding(s); a CONTINUE signal, never a stop signal — it says what these rounds found, not whether the next one will be empty\n", totalFI, totalF)
 	} else {
 		_, _ = fmt.Fprintf(out, "  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
 	}
 	// The workspace's own cost meter: what a batch of edits costs in next-round
 	// findings, measured here rather than recalled from another gate's anecdote.
+	// The gate total is the WHOLE population, not the sum of the attributable
+	// windows. Two reasons, and the second is the sharper one: a batch applied
+	// after the last round's freeze belongs to no window at all (and `wf close`
+	// requires that freeze, so every banked record had the hole), and `wf
+	// apply`'s note reads its history HEAD-wide — on a live gate the two
+	// derivations of one number disagreed by 60%, which is the second-copy
+	// defect this project names as its most frequent.
+	totalUnknown := 0
+	for _, b := range applyBatches(w, "HEAD") {
+		totalEdits += b.Edits
+		totalLines += b.Lines
+		if !b.Known {
+			totalUnknown++
+		}
+	}
+	if tag := ws.RoundTag(w.M.Round); w.Git.TagExists(tag) {
+		tailE, tailN := 0, 0
+		for _, b := range applyBatches(w, tag+"..HEAD") {
+			tailN++
+			tailE += b.Edits
+		}
+		if tailN > 0 {
+			_, _ = fmt.Fprintf(out, "  post-gate — %d apply batch(es) after %s, %d edit(s); in the gate total, reviewed by no round\n", tailN, tag, tailE)
+		}
+	}
+	// One of the three sources is INFERRED from the shape of a commit body, and
+	// an inferred count must announce itself rather than passing as measured: a
+	// hand commit whose body is a single `- path: note` bullet is counted.
+	if gateBatches > 0 {
+		by := map[string]int{}
+		for _, b := range applyBatches(w, "HEAD") {
+			by[b.Src]++
+		}
+		if by["body"] > 0 {
+			_, _ = fmt.Fprintf(out, "  note: %d of %d batch(es) were counted by TRAILER, %d by the default SUBJECT and %d INFERRED from the commit body — an inferred one is a commit whose body is entirely `- path: note` lines, which a hand commit can also be\n",
+				by["trailer"], gateBatches, by["subject"], by["body"])
+		}
+	}
 	if unattributed > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d round(s) have no attributable apply window and their batch numbers are omitted — a round is bounded below by the previous round's tag and above by its own, and an untagged round earlier than the last has neither. Freeze each round as the guide prescribes and the window closes\n", unattributed)
 	}
 	if totalEdits > 0 && totalF > 0 {
 		_, _ = fmt.Fprintf(out, "  cost — %d edit(s) applied over %d changed line(s), %.2f finding(s)/edit",
 			totalEdits, totalLines, float64(totalF)/float64(totalEdits))
-		if totalLines > 0 {
+		if totalLines > 0 && totalUnknown == 0 {
 			_, _ = fmt.Fprintf(out, ", %.1f per 100 changed line(s)", 100*float64(totalF)/float64(totalLines))
+		} else if totalUnknown > 0 {
+			_, _ = fmt.Fprintf(out, "; %d batch(es) unreadable, so the per-line figure is ABSENT rather than lower", totalUnknown)
 		}
 		_, _ = fmt.Fprintf(out, " across the gate\n")
 	}
@@ -1951,11 +2002,16 @@ var applyBodyLineRe = regexp.MustCompile(`^- [^ :]+: `)
 // applyBatch is one batch as the meter reads it. Lines is the denominator that
 // actually predicts the next round: measured across the three closed gates,
 // findings correlate with EDITS at +0.26..+0.49 and with CHANGED LINES at
-// +0.47..+0.82, because an edit is not a unit — one edit of a live gate rewrote
-// 933 lines and the per-edit ratio printed it as "38.00 finding(s)/edit".
+// +0.47..+0.82 — excluding each gate's round 1, whose window is the authoring
+// commit and not a fix; lines win on two gates and tie on the third. An edit is
+// not a unit: one window of two edits changed 933 lines, 931 of them in a single
+// commit, and the meter — which had seen only the other, one-line edit — printed
+// the window as "38.00 finding(s)/edit".
 type applyBatch struct {
 	Edits int
 	Lines int
+	Known bool   // false when git could not be read: unknown, never zero
+	Src   string // trailer | subject | body — the third is INFERRED, and says so
 }
 
 // applyBodyEdits counts the per-edit lines of an apply body, and ONLY when every
@@ -1982,10 +2038,13 @@ func applyBodyEdits(msg string) int {
 
 // changedLines is insertions+deletions over one commit. A binary file prints
 // "-\t-" and is skipped rather than counted as zero-of-something.
-func changedLines(w *ws.Workspace, sha string) int {
+func changedLines(w *ws.Workspace, sha string) (int, bool) {
 	out, err := w.Git.Run("show", "--numstat", "--format=", sha)
 	if err != nil {
-		return 0
+		// Not zero. A denominator nobody could read must not become a measured
+		// zero — that is the shape of every false green this project has paid
+		// for, turned on the meter itself.
+		return 0, false
 	}
 	n := 0
 	for _, l := range strings.Split(out, "\n") {
@@ -2000,7 +2059,7 @@ func changedLines(w *ws.Workspace, sha string) int {
 		}
 		n += add + del
 	}
-	return n
+	return n, true
 }
 
 // applyBatches reads every apply commit in a revision range and returns each
@@ -2051,8 +2110,10 @@ var roundOpenAnyRe = regexp.MustCompile(`^round (\d+): open`)
 // Measured need: "a round costs 10-40 minutes and the round COUNT is the cost
 // function" had to be computed outside the tool, with awk over `git log`, before
 // anything about the gate's cost could be argued at all. The split says where
-// the minutes are: across 35 clean rounds of three gates the review segment is
-// 72-87% of a round and the bookkeeping tail is under 1%.
+// the minutes are: across 35 rounds of three gates whose span is under two hours
+// (the rest are breaks), the review segment is 70-87% of a round, the fix is
+// most of the rest, and the bookkeeping tail is about 3%. The pooled median such
+// round is 15.5 minutes and none exceeds 40.
 type roundTime struct {
 	Span   float64 // open -> next open (or -> the last commit, for the open round)
 	Review float64 // open -> first apply: the reviewers, plus writing the findings up
@@ -2066,39 +2127,57 @@ func roundTimes(w *ws.Workspace) map[int]roundTime {
 	if len(recs) == 0 {
 		return nil
 	}
-	opens := map[int]int64{}
+	// Rounds are partitioned by git's own ORDER, not by timestamp: two commits
+	// in the same second at a boundary fell into both adjacent rounds.
+	opens := map[int]int{}
 	order := []int{}
-	for _, c := range recs {
+	for i, c := range recs {
 		if m := roundOpenAnyRe.FindStringSubmatch(c.Subj); m != nil {
 			n, _ := strconv.Atoi(m[1])
 			if _, seen := opens[n]; !seen {
-				opens[n] = c.At
+				opens[n] = i
 				order = append(order, n)
 			}
 		}
 	}
 	out := map[int]roundTime{}
 	for i, n := range order {
-		from := opens[n]
-		to := recs[len(recs)-1].At
+		lo := opens[n]
+		hi := len(recs) - 1
 		if i+1 < len(order) {
-			to = opens[order[i+1]]
+			hi = opens[order[i+1]]
+		}
+		from, to := recs[lo].At, recs[hi].At
+		// `wf close` is PRESCRIBED to run twice — write the scaffold, fill it,
+		// bank it — and its commits land after the last round's freeze. Folding
+		// the time an operator spends writing the record into that round's span
+		// inflates the round, the median and the gate total, in the very file
+		// close then banks. Measured: 0.2 min became 93.6.
+		if i+1 == len(order) {
+			for j := hi; j > lo; j-- {
+				if !touchesOnly(w, recs[j].SHA, closeDir) {
+					hi = j
+					break
+				}
+			}
+			to = recs[hi].At
+			if to < from {
+				to = from
+			}
 		}
 		rt := roundTime{Span: float64(to-from) / 60}
 		var first, last int64
-		for _, c := range recs {
-			if c.At < from || c.At > to {
+		seen := false
+		for j := lo; j <= hi && j < len(recs); j++ {
+			if !isApply(recs[j].Msg, recs[j].Subj) {
 				continue
 			}
-			if !isApply(c.Msg, c.Subj) {
-				continue
+			if !seen {
+				first, seen = recs[j].At, true
 			}
-			if first == 0 {
-				first = c.At
-			}
-			last = c.At
+			last = recs[j].At
 		}
-		if first != 0 {
+		if seen {
 			rt.Review = float64(first-from) / 60
 			rt.Fix = float64(last-first) / 60
 			rt.Tail = float64(to-last) / 60
@@ -2109,9 +2188,29 @@ func roundTimes(w *ws.Workspace) map[int]roundTime {
 	return out
 }
 
+// touchesOnly reports whether every path a commit changed is under prefix.
+func touchesOnly(w *ws.Workspace, sha, prefix string) bool {
+	out, err := w.Git.Run("show", "--name-only", "--format=", sha)
+	if err != nil {
+		return false
+	}
+	any := false
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		any = true
+		if !strings.HasPrefix(l, prefix+"/") && l != prefix {
+			return false
+		}
+	}
+	return any
+}
+
 // authoringWindow is init -> the first commit that puts a file under
 // artifacts/: the largest block of a gate that no round covers, because it
-// happens before round 1 opens. Measured at 31.7 and 46.2 minutes on two gates
+// happens before round 1 opens. Measured at 31.7 and 42.2 minutes on two gates
 // and reported by nothing. Derived from the TREE rather than a commit subject —
 // the earliest workspaces predate `wf add` and seeded artifacts by hand.
 func authoringWindow(w *ws.Workspace) (float64, bool) {
@@ -2146,8 +2245,9 @@ func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 	var out []applyBatch
 	for _, c := range commitLog(w, rng) {
 		sha, m := c.SHA, c.Msg
-		add := func(n int) {
-			out = append(out, applyBatch{Edits: n, Lines: changedLines(w, sha)})
+		add := func(n int, src string) {
+			lines, ok := changedLines(w, sha)
+			out = append(out, applyBatch{Edits: n, Lines: lines, Known: ok, Src: src})
 		}
 		// The LAST match, not the first: the trailer is written at the end of
 		// the message, and an edit whose own text quotes one ("wf-apply: 999
@@ -2155,7 +2255,7 @@ func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 		// let the batch's own content restate the batch's size.
 		if t := applyTrailerRe.FindAllStringSubmatch(m, -1); t != nil {
 			n, _ := strconv.Atoi(t[len(t)-1][1])
-			add(n)
+			add(n, "trailer")
 			continue
 		}
 		subject := m
@@ -2164,11 +2264,11 @@ func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 		}
 		if sm := applySubjectRe.FindStringSubmatch(subject); sm != nil {
 			n, _ := strconv.Atoi(sm[1])
-			add(n)
+			add(n, "subject")
 			continue
 		}
 		if n := applyBodyEdits(m); n > 0 {
-			add(n)
+			add(n, "body")
 		}
 	}
 	return out

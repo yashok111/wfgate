@@ -44,7 +44,7 @@ func (r FindingRow) Placeholder() bool { return !r.Malformed && r.Text == "" }
 
 // FixInduced reports the opt-in `[fix-induced]` marker in the finding text.
 // The share of a round's findings introduced by the previous round's own fix
-// is the number that says a gate is exhausted — it climbed to 100% on the
+// is a continue signal, not a stop signal: the gate ends on a round with no BLOCKER and on nothing else — it climbed to 100% on the
 // first live gate's last two rounds — and the ledger can only carry it where
 // the author marked it, which is why stats prints the marker's population
 // rather than pretending an unmarked corpus measured anything.
