@@ -1681,18 +1681,25 @@ func manualDrift() (string, []string) {
 				continue
 			}
 			var diffs []string
-			for _, file := range docNames {
-				want, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
+			cmp := func(name, embedded, installed string) {
+				want, err := wfgate.Docs.ReadFile(embedded)
 				if err != nil {
-					continue
+					return
 				}
-				got, err := os.ReadFile(filepath.Join(dir, file))
+				got, err := os.ReadFile(installed)
 				switch {
 				case err != nil:
-					diffs = append(diffs, file+" (missing)")
+					diffs = append(diffs, name+" (missing)")
 				case !bytes.Equal(got, want):
-					diffs = append(diffs, file)
+					diffs = append(diffs, name)
 				}
+			}
+			// The front door first: a session reads SKILL.md before it reads any
+			// reference, and the stale copy this check was written for still
+			// described a rule the manual had replaced.
+			cmp("SKILL.md", "skills/workflow-gate/SKILL.md", filepath.Join(filepath.Dir(dir), "SKILL.md"))
+			for _, file := range docNames {
+				cmp(file, "skills/workflow-gate/references/"+file, filepath.Join(dir, file))
 			}
 			if len(diffs) > 0 {
 				sort.Strings(diffs)

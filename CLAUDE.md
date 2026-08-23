@@ -441,6 +441,14 @@ stopped here, not discovered by a commit in the wrong tree.
   is valuable because it is short enough for every reviewer to read. The tool
   may propose a line; a human must write it in — otherwise the file becomes a
   log and stops being a checklist.
+- **A change under `skills/` or `hooks/` bumps `version` in
+  `.claude-plugin/plugin.json`.** `claude plugin update` is VERSION-keyed —
+  measured: it copies nothing when the declared version is the one already
+  installed, so a spec fix committed without a bump never reaches a session.
+  `scripts/install.sh` forces a reinstall when `wf docs` reports drift, but that
+  is the backstop; the bump is the mechanism. The plugin sat four releases
+  behind the clone once, and the SKILL.md sessions loaded described a rule the
+  manual had already replaced.
 - **Artifacts are changed through `wf apply`, never by hand.** A hand edit plus
   `git commit` gives up both all-or-nothing and the declared `count` — the two
   reasons the command exists.

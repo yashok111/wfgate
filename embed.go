@@ -9,5 +9,10 @@ package wfgate
 
 import "embed"
 
-//go:embed skills/workflow-gate/references
+// The whole skill directory, not only the references: SKILL.md is the front
+// door a session reads first, and an installed copy of it that has drifted from
+// this binary is the same defect as a drifted reference — measured, with the
+// stale copy still describing a rule the manual had replaced.
+//
+//go:embed skills/workflow-gate
 var Docs embed.FS

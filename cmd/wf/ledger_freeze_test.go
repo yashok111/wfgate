@@ -326,6 +326,14 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		// The front door lives beside references/, and the check reads it too.
+		skill, err := wfgate.Docs.ReadFile("skills/workflow-gate/SKILL.md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "SKILL.md"), skill, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		for _, file := range docNames {
 			b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
 			if err != nil {
@@ -363,6 +371,18 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 	if strings.Contains(out, "model-routing.md") {
 		t.Fatalf("only the drifted file is named:\n%s", out)
 	}
+
+	// The front door drifting is the case that actually bit: a session reads
+	// SKILL.md before any reference, and the stale one still said "every agent()
+	// call carries an explicit model" with no word about effort.
+	writeRefs(filepath.Join(cache, "1.1.0", "skills", "workflow-gate", "references"), "")
+	if err := os.WriteFile(filepath.Join(cache, "1.1.0", "skills", "workflow-gate", "SKILL.md"), []byte("# a stale front door\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	registry(filepath.Join(cache, "1.1.0"))
+	out, err = runWF(t, home, "docs")
+	noErr(t, err, "docs with a drifted SKILL.md")
+	mustContain(t, out, "drifted: SKILL.md")
 
 	// An update leaves the previous version's directory behind. The check reads
 	// the REGISTERED path: a glob over the cache found the abandoned copy and

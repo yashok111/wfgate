@@ -34,8 +34,12 @@ git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git ~/projects/wfgate
 After a `git pull`: re-run `scripts/install.sh`. An installed plugin is a cached
 COPY, and refreshing the marketplace alone does not touch it — the copy sat four
 releases behind the clone once, so the manual a session loaded described a rule
-the manual had already replaced. `wf docs` names any reference where the
-installed copy differs from the one this binary carries.
+the manual had already replaced. `wf docs` names the SKILL.md or any
+reference where the installed copy differs from the one this binary carries, and
+install.sh forces a reinstall when it does — `claude plugin update` is
+version-keyed and copies nothing when the declared version has not changed, so a
+change under `skills/` or `hooks/` must bump `version` in
+`.claude-plugin/plugin.json`.
 `scripts/install.sh --uninstall` reverses everything. Piecemeal:
 
 ```bash

@@ -57,12 +57,33 @@ fi
 # is the class this repo already guards for binaries with a version stamp in
 # `freeze.json`; the spec channel had no such stamp and no update either.
 if claude plugin list 2>/dev/null | grep -q '^wfgate\|wfgate@'; then
-	claude plugin update wfgate@wfgate-tools >/dev/null 2>&1 ||
-		echo "install: plugin update needs a confirmation this shell could not give — run: claude plugin update wfgate@wfgate-tools" >&2
+	claude plugin update wfgate@wfgate-tools -y >/dev/null 2>&1 ||
+		echo "install: plugin update needs a confirmation this shell could not give — run: claude plugin update wfgate@wfgate-tools -y" >&2
 	echo "plugin: wfgate already installed, updated from this clone"
 else
 	claude plugin install wfgate@wfgate-tools --scope user ||
 		echo "install: plugin install needs a confirmation this shell could not give — run: claude plugin install wfgate@wfgate-tools --scope user" >&2
+fi
+
+# `claude plugin update` is VERSION-keyed: measured, it copies nothing when
+# plugin.json declares the version already installed, so a spec fix committed
+# without a version bump never reaches a session. `wf docs` answers whether the
+# installed manual is in step (it compares the cached SKILL.md and references
+# with the ones embedded in the binary), and the only way to force a copy is a
+# reinstall. Without this, the drift note tells an operator to run this script
+# and the script does nothing — an unclearable warning, which is the failure
+# this repo keeps finding in its own tools.
+drift() { "$HOME/.local/bin/wf" docs 2>&1 >/dev/null | grep -q 'differs from the one this binary carries'; }
+if drift; then
+	echo "plugin: the installed manual is behind this clone — reinstalling to force a copy"
+	claude plugin uninstall wfgate >/dev/null 2>&1 || true
+	claude plugin install wfgate@wfgate-tools --scope user >/dev/null 2>&1 || true
+	if drift; then
+		echo "install: the installed manual is STILL behind this clone. Bump \"version\" in" >&2
+		echo "         .claude-plugin/plugin.json and re-run: plugin update is version-keyed." >&2
+	else
+		echo "plugin: reinstalled, the manual is in step with the binary"
+	fi
 fi
 
 echo
