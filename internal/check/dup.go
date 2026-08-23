@@ -219,6 +219,10 @@ func startsBlock(raw string) bool {
 	return i > 0 && i+1 < len(t) && (t[i] == '.' || t[i] == ')') && t[i+1] == ' '
 }
 
+func isSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
+}
+
 type sentenceAt struct {
 	text string
 	off  int
@@ -233,7 +237,15 @@ type sentenceAt struct {
 // rule as disagreeing, printed five byte-identical lines (the difference was
 // past the truncation), and cost two cycles: the first fix — breaking the line
 // — changed nothing, because unwrapping rejoins it.
-var sentenceClosers = "*_`\"')]}"
+// The set is exactly the markup that legitimately WRAPS a sentence and closes
+// after its full stop, and nothing else. A backtick was in it and came out: a
+// code span ending in a period (“ `router.Build.` “) is one token, not the end
+// of a thought, and splitting there invents a sentence boundary inside code —
+// the same false-split class this whole splitter was fixed for, from the other
+// side. Brackets are out for the same reason: English puts the stop outside
+// them ("(an aside)."), so a `.` before `)` is far more often a decimal or an
+// abbreviation inside a parenthetical than a terminator.
+var sentenceClosers = "*_\"'"
 
 func splitSentencesAt(s string) []sentenceAt {
 	var out []sentenceAt
@@ -246,7 +258,9 @@ func splitSentencesAt(s string) []sentenceAt {
 		for j < len(s) && strings.IndexByte(sentenceClosers, s[j]) >= 0 {
 			j++
 		}
-		if j >= len(s) || s[j] != ' ' {
+		// Any whitespace, not only the space a paragraph join happens to
+		// produce: a tab between sentences is a merge nobody would look for.
+		if j >= len(s) || !isSpace(s[j]) {
 			continue
 		}
 		// The closers ride with the NEXT sentence, where the normaliser drops

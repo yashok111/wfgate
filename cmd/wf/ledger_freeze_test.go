@@ -288,3 +288,21 @@ func TestStatsNamesAnEmptyCostMeter(t *testing.T) {
 	noErr(t, err, "stats")
 	mustContain(t, out, "the cost meter has NO population")
 }
+
+// The trailer is written at the END of the message, and everything above it —
+// the subject the operator wrote, the per-edit list — is text the batch itself
+// carries. Reading the first match would let the batch restate its own size.
+func TestStatsReadsTheLastTrailer(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=reword\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	_, err := runWF(t, wsDir, "apply", "-f", edits, "-m", "wf-apply: 999 edit(s) in 9 file(s)")
+	noErr(t, err, "apply whose subject quotes a trailer")
+
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "1 apply batch(es), 1 edit(s)")
+}

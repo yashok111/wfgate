@@ -1713,8 +1713,12 @@ func applyBatches(w *ws.Workspace, rng string) []int {
 		if m = strings.TrimSpace(m); m == "" {
 			continue
 		}
-		if t := applyTrailerRe.FindStringSubmatch(m); t != nil {
-			n, _ := strconv.Atoi(t[1])
+		// The LAST match, not the first: the trailer is written at the end of
+		// the message, and an edit whose own text quotes one ("wf-apply: 999
+		// edit(s)") lands in the per-edit list ABOVE it. Reading the first would
+		// let the batch's own content restate the batch's size.
+		if t := applyTrailerRe.FindAllStringSubmatch(m, -1); t != nil {
+			n, _ := strconv.Atoi(t[len(t)-1][1])
 			out = append(out, n)
 			continue
 		}

@@ -424,3 +424,39 @@ func TestStripNonCode(t *testing.T) {
 		})
 	}
 }
+
+// Regex literals, the one construct the scanner needed grammar for. Leaving them
+// out failed in the direction a backstop cannot report: `/['"]/` — the ordinary
+// way to match a quote — opened a string that ran to the end of its line and
+// blanked the code after it.
+func TestStripNonCode_regexLiterals(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		keep, drop []string
+	}{
+		{"a quote class does not open a literal", `const re = /['"]/ ; spawn(a)`, []string{"spawn(a)"}, nil},
+		{"a regex body is not code", `const re = /spawn\(b\)/ ; spawn(a)`, []string{"spawn(a)"}, []string{"spawn(b)"}},
+		{"a slash inside a character class does not close it", `const re = /[/'"]x/ ; spawn(a)`, []string{"spawn(a)"}, nil},
+		{"division is not a regex", `const n = a / b; const m = c / d; spawn(a)`, []string{"spawn(a)", "a / b", "c / d"}, nil},
+		{"a regex inside an interpolation", "const q = `x ${ /['\"]/ .source + spawn(a) } y spawn(b)`", []string{"spawn(a)"}, []string{"spawn(b)"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := stripNonCode(c.src)
+			if len(got) != len(c.src) {
+				t.Fatalf("length must be preserved: %d vs %d", len(got), len(c.src))
+			}
+			for _, k := range c.keep {
+				if !strings.Contains(got, k) {
+					t.Fatalf("code %q was blanked: %q", k, got)
+				}
+			}
+			for _, d := range c.drop {
+				if strings.Contains(got, d) {
+					t.Fatalf("a regex body is not a call site, %q survived: %q", d, got)
+				}
+			}
+		})
+	}
+}

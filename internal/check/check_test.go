@@ -762,3 +762,38 @@ func TestDivergence_oneEllipsisPerEnd(t *testing.T) {
 		}
 	}
 }
+
+// A code span that ends in a period is one token, not the end of a thought. The
+// closer set held a backtick and split there, inventing a boundary inside code —
+// the same false-split class the splitter was fixed for, from the other side.
+func TestSplitSentences_codeSpanIsNotATerminator(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"a.md": "[R4] The gate reads `wf check dup.` and then reports every divergent group it found.\n",
+		"b.md": "[R4] The gate reads `wf check dup.` and then reports every divergent group it found.\n",
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ss := range sites {
+		for _, s := range ss {
+			if !strings.Contains(s.Text, "divergent group") {
+				t.Fatalf("the sentence was cut at a code span: %q", s.Text)
+			}
+		}
+	}
+}
+
+// And a tab between two sentences is a merge nobody would look for.
+func TestSplitSentences_tabSeparatesSentences(t *testing.T) {
+	got := splitSentencesAt("The first sentence ends here.\tThe second one starts here.")
+	if len(got) != 2 {
+		t.Fatalf("want two sentences, got %d: %+v", len(got), got)
+	}
+}

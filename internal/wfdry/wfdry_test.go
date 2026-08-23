@@ -375,3 +375,20 @@ return { ok: true, took: Boolean(r.escalated) }`, "clean")
 		t.Fatalf("the unrecognised field must be named in the notes: %v", r.Notes)
 	}
 }
+
+// The fail side of the clean guard is an anchored list, not the substring regex
+// the fixture synthesiser uses: that one matches `fail` inside `noFailures` and
+// `error` inside `errorFree`, which are names a script legitimately returns TRUE
+// on a clean run. A guard that fails the bar on one of those is a false red.
+func TestCleanGuardDoesNotReadANegatedName(t *testing.T) {
+	for _, name := range []string{"noFailures", "errorFree", "notBroken", "zeroOpenIssues"} {
+		t.Run(name, func(t *testing.T) {
+			r := run1(t, preamble+`phase('P')
+await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { `+name+`: true }`, "clean")
+			if len(r.Violations) > 0 {
+				t.Fatalf("%s: true is what a clean run says: %v", name, r.Violations)
+			}
+		})
+	}
+}

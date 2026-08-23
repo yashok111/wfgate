@@ -399,7 +399,7 @@ func runMode(src, mode string, o Options) Result {
 			switch {
 			case passBools.MatchString(k) && !b:
 				r.Violations = append(r.Violations, "clean: the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
-			case !passBools.MatchString(k) && failBools.MatchString(k) && b:
+			case failVerdicts.MatchString(k) && b:
 				r.Violations = append(r.Violations, "clean: the run returned `"+k+": true` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
 			}
 		}
@@ -521,6 +521,15 @@ var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|con
 // measured the cost — seven green modes over a script whose happy path returned
 // not-green, found in the end by an opus reviewer copying the script's tail into
 // a file and executing it with green values by hand.
+// The fail side of the clean-mode verdict guard is an ANCHORED list, not the
+// substring regex the fixture synthesiser uses. That regex matches `fail` inside
+// `noFailures` and `error` inside `errorFree` — names a script legitimately
+// returns TRUE on a clean run — and a guard that FAILS the bar on one of those
+// is a false red, which is worse than the silence it replaces. Same bargain as
+// the numeric mask in `check dup`: an exact boundary with no noise population,
+// rather than a loose one that has to be argued about.
+var failVerdicts = regexp.MustCompile(`(?i)^(failed|failing|blocked|broken|vacuous|dead|unfixed|stale|unreviewed)$`)
+
 var passBools = regexp.MustCompile(`(?i)^(passed|ok|green|clean|verified|proven|done|complete|completed|succeeded|finished)$`)
 
 func synth(schema goja.Value, mode, label string, depth int, rec map[string]int) any {

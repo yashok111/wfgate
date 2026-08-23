@@ -21,14 +21,12 @@ package wfcheck
 // literals keep their `${...}` interpolations — those ARE code, and a spawn call
 // written inside one must stay counted.
 //
-// It is a scanner, not a lexer, and the one construct it does not know is the
-// regex literal: `/agent\(/` is still counted (harmless — the caller's own
-// subtractions have to explain a population that is too large), but a LONE
-// quote inside one (`/'/`) opens a literal that runs to the end of its line and
-// blanks the code after it, which is the direction a backstop cannot report.
-// Both are bounded by a line, and neither has appeared in a real orchestration
-// script; teaching it regex literals means tracking the preceding token, which
-// is a lexer, which is the thing the parsed program already is.
+// Regex literals are read too, because leaving them out was wrong in the one
+// direction a backstop cannot report: `/['"]/` — the ordinary way to match a
+// quote — opened a string literal that ran to the end of its line and BLANKED
+// the code after it, so a call there vanished from the population and the check
+// went quiet. A `/` opens a regex only where a value cannot precede it, which is
+// decided by the last significant character; anywhere else it is division.
 func stripNonCode(src string) string {
 	out := []byte(src)
 	scanCode(src, out, 0, false)
@@ -53,7 +51,9 @@ func blank(out []byte, i, j int) {
 // prose.
 func scanCode(src string, out []byte, i int, inInterp bool) int {
 	depth := 0
+	prev := byte(0) // the last significant character, for the regex/division call
 	for i < len(src) {
+		c := src[i]
 		switch {
 		case src[i] == '/' && i+1 < len(src) && src[i+1] == '/':
 			j := i
@@ -70,6 +70,8 @@ func scanCode(src string, out []byte, i int, inInterp bool) int {
 			j = min(j+2, len(src))
 			blank(out, i, j)
 			i = j
+		case src[i] == '/' && regexCanStart(prev):
+			i = blankRegex(src, out, i)
 		case src[i] == '\'' || src[i] == '"':
 			i = blankQuoted(src, out, i)
 		case src[i] == '`':
@@ -86,9 +88,53 @@ func scanCode(src string, out []byte, i int, inInterp bool) int {
 		default:
 			i++
 		}
+		if !isSpaceByte(c) {
+			prev = c
+		}
 	}
 	return i
 }
+
+// regexCanStart reports a position where a `/` cannot be division, because no
+// value can precede it. Everything else — an identifier, a literal, a closing
+// bracket — makes it an operator, so a regex opening a STATEMENT (`return /x/`,
+// or one on its own line after a call) is read as division and its body is
+// scanned as code. That is deliberate: it can only over-count, and this check
+// already has to explain a population that is too large.
+func regexCanStart(prev byte) bool {
+	switch prev {
+	case 0, '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^':
+		return true
+	}
+	return false
+}
+
+// blankRegex blanks one regex literal's body and returns the offset just past
+// it. A `/` inside a character class does not close it, and a newline ends the
+// scan: an unterminated regex is a parse error, not a licence to eat the file.
+func blankRegex(src string, out []byte, i int) int {
+	j := i + 1
+	class := false
+	for j < len(src) && src[j] != '\n' {
+		switch {
+		case src[j] == '\\':
+			j += 2
+			continue
+		case src[j] == '[':
+			class = true
+		case src[j] == ']':
+			class = false
+		case src[j] == '/' && !class:
+			blank(out, i+1, j)
+			return j + 1
+		}
+		j++
+	}
+	blank(out, i+1, min(j, len(src)))
+	return j
+}
+
+func isSpaceByte(c byte) bool { return c == ' ' || c == '\t' || c == '\r' || c == '\n' }
 
 // blankQuoted blanks one single- or double-quoted literal and returns the offset
 // just past it. The bound is on the LOOP, not inside it: an escape at the end of
