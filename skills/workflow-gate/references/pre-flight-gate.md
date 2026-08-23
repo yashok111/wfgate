@@ -399,8 +399,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   in different words share no wording — eight of those on the first live gate, every one found by a
   reviewer and none by dup. Mark the sites of one rule with the same `[R12]` and `wf check rules`
   (part of `wf check` with no argument) demands they normalise identically, quoting and case erased
-  as in dup. The population line prints the marker count, because zero markers is a corpus that opted
-  out, not one that passed; the unmarked contradictions stay a reviewer's find. **Mark the rules while
+  as in dup. **A marker means THIS TEXT STATES THE RULE.** A sentence that POINTS at one — "because
+  of [R2]", "forced by [R4]", "so [R8] is satisfied by" — states nothing, so the check compares it
+  against the statement beside it and reports a conflict that is not one: measured on a live gate,
+  four ids in a single run, and the repair chosen was rewording the ARTIFACT until every id had one
+  site left and the check reached nothing at all. Drop the marker from the reference instead. The
+  population line prints the marker count, the id count and how many ids were actually COMPARED —
+  zero markers is a corpus that opted out, and ids all sitting at one site each is a check that ran
+  over nothing; neither is a pass. The unmarked contradictions stay a reviewer's find. **Mark the rules while
   the gate is still running, not afterwards** — this is where the check earns its keep, and it earned
   it on the first run that did: two rules marked after they had bitten in three consecutive rounds
   produced a divergence across the DERIVED pair on the check's first run over it, which is exactly the

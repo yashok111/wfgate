@@ -579,7 +579,10 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       rules — share no wording and no similarity metric reaches them; they stay a reviewer's find
       UNLESS the author marked the rule: `[RN]` markers on every site of one rule let `wf check rules`
       demand the sites normalise identically, which is the only mechanical reach into that class
-      (measured need: eight such contradictions on one live gate, all found by reviewers). So sweep
+      (measured need: eight such contradictions on one live gate, all found by reviewers). Mark only
+      a site that STATES the rule — a sentence referring to one ("because of [R2]") states nothing
+      and disagrees with every statement of it; read the `compared` count, because ids that each sit
+      at a single site are a check that reached nothing and still printed zero conflicts. So sweep
       mechanically for drift, mark the rules that repeat, and keep a human vector for the unmarked
       contradictions. On a DERIVED artifact narrow the drift sweep with `-since gate-rN` — a context
       document restating the decisions satisfies both DIVERGENT conditions by construction (21-25

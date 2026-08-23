@@ -275,7 +275,7 @@ func TestPrescribedSequence(t *testing.T) {
 		"[Makefile:2]",
 		"## dup — 2 statement(s), 1 cross-file group(s), 0 divergent",
 		"sim 1.00",
-		"## rules — 2 marker(s), 1 id(s), 0 conflict(s)")
+		"## rules — 2 marker(s), 1 id(s), 1 compared, 0 conflict(s)")
 	mustNotContain(t, out, "DIVERGENT")
 
 	// -require-anchor turns the unanchored citation into a finding, and -show

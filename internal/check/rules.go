@@ -65,6 +65,23 @@ func CollectRuleSites(root string, files []string) (map[string][]RuleSite, int, 
 	return sites, markers, nil
 }
 
+// ComparedIDs is the population the check actually REACHED: ids marked at two
+// or more sites. An id with one site is not compared to anything, and a corpus
+// where every id has exactly one site produces "0 conflict(s)" over zero
+// comparisons — the same false green this project refuses everywhere else.
+// Measured on a live gate: `18 marker(s), 18 id(s), 0 conflict(s)` was printed
+// as a clean line after the operator had reworded the artifact until nothing
+// agreed or disagreed with anything.
+func ComparedIDs(sites map[string][]RuleSite) int {
+	n := 0
+	for _, ss := range sites {
+		if len(ss) > 1 {
+			n++
+		}
+	}
+	return n
+}
+
 // RuleConflicts returns every id whose sites normalise to more than one text.
 // A single-site id is fine — a rule stated once needs no reconciliation — and
 // identical sites are the markup working as intended.

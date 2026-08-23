@@ -1469,7 +1469,16 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 		return false, err
 	}
 	conflicts := check.RuleConflicts(sites)
-	fmt.Printf("## rules — %d marker(s), %d id(s), %d conflict(s)\n", markers, len(sites), len(conflicts))
+	compared := check.ComparedIDs(sites)
+	fmt.Printf("## rules — %d marker(s), %d id(s), %d compared, %d conflict(s)\n",
+		markers, len(sites), compared, len(conflicts))
+	// A marked corpus where every id sits at ONE site reaches nothing, and the
+	// bare conflict count then reads as a pass. Measured on a live gate, after
+	// the repair below was done the wrong way round.
+	if markers > 0 && compared == 0 {
+		fmt.Printf("  note: every id has ONE site, so nothing was compared — this is not a pass. " +
+			"The check reaches a rule only where the same id marks two or more sites\n")
+	}
 	for _, c := range conflicts {
 		fmt.Printf("  %s: sites disagree\n", c.ID)
 		texts := make([]string, len(c.Sites))
@@ -1488,6 +1497,17 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 			}
 			fmt.Printf("    %s:%d  %s%s\n", s.File, s.Line, views[i], ops)
 		}
+	}
+	// The cause is named because the wrong repair is cheap and permanent. A
+	// live gate reported four ids in conflict, every one of them a sentence
+	// that POINTED at the rule ("Because of [R2]", "forced by [R4]", "so [R8]
+	// is satisfied by") sitting beside the sentence that stated it. The
+	// operator reworded the artifact instead — 14 edits — until each id had one
+	// site left and the check compared nothing at all.
+	if len(conflicts) > 0 {
+		fmt.Printf("  note: a site that REFERS to a rule states nothing, and disagrees with every " +
+			"statement of it. Drop the marker from the reference — do not reword the artifact to " +
+			"satisfy the check\n")
 	}
 	return len(conflicts) > 0, nil
 }

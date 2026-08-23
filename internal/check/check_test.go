@@ -215,6 +215,36 @@ func TestRuleMarkers(t *testing.T) {
 	if len(conflicts[0].Sites) != 3 {
 		t.Fatalf("a conflict must list every site of the id, got %d", len(conflicts[0].Sites))
 	}
+	// R1 has three sites and R2 two; R3 has one and is compared to nothing.
+	if n := ComparedIDs(sites); n != 2 {
+		t.Fatalf("want 2 ids compared (R3 sits at one site), got %d", n)
+	}
+}
+
+// The other end of the same population: a corpus where EVERY id sits at one
+// site reaches nothing and still reports zero conflicts. Measured on a live
+// gate, printed as a clean line.
+func TestRuleMarkers_singleSiteIDsAreNotAComparison(t *testing.T) {
+	root := t.TempDir()
+	body := "- [R1] The layer is composed at startup.\n" +
+		"- [R2] Errors are wrapped, never swallowed.\n" +
+		"- [R3] Only one site states this rule.\n"
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sites, markers, err := CollectRuleSites(root, []string{"a.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if markers != 3 || len(sites) != 3 {
+		t.Fatalf("want 3 markers over 3 ids, got %d over %d", markers, len(sites))
+	}
+	if n := ComparedIDs(sites); n != 0 {
+		t.Fatalf("no id has a second site, so nothing is compared; got %d", n)
+	}
+	if c := RuleConflicts(sites); len(c) != 0 {
+		t.Fatalf("want no conflict over uncompared ids, got %+v", c)
+	}
 }
 
 // Only a reference that RESOLVES to a tracked file is reported: the note exists
