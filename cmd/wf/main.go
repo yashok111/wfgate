@@ -1664,15 +1664,22 @@ func manualDrift() (string, []string) {
 	if err != nil {
 		return "", nil
 	}
-	globs := []string{
-		filepath.Join(home, ".claude", "plugins", "cache", "*", "wfgate", "*", "skills", "workflow-gate", "references"),
-		// The retired user-level symlink. install.sh removes it, and a machine
-		// that still has one is loading a manual from a path nothing updates.
-		filepath.Join(home, ".claude", "skills", "workflow-gate", "references"),
-	}
-	for _, g := range globs {
-		dirs, _ := filepath.Glob(g)
+	// The REGISTERED install path, never a glob over the cache: an update leaves
+	// the previous version's directory behind, and a glob found the abandoned
+	// one and reported drift no session could see. A check that fires on a
+	// correct install is the false red this binary refuses to print elsewhere.
+	dirs := registeredPluginDirs(home)
+	// The retired user-level symlink. install.sh removes it, and a machine that
+	// still has one is loading a manual from a path nothing updates.
+	dirs = append(dirs, filepath.Join(home, ".claude", "skills", "workflow-gate", "references"))
+	{
 		for _, dir := range dirs {
+			// A path that is not there is not a stale manual. The legacy symlink
+			// is absent on a machine that never had one, and reporting six
+			// missing files over it would be a note about nothing.
+			if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+				continue
+			}
 			var diffs []string
 			for _, file := range docNames {
 				want, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
@@ -1694,6 +1701,37 @@ func manualDrift() (string, []string) {
 		}
 	}
 	return "", nil
+}
+
+// registeredPluginDirs returns the references directory of every wfgate plugin
+// the harness has actually INSTALLED, read from its own registry.
+func registeredPluginDirs(home string) []string {
+	b, err := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
+	if err != nil {
+		return nil
+	}
+	var reg struct {
+		Plugins map[string][]struct {
+			InstallPath string `json:"installPath"`
+		} `json:"plugins"`
+	}
+	if json.Unmarshal(b, &reg) != nil {
+		return nil
+	}
+	var out []string
+	for _, entries := range reg.Plugins {
+		for _, e := range entries {
+			if e.InstallPath == "" {
+				continue
+			}
+			dir := filepath.Join(e.InstallPath, "skills", "workflow-gate", "references")
+			if st, err := os.Stat(dir); err == nil && st.IsDir() {
+				out = append(out, dir)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // noteManualDrift prints the drift to STDERR, so `wf docs guide > file` still

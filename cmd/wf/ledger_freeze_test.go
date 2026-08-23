@@ -320,24 +320,43 @@ func TestStatsReadsTheLastTrailer(t *testing.T) {
 func TestDocsNamesAManualThatDrifted(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	refs := filepath.Join(home, ".claude", "plugins", "cache", "wfgate-tools", "wfgate", "1.0.0", "skills", "workflow-gate", "references")
-	if err := os.MkdirAll(refs, 0o755); err != nil {
-		t.Fatal(err)
+
+	writeRefs := func(dir string, stale string) {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, file := range docNames {
+			b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if file == stale {
+				b = append([]byte("# a stale copy\n"), b...)
+			}
+			if err := os.WriteFile(filepath.Join(dir, file), b, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
+	registry := func(installPath string) {
+		t.Helper()
+		dir := filepath.Join(home, ".claude", "plugins")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := `{"plugins":{"wfgate@wfgate-tools":[{"scope":"user","installPath":"` + installPath + `","version":"x"}]}}`
+		if err := os.WriteFile(filepath.Join(dir, "installed_plugins.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cache := filepath.Join(home, ".claude", "plugins", "cache", "wfgate-tools", "wfgate")
 	// Every reference present and identical except one, so the note has to name
 	// the file rather than the directory.
-	for _, file := range docNames {
-		b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if file == "authoring.md" {
-			b = append([]byte("# a stale copy\n"), b...)
-		}
-		if err := os.WriteFile(filepath.Join(refs, file), b, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeRefs(filepath.Join(cache, "1.0.0", "skills", "workflow-gate", "references"), "authoring.md")
+	registry(filepath.Join(cache, "1.0.0"))
+
 	out, err := runWF(t, home, "docs")
 	noErr(t, err, "docs")
 	mustContain(t, out, "the manual a session LOADS differs", "drifted: authoring.md")
@@ -345,18 +364,15 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 		t.Fatalf("only the drifted file is named:\n%s", out)
 	}
 
-	// And an installed copy that matches says nothing: a note that fires on a
-	// correct install is a note nobody reads.
-	b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/authoring.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(refs, "authoring.md"), b, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// An update leaves the previous version's directory behind. The check reads
+	// the REGISTERED path: a glob over the cache found the abandoned copy and
+	// reported drift no session could see, which is the false red this binary
+	// refuses to print anywhere else.
+	writeRefs(filepath.Join(cache, "2.0.0", "skills", "workflow-gate", "references"), "")
+	registry(filepath.Join(cache, "2.0.0"))
 	out, err = runWF(t, home, "docs")
 	noErr(t, err, "docs after the update")
 	if strings.Contains(out, "differs from the one this binary carries") {
-		t.Fatalf("an install in step with the binary is not drift:\n%s", out)
+		t.Fatalf("an install in step with the binary is not drift, and an abandoned cache is not an install:\n%s", out)
 	}
 }
