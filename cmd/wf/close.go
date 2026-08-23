@@ -43,8 +43,13 @@ func cmdClose(args []string) error {
 	fs := flag.NewFlagSet("close", flag.ExitOnError)
 	archive := fs.String("archive", os.Getenv("WF_ARCHIVE"),
 		"also copy the snapshot into DIR/<name>/ (default $WF_ARCHIVE)")
-	withArts := fs.Bool("artifacts", false,
-		"bank the artifacts themselves too — their CONTENT is the one thing prune destroys that the record does not hold")
+	// Banked by DEFAULT. Their CONTENT is the one thing prune destroys that
+	// nothing else holds, and a record that omits what the gate was ABOUT is a
+	// record of the bookkeeping only. `-artifacts=false` opts out for a gate
+	// whose artifacts live somewhere that outlives the workspace; prune then
+	// names each of them before it removes them.
+	withArts := fs.Bool("artifacts", true,
+		"bank the artifacts themselves (default true; -artifacts=false keeps only history, stats, rounds and the feedback form)")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
@@ -151,6 +156,8 @@ func cmdClose(args []string) error {
 	}
 
 	if *withArts {
+		// A partial bank is worse than none: the operator would believe the
+		// content is kept and prune would take the originals anyway.
 		arts, err := w.ArtifactList()
 		if err != nil {
 			return err

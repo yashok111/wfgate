@@ -509,9 +509,10 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
    commits it — the commit log as text (the timings that price every round live there and nowhere
    else), `wf stats -time` verbatim, the freeze manifests' surviving half, every FILE of every round
    — the findings ledger and the delta brief that round's reviewer was actually handed — and a
-   feedback scaffold with the derived numbers already filled in. `-artifacts` banks the artifacts
-   too: their CONTENT is the one thing prune destroys that the record does not hold, and prune names
-   each of them before it does. Fill the scaffold and
+   feedback scaffold with the derived numbers already filled in — and the artifacts themselves, whose
+   CONTENT is the one thing prune destroys that nothing else holds. `-artifacts=false` opts out for a
+   gate whose artifacts live somewhere that outlives the workspace, and prune then names each of them
+   before it removes them. Fill the scaffold and
    run `wf close` again to bank it; a filled form is never overwritten. `-archive DIR` (or
    `$WF_ARCHIVE`) copies the record out to a corpus that outlives the workspace.
 
@@ -524,10 +525,9 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
    `wf prune -yes` then deletes `.git`, `artifacts/` and `rounds/`, leaving the record and the
    gate-checks copy that briefed the reviewers. It refuses without a record, refuses when the record
    is older than the artifacts, and reports without `-yes`: the deletion is not reversible. Measured
-   on one closed gate: the command reports 1.2 MB of `.git`, 175 KB of artifacts and 338 KB of rounds
-   removed, leaving 134 KB of record — and everything anyone has ever read out of the repository is
-   in what stays, because `.git` was 84% of the workspace's blocks and the whole of its history as
-   text is 12 KB.
+   on one closed gate: 4.2 MB down to 696 KB, and everything anyone has ever read out of the
+   repository is in what stays — `.git` was 84% of the workspace's blocks and the whole of its
+   history as text is 12 KB.
 
 - **An edit after the gate closes is still an edit.** The stop rule permits majors to ride; it does not
   make applying them free. Measured: four "text-only" major fixes applied after a clean closing round

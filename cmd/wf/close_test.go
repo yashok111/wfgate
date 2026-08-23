@@ -297,12 +297,12 @@ func TestCloseBanksTheDeltaBrief(t *testing.T) {
 // not hold. The default stands — their role ends when the reviewers are done —
 // but prune must name them, and -artifacts must bank them.
 func TestArtifactsAreNamedOrBanked(t *testing.T) {
-	t.Run("prune names what leaves the world", func(t *testing.T) {
+	t.Run("prune names what leaves the world when they were not banked", func(t *testing.T) {
 		wsDir := newGate(t)
 		if _, err := runWF(t, wsDir, "freeze"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := runWF(t, wsDir, "close"); err != nil {
+		if _, err := runWF(t, wsDir, "close", "-artifacts=false"); err != nil {
 			t.Fatal(err)
 		}
 		out, err := runWF(t, wsDir, "prune")
@@ -311,13 +311,13 @@ func TestArtifactsAreNamedOrBanked(t *testing.T) {
 			"artifacts/decisions.md", "-artifacts` banks them")
 	})
 
-	t.Run("-artifacts banks them", func(t *testing.T) {
+	t.Run("banked by default", func(t *testing.T) {
 		wsDir := newGate(t)
 		if _, err := runWF(t, wsDir, "freeze"); err != nil {
 			t.Fatal(err)
 		}
-		out, err := runWF(t, wsDir, "close", "-artifacts")
-		noErr(t, err, "close -artifacts")
+		out, err := runWF(t, wsDir, "close")
+		noErr(t, err, "close")
 		mustContain(t, out, "close/artifacts/decisions.md")
 		if got := read(t, filepath.Join(wsDir, closeDir, "artifacts", "decisions.md")); !strings.Contains(got, "Entry point") {
 			t.Fatalf("the artifact was banked empty: %q", got)

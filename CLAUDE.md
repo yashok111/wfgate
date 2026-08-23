@@ -449,13 +449,15 @@ ever read out of it — every commit's time and subject, which is what prices a
 round — is 8.7 to 11.9 KB of text. So `close` writes that, `wf stats -time`
 verbatim, the freeze manifests minus the artifact hashes that stop meaning
 anything, and every round's ledger. `prune` then deletes `artifacts/`, `rounds/` and — LAST, so every
-intermediate failure is still a `git checkout` away — `.git`. It refuses without
+intermediate failure is still a `git checkout` away — `.git`: measured 4.2 MB
+down to 696 KB on one closed gate. It refuses without
 a record, refuses one committed together with the work it describes (a commit is
 its own ancestor, so `--is-ancestor X X` passed), and reports without `-yes`.
 Deletion is the one operation in this tool that a later command cannot announce,
-so it also names every artifact by name before removing it: the artifacts'
-CONTENT is what the record deliberately does not hold, and `wf close -artifacts`
-is there for a gate that wants it kept.
+so the record holds the artifacts themselves by default — their CONTENT is what
+nothing else keeps, and a record of the bookkeeping alone is not a record of the
+gate. `wf close -artifacts=false` opts out, and prune then names every artifact
+by name before removing it.
 
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and
