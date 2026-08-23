@@ -448,7 +448,10 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   similarity metric reaches; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
   `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines, and
-  `wf apply` notes when a batch's size predicts a costly next round. Split by RULE — one rule and all its copies per batch — never
+  `wf apply` notes when a batch's CHANGED LINES predict a costly next round — measured, the case that
+  matters is few edits over many lines: one edit of one gate rewrote 933 lines, and a per-edit meter
+  called it "38.00 finding(s)/edit". The note also says the half no tool can check: if the batch
+  changed a rule, its consumers are not in the diff. Split by RULE — one rule and all its copies per batch — never
   mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
 - **What a fix costs is decided by whether it changes a RULE, not by how many edits it has.** One gate
   measured ~0.25 findings per edit and called it stable across a 12x range of batch sizes; the next

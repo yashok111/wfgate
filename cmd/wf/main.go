@@ -299,12 +299,9 @@ func cmdApply(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nbatch REJECTED — nothing was written. Fix every FAIL above and re-run.\n")
 		return errFindings
 	}
-	histEdits, histFindings := batchHistory(w)
-	if note, warn := batchNote(len(edits), histEdits, histFindings); warn {
-		fmt.Println(note)
-	}
 	if *dry {
 		fmt.Printf("\ndry run: %d file(s) would change\n", len(bufs))
+		fmt.Printf("  note: the cost estimate is not printed on a dry run — it counts the lines git sees changed, which needs the write\n")
 		return nil
 	}
 	written, err := apply.Write(w.Root, bufs)
@@ -328,6 +325,14 @@ func cmdApply(args []string) error {
 	// read-back whose absence nobody notices either — deleting the loop above
 	// left every bar green.
 	fmt.Printf("  verified %d file(s) byte-for-byte against the planned batch\n", len(bufs))
+	// The estimate is computed from what GIT sees changed, not from the edit
+	// count and not from the declared old/new sizes: the history it is compared
+	// against comes from --numstat, and a ratio whose two halves count different
+	// things is worse than no ratio. Measured: one edit of P2e rewrote 933 lines.
+	histLines, histFindings := batchHistory(w)
+	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), histLines, histFindings); warn {
+		fmt.Println(note)
+	}
 	subject := *msg
 	if subject == "" {
 		subject = fmt.Sprintf("apply: %d edit(s) across %d file(s)", len(edits), len(written))
@@ -2171,9 +2176,9 @@ func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 // ledger). P2e produced the number the meter exists for — roughly one finding
 // per four edits, stable across a 12x range of batch sizes — but a workspace's
 // OWN ratio is the only form in which that number will be believed.
-func batchHistory(w *ws.Workspace) (edits, findings int) {
+func batchHistory(w *ws.Workspace) (lines, findings int) {
 	for _, b := range applyBatches(w, "HEAD") {
-		edits += b.Edits
+		lines += b.Lines
 	}
 	for n := 1; n <= w.M.Round; n++ {
 		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
@@ -2184,23 +2189,53 @@ func batchHistory(w *ws.Workspace) (edits, findings int) {
 			}
 		}
 	}
-	return edits, findings
+	return lines, findings
 }
 
 // batchNote is the apply-side half of the cost meter: a NOTE, never a refusal
 // — the operator may have a reason, and a tool that blocks a legal operation
 // on a heuristic gets worked around rather than heeded. No history, no claim:
 // an unmeasured workspace predicts nothing.
-func batchNote(batch, histEdits, histFindings int) (string, bool) {
-	if histEdits == 0 || histFindings == 0 {
+func batchNote(edits, lines, histLines, histFindings int) (string, bool) {
+	if histLines == 0 || histFindings == 0 {
 		return "", false
 	}
-	predicted := float64(batch) * float64(histFindings) / float64(histEdits)
+	per100 := 100 * float64(histFindings) / float64(histLines)
+	predicted := float64(lines) * float64(histFindings) / float64(histLines)
 	if predicted < 5 {
 		return "", false
 	}
-	return fmt.Sprintf("  note: %d edit(s) in one batch; this workspace's own history (%d finding(s) / %d edit(s), %.2f per edit) predicts ~%.0f finding(s) in the next round — split by RULE (one rule and all its copies per batch) to keep all-or-nothing intact",
-		batch, histFindings, histEdits, float64(histFindings)/float64(histEdits), predicted), true
+	// The second sentence is the one that matters and the tool cannot check it.
+	// Measured on the gate that produced the rule: its FOUR-edit batch was the
+	// most expensive of the run and its thirteen-edit batch the cheapest, and
+	// what separated them was whether the fix changed a RULE — whose consumers
+	// are not in the diff, so nothing here can see them.
+	return fmt.Sprintf("  note: %d edit(s) changing %d line(s); this workspace's own history (%d finding(s) over %d changed line(s), %.1f per 100) predicts ~%.0f finding(s) in the next round — split by RULE (one rule and all its copies per batch), never mechanically. And if this batch changed a RULE, its consumers are NOT in this diff: sweep for restatements of the OLD rule now, or the next round will do it for you",
+		edits, lines, histFindings, histLines, per100, predicted), true
+}
+
+// worktreeChangedLines is what git sees changed in the files just written, before
+// they are committed.
+func worktreeChangedLines(w *ws.Workspace, paths []string) int {
+	args := append([]string{"diff", "--numstat", "--"}, paths...)
+	out, err := w.Git.Run(args...)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) < 3 {
+			continue
+		}
+		add, e1 := strconv.Atoi(f[0])
+		del, e2 := strconv.Atoi(f[1])
+		if e1 != nil || e2 != nil {
+			continue
+		}
+		n += add + del
+	}
+	return n
 }
 
 // roundKinds derives each round's kind from its opening commit subject

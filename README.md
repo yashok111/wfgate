@@ -126,10 +126,12 @@ the replacement
 
 Each replacement block carries its own `=== <file>` header — `count` is scoped
 to that one replacement, not to the file; fifteen replacements in one file are
-fifteen headers. When a batch is large enough that the workspace's own history
-(findings per edit, from the ledger and the apply commits) predicts a costly
-next round, `apply` prints a note suggesting a split by rule — a note, never a
-refusal. The meter's denominator is CHANGED LINES, not edits: measured across
+fifteen headers. When a batch changes enough LINES that the workspace's own
+history (findings per 100 changed lines, from the ledger and the apply commits)
+predicts a costly next round, `apply` prints a note suggesting a split by rule,
+and says that a rule's consumers are not in the diff — a note, never a refusal.
+It counts what git sees changed in the files just written, so a dry run says the
+estimate is absent rather than printing one on a different basis. The meter's denominator is CHANGED LINES, not edits: measured across
 three closed gates, findings correlate with edits at +0.26..+0.49 and with
 changed lines at +0.47..+0.82, because one edit can rewrite one word or nine
 hundred lines. Every apply commit records its own edit count in a `wf-apply:`

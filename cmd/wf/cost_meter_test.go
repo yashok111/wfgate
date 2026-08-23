@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -123,4 +124,42 @@ func TestStatsTimeIsOptIn(t *testing.T) {
 		"1 round(s) over ",
 		"median round ",
 		"read the median")
+}
+
+// The note's denominator comes from git, over the files just written and not yet
+// committed. Nothing but a real repository exercises that, and the case it exists
+// for is the batch of FEW edits over MANY lines: one edit of P2e rewrote 933
+// lines and the per-edit meter printed it as "38.00 finding(s)/edit".
+func TestApplyNotePricesLinesNotEdits(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	// A history: one small batch, and findings filed against it.
+	first := filepath.Join(tmp, "first.txt")
+	write(t, first, "=== artifacts/decisions.md  count=1  note=seed the history\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", first); err != nil {
+		t.Fatal(err)
+	}
+	rows := ""
+	for i := 1; i <= 10; i++ {
+		rows += fmt.Sprintf("| %d | MAJOR | finding %d | prose |\n", i, i)
+	}
+	ledger(t, wsDir, 1, rows)
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	// ONE edit, many lines.
+	big := "=== artifacts/decisions.md  count=1  note=one edit, many lines\n<<<<\nThe entry point is:\n====\n"
+	for i := 0; i < 30; i++ {
+		big += fmt.Sprintf("The entry point is (restated %d):\n", i)
+	}
+	big += ">>>>\n"
+	second := filepath.Join(tmp, "second.txt")
+	write(t, second, big)
+
+	out, err := runWF(t, wsDir, "apply", "-f", second)
+	noErr(t, err, "apply")
+	mustContain(t, out, "1 edit(s) changing 31 line(s)", "predicts ~", "consumers are NOT in this diff")
 }

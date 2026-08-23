@@ -117,17 +117,29 @@ func wantFindings(t *testing.T, err error, step string) {
 }
 
 // The apply-side cost meter: a note, never a refusal, and no claim without
-// history — an unmeasured workspace predicts nothing.
+// history — an unmeasured workspace predicts nothing. The denominator is
+// CHANGED LINES, so a batch of few edits over many lines is priced like the many
+// lines it is: measured, the most expensive batch of one gate had four edits.
 func TestBatchNote(t *testing.T) {
-	if note, warn := batchNote(60, 200, 50); !warn ||
-		!strings.Contains(note, "predicts ~15 finding(s)") || !strings.Contains(note, "split by RULE") {
-		t.Fatalf("a 60-edit batch at 0.25/edit must predict ~15 and say how to split: %q", note)
+	// 1600 changed lines historically producing 80 findings is 5 per 100; a
+	// batch of 400 lines therefore predicts ~20, whether it took 4 edits or 60.
+	note, warn := batchNote(60, 400, 1600, 80)
+	if !warn || !strings.Contains(note, "predicts ~20 finding(s)") ||
+		!strings.Contains(note, "split by RULE") || !strings.Contains(note, "consumers are NOT in this diff") {
+		t.Fatalf("want a prediction, the split advice and the rule warning: %q", note)
 	}
-	if _, warn := batchNote(3, 200, 50); warn {
-		t.Fatal("a small batch must pass silently")
+	few, warn2 := batchNote(4, 400, 1600, 80)
+	if !warn2 || !strings.Contains(few, "predicts ~20 finding(s)") {
+		t.Fatalf("the edit COUNT must not change the prediction: %q", few)
 	}
-	if _, warn := batchNote(60, 0, 0); warn {
+	if _, warn := batchNote(60, 20, 1600, 80); warn {
+		t.Fatal("a batch changing few lines must pass silently")
+	}
+	if _, warn := batchNote(60, 400, 0, 0); warn {
 		t.Fatal("no history, no claim")
+	}
+	if _, warn := batchNote(60, 0, 1600, 80); warn {
+		t.Fatal("a batch git sees as changing nothing predicts nothing")
 	}
 }
 
