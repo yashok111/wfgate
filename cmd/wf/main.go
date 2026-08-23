@@ -1530,8 +1530,15 @@ func cmdStats(args []string) error {
 		return fmt.Errorf("no rounds yet")
 	}
 	fmt.Printf("## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
+	// Whether the workspace has a population at all is a different question
+	// from whether each round's share of it can be attributed. Deriving the
+	// first from the per-round totals made a workspace with one unattributable
+	// batch report that no apply commit existed, which is a stronger and false
+	// claim.
+	gateBatches := len(applyBatches(w, "HEAD"))
 	kinds := roundKinds(w)
-	totalF, totalB, totalFI, totalEdits := 0, 0, 0, 0
+	totalF, totalB, totalFI, totalEdits, totalLines := 0, 0, 0, 0, 0
+	unattributed := 0
 	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
 	unparsable := 0
 	for n := 1; n <= w.M.Round; n++ {
@@ -1585,28 +1592,51 @@ func cmdStats(args []string) error {
 		if k := kinds[n]; k != "" {
 			state += ", " + k
 		}
-		// Batches are counted by commit subject over the round's tag window.
-		// The window is chronology, not attribution: a batch closing round
-		// N's findings lands after gate-rN and is counted where it happened.
+		// The window is chronology, not attribution: a batch closing round N's
+		// findings lands after gate-rN and is counted where it happened. But it
+		// is attributable only when BOTH ends are pinned — below by the previous
+		// round's tag, above by its own — and an untagged round that is not the
+		// last has neither, so the range degrades to every ancestor. Measured on
+		// a live gate: rounds 1, 2 and 3 each printed the workspace total, with
+		// ratios of 0.88 and 0.15 fabricated from the same 26 edits. A number
+		// that cannot be attributed is omitted, not printed.
+		lowerOK := n == 1 || w.Git.TagExists(ws.RoundTag(n-1))
+		upperOK := w.Git.TagExists(ws.RoundTag(n)) || n == w.M.Round
+		attributable := lowerOK && upperOK
 		rng := tag
-		if prev := ws.RoundTag(n - 1); n > 1 && w.Git.TagExists(prev) {
-			rng = prev + ".." + tag
+		if n > 1 {
+			rng = ws.RoundTag(n-1) + ".." + tag
 		}
-		batches, edits := 0, 0
-		for _, n := range applyBatches(w, rng) {
-			batches++
-			edits += n
+		batches, edits, lines := 0, 0, 0
+		if attributable {
+			for _, b := range applyBatches(w, rng) {
+				batches++
+				edits += b.Edits
+				lines += b.Lines
+			}
+		} else {
+			unattributed++
 		}
 		totalEdits += edits
+		totalLines += lines
 		// The window's edits precede the window's findings: the fixes land
 		// after the previous freeze, the findings come from reviewing this one
 		// — so findings/edits on one line IS "what this batch cost", the P2e
 		// planning number (~0.25) measured per workspace.
 		ed := ""
-		if edits > 0 {
-			ed = fmt.Sprintf(", %d edit(s)", edits)
-			if findings > 0 {
-				ed += fmt.Sprintf(" (%.2f finding(s)/edit)", float64(findings)/float64(edits))
+		switch {
+		case !attributable:
+			ed = ", apply window not attributable"
+		case edits > 0:
+			// Both denominators, because the operator controls EDITS and the
+			// corpus is predicted by LINES: across the three closed gates a
+			// prose fix runs 2.0-4.6 findings per 100 changed lines and a fix
+			// that changed a RULE runs 6.3-14.9, a separation the edit count
+			// cannot see.
+			ed = fmt.Sprintf(", %d edit(s) / %d changed line(s)", edits, lines)
+			if findings > 0 && lines > 0 {
+				ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
+					100*float64(findings)/float64(lines))
 			}
 		}
 		fi := ""
@@ -1622,7 +1652,7 @@ func cmdStats(args []string) error {
 	// without a word, so the number that decides the next batch's size looked
 	// measured and was not — the operator reconstructed it by counting headers
 	// in his own scratch files.
-	if totalEdits == 0 {
+	if gateBatches == 0 {
 		fmt.Printf("  note: no apply commit was found in this workspace — the cost meter has NO population, and the findings/edit numbers above are absent rather than zero. Artifacts changed by hand are invisible to it; a batch applied by `wf apply` records its own size and is counted whatever subject you give it\n")
 	}
 	if unparsable > 0 {
@@ -1645,9 +1675,16 @@ func cmdStats(args []string) error {
 	}
 	// The workspace's own cost meter: what a batch of edits costs in next-round
 	// findings, measured here rather than recalled from another gate's anecdote.
+	if unattributed > 0 {
+		fmt.Printf("  note: %d round(s) have no attributable apply window and their batch numbers are omitted — a round is bounded below by the previous round's tag and above by its own, and an untagged round earlier than the last has neither. Freeze each round as the guide prescribes and the window closes\n", unattributed)
+	}
 	if totalEdits > 0 && totalF > 0 {
-		fmt.Printf("  cost — %d edit(s) applied, %.2f finding(s)/edit across the gate\n",
-			totalEdits, float64(totalF)/float64(totalEdits))
+		fmt.Printf("  cost — %d edit(s) applied over %d changed line(s), %.2f finding(s)/edit",
+			totalEdits, totalLines, float64(totalF)/float64(totalEdits))
+		if totalLines > 0 {
+			fmt.Printf(", %.1f per 100 changed line(s)", 100*float64(totalF)/float64(totalLines))
+		}
+		fmt.Printf(" across the gate\n")
 	}
 	return nil
 }
@@ -1827,18 +1864,88 @@ const applyTrailer = "wf-apply:"
 var applySubjectRe = regexp.MustCompile(`^apply: (\d+) edit\(s\)`)
 var applyTrailerRe = regexp.MustCompile(`(?m)^` + applyTrailer + ` (\d+) edit\(s\)`)
 
+// The per-edit body line `wf apply` writes for every replacement, unconditionally
+// and since the command existed. It is the THIRD place a batch records its own
+// size, and the only one left in a workspace older than the trailer whose
+// operator wrote every subject by hand: p2d (186 edits) and p2f (150 over 27
+// batches) carry neither of the other two, and the meter answered "no
+// population" over both while the count sat in commit bodies git had all along.
+var applyBodyLineRe = regexp.MustCompile(`^- [^ :]+: `)
+
+// applyBatch is one batch as the meter reads it. Lines is the denominator that
+// actually predicts the next round: measured across the three closed gates,
+// findings correlate with EDITS at +0.26..+0.49 and with CHANGED LINES at
+// +0.47..+0.82, because an edit is not a unit — one edit of a live gate rewrote
+// 933 lines and the per-edit ratio printed it as "38.00 finding(s)/edit".
+type applyBatch struct {
+	Edits int
+	Lines int
+}
+
+// applyBodyEdits counts the per-edit lines of an apply body, and ONLY when every
+// non-empty line below the subject is one. A hand commit that happens to open
+// its body with "- path: note" must not be read as a batch, and a body with no
+// such line at all is not one either.
+func applyBodyEdits(msg string) int {
+	i := strings.IndexByte(msg, '\n')
+	if i < 0 {
+		return 0
+	}
+	n := 0
+	for _, l := range strings.Split(msg[i+1:], "\n") {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if !applyBodyLineRe.MatchString(l) {
+			return 0
+		}
+		n++
+	}
+	return n
+}
+
+// changedLines is insertions+deletions over one commit. A binary file prints
+// "-\t-" and is skipped rather than counted as zero-of-something.
+func changedLines(w *ws.Workspace, sha string) int {
+	out, err := w.Git.Run("show", "--numstat", "--format=", sha)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) < 3 {
+			continue
+		}
+		add, err1 := strconv.Atoi(f[0])
+		del, err2 := strconv.Atoi(f[1])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		n += add + del
+	}
+	return n
+}
+
 // applyBatches reads every apply commit in a revision range and returns each
 // one's edit count. A commit counts as an apply when it carries the trailer, or
 // — for workspaces older than it — when its subject is the default one.
-func applyBatches(w *ws.Workspace, rng string) []int {
-	msgs, err := w.Git.Run("log", "--format=%B%x00", rng)
+func applyBatches(w *ws.Workspace, rng string) []applyBatch {
+	msgs, err := w.Git.Run("log", "--format=%H%x1f%B%x00", rng)
 	if err != nil {
 		return nil
 	}
-	var out []int
-	for _, m := range strings.Split(msgs, "\x00") {
+	var out []applyBatch
+	for _, rec := range strings.Split(msgs, "\x00") {
+		sha, m, ok := strings.Cut(strings.TrimSpace(rec), "\x1f")
+		if !ok {
+			continue
+		}
 		if m = strings.TrimSpace(m); m == "" {
 			continue
+		}
+		add := func(n int) {
+			out = append(out, applyBatch{Edits: n, Lines: changedLines(w, sha)})
 		}
 		// The LAST match, not the first: the trailer is written at the end of
 		// the message, and an edit whose own text quotes one ("wf-apply: 999
@@ -1846,7 +1953,7 @@ func applyBatches(w *ws.Workspace, rng string) []int {
 		// let the batch's own content restate the batch's size.
 		if t := applyTrailerRe.FindAllStringSubmatch(m, -1); t != nil {
 			n, _ := strconv.Atoi(t[len(t)-1][1])
-			out = append(out, n)
+			add(n)
 			continue
 		}
 		subject := m
@@ -1855,7 +1962,11 @@ func applyBatches(w *ws.Workspace, rng string) []int {
 		}
 		if sm := applySubjectRe.FindStringSubmatch(subject); sm != nil {
 			n, _ := strconv.Atoi(sm[1])
-			out = append(out, n)
+			add(n)
+			continue
+		}
+		if n := applyBodyEdits(m); n > 0 {
+			add(n)
 		}
 	}
 	return out
@@ -1867,8 +1978,8 @@ func applyBatches(w *ws.Workspace, rng string) []int {
 // per four edits, stable across a 12x range of batch sizes — but a workspace's
 // OWN ratio is the only form in which that number will be believed.
 func batchHistory(w *ws.Workspace) (edits, findings int) {
-	for _, n := range applyBatches(w, "HEAD") {
-		edits += n
+	for _, b := range applyBatches(w, "HEAD") {
+		edits += b.Edits
 	}
 	for n := 1; n <= w.M.Round; n++ {
 		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {

@@ -494,10 +494,10 @@ func TestPrescribedSequence(t *testing.T) {
 	mustContain(t, out,
 		"## stats — workspace demo, 2 round(s)",
 		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
-		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es), 3 edit(s) (0.33 finding(s)/edit); fix-induced 1",
+		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es), 3 edit(s) / 6 changed line(s) (16.7 finding(s) per 100 changed line(s)); fix-induced 1",
 		"total — 2 finding(s), 2 blocker(s)",
 		"fix-induced — 1 of 2 finding(s)",
-		"cost — 3 edit(s) applied, 0.67 finding(s)/edit across the gate")
+		"cost — 3 edit(s) applied over 6 changed line(s), 0.67 finding(s)/edit, 33.3 per 100 changed line(s) across the gate")
 
 	// A tooling round is its own kind: its blocker must not read as reviewer
 	// evidence, or it restarts the stop rule's clock (the P2e distortion).

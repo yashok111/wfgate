@@ -84,7 +84,7 @@ wf delta                                   # the delta round's brief: findings +
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules); `dup` takes `-since REF`, `-threshold F` and `-min-words N` |
-| `wf stats` | per-round findings, closures, apply batches and edits (with findings/edit — the batch cost meter; a workspace with no apply commit is named as an absent population, not printed as zero), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
+| `wf stats` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
 
@@ -127,8 +127,16 @@ to that one replacement, not to the file; fifteen replacements in one file are
 fifteen headers. When a batch is large enough that the workspace's own history
 (findings per edit, from the ledger and the apply commits) predicts a costly
 next round, `apply` prints a note suggesting a split by rule — a note, never a
-refusal. Every apply commit records its own edit count in a `wf-apply:` trailer,
-which is what the meter reads: it used to read the default subject, and `-m`
+refusal. The meter's denominator is CHANGED LINES, not edits: measured across
+three closed gates, findings correlate with edits at +0.26..+0.49 and with
+changed lines at +0.47..+0.82, because one edit can rewrite one word or nine
+hundred lines. Every apply commit records its own edit count in a `wf-apply:`
+trailer, then in the default subject, then in the per-edit lines of its body —
+three sources in falling order of how hard they are to erase, and the third is
+all that survives in a workspace older than the trailer whose operator wrote
+every subject by hand (two such gates read as an empty meter until it was
+added, over 186 and 150 edits that were sitting in commit bodies the whole
+time). It used to read the default subject alone, and `-m`
 replaces the subject, so a gate that wrote a subject for all 27 of its batches
 measured nothing at all. Assembling the JSON was the measured bottleneck of the first
 live gate: a 35-edit batch under three layers of quoting failed on escaping

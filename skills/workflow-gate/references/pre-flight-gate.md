@@ -439,8 +439,8 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   `wf check dup` for copies that DRIFTED, then hand-check for copies that CONTRADICT, which no
   similarity metric reaches; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
-  `wf stats` prints each round's edits and findings-per-edit, and `wf apply` notes when a batch's size
-  predicts a costly next round. Split by RULE — one rule and all its copies per batch — never
+  `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines, and
+  `wf apply` notes when a batch's size predicts a costly next round. Split by RULE — one rule and all its copies per batch — never
   mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
 - **What a fix costs is decided by whether it changes a RULE, not by how many edits it has.** One gate
   measured ~0.25 findings per edit and called it stable across a 12x range of batch sizes; the next
@@ -448,7 +448,12 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   the most findings of the run and its thirteen-edit batch the fewest, closing the gate. What separated
   them: the expensive batches each changed one rule (every declared path parameter becomes REQUIRED;
   the declared set is derived from `basePath + route.Path`, not `route.Path`), and the cheap one was
-  thirteen edits of renumbering and prose. **A fix that changes a rule re-opens every consumer of that
+  thirteen edits of renumbering and prose. **The separation is visible in the denominator the tool now
+  prints.** Across the three closed gates a prose fix runs roughly 2 to 5 findings per 100 changed
+  lines and a rule-changing fix roughly 6 to 15 — the four-edit batch above reads 14.9 and the
+  twenty-seven-edit prose batch of the same gate reads 3.4. An edit is not a unit and never was: one
+  edit of another gate rewrote 933 lines, and the per-edit ratio printed it as `38.00
+  finding(s)/edit`. Read the per-100-lines figure and read your own workspace's, not this paragraph's. **A fix that changes a rule re-opens every consumer of that
   rule, and the consumers are not in the diff.** Round 5 of that gate was the only round in which the
   blocker count ROSE, and four of round 7's seven findings were sentences arguing from the superseded
   form.
