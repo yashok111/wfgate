@@ -85,6 +85,8 @@ wf delta                                   # the delta round's brief: findings +
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules); `dup` takes `-since REF`, `-threshold F` and `-min-words N` |
 | `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
+| `wf close [-archive DIR]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten |
+| `wf prune [-yes]` | delete `.git`, `artifacts/` and `rounds/` once the record is banked; refuses without one, refuses a stale one, and reports without `-yes`. Measured: 4.5 MB to 176 KB |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
 

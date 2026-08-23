@@ -7,7 +7,7 @@ Reviewers are **`model: 'opus'` — all three.** This is a deliberate policy cho
 **Before you spawn a single reviewer, in this order.** The order matters and is not the order these
 paragraphs were written in — it is: open the WORKSPACE (-1) → open the ROUND (-1b) → gate the
 DECISIONS (1) → author the script → static check (0) → **dry-run the artifact set (2b)** → freeze the
-whole set (2) → hand reviewers the frozen paths (3). The dry-run comes BEFORE the freeze, reversed
+whole set (2) → hand reviewers the frozen paths (3) → and when the gate is done, BANK it (4). The dry-run comes BEFORE the freeze, reversed
 2026-08-22: a dry-run defect found after freezing invalidates a freeze that correctly refuses to
 re-freeze, which forced a whole round for a defect no reviewer ever saw (measured, P2e r12) — the
 dry-run reads the working copy, and the freeze exists to pin what REVIEWERS read, so it comes after
@@ -497,6 +497,26 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   a literal `[fix-induced]` in the finding text — `wf stats` counts the marker per round and in total,
   and prints "not measured" when nobody marked, because an unmarked corpus is a different claim from
   "no self-inflicted findings".
+4. **When the gate is done: `wf close`.** It writes the gate's own record into the workspace and
+   commits it — the commit log as text (the timings that price every round live there and nowhere
+   else), `wf stats -time` verbatim, the freeze manifests' surviving half, every round's findings
+   ledger, and a feedback scaffold with the derived numbers already filled in. Fill the scaffold and
+   run `wf close` again to bank it; a filled form is never overwritten. `-archive DIR` (or
+   `$WF_ARCHIVE`) copies the record out to a corpus that outlives the workspace.
+
+   **Write the feedback while the gate is still in front of you.** Three gates were written up by
+   hand, each invented its own structure, and the section that turned out to be the most valuable is
+   called two different things across them — a corpus that cannot be searched for its own best
+   section. The numbers are prefilled because the first of those post-mortems closed its gate on 99
+   findings and 27 blockers against a true 98 and 26.
+
+   `wf prune -yes` then deletes `.git`, `artifacts/` and `rounds/`, leaving the record and the
+   gate-checks copy that briefed the reviewers. It refuses without a record, refuses when the record
+   is older than the artifacts, and reports without `-yes`: the deletion is not reversible. Measured
+   on one closed gate: 4.5 MB down to 176 KB, and everything anyone has ever read out of the
+   repository is in what stays — the `.git` was 84% of the bytes and the whole of its history as text
+   is 12 KB.
+
 - **An edit after the gate closes is still an edit.** The stop rule permits majors to ride; it does not
   make applying them free. Measured: four "text-only" major fixes applied after a clean closing round
   broke the artifact outright — the static checker went from zero errors to one and the dry runner from

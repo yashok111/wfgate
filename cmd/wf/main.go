@@ -50,7 +50,9 @@ const usage = `wf — gate harness
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
   wf check [cite|dup|drift|rules] deterministic checks over the artifacts
-  wf stats                        per-round findings, closures and batches, from the ledger and git
+  wf stats [-time]                per-round findings, closures and batches, from the ledger and git
+  wf close [-archive DIR]         bank the gate's own record — history, stats, findings, a feedback scaffold
+  wf prune [-yes]                 delete .git and artifacts once the record is banked; not reversible
   wf docs [name]                  print the embedded operating manual (guide, checks, routing, ...)
   wf version                      the stamped build version of this binary
 
@@ -70,49 +72,71 @@ var version = "(devel)"
 
 func toolID() string { return "wf " + version }
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+// errUsage is a wrong invocation, which exits 2 — distinct from a command that
+// ran and refused, which exits 1.
+var errUsage = errors.New("usage")
+
+// run is the ONE dispatch. It used to be a switch in main plus a hand-kept copy
+// in the test harness, on the argument that a copy of nine cases was cheaper
+// than making the real one testable; the copy then went stale the first time a
+// command was added, and every test of it failed with `unknown command`, which
+// is this project's most-repeated defect class wearing a different hat.
+func run(args []string) error {
+	if len(args) == 0 {
+		return errUsage
 	}
-	var err error
-	switch os.Args[1] {
+	switch args[0] {
 	case "init":
-		err = cmdInit(os.Args[2:])
+		return cmdInit(args[1:])
 	case "status":
-		err = cmdStatus(os.Args[2:])
+		return cmdStatus(args[1:])
 	case "apply":
-		err = cmdApply(os.Args[2:])
+		return cmdApply(args[1:])
 	case "add":
-		err = cmdAdd(os.Args[2:])
+		return cmdAdd(args[1:])
 	case "round":
-		err = cmdRound(os.Args[2:])
+		return cmdRound(args[1:])
 	case "freeze":
-		err = cmdFreeze(os.Args[2:])
+		return cmdFreeze(args[1:])
 	case "verify":
-		err = cmdVerify(os.Args[2:])
+		return cmdVerify(args[1:])
 	case "delta":
-		err = cmdDelta(os.Args[2:])
+		return cmdDelta(args[1:])
 	case "check":
-		err = cmdCheck(os.Args[2:])
+		return cmdCheck(args[1:])
 	case "stats":
-		err = cmdStats(os.Args[2:])
+		return cmdStats(args[1:])
+	case "close":
+		return cmdClose(args[1:])
+	case "prune":
+		return cmdPrune(args[1:])
 	case "docs":
-		err = cmdDocs(os.Args[2:])
+		return cmdDocs(args[1:])
 	case "version", "-version", "--version":
 		fmt.Println(toolID())
-		return
+		return nil
 	case "-h", "--help", "help":
 		fmt.Print(usage)
-		return
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", os.Args[1], usage)
-		os.Exit(2)
+		return nil
 	}
-	if err != nil {
-		if errors.Is(err, errFindings) {
-			os.Exit(1)
+	return fmt.Errorf("unknown command %q: %w", args[0], errUsage)
+}
+
+func main() {
+	err := run(os.Args[1:])
+	switch {
+	case err == nil:
+		return
+	case errors.Is(err, errUsage):
+		if !errors.Is(err, errFindings) && err != errUsage {
+			fmt.Fprintf(os.Stderr, "%v\n\n%s", err, usage)
+		} else {
+			fmt.Fprint(os.Stderr, usage)
 		}
+		os.Exit(2)
+	case errors.Is(err, errFindings):
+		os.Exit(1)
+	default:
 		fmt.Fprintln(os.Stderr, "wf:", err)
 		os.Exit(1)
 	}
@@ -1527,10 +1551,17 @@ func cmdStats(args []string) error {
 	if err != nil {
 		return err
 	}
+	return statsReport(w, *showTime, os.Stdout)
+}
+
+// statsReport writes the report to out. `wf close` banks it verbatim, so there
+// is one implementation and not a second that drifts from it — a second copy of
+// a derivation is this project's most-repeated defect class.
+func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	if w.M.Round == 0 {
 		return fmt.Errorf("no rounds yet")
 	}
-	fmt.Printf("## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
+	_, _ = fmt.Fprintf(out, "## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
 	// Whether the workspace has a population at all is a different question
 	// from whether each round's share of it can be attributed. Deriving the
 	// first from the per-round totals made a workspace with one unattributable
@@ -1538,7 +1569,7 @@ func cmdStats(args []string) error {
 	// claim.
 	gateBatches := len(applyBatches(w, "HEAD"))
 	var times map[int]roundTime
-	if *showTime {
+	if showTimeFlag {
 		times = roundTimes(w)
 	}
 	kinds := roundKinds(w)
@@ -1655,50 +1686,50 @@ func cmdStats(args []string) error {
 				tm += fmt.Sprintf(" (review %.1f, fix %.1f, tail %.1f)", rt.Review, rt.Fix, rt.Tail)
 			}
 		}
-		fmt.Printf("  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s\n",
+		_, _ = fmt.Fprintf(out, "  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s\n",
 			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi, tm)
 	}
-	fmt.Printf("  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
+	_, _ = fmt.Fprintf(out, "  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
 	// Zero over a whole gate is a POPULATION, and it has to say so. P2f applied
 	// 27 batches and this meter printed "0 apply batch(es)" thirteen times
 	// without a word, so the number that decides the next batch's size looked
 	// measured and was not — the operator reconstructed it by counting headers
 	// in his own scratch files.
 	if gateBatches == 0 {
-		fmt.Printf("  note: no apply commit was found in this workspace — the cost meter has NO population, and the findings/edit numbers above are absent rather than zero. Artifacts changed by hand are invisible to it; a batch applied by `wf apply` records its own size and is counted whatever subject you give it\n")
+		_, _ = fmt.Fprintf(out, "  note: no apply commit was found in this workspace — the cost meter has NO population, and the findings/edit numbers above are absent rather than zero. Artifacts changed by hand are invisible to it; a batch applied by `wf apply` records its own size and is counted whatever subject you give it\n")
 	}
 	if unparsable > 0 {
-		fmt.Printf("  note: %d ledger row(s) are not four cells and were counted as nothing — a hand-awk once closed a gate on 99/27 against a true 98/26, and a row the parser cannot read is the same error with a different sign\n", unparsable)
+		_, _ = fmt.Fprintf(out, "  note: %d ledger row(s) are not four cells and were counted as nothing — a hand-awk once closed a gate on 99/27 against a true 98/26, and a row the parser cannot read is the same error with a different sign\n", unparsable)
 	}
 	// A tooling round restarting the stop rule's clock is the P2e distortion:
 	// the rule reads REVIEWER evidence, and a round nobody reviewed is not it.
 	if toolRounds > 0 {
-		fmt.Printf("  reviewer rounds — %d finding(s), %d blocker(s); tool rounds — %d finding(s), %d blocker(s)\n",
+		_, _ = fmt.Fprintf(out, "  reviewer rounds — %d finding(s), %d blocker(s); tool rounds — %d finding(s), %d blocker(s)\n",
 			revF, revB, toolF, toolB)
-		fmt.Printf("  note: the stop rule reads the REVIEWER descent — a tooling round's blocker does not restart it\n")
+		_, _ = fmt.Fprintf(out, "  note: the stop rule reads the REVIEWER descent — a tooling round's blocker does not restart it\n")
 	}
 	// The marker is opt-in, so its absence must read as "unmeasured", never as
 	// "no self-inflicted findings" — the two are different claims and only the
 	// author of a finding can make the second.
 	if totalFI > 0 {
-		fmt.Printf("  fix-induced — %d of %d finding(s); the share climbs toward 100%% when the gate is exhausted\n", totalFI, totalF)
+		_, _ = fmt.Fprintf(out, "  fix-induced — %d of %d finding(s); the share climbs toward 100%% when the gate is exhausted\n", totalFI, totalF)
 	} else {
-		fmt.Printf("  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
+		_, _ = fmt.Fprintf(out, "  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
 	}
 	// The workspace's own cost meter: what a batch of edits costs in next-round
 	// findings, measured here rather than recalled from another gate's anecdote.
 	if unattributed > 0 {
-		fmt.Printf("  note: %d round(s) have no attributable apply window and their batch numbers are omitted — a round is bounded below by the previous round's tag and above by its own, and an untagged round earlier than the last has neither. Freeze each round as the guide prescribes and the window closes\n", unattributed)
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) have no attributable apply window and their batch numbers are omitted — a round is bounded below by the previous round's tag and above by its own, and an untagged round earlier than the last has neither. Freeze each round as the guide prescribes and the window closes\n", unattributed)
 	}
 	if totalEdits > 0 && totalF > 0 {
-		fmt.Printf("  cost — %d edit(s) applied over %d changed line(s), %.2f finding(s)/edit",
+		_, _ = fmt.Fprintf(out, "  cost — %d edit(s) applied over %d changed line(s), %.2f finding(s)/edit",
 			totalEdits, totalLines, float64(totalF)/float64(totalEdits))
 		if totalLines > 0 {
-			fmt.Printf(", %.1f per 100 changed line(s)", 100*float64(totalF)/float64(totalLines))
+			_, _ = fmt.Fprintf(out, ", %.1f per 100 changed line(s)", 100*float64(totalF)/float64(totalLines))
 		}
-		fmt.Printf(" across the gate\n")
+		_, _ = fmt.Fprintf(out, " across the gate\n")
 	}
-	if *showTime {
+	if showTimeFlag {
 		spans := make([]float64, 0, len(times))
 		longest, longestN := 0.0, 0
 		for n, rt := range times {
@@ -1715,12 +1746,12 @@ func cmdStats(args []string) error {
 		if len(spans) > 0 {
 			recs := commitLog(w, "HEAD")
 			gate := float64(recs[len(recs)-1].At-recs[0].At) / 3600
-			fmt.Printf("  time — %s%d round(s) over %.1f h, median round %.1f min, longest %.1f min (round %d)\n",
+			_, _ = fmt.Fprintf(out, "  time — %s%d round(s) over %.1f h, median round %.1f min, longest %.1f min (round %d)\n",
 				auth, len(spans), gate, spans[len(spans)/2], longest, longestN)
 			// The median, not the mean: a span of several hours is the operator
 			// away from the desk, and three of the four measured gates carry one.
 			// A mean over those describes nobody's round.
-			fmt.Printf("  note: read the median — a span far above it is a break, not work, and it is in the total\n")
+			_, _ = fmt.Fprintf(out, "  note: read the median — a span far above it is a break, not work, and it is in the total\n")
 		}
 	}
 	return nil

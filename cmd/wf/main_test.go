@@ -11,7 +11,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -22,36 +21,9 @@ import (
 	"git.sumka.site/yakov/wfgate/internal/gitx"
 )
 
-// dispatch mirrors main's switch. The switch is duplicated rather than factored
-// out of main because main's other half is os.Exit and usage printing; a copy
-// of nine cases is cheaper than making the real one testable.
-func dispatch(args []string) error {
-	switch args[0] {
-	case "init":
-		return cmdInit(args[1:])
-	case "status":
-		return cmdStatus(args[1:])
-	case "apply":
-		return cmdApply(args[1:])
-	case "add":
-		return cmdAdd(args[1:])
-	case "round":
-		return cmdRound(args[1:])
-	case "freeze":
-		return cmdFreeze(args[1:])
-	case "verify":
-		return cmdVerify(args[1:])
-	case "delta":
-		return cmdDelta(args[1:])
-	case "check":
-		return cmdCheck(args[1:])
-	case "stats":
-		return cmdStats(args[1:])
-	case "docs":
-		return cmdDocs(args[1:])
-	}
-	return fmt.Errorf("unknown command %q", args[0])
-}
+// dispatch is main's own switch, not a copy of it. The copy went stale the
+// first time a command was added.
+func dispatch(args []string) error { return run(args) }
 
 // runWF runs one subcommand in-process from dir, capturing stdout and stderr
 // together. In-process rather than a built binary so `go test -cover` counts

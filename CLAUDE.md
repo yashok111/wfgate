@@ -68,7 +68,10 @@ Ten units, each one decision.
 - `internal/apply` — the all-or-nothing batch of textual edits.
 - `internal/check` — the deterministic checks: `cite.go`, `dup.go`,
   `drift.go`, `rules.go`.
-- `cmd/wf` — the subcommand dispatcher.
+- `cmd/wf` — the subcommand dispatcher, and `close.go`: the gate's own record
+  and the pruning that record makes safe. ONE dispatch — the test harness used
+  to keep a hand-copied switch, which went stale the first time a command was
+  added.
 - `internal/wfscript` — a Workflow orchestration script as a PARSED PROGRAM:
   the wrapper discovery, the agent-call inventory with its options resolved
   through consts, spreads and factories, the phase titles, the loops. Every
@@ -528,13 +531,36 @@ Not forgotten — deferred, so the gap does not read as an oversight:
 - **No MCP server.** CLI first — and the live run measured the question: zero
   agent↔CLI seam errors over 10 rounds. The bottleneck was assembling the JSON
   edit batch, which is a different layer. Reopen only with new data.
+**`wf close` and `wf prune`, and why the record is not the repository.** Three
+gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
+structure, each landing in this repository by a manual commit — the p2d file
+ends "*the commit is yours*". The section that turned out to be the most
+valuable is called "One observation about the process, not the tool" in two of
+them and "One number for the planning table" in the third, so the corpus cannot
+be grepped for its own best section. And the numbers were retyped: the first of
+those post-mortems closed its gate on 99 findings and 27 blockers against a true
+98 and 26. So the scaffold has fixed headings and the derived half already in
+it, and a filled scaffold is never overwritten — that is the `findings.md`
+lesson applied to the form that comes after.
+
+What the snapshot takes is what nothing else holds. On the three closed gates
+`.git` is 61-84% of the workspace (3.8-4.4 MB) and the entire history anyone has
+ever read out of it — every commit's time and subject, which is what prices a
+round — is 8.7 to 11.9 KB of text. So `close` writes that, `wf stats -time`
+verbatim, the freeze manifests minus the artifact hashes that stop meaning
+anything, and every round's ledger. `prune` then deletes `.git`, `artifacts/`
+and `rounds/`: measured 4.5 MB down to 176 KB. It refuses without a record,
+refuses a record older than the artifacts, and reports without `-yes` —
+deletion is the one operation in this tool that a later command cannot announce.
+
 - **Still no findings registry as data — only a parser.** `findings.md` is
   filled by hand; `ws.ParseFindings` reads the table to validate closures
   (record/freeze) and to print the delta checklist, but generates nothing and
   introduces no second format. The format is the same scaffold that four gate
   rounds — and ten more on the live P2d gate — filled by hand unchanged.
 - **No `round close`, no reopening a round.** Freezing is one-way: if tag
-  `gate-rN` exists, you open the next round.
+  `gate-rN` exists, you open the next round. `wf close` is a different thing
+  with the same word in it: it closes the GATE, and it only reads rounds.
 - **No check that "the cited line says what the sentence beside it claims" —
   ever.** That is judgement; `wf check cite -show` exists to make it cheap, not
   to pretend it has been done.
