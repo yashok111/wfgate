@@ -31,9 +31,15 @@ stands in an agent's always-on context any more: the skill self-triggers from
 its one-line description, the binary EMBEDS the references (`go:embed`,
 stdlib) and serves them via `wf docs`, `wf init` writes the gate-checks
 reference into every workspace so the rules version that briefed a gate's
-reviewers is pinned with the gate, and a PreToolUse hook on the Workflow tool
-(`scripts/hooks/workflow-preflight.sh`) injects the reminder
-deterministically. The skill and the hook ship as the **wfgate plugin**
+reviewers is pinned with the gate, and TWO PreToolUse hooks inject the reminder
+deterministically — one on the Workflow tool
+(`scripts/hooks/workflow-preflight.sh`) for the LAUNCH, and one on `Write|Edit`
+(`scripts/hooks/script-authoring.sh`, once per session) for the AUTHORING the
+first is too late for. The second exists because the first was the only
+deterministic trigger and an agent wrote a whole orchestration script without
+ever opening the manual: writing a script is `Write`, not `Workflow`, so the
+phase the manual actually governs had no trigger at all. The skill and the hooks
+ship as the **wfgate plugin**
 (`.claude-plugin/plugin.json`, `hooks/hooks.json`, `skills/` — the repo root
 IS the plugin, and its own `.claude-plugin/marketplace.json` makes the local
 clone the marketplace): plugin hooks activate on install, so settings.json is
@@ -73,7 +79,7 @@ Ten units, each one decision.
   modes a real run can enter. Fixtures live in `testdata/` — the meta-guard
   fixture is the P2e false green, banked.
 - `internal/cli` — `ParseMixed`, shared by all three binaries.
-- `scripts/` — no longer code: the PreToolUse hook and `install.sh`.
+- `scripts/` — no longer code: the two PreToolUse hooks and `install.sh`.
 - `skills/workflow-gate/` — the operating manual as a Claude Code skill: a thin
   SKILL.md front door and the gated spec split byte-exact into `references/`
   (authoring, model-routing, pre-flight-gate, section-gate, cost-discipline,
@@ -528,5 +534,5 @@ Not forgotten — deferred, so the gap does not read as an oversight:
   would be fixing them in an artifact somebody already reviewed.
 - **No git hooks or CI IN A GATE WORKSPACE.** A workspace lives locally and dies
   with its slice; there is nothing to publish. This repository itself is pushed
-  to Gitea and does ship a Claude Code PreToolUse hook — a different thing with
+  to Gitea and does ship two Claude Code PreToolUse hooks — a different thing with
   the same word in it.

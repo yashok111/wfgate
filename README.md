@@ -9,9 +9,11 @@ the operating manual, shipped as the `workflow-gate` skill
 (`skills/workflow-gate/`) and embedded into the binary — `wf docs guide` prints
 it, `wf init` writes the gate-checks reference into every workspace, and
 nothing needs to stand in an agent's always-on context. The skill and the
-PreToolUse hook (`scripts/hooks/workflow-preflight.sh`, fires on every
-Workflow call) ship as the **wfgate plugin** — the repo root is the plugin,
-and `.claude-plugin/marketplace.json` makes the local clone its marketplace.
+two PreToolUse hooks (`scripts/hooks/workflow-preflight.sh` on every Workflow
+call, `scripts/hooks/script-authoring.sh` once per session on a `Write`/`Edit`
+that looks like an orchestration script) ship as the **wfgate plugin** — the
+repo root is the plugin, and `.claude-plugin/marketplace.json` makes the local
+clone its marketplace.
 
 A gate over a large change spends effort on two different things. One is the
 reviewing itself — that is judgement, and it is what the rounds are for. The
@@ -26,10 +28,14 @@ On any machine with Claude Code (needs git, go, claude):
 
 ```bash
 git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git ~/projects/wfgate
-~/projects/wfgate/scripts/install.sh      # three binaries + plugin (skill + hook) (skill + hook)
+~/projects/wfgate/scripts/install.sh      # three binaries + plugin (skill + hooks), and it UPDATES an installed plugin
 ```
 
-After a `git pull`: `make install && claude plugin marketplace update wfgate-tools`.
+After a `git pull`: re-run `scripts/install.sh`. An installed plugin is a cached
+COPY, and refreshing the marketplace alone does not touch it — the copy sat four
+releases behind the clone once, so the manual a session loaded described a rule
+the manual had already replaced. `wf docs` names any reference where the
+installed copy differs from the one this binary carries.
 `scripts/install.sh --uninstall` reverses everything. Piecemeal:
 
 ```bash

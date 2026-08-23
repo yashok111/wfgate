@@ -63,6 +63,18 @@ check-tools: build
 		echo "wfdry false-green fixture: EXIT 0 over a happy path that returned not-green"; exit 1; \
 	else echo "wfdry false-green fixture: fails as it must"; fi
 	@./wfcheck -root . testdata/conforming.mjs >/dev/null && echo "wfcheck conforming fixture: no errors on a script written to the manual"
+	@d=$$(mktemp -d); printf '{"session_id":"mk","tool_name":"Write","tool_input":{"file_path":"/tmp/notes.md","content":"prose"}}' \
+		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \
+		&& { echo "authoring hook: fired on an ordinary file — a reminder on every write is a reminder nobody reads"; rm -rf $$d; exit 1; } \
+		|| { echo "authoring hook: silent on an ordinary file"; rm -rf $$d; }
+	@d=$$(mktemp -d); printf '{"session_id":"mk","tool_name":"Write","tool_input":{"file_path":"/tmp/run.mjs","content":"x"}}' \
+		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q "MANDATORY BEFORE authoring" \
+		&& { echo "authoring hook: fires on an orchestration script"; } \
+		|| { echo "authoring hook: SILENT on a script — the authoring phase has no deterministic trigger again"; rm -rf $$d; exit 1; }; \
+		printf '{"session_id":"mk","tool_name":"Write","tool_input":{"file_path":"/tmp/again.mjs","content":"x"}}' \
+		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \
+		&& { echo "authoring hook: fired TWICE in one session — repeated, it stops being read"; rm -rf $$d; exit 1; } \
+		|| { echo "authoring hook: once per session"; rm -rf $$d; }
 
 clean:
 	rm -f $(BINS)

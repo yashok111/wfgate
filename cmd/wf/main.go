@@ -1647,6 +1647,67 @@ var docNames = map[string]string{
 // guideOrder is the manual's reading order for the concatenated form.
 var guideOrder = []string{"authoring", "routing", "preflight", "section-gate", "cost"}
 
+// manualDrift compares the references EMBEDDED in this binary with the copy a
+// session actually loads — the installed plugin's cached tree — and returns the
+// files that differ.
+//
+// Measured: the plugin sat at the version it was installed at while the clone
+// moved four releases on. Every reference differed, and the SKILL.md sessions
+// loaded still described a rule the manual had since replaced. A binary and a
+// skill built from one commit are the same document; when they are not, the
+// gate is briefed from one and run by the other, and nothing said so. This is
+// the freeze manifest's version stamp applied to the spec channel: a NOTE, not
+// a refusal — a rebuilt binary legitimately serves an older plugin until the
+// next install.
+func manualDrift() (string, []string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", nil
+	}
+	globs := []string{
+		filepath.Join(home, ".claude", "plugins", "cache", "*", "wfgate", "*", "skills", "workflow-gate", "references"),
+		// The retired user-level symlink. install.sh removes it, and a machine
+		// that still has one is loading a manual from a path nothing updates.
+		filepath.Join(home, ".claude", "skills", "workflow-gate", "references"),
+	}
+	for _, g := range globs {
+		dirs, _ := filepath.Glob(g)
+		for _, dir := range dirs {
+			var diffs []string
+			for _, file := range docNames {
+				want, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
+				if err != nil {
+					continue
+				}
+				got, err := os.ReadFile(filepath.Join(dir, file))
+				switch {
+				case err != nil:
+					diffs = append(diffs, file+" (missing)")
+				case !bytes.Equal(got, want):
+					diffs = append(diffs, file)
+				}
+			}
+			if len(diffs) > 0 {
+				sort.Strings(diffs)
+				return dir, diffs
+			}
+		}
+	}
+	return "", nil
+}
+
+// noteManualDrift prints the drift to STDERR, so `wf docs guide > file` still
+// captures the manual and the warning still reaches a person.
+func noteManualDrift() {
+	dir, diffs := manualDrift()
+	if len(diffs) == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "note: the manual a session LOADS differs from the one this binary carries — %s\n", dir)
+	fmt.Fprintf(os.Stderr, "      drifted: %s\n", strings.Join(diffs, ", "))
+	fmt.Fprintf(os.Stderr, "      run scripts/install.sh (or `claude plugin update wfgate@wfgate-tools`) so both come from one commit\n")
+}
+
 func readDoc(name string) ([]byte, error) {
 	return wfgate.Docs.ReadFile("skills/workflow-gate/references/" + docNames[name])
 }
@@ -1656,6 +1717,7 @@ func readDoc(name string) ([]byte, error) {
 // triggers, this command delivers, and the version of the text is the version
 // of the binary that behaves as it describes.
 func cmdDocs(args []string) error {
+	defer noteManualDrift()
 	if len(args) == 0 {
 		fmt.Print(`wf docs <name> — print one reference of the operating manual
 

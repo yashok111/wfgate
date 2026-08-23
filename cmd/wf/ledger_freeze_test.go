@@ -9,7 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+
+	wfgate "git.sumka.site/yakov/wfgate"
 )
 
 // newGate builds the smallest workspace the freeze path needs: a target
@@ -305,4 +308,55 @@ func TestStatsReadsTheLastTrailer(t *testing.T) {
 	out, err := runWF(t, wsDir, "stats")
 	noErr(t, err, "stats")
 	mustContain(t, out, "1 apply batch(es), 1 edit(s)")
+}
+
+// A plugin is a CACHED COPY, not a view of the clone, and refreshing the
+// marketplace does not touch it. Measured: the installed plugin sat at the
+// version it was installed at while the clone moved four releases on — every
+// reference file differed, and the SKILL.md sessions actually loaded still
+// described a rule the manual had replaced. A binary and a skill built from one
+// commit are the same document; when they are not, a gate is briefed from one
+// and run by the other.
+func TestDocsNamesAManualThatDrifted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	refs := filepath.Join(home, ".claude", "plugins", "cache", "wfgate-tools", "wfgate", "1.0.0", "skills", "workflow-gate", "references")
+	if err := os.MkdirAll(refs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Every reference present and identical except one, so the note has to name
+	// the file rather than the directory.
+	for _, file := range docNames {
+		b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file == "authoring.md" {
+			b = append([]byte("# a stale copy\n"), b...)
+		}
+		if err := os.WriteFile(filepath.Join(refs, file), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := runWF(t, home, "docs")
+	noErr(t, err, "docs")
+	mustContain(t, out, "the manual a session LOADS differs", "drifted: authoring.md")
+	if strings.Contains(out, "model-routing.md") {
+		t.Fatalf("only the drifted file is named:\n%s", out)
+	}
+
+	// And an installed copy that matches says nothing: a note that fires on a
+	// correct install is a note nobody reads.
+	b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/authoring.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(refs, "authoring.md"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runWF(t, home, "docs")
+	noErr(t, err, "docs after the update")
+	if strings.Contains(out, "differs from the one this binary carries") {
+		t.Fatalf("an install in step with the binary is not drift:\n%s", out)
+	}
 }

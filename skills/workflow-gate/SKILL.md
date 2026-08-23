@@ -1,6 +1,6 @@
 ---
 name: workflow-gate
-description: MANDATORY before authoring, reviewing, or running ANY Workflow (multi-agent orchestration) script, and before reviewing a workflow gate's artifacts. Maps the operating manual — model routing, the pre-flight review gate, the wf gate harness, cost discipline — and names which reference to read for the activity at hand. Trigger on "Workflow tool", "workflow script", "orchestration", "fan-out", "wf gate", "pre-flight review".
+description: MANDATORY before AUTHORING, reviewing, or running ANY Workflow (multi-agent orchestration) script — read it before the FIRST LINE is written, not before the launch; a script written from memory costs a gate round to correct. Also mandatory before reviewing a workflow gate's artifacts. Maps the operating manual — model routing, the pre-flight review gate, the wf gate harness, cost discipline — and names which reference to read for the activity at hand. Trigger on "Workflow tool", "workflow script", "orchestration script", "orchestrate", "fan-out", "spawn agents", "run N agents", "agents in parallel", "multi-agent", "agent pipeline", "phases and gates", "wf gate", "pre-flight review", ".mjs script that calls agent()", or any request to build something that launches subagents.
 ---
 
 # Workflow gate
@@ -9,6 +9,15 @@ The Workflow tool spawns fleets of agents; an unreviewed script burns the whole
 fan-out. This skill is the operating manual's front door. The manual is the
 specification a gate reviewed — do not act from memory of it; read the
 reference for what you are about to do, in full.
+
+**The manual is read BEFORE the script is written, not before it is launched.**
+Measured: an agent authored a whole orchestration script without ever opening
+it, because the only deterministic reminder fired on the Workflow tool — at
+launch, when the script already exists and the manual says it should already
+have been gated. There is now a second one on `Write`/`Edit`, but a hook that
+fires once per session is a backstop, not the trigger: if you are about to
+write or edit a script that calls `agent()`, the table below is the first thing
+you do.
 
 All references live in `references/` next to this file; `wf docs <name>` prints
 the same text from the installed binary (`wf docs guide` concatenates the five
