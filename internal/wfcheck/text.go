@@ -18,8 +18,8 @@ package wfcheck
 
 // stripNonCode blanks the text of comments and string literals, preserving
 // length and line structure so an offset still maps to its line. Template
-// literals keep their `${...}` interpolations — those ARE code, and a spawn
-// call written inside one must stay counted.
+// literals keep their `${...}` interpolations — those ARE code, and a spawn call
+// written inside one must stay counted.
 //
 // It is a scanner, not a lexer: a regex literal containing `agent(` would still
 // be counted. That is the safe direction for a backstop — it can only ever make
@@ -28,60 +28,87 @@ package wfcheck
 // suspicious of a population that is too small.
 func stripNonCode(src string) string {
 	out := []byte(src)
-	blank := func(i, j int) {
-		for k := i; k < j && k < len(out); k++ {
-			if out[k] != '\n' {
-				out[k] = ' '
-			}
+	scanCode(src, out, 0, false)
+	return string(out)
+}
+
+// blank overwrites a span with spaces, leaving newlines so an offset still maps
+// to the line it was on.
+func blank(out []byte, i, j int) {
+	for k := i; k < j && k < len(out); k++ {
+		if out[k] != '\n' {
+			out[k] = ' '
 		}
 	}
-	i := 0
+}
+
+// scanCode blanks comment and literal text from i onward and returns where it
+// stopped. With inInterp set it stops just past the `}` that closes the
+// `${...}` it was called for — so a brace inside a string inside an
+// interpolation (`${ f('}') }`) does not end the interpolation early, which
+// would hand the rest of the template back to the scanner as code and count its
+// prose.
+func scanCode(src string, out []byte, i int, inInterp bool) int {
+	depth := 0
 	for i < len(src) {
-		c := src[i]
 		switch {
-		case c == '/' && i+1 < len(src) && src[i+1] == '/':
+		case src[i] == '/' && i+1 < len(src) && src[i+1] == '/':
 			j := i
 			for j < len(src) && src[j] != '\n' {
 				j++
 			}
-			blank(i, j)
+			blank(out, i, j)
 			i = j
-		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+		case src[i] == '/' && i+1 < len(src) && src[i+1] == '*':
 			j := i + 2
 			for j+1 < len(src) && (src[j] != '*' || src[j+1] != '/') {
 				j++
 			}
 			j = min(j+2, len(src))
-			blank(i, j)
+			blank(out, i, j)
 			i = j
-		case c == '\'' || c == '"':
-			// The bound is on the LOOP, not inside it: an escape at the end of
-			// the file would otherwise index one past it. A newline ends the
-			// scan too — an unterminated literal is not a licence to eat the
-			// rest of the file.
-			j := i + 1
-			for j < len(src) && src[j] != c && src[j] != '\n' {
-				if src[j] == '\\' {
-					j++
-				}
-				j++
+		case src[i] == '\'' || src[i] == '"':
+			i = blankQuoted(src, out, i)
+		case src[i] == '`':
+			i = blankTemplate(src, out, i)
+		case inInterp && src[i] == '{':
+			depth++
+			i++
+		case inInterp && src[i] == '}':
+			if depth == 0 {
+				return i + 1
 			}
-			j = min(j+1, len(src))
-			blank(i+1, j-1)
-			i = j
-		case c == '`':
-			i = blankTemplate(src, out, i, blank)
+			depth--
+			i++
 		default:
 			i++
 		}
 	}
-	return string(out)
+	return i
+}
+
+// blankQuoted blanks one single- or double-quoted literal and returns the offset
+// just past it. The bound is on the LOOP, not inside it: an escape at the end of
+// the input would otherwise index one past it. A newline ends the scan too — an
+// unterminated literal is not a licence to eat the rest of the file.
+func blankQuoted(src string, out []byte, i int) int {
+	q := src[i]
+	j := i + 1
+	for j < len(src) && src[j] != q && src[j] != '\n' {
+		if src[j] == '\\' {
+			j++
+		}
+		j++
+	}
+	j = min(j+1, len(src))
+	blank(out, i+1, j-1)
+	return j
 }
 
 // blankTemplate blanks the literal chunks of one template literal and returns
-// the offset just past its closing backtick, having left every `${...}`
-// interpolation untouched. Nested templates inside an interpolation recurse.
-func blankTemplate(src string, out []byte, i int, blank func(int, int)) int {
+// the offset just past its closing backtick, having handed every `${...}`
+// interpolation back to scanCode as the code it is.
+func blankTemplate(src string, out []byte, i int) int {
 	j := i + 1
 	chunk := j
 	for j < len(src) {
@@ -89,32 +116,17 @@ func blankTemplate(src string, out []byte, i int, blank func(int, int)) int {
 		case src[j] == '\\':
 			j += 2
 		case src[j] == '`':
-			blank(chunk, j)
+			blank(out, chunk, j)
 			return j + 1
 		case src[j] == '$' && j+1 < len(src) && src[j+1] == '{':
-			blank(chunk, j)
-			depth := 1
-			j += 2
-			for j < len(src) && depth > 0 {
-				switch src[j] {
-				case '{':
-					depth++
-					j++
-				case '}':
-					depth--
-					j++
-				case '`':
-					j = blankTemplate(src, out, j, blank)
-				default:
-					j++
-				}
-			}
+			blank(out, chunk, j)
+			j = scanCode(src, out, j+2, true)
 			chunk = j
 		default:
 			j++
 		}
 	}
-	blank(chunk, j)
+	blank(out, chunk, min(j, len(src)))
 	return j
 }
 

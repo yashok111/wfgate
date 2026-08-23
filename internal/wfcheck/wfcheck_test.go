@@ -381,3 +381,46 @@ return { out }`)
 		}
 	})
 }
+
+// The scanner is exercised directly where its output is the only observable
+// thing: an interpolation that ends early hands the REST of the interpolation
+// back to the template as literal text, so a call written after a quoted brace
+// disappears from the textual population — and a backstop whose population is
+// too small says nothing at all, which is the one failure it cannot report.
+func TestStripNonCode(t *testing.T) {
+	cases := []struct {
+		name       string
+		src        string
+		keep, drop []string
+	}{
+		{"a comment", "spawn(a)\n// spawn(b) in prose\n", []string{"spawn(a)"}, []string{"spawn(b)"}},
+		{"a block comment", "spawn(a)\n/* spawn(b)\n   spawn(c) */\n", []string{"spawn(a)"}, []string{"spawn(b)", "spawn(c)"}},
+		{"a string", "log('spawn(b) came back')\nspawn(a)\n", []string{"spawn(a)"}, []string{"spawn(b)"}},
+		{"an escaped quote", `log('it\'s spawn(b)') ; spawn(a)`, []string{"spawn(a)"}, []string{"spawn(b)"}},
+		{"a template chunk", "const q = `text spawn(b) more`\nspawn(a)\n", []string{"spawn(a)"}, []string{"spawn(b)"}},
+		{"an interpolation is code", "const q = `head ${spawn(a)} tail spawn(b)`\n", []string{"spawn(a)"}, []string{"spawn(b)"}},
+		{"a quoted brace does not close an interpolation", "const q = `head ${ f('}') + spawn(a) } tail spawn(b)`\n", []string{"spawn(a)"}, []string{"spawn(b)"}},
+		{"a comment inside an interpolation", "const q = `head ${ /* spawn(b) */ spawn(a) } tail`\n", []string{"spawn(a)"}, []string{"spawn(b)"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := stripNonCode(c.src)
+			if len(got) != len(c.src) {
+				t.Fatalf("the scanner must preserve length: %d vs %d", len(got), len(c.src))
+			}
+			if strings.Count(got, "\n") != strings.Count(c.src, "\n") {
+				t.Fatalf("the scanner must preserve lines: %q", got)
+			}
+			for _, k := range c.keep {
+				if !strings.Contains(got, k) {
+					t.Fatalf("code %q was blanked: %q", k, got)
+				}
+			}
+			for _, d := range c.drop {
+				if strings.Contains(got, d) {
+					t.Fatalf("prose %q survived: %q", d, got)
+				}
+			}
+		})
+	}
+}
