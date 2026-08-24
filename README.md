@@ -61,7 +61,7 @@ cd p2d
 wf add ~/draft/context.md ~/draft/script.md  # first commit of an artifact; wf apply cannot make it
 
 wf round new -title "kernel + checkpoints"   # -kind delta for a delta round
-wf check                                   # cite + dup + rules
+wf check                                   # cite + dup + rules + closure
 wf apply -f fixes.json -m "close r1 blockers"
 wf round record findings.md                # the round's ledger, closures validated
 wf freeze                                  # hashes + target HEAD + tool version → commit, tag gate-r1
@@ -80,11 +80,11 @@ wf delta                                   # the delta round's brief: findings +
 | `wf apply -f <edits> [-m msg] [--dry-run]` | all-or-nothing batch of edits (JSON or text blocks), then a commit of only the touched files |
 | `wf round new [-title T] [-kind full\|delta\|tool]` | open the next round, scaffold `rounds/rN/findings.md` with its scope |
 | `wf round record <file> [-round N]` | fill a round's findings.md, validating closures before writing |
-| `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open; notes (never refuses) every citation that no longer RESOLVES against the target's HEAD, a round whose artifacts changed without `wf apply`, and — when it could not resolve them, or the round's window has no lower bound — that the check did not run |
+| `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts + the corpus size in lines (with the delta against the previous freeze — a document that doubles while the blocker count holds is a design being elaborated rather than settled) → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open; notes (never refuses) every citation that no longer RESOLVES against the target's HEAD, a round whose artifacts changed without `wf apply`, and — when it could not resolve them, or the round's window has no lower bound — that the check did not run |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
-| `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules); `dup` takes `-since REF`, `-threshold F` and `-min-words N` |
-| `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share (with the rounds carrying no marker named, so the share reads as the lower bound it is), the rounds that applied no batch at all, every run of three or more rounds at exactly ONE blocker, the rounds whose findings.md could not be read at all (an absent measurement, not a measured zero), and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
+| `wf check [cite\|dup\|drift\|rules\|stale\|closure]` | deterministic checks (no argument = cite + dup + rules + closure); `dup` takes `-since REF`, `-threshold F` and `-min-words N`; `stale` takes `-since REF` (default the newest freeze) and `-max-df N` (default 3); `closure` takes `-round N` |
+| `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a round whose window contains the commit that CREATED an artifact prints no ratio at all, because it prices a corpus its batches did not write), each round's frozen corpus size and its growth, the prediction basis `wf apply` reads (narrower than the gate total, and the difference printed rather than reconciled; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share (with the rounds carrying no marker named, so the share reads as the lower bound it is), the rounds that applied no batch at all, every run of three or more rounds at exactly ONE blocker, the rounds whose findings.md could not be read at all (an absent measurement, not a measured zero), and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
 | `wf new-script <name> [-target REPO] [-o FILE]` | emit the orchestration-script harness — wrapper, schemas, per-section gate, liveness ledger, read-only accept, tally; `wfcheck`-clean and `wfdry` 7/7 as emitted, and re-verified by `make check-tools`. Never writes over an existing file |
 | `wf close [-archive DIR] [-artifacts=false]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and every file of every round, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten. the artifacts themselves are banked too, because their CONTENT is the one thing `prune` destroys that nothing else holds; `-artifacts=false` opts out, and `prune` then names each artifact before removing it |
 | `wf prune [-yes]` | delete `artifacts/`, `rounds/` and then `.git` once the record is banked; refuses without one, refuses a stale one (including a record committed together with the work it describes), and reports without `-yes`. Measured on one closed gate: 4.2 MB down to 696 KB, and the record holds the artifacts, every round's files, the commit log and the stats |
@@ -231,6 +231,62 @@ trimmed to a few anchor words. Copies that conflict agree almost everywhere, so
 truncating them from the start prints the same characters for every site: one
 gate reported five sites of one rule as five byte-identical lines, and the
 difference was found with `cat -A`.
+
+### `wf check stale -since <ref>`
+
+The sweep `wf apply` has been advising since the cost meter existed — "if this
+batch changed a RULE, its consumers are NOT in this diff" — turned into a
+command. It takes the OLD side of every replacement in `<ref>..HEAD` (default:
+the newest freeze), keeps the tokens the fix RETIRED — removed and not put back
+— drops the ones the corpus uses everywhere, and reports the sentences the range
+did NOT touch that still carry them.
+
+This is the class the other three structurally cannot reach: `dup` finds copies
+that DRIFTED apart, `rules` finds marked sites of one id disagreeing, and
+neither sees a paragraph arguing from a superseded rule in different words.
+Measured on a live decision gate, roughly a fifth to a quarter of every round's
+claimed closures were incomplete and almost always for this reason — the fix
+corrected one copy of a rule and left another standing.
+
+The mechanism is crude on purpose: rare tokens, a tenth of a second, and the
+tokens themselves printed beside every hit so the judgement takes seconds. Two
+populations are always printed — the retired vocabulary that was dropped as too
+common (`-max-df`, default 3 — calibrated on a live gate's fix range, where 8 gave 26 hits carrying
+"were", "right" and "stays" and 3 gives 8 hits over 5 retired tokens: the OUTPUT is narrowed, never
+the check, and the dropped count is printed) and the
+sentences the range itself wrote. A range that retired no rare vocabulary says
+`NOT A PASS`: an addition-only fix is invisible to this check, and a green line
+over it would be the vacuous pass this tool exists to refuse.
+
+Which hit ARGUES from the old rule and which merely shares its vocabulary is
+judgement. The check reports; it never rewrites.
+
+### `wf check closure`
+
+`wf round record` proves a `closed by` sha EXISTS. This asks the next question:
+does that commit's diff touch what the finding NAMES. A file the commit never
+opened is a closure that did not land where the finding said it would; a line it
+did not cover is a question to re-ask, because a later batch in the same round
+shifts the numbers.
+
+**It resolves the SECTION a finding cites, not only the path.** A real ledger writes "D9's criterion
+contradicts D13", never a line number: measured on that gate, 126 of 127 closures named no path at
+all and nearly every one named a section, so a path-only check reached ONE finding of 127 — honest,
+and useless. Any cited section, against the union of the closing commits: demanding every section of
+every commit flagged 89 of those 127, and the surviving 12 read as real (each was a fix that landed
+in the section PRODUCING the defect rather than the one cited, which is a question to re-ask). In a
+one-artifact workspace a finding that names no path is checked against the only document there is,
+and that fallback is printed.
+
+A FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is
+a question, not a verdict. Findings that cite no section are counted and named as checked only at
+FILE level, where a commit touching the document anywhere passes; findings that name no artifact path
+in a multi-artifact workspace are counted and named as NOT checked — the
+check reaches a finding only where the finding names a path, so the checked
+share has to be visible rather than assumed. Measured: two reviewer lenses,
+told by hand-written prompt to ask exactly this, reported 6 and 4 of 24 closures
+not closed, three rounds running; it was the most valuable half of those rounds
+and it was produced entirely by prose instruction over data git already held.
 
 ### `wfcheck` and the target
 

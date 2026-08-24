@@ -123,23 +123,75 @@ func wantFindings(t *testing.T, err error, step string) {
 func TestBatchNote(t *testing.T) {
 	// 1600 changed lines historically producing 80 findings is 5 per 100; a
 	// batch of 400 lines therefore predicts ~20, whether it took 4 edits or 60.
-	note, warn := batchNote(60, 400, 1600, 80)
+	hist := []histRound{{N: 2, Findings: 40, Lines: 800}, {N: 3, Findings: 40, Lines: 800}}
+	note, warn := batchNote(60, 400, hist, nil)
 	if !warn || !strings.Contains(note, "predicts ~20 finding(s)") ||
 		!strings.Contains(note, "split by RULE") || !strings.Contains(note, "consumers are NOT in this diff") {
 		t.Fatalf("want a prediction, the split advice and the rule warning: %q", note)
 	}
-	few, warn2 := batchNote(4, 400, 1600, 80)
+	few, warn2 := batchNote(4, 400, hist, nil)
 	if !warn2 || !strings.Contains(few, "predicts ~20 finding(s)") {
 		t.Fatalf("the edit COUNT must not change the prediction: %q", few)
 	}
-	if _, warn := batchNote(60, 20, 1600, 80); warn {
+	if _, warn := batchNote(60, 20, hist, nil); warn {
 		t.Fatal("a batch changing few lines must pass silently")
 	}
-	if _, warn := batchNote(60, 400, 0, 0); warn {
+	if _, warn := batchNote(60, 400, nil, nil); warn {
 		t.Fatal("no history, no claim")
 	}
-	if _, warn := batchNote(60, 0, 1600, 80); warn {
+	if _, warn := batchNote(60, 0, hist, nil); warn {
 		t.Fatal("a batch git sees as changing nothing predicts nothing")
+	}
+}
+
+// The trend, not only the pooled ratio. A live decision gate ran 5.4 -> 7.1 ->
+// 8.7 -> 10.3 findings per 100 changed lines while its batches SHRANK, so the
+// pooled number predicted 5-6 against actuals of 21-25; a script gate measured
+// the same ratio flat across a 12x range of batch sizes. The pooled figure
+// cannot say which regime produced it and the series can.
+func TestBatchNote_printsTheTrendAndNamesTheRegime(t *testing.T) {
+	rising := []histRound{
+		{N: 2, Findings: 24, Lines: 447},
+		{N: 3, Findings: 25, Lines: 354},
+		{N: 4, Findings: 23, Lines: 264},
+	}
+	note, warn := batchNote(20, 300, rising, nil)
+	if !warn {
+		t.Fatal("want a note")
+	}
+	for _, want := range []string{"r2 5.4", "r3 7.1", "r4 8.7", "RISING", "FLOOR"} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("want %q in the trend line: %q", want, note)
+		}
+	}
+	// Two points are not a direction, and a wandering series is not a regime.
+	wobbly := []histRound{
+		{N: 2, Findings: 24, Lines: 447},
+		{N: 3, Findings: 10, Lines: 354},
+		{N: 4, Findings: 23, Lines: 264},
+	}
+	if n, _ := batchNote(20, 300, wobbly, nil); strings.Contains(n, "RISING") || strings.Contains(n, "falling") {
+		t.Fatalf("a non-monotone series must not be named a regime: %q", n)
+	}
+}
+
+// The authoring window prices a corpus its batches did not write. Measured: one
+// such round put the prediction at ~355 findings against an actual 24, printed
+// in the register of a measurement.
+func TestBatchNote_authoringRoundIsExcludedAndSaidSoOutLoud(t *testing.T) {
+	hist := []histRound{{N: 2, Findings: 24, Lines: 447}, {N: 3, Findings: 25, Lines: 354}}
+	note, warn := batchNote(20, 300, hist, []int{1})
+	if !warn {
+		t.Fatal("want a note")
+	}
+	if !strings.Contains(note, "round(s) 1 are NOT in that history") || !strings.Contains(note, "authoring commit") {
+		t.Fatalf("the exclusion must be named, not silent: %q", note)
+	}
+	// The excluded round must not reach the prediction: 49 findings over 801
+	// lines is 6.1 per 100, so 300 lines predicts ~18. Round 1's 34 findings
+	// over 9 lines would have made it ~600.
+	if !strings.Contains(note, "predicts ~18 finding(s)") {
+		t.Fatalf("the authoring round leaked into the prediction: %q", note)
 	}
 }
 
@@ -478,7 +530,7 @@ func TestPrescribedSequence(t *testing.T) {
 	mustContain(t, out,
 		"## stats — workspace demo, 2 round(s)",
 		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
-		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es), 3 edit(s) / 6 changed line(s) (16.7 finding(s) per 100 changed line(s)); fix-induced 1",
+		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es), 3 edit(s) / 6 changed line(s) (16.7 finding(s) per 100 changed line(s)); artifact 11 line(s) (+0); fix-induced 1",
 		"total — 2 finding(s), 2 blocker(s)",
 		"fix-induced — 1 of 2 finding(s)",
 		"cost — 3 edit(s) applied over 6 changed line(s), 0.67 finding(s)/edit, 33.3 per 100 changed line(s) across the gate")

@@ -513,6 +513,71 @@ MEASUREMENT broke, silently:
   seven-round gate and was copied forward along with the first blocker it had
   already cost.
 
+**The eighth wave — mocker A3, the first DECISION gate to file a queue while
+still open** (`IDEAS.md`, "Queue after mocker A3"; 5 rounds, 127 findings, 67
+blockers, 60 of 127 `[fix-induced]`, the artifact 332 -> ~1050 lines). Every
+item was measured by a command in that workspace, and three of the four dearest
+classes were things `wf` already held the data for and did not ask:
+
+- *`wf check stale -since <ref>`* — the sweep `wf apply` had been ADVISING since
+  the cost meter existed ("if this batch changed a RULE, its consumers are NOT
+  in this diff") and no command could run. It is possible only here: the apply
+  range is the one artifact in the pipeline that records the exact text each fix
+  replaced. It keeps the tokens the fix RETIRED — removed and not put back, and
+  not merely inflected (`expect` -> `expectation` retires nothing; five of
+  eleven "retired" tokens on the live range were that) — drops the ones the
+  corpus uses everywhere, and reports the untouched sentences still carrying
+  them. `dup` finds copies that DRIFTED, `rules` finds marked sites that
+  disagree; neither reaches a paragraph arguing from a superseded rule in other
+  words, which is what round 1's four standing consumers and round 2's five
+  were. `-max-df` was calibrated ON that corpus, not chosen: at 8 the report was
+  26 hits carrying "were", "right", "stays" — English, not vocabulary — and at 3
+  it is 8 hits over 5 retired tokens. A range that retired nothing prints NOT A
+  PASS, because an addition-only fix is invisible to this check.
+- *`wf check closure`* — `record` proves a `closed by` sha EXISTS; this asks
+  whether its diff reaches what the finding NAMES. Two reviewer lenses asked it
+  by hand-written prompt for three rounds and reported 6 and 4, 5 and 4, 6 and 4
+  of 25, 23 and 21 findings — the most valuable half of those rounds, produced
+  entirely by prose over data git already held. The first implementation
+  resolved PATHS and reached ONE finding of 127, because a ledger cites
+  SECTIONS (`D9`, `R12`) and 126 of those closures named no path at all. It
+  resolves the section now, against the UNION of the closing commits and on ANY
+  cited section: per-commit-and-every-section flagged 89 of 127, and `dup`'s
+  lesson (161 groups of 176) applied before shipping rather than after leaves
+  12, of which the first three were hand-verified as fixes that landed in the
+  section PRODUCING the defect. So a FILE miss is a verdict and a SECTION miss
+  is a question, and the report says which half ran.
+- *The cost meter was calibrated on the wrong regime, and said so in the
+  register of a measurement* — round 1's window IS the authoring commit (34
+  findings against 9 attributable lines), so it read 377.8 per 100 and `wf
+  apply` predicted ~355 findings for a round that produced 24. Such a round now
+  prints NO ratio and is excluded from the prediction basis, by name. The
+  sharper half: the ratio ROSE across the gate (5.4, 7.1, 8.7, 10.3) while the
+  fixes SHRANK (447, 354, 264, 204 lines), so the pooled figure predicted 5-6
+  against actuals of 21-25 — while a script gate measured it FLAT across a 12x
+  range. Both are true of different regimes, and a pooled number cannot say
+  which one it came from. `wf apply` prints the SERIES and names a monotone one;
+  `wf stats` prints the prediction basis beside the gate total, because the two
+  populations now legitimately differ and the previous wave's lesson was that
+  they must never differ SILENTLY.
+- *`wf check rules` prints WHICH question its four numbers answer* — `10
+  marker(s), 5 id(s), 5 compared, 0 conflict(s)` was true about copy agreement
+  and read as a statement about correctness, while both copies of `[R5]` agreed
+  perfectly and both had gone FALSE against the four bullets arguing for them:
+  the fix rewrote the argument, not the rule. The scope line names the class and
+  points at `stale`.
+- *`freeze` records the corpus SIZE, with its delta* — 332 to ~1050 lines while
+  blockers ran 13, 17, 10, 16, 11. The blocker count alone reads as progress; a
+  corpus that doubles under it is a design being ELABORATED, and nothing else in
+  the workspace showed it.
+- *Two items were NOT built, deliberately* — a review rung below the round
+  (`wf apply -brief`) and a canned reviewer vector (`wf brief`), both with the
+  deciding measurement written down in `IDEAS.md`. The second has a sharpened
+  form from that gate worth more than the command: a criterion vector must
+  REQUIRE, per clause, either a named defeating implementation or an explicit "I
+  could not construct one" — the prose-about-soundness version produced 1
+  finding, the version demanding implementations produced 8.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file

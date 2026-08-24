@@ -194,6 +194,11 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    when the anchored share falls against the previous freeze the note says so, because an author who
    stopped anchoring is writing citations the gate cannot really verify.
 
+   **It also records the corpus SIZE, in lines, with the delta against the previous freeze.** One
+   number per round, and it answers a question no other number in the workspace does: a gate whose
+   document went 332 to ~1050 lines over five rounds while its blockers ran 13, 17, 10, 16, 11 is a
+   design being ELABORATED, not one being settled. The blocker count alone reads as steady progress.
+
    **Freeze also RESOLVES the citations, and names every one that no longer does** — a note, never a
    refusal, because a round whose whole purpose is re-aiming them must still freeze. It counted the
    anchors and never asked whether the citations still pointed at anything: on a gate that shipped its
@@ -498,8 +503,12 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   (`-round N`) — the next freeze refuses while a closed round's blocker stands open, and a record
   naming a commit that does not exist is rejected before it writes; read the block around each edit
   after making it; sweep with
-  `wf check dup` for copies that DRIFTED, then hand-check for copies that CONTRADICT, which no
-  similarity metric reaches; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
+  `wf check dup` for copies that DRIFTED and `wf check stale` for the consumers the fix's OWN old text
+  names, then hand-check for copies that CONTRADICT, which no similarity metric reaches;
+  run `wf check closure` before recording the closures, because it asks of every `closed by` sha the
+  question `wf round record` does not — whether that commit's diff reaches the SECTION the finding
+  cites (`D9`, `R12`: the form a ledger uses, and the only one that reaches a finding citing no line);
+  a FILE miss is a closure that did not land, a section miss is a question to re-ask; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
   `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines, and
   `wf apply` notes when a batch's CHANGED LINES predict a costly next round — measured, the case that
@@ -518,8 +527,17 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   prints.** Across the three closed gates the MIDDLE of the distribution has a prose fix at roughly 2
   to 5 findings per 100 changed lines and a rule-changing fix at roughly 6 to 15 — the four-edit batch
   above reads 14.9 and the twenty-seven-edit prose batch of the same gate reads 3.4. The tails are
-  real and are not the rule: a round whose window is the authoring commit, or one whose few changed
-  lines are post-gate tidying, reads in the hundreds and says nothing about a fix. An edit is not a unit and never was: one
+  real and are not the rule: a round whose window is the authoring commit prices a corpus its batches
+  did not write — it read 377.8 per 100 on one gate and `wf apply` predicted ~355 findings for a round
+  that produced 24 — so the tool now prints NO ratio for such a round and excludes it from the
+  prediction basis, naming the exclusion; a round whose few changed lines are post-gate tidying still
+  reads in the hundreds and still says nothing about a fix. **Read the SERIES, not the pooled ratio**,
+  which `wf apply` now prints: one gate ran 5.4, 7.1, 8.7, 10.3 findings per 100 changed lines while
+  its fixes SHRANK (447, 354, 264, 204 lines), so the pooled figure predicted 5-6 against actuals of
+  21-25, while a script gate measured the same ratio flat across a 12x range of batch sizes. The two
+  do not disagree: batch size predicts cost while what is left to fix is PROSE, and once the work
+  reaches the tightly-coupled core every changed line is a rule-changing line, the denominator shrinks
+  faster than the numerator, and the prediction is a floor. An edit is not a unit and never was: one
   two-edit window of another gate changed 933 lines, 931 of them in one commit, and the per-edit
   ratio printed the window as `38.00 finding(s)/edit`. Read the per-100-lines figure and read your own workspace's, not this paragraph's. **A fix that changes a rule re-opens every consumer of that
   rule, and the consumers are not in the diff.** Round 5 of that gate was the only round in which the
@@ -529,8 +547,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   four rule-change ripples on that run were sentences that argued from the old rule while containing
   none of its keywords — `grep -ni parallel context.md` returned nothing while a paragraph two lines
   below a corrected bar still described the parallel shape in other words. `wf check dup` finds the
-  copies that drifted; this class needs a read of every paragraph the rule's CONCLUSION touches, and it
-  is cheaper than the round it otherwise costs.
+  copies that drifted; **`wf check stale -since <ref>` finds this class mechanically**, because the
+  apply batch is the one artifact in the pipeline that records the exact text each fix replaced: it
+  keeps the tokens the fix RETIRED, drops the ones the corpus uses everywhere, and prints every
+  untouched sentence still carrying them, with the tokens beside it. What it cannot reach is a
+  consumer that shares NO vocabulary with the old text, and a fix that only added text retires nothing
+  at all — the check says `NOT A PASS` there rather than printing a clean line. So it narrows the read
+  of every paragraph the rule's CONCLUSION touches; it does not replace it, and it is cheaper than the
+  round the class otherwise costs.
 - **Vacuity is a BLOCKER, at classification time.** A finding that makes an observation, a guard or a
   tripwire *vacuous* — it passes whether or not the thing it checks exists — is a blocker, not a major.
   Classified there, it loops the gate under the rule below and its fix is reviewed like any other; no

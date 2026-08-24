@@ -38,7 +38,20 @@ func (d Drift) String() string {
 // hunk is one old-side region the target's diff touched. Counts follow unified
 // hunk headers: OldCount 0 is a pure insertion after line OldStart.
 type hunk struct {
-	oldStart, oldCount, newCount int
+	oldStart, oldCount int
+	newStart, newCount int
+}
+
+// fileDiff is everything the three readers of a unified diff need from one
+// file's entry. ONE parser, not three: the `-- ` trap below is a rule with a
+// measured cost behind it, and a second copy of it is the defect class this
+// project names as its most frequent.
+type fileDiff struct {
+	newPath string
+	deleted bool
+	hunks   []hunk
+	removed []string // the OLD text of every replacement, without its `-`
+	added   []string
 }
 
 // FindDrift intersects the target's frozenRef..HEAD diff with the cited ranges.
@@ -59,7 +72,7 @@ func FindDrift(target, frozenRef string, cits []Citation) ([]Drift, int, error) 
 	if err != nil {
 		return nil, 0, err
 	}
-	hunks, deleted := parseUnified(raw)
+	files := parseUnified(raw)
 
 	clean := 0
 	var out []Drift
@@ -75,13 +88,18 @@ func FindDrift(target, frozenRef string, cits []Citation) ([]Drift, int, error) 
 			out = append(out, Drift{Citation: c, Kind: "unresolved", Msg: msg})
 			continue
 		}
-		if deleted[path] {
+		fd := files[path]
+		if fd != nil && fd.deleted {
 			out = append(out, Drift{Citation: c, Kind: "gone",
 				Msg: path + " is gone at the current head"})
 			continue
 		}
 		edited, delta := false, 0
-		for _, h := range hunks[path] {
+		var hs []hunk
+		if fd != nil {
+			hs = fd.hunks
+		}
+		for _, h := range hs {
 			switch {
 			case h.oldCount == 0:
 				// Insertion after old line oldStart. Inside the cited range it
@@ -124,7 +142,7 @@ func rangeStr(start, end int) string {
 	return fmt.Sprintf("%d-%d", start, end)
 }
 
-var hunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@`)
+var hunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
 // parseUnified reads a --unified=0 diff into old-side hunks per old path, plus
 // the set of deleted files (new side /dev/null).
@@ -139,11 +157,18 @@ var hunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+\d+(?:,(\d+))? @@`)
 // The milder shape is worse than silence — a real `edited` degrades to
 // `shifted`, which tells the reviewer to re-aim the line number instead of
 // re-reading the claim.
-func parseUnified(raw string) (map[string][]hunk, map[string]bool) {
-	hunks := map[string][]hunk{}
-	deleted := map[string]bool{}
+func parseUnified(raw string) map[string]*fileDiff {
+	files := map[string]*fileDiff{}
 	cur := ""
 	inHeader := false
+	get := func() *fileDiff {
+		fd := files[cur]
+		if fd == nil {
+			fd = &fileDiff{}
+			files[cur] = fd
+		}
+		return fd
+	}
 	for _, l := range strings.Split(raw, "\n") {
 		switch {
 		case strings.HasPrefix(l, "diff --git "):
@@ -156,8 +181,14 @@ func parseUnified(raw string) (map[string][]hunk, map[string]bool) {
 				cur = strings.TrimPrefix(cur, "a/")
 			}
 		case inHeader && strings.HasPrefix(l, "+++ "):
-			if cur != "" && strings.TrimPrefix(l, "+++ ") == "/dev/null" {
-				deleted[cur] = true
+			np := strings.TrimPrefix(l, "+++ ")
+			if cur != "" {
+				fd := get()
+				if np == "/dev/null" {
+					fd.deleted = true
+				} else {
+					fd.newPath = strings.TrimPrefix(np, "b/")
+				}
 			}
 			inHeader = false
 		case strings.HasPrefix(l, "@@ "):
@@ -169,17 +200,24 @@ func parseUnified(raw string) (map[string][]hunk, map[string]bool) {
 			if m == nil {
 				continue
 			}
-			h := hunk{oldStart: mustAtoi(m[1]), oldCount: 1, newCount: 1}
+			h := hunk{oldStart: mustAtoi(m[1]), oldCount: 1, newStart: mustAtoi(m[3]), newCount: 1}
 			if m[2] != "" {
 				h.oldCount = mustAtoi(m[2])
 			}
-			if m[3] != "" {
-				h.newCount = mustAtoi(m[3])
+			if m[4] != "" {
+				h.newCount = mustAtoi(m[4])
 			}
-			hunks[cur] = append(hunks[cur], h)
+			fd := get()
+			fd.hunks = append(fd.hunks, h)
+		case cur != "" && !inHeader && strings.HasPrefix(l, "-"):
+			fd := get()
+			fd.removed = append(fd.removed, l[1:])
+		case cur != "" && !inHeader && strings.HasPrefix(l, "+"):
+			fd := get()
+			fd.added = append(fd.added, l[1:])
 		}
 	}
-	return hunks, deleted
+	return files
 }
 
 func mustAtoi(s string) int {

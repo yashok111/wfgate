@@ -176,29 +176,31 @@ func cmdClose(args []string) error {
 	// The freeze manifests, as one table. Their artifact hashes stop meaning
 	// anything the moment the artifacts go, but the rest does not: the target
 	// revision each round was verified against, the tool version that verified
-	// it, and the anchored share whose DIRECTION is the ratchet — an author who
+	// it, the size of the corpus each round froze, and the anchored share whose
+	// DIRECTION is the ratchet — an author who
 	// stopped anchoring writes citations the gate cannot really check.
 	var fz strings.Builder
-	fz.WriteString("round\tfrozen\tcommit\ttargetRef\ttool\tciteAnchored\tciteTotal\n")
+	fz.WriteString("round\tfrozen\tcommit\ttargetRef\ttool\tciteAnchored\tciteTotal\tartifactLines\n")
 	for n := 1; n <= last; n++ {
 		b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
 		if err != nil {
 			continue
 		}
 		var m struct {
-			Round        int    `json:"round"`
-			Commit       string `json:"commit"`
-			TargetRef    string `json:"targetRef"`
-			Tool         string `json:"tool"`
-			Frozen       string `json:"frozen"`
-			CiteAnchored int    `json:"citeAnchored"`
-			CiteTotal    int    `json:"citeTotal"`
+			Round         int    `json:"round"`
+			Commit        string `json:"commit"`
+			TargetRef     string `json:"targetRef"`
+			Tool          string `json:"tool"`
+			Frozen        string `json:"frozen"`
+			CiteAnchored  int    `json:"citeAnchored"`
+			CiteTotal     int    `json:"citeTotal"`
+			ArtifactLines int    `json:"artifactLines"`
 		}
 		if json.Unmarshal(b, &m) != nil {
 			continue
 		}
-		fmt.Fprintf(&fz, "%d\t%s\t%s\t%s\t%s\t%d\t%d\n",
-			m.Round, m.Frozen, m.Commit, m.TargetRef, m.Tool, m.CiteAnchored, m.CiteTotal)
+		fmt.Fprintf(&fz, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%d\n",
+			m.Round, m.Frozen, m.Commit, m.TargetRef, m.Tool, m.CiteAnchored, m.CiteTotal, m.ArtifactLines)
 	}
 	if err := put("freezes.tsv", []byte(fz.String())); err != nil {
 		return err

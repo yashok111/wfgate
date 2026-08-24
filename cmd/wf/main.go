@@ -49,7 +49,9 @@ const usage = `wf — gate harness
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
-  wf check [cite|dup|drift|rules] deterministic checks over the artifacts
+  wf check [cite|dup|drift|rules|stale|closure] deterministic checks over the artifacts
+                                  stale -since REF: sentences still using vocabulary a fix retired
+                                  closure [-round N]: does each closing commit touch what the finding names
   wf stats [-time]                per-round findings, closures and batches, from the ledger and git
   wf new-script <name>            emit the orchestration-script harness: wrapper, schemas, gate, ledger
   wf close [-archive DIR]         bank the gate's own record — history, stats, findings, a feedback scaffold
@@ -333,8 +335,8 @@ func cmdApply(args []string) error {
 	// against comes from --numstat, and a ratio whose two halves count different
 	// things is worse than no ratio. Measured: a P2e window of two edits changed
 	// 933 lines, 931 of them in one commit the subject-only meter never saw.
-	histLines, histFindings := batchHistory(w)
-	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), histLines, histFindings); warn {
+	hist, authoringSkipped := batchHistory(w)
+	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), hist, authoringSkipped); warn {
 		fmt.Println(note)
 	}
 	subject := *msg
@@ -636,6 +638,12 @@ type freezeManifest struct {
 	// stopped anchoring writes citations this gate cannot really verify.
 	CiteAnchored int `json:"citeAnchored"`
 	CiteTotal    int `json:"citeTotal"`
+	// The corpus this round froze, in lines. A gate whose document doubles while
+	// the blocker count holds is a design being ELABORATED rather than settled,
+	// and nothing else in the workspace shows it: measured on a live decision
+	// gate, 332 -> ~1050 lines over five rounds against blockers 13, 17, 10, 16,
+	// 11. One number per freeze is the whole feature.
+	ArtifactLines int `json:"artifactLines"`
 }
 
 func cmdFreeze(args []string) error {
@@ -764,6 +772,7 @@ func cmdFreeze(args []string) error {
 		}
 		sum := sha256.Sum256(b)
 		fm.Artifacts[a] = hex.EncodeToString(sum[:])
+		fm.ArtifactLines += countLines(b)
 	}
 	cits, err := check.ScanCitations(w.Root, arts)
 	if err != nil {
@@ -849,6 +858,13 @@ func cmdFreeze(args []string) error {
 	}
 	fmt.Printf("frozen round %d\n  commit %s\n  tag    %s\n  target %s\n  tool   %s\n", w.M.Round, short(sha), tag, fm.TargetRef, fm.Tool)
 	fmt.Printf("  cites  %d anchored / %d citation(s)\n", fm.CiteAnchored, fm.CiteTotal)
+	size := fmt.Sprintf("  size   %d line(s) across %d artifact(s)", fm.ArtifactLines, len(arts))
+	// The DELTA, not only the number: growth is the reading, and a reader who
+	// has to open the previous freeze.json to get it will not get it.
+	if prev.ArtifactLines > 0 {
+		size += fmt.Sprintf(" (%+d since round %d)", fm.ArtifactLines-prev.ArtifactLines, prev.Round)
+	}
+	fmt.Println(size)
 	for _, a := range arts {
 		fmt.Printf("  %s  %s\n", fm.Artifacts[a][:12], a)
 	}
@@ -890,6 +906,20 @@ func cmdFreeze(args []string) error {
 			fm.CiteAnchored, fm.CiteTotal, prev.CiteAnchored, prev.CiteTotal, prev.Round)
 	}
 	return nil
+}
+
+// countLines is the artifact size the freeze records. A file not ending in a
+// newline still has a last line, and counting separators alone would report it
+// as one short.
+func countLines(b []byte) int {
+	if len(b) == 0 {
+		return 0
+	}
+	n := bytes.Count(b, []byte("\n"))
+	if b[len(b)-1] != '\n' {
+		n++
+	}
+	return n
 }
 
 // handEditedArtifactCommits counts the commits of the OPEN round that changed an
@@ -1297,7 +1327,14 @@ func cmdCheck(args []string) error {
 	thr := fs.Float64("threshold", 0.82, "dup: similarity threshold for a near match")
 	minWords := fs.Int("min-words", 8, "dup: shortest statement compared")
 	round := fs.Int("round", 0, "drift: frozen round to measure from (default the newest)")
-	since := fs.String("since", "", "dup: show only groups with a copy touched after this ref")
+	since := fs.String("since", "", "dup: show only groups with a copy touched after this ref; stale: the fix range to mine (default the newest freeze)")
+	// Calibrated on a live gate's real fix range (450 sentences, 1050 lines):
+	// at 8 the report was 26 hits carrying "were", "right", "tell", "stays" —
+	// English, not vocabulary — and at 3 it is 8 hits over 5 retired tokens,
+	// each judgeable in seconds. `dup`'s history decided the direction: a check
+	// that paints most of its output is a check nobody runs twice. The dropped
+	// population is printed, so raising it is one flag away.
+	maxDF := fs.Int("max-df", 3, "stale: a retired token in more than this many sentences is corpus vocabulary, not a consumer")
 	if _, err := parseMixed(fs, args); err != nil {
 		return err
 	}
@@ -1316,6 +1353,19 @@ func cmdCheck(args []string) error {
 	// keep working on a workspace that has not frozen anything yet.
 	if which == "drift" {
 		return runDrift(w, arts, *round)
+	}
+	// stale is not part of "all" for drift's reason: it is measured FROM a
+	// reference, and "all" must keep working on a workspace that has frozen
+	// nothing yet.
+	if which == "stale" {
+		bad, err := runStale(w, arts, *since, *minWords, *maxDF)
+		if err != nil {
+			return err
+		}
+		if bad {
+			return errFindings
+		}
+		return nil
 	}
 	fail := false
 	if which == "all" || which == "cite" {
@@ -1339,8 +1389,18 @@ func cmdCheck(args []string) error {
 		}
 		fail = fail || bad
 	}
-	if which != "all" && which != "cite" && which != "dup" && which != "rules" {
-		return fmt.Errorf("unknown check %q (cite, dup, drift, rules)", which)
+	// closure IS part of "all": the check exists because a whole live round of
+	// hand-written reviewer prompts was spent asking it, and a check nobody runs
+	// by default is the prompt again with a shorter name.
+	if which == "all" || which == "closure" {
+		bad, err := runClosure(w, arts, *round)
+		if err != nil {
+			return err
+		}
+		fail = fail || bad
+	}
+	if which != "all" && which != "cite" && which != "dup" && which != "rules" && which != "closure" {
+		return fmt.Errorf("unknown check %q (cite, dup, drift, rules, stale, closure)", which)
 	}
 	if fail {
 		return errFindings
@@ -1622,6 +1682,15 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 		hdr += " — NOT A PASS, nothing was compared"
 	}
 	fmt.Println(hdr)
+	// WHICH question those four numbers answer, printed with them and always.
+	// Measured on a live decision gate: `10 marker(s), 5 id(s), 5 compared, 0
+	// conflict(s)` was a true statement about copy agreement and was read as a
+	// statement about correctness — while [R5]'s two copies agreed with each
+	// other perfectly and both had become FALSE against the four bullets of the
+	// section that argues for them, because the fix rewrote the argument and not
+	// the rule. A reviewer filed it as a blocker over a check that had just
+	// printed a clean line.
+	fmt.Printf("  scope: this compares the SITES of one [RN] id against each other. It never asks whether a rule still agrees with the section that ARGUES for it — that class is `wf check stale`, and no count here says anything about it\n")
 	// A marked corpus where every id sits at ONE site reaches nothing, and the
 	// bare conflict count then reads as a pass. Measured on a live gate, after
 	// the repair below was done the wrong way round.
@@ -1663,6 +1732,285 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 	return len(conflicts) > 0, nil
 }
 
+// runStale reports the consumers a fix left standing. `wf apply` has printed
+// the advice since the meter existed — "if this batch changed a RULE, its
+// consumers are NOT in this diff, sweep for restatements of the OLD rule now" —
+// and no command could act on it. This is that sweep, and it is possible only
+// here: the fix range records the exact text each replacement removed.
+//
+// Measured on a live decision gate (5 rounds, 127 findings): roughly a fifth to
+// a quarter of every round's claimed closures were incomplete, and the failure
+// was almost always this one — the fix corrected one copy of a rule and left
+// another standing, in words no `dup` group and no `[RN]` marker reaches.
+func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int) (bool, error) {
+	if since == "" {
+		n := newestFrozen(w)
+		if n == 0 {
+			return false, fmt.Errorf("nothing is frozen yet, so there is no fix range to mine; pass -since <ref>")
+		}
+		since = ws.RoundTag(n)
+	}
+	// --unified=0 and forced prefixes for the same reason `check drift` uses
+	// them: the parse must not depend on a host diff config, and the OLD text is
+	// wanted without context lines around it.
+	raw, err := w.Git.Run("diff", "--no-renames", "--no-ext-diff", "--unified=0",
+		"--src-prefix=a/", "--dst-prefix=b/", since, "HEAD", "--", "artifacts")
+	if err != nil {
+		return false, err
+	}
+	sts, err := check.CollectStatements(w.Root, arts, minWords)
+	if err != nil {
+		return false, err
+	}
+	rep := check.FindStale(sts, raw, maxDF)
+	fmt.Printf("## stale — %s..HEAD: %d retired token(s), %d sentence(s) still carrying them (%d scanned, %d written by the range)\n",
+		since, len(rep.Retired), len(rep.Hits), rep.Scanned, rep.Touched)
+	// The two populations that decide whether the line above is a measurement.
+	// A range that retired NO vocabulary checked nothing, and "0 sentences" over
+	// it is the vacuous pass this project names as its worst failure.
+	if len(rep.Retired) == 0 {
+		fmt.Printf("  note: NOT A PASS — this range retired no rare vocabulary at all, so nothing was swept. A fix that only ADDED text, or one whose every removed word survives elsewhere in the diff, is invisible to this check\n")
+	}
+	if rep.Common > 0 {
+		fmt.Printf("  note: %d retired token(s) are used all over the corpus and were dropped rather than reported — the OUTPUT is narrowed, never the check; lower -max-df (now %d) to see them\n", rep.Common, maxDF)
+	}
+	if len(rep.Retired) > 0 {
+		fmt.Printf("  retired: %s\n", strings.Join(trimList(rep.Retired, 12), ", "))
+	}
+	for i, h := range rep.Hits {
+		if i == 25 {
+			fmt.Printf("    ... and %d more\n", len(rep.Hits)-25)
+			break
+		}
+		fmt.Printf("  %s:%d  [%s]  %s\n", h.File, h.Line, strings.Join(h.Tokens, " "), trunc(h.Text, 110))
+	}
+	if len(rep.Hits) > 0 {
+		fmt.Printf("  note: a hit is a sentence the fix did not touch that still uses the words the fix retired. Which of them ARGUES from the superseded rule and which merely shares its vocabulary is judgement — this check reports, it never rewrites\n")
+	}
+	return len(rep.Hits) > 0, nil
+}
+
+// runClosure asks of every claimed closure the question `wf round record` does
+// not: the sha exists, but does its diff touch what the finding NAMES.
+//
+// Measured: on a live decision gate the operator wrote that question into two
+// reviewer prompts by hand for three rounds running, and the two lenses
+// independently reported 6 and 4, 5 and 4, 6 and 4 closures they judged not
+// closed, out of 25, 23 and 21 findings. It was the most valuable half of those
+// rounds and it was produced entirely by prose instruction over data git holds.
+func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
+	rounds := []int{}
+	if round > 0 {
+		rounds = append(rounds, round)
+	} else {
+		for n := 1; n <= w.M.Round; n++ {
+			rounds = append(rounds, n)
+		}
+	}
+	// Cached per sha: one round's findings routinely name the same closing
+	// batch a dozen times.
+	touched := map[string]map[string][][2]int{}
+	ranges := func(sha string) map[string][][2]int {
+		if r, ok := touched[sha]; ok {
+			return r
+		}
+		raw, err := w.Git.Run("show", "--no-renames", "--no-ext-diff", "--unified=0",
+			"--src-prefix=a/", "--dst-prefix=b/", "--format=", sha)
+		var r map[string][][2]int
+		if err == nil {
+			r = check.TouchedRanges(raw)
+		}
+		touched[sha] = r
+		return r
+	}
+	claims, checked, unnamed, unreadable, implied, sectionless := 0, 0, 0, 0, 0, 0
+	// The artifact as it stood BEFORE a commit, which is the coordinate system
+	// that commit's old-side ranges are in. Cached: one round's closures name
+	// the same batch a dozen times.
+	sections := map[string]map[string][2]int{}
+	sectionsAt := func(sha, path string) map[string][2]int {
+		key := sha + "\x00" + path
+		if m, ok := sections[key]; ok {
+			return m
+		}
+		var m map[string][2]int
+		if body, err := w.Git.Run("show", sha+"^:"+path); err == nil {
+			m = check.SectionRanges([]byte(body))
+		}
+		sections[key] = m
+		return m
+	}
+	var bad []string
+	for _, n := range rounds {
+		b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md"))
+		if err != nil {
+			continue
+		}
+		for _, r := range ws.ParseFindings(b) {
+			if r.Malformed || r.Placeholder() || len(r.Shas()) == 0 {
+				continue
+			}
+			claims++
+			named := check.PathsNamed(r.Text, arts)
+			if len(named) == 0 && len(arts) == 1 {
+				// A one-artifact workspace: the finding names the only document
+				// there is, and requiring it to say so out loud would make the
+				// check unreachable on exactly the gates that need it most.
+				named = map[string][]int{arts[0]: {0}}
+				implied++
+			}
+			if len(named) == 0 {
+				// Not a pass and not a failure: a finding that names no artifact
+				// cannot be checked this way, and the count is printed so the
+				// checked share is visible rather than assumed.
+				unnamed++
+				continue
+			}
+			// The union over every sha the row claims: a finding closed by three
+			// commits is closed by their combined diff.
+			union := map[string][][2]int{}
+			miss := false
+			for _, sha := range r.Shas() {
+				rr := ranges(sha)
+				if rr == nil {
+					miss = true
+					continue
+				}
+				for p, rs := range rr {
+					union[p] = append(union[p], rs...)
+				}
+			}
+			if miss {
+				unreadable++
+				continue
+			}
+			checked++
+			for _, p := range sortedKeys(named) {
+				rs, ok := union[p]
+				if !ok {
+					bad = append(bad, fmt.Sprintf("round %d [%s] closed by %s, which changed %s and NOT %s",
+						n, r.Num, strings.Join(r.Shas(), " "), fileList(union), p))
+					continue
+				}
+				for _, ln := range named[p] {
+					if ln > 0 && !check.RangesCover(rs, ln) {
+						bad = append(bad, fmt.Sprintf("round %d [%s] closed by %s, which changed %s but not line %d",
+							n, r.Num, strings.Join(r.Shas(), " "), p, ln))
+					}
+				}
+				// The SECTION the finding cites — the form a real ledger uses.
+				// Measured on a live decision gate: 126 of 127 closures named no
+				// path and nearly every one named a section, so this is the
+				// reach the check actually has.
+				//
+				// ANY cited section, against the UNION of the closing commits.
+				// Demanding every one of them, per commit, flagged 89 of 127
+				// closures on that gate — a finding that mentions a neighbouring
+				// section in passing is not a finding about it, and a closure
+				// carried by two commits is closed by their combined diff. A
+				// check that paints most of its output is a check nobody runs
+				// twice; `dup` paid for that lesson at 161 groups of 176.
+				var resolved []string
+				hit := false
+				for _, id := range check.SectionsNamed(r.Text) {
+					var rng [2]int
+					ok := false
+					for _, sha := range r.Shas() {
+						if secs := sectionsAt(sha, p); secs != nil {
+							if rr, found := secs[id]; found {
+								rng, ok = rr, true
+								break
+							}
+						}
+					}
+					if !ok {
+						continue
+					}
+					resolved = append(resolved, fmt.Sprintf("%s (%d-%d)", id, rng[0], rng[1]))
+					if overlaps(rs, rng) {
+						hit = true
+					}
+				}
+				switch {
+				case len(resolved) == 0:
+					sectionless++
+				case !hit:
+					bad = append(bad, fmt.Sprintf("round %d [%s] closed by %s, which changed %s but NOT any section it cites: %s",
+						n, r.Num, strings.Join(r.Shas(), " "), p, strings.Join(resolved, ", ")))
+				}
+			}
+		}
+	}
+	fmt.Printf("## closure — %d closure(s) claiming a commit, %d checked against the artifact they name, %d not closed by that commit\n",
+		claims, checked, len(bad))
+	if implied > 0 {
+		fmt.Printf("  note: %d closure(s) name no path and were checked against %s, the workspace's only artifact\n", implied, arts[0])
+	}
+	if sectionless > 0 {
+		// The weaker half of the check, and it has to say which half it ran. A
+		// commit that touched the artifact SOMEWHERE is a much smaller claim
+		// than one that touched the section the finding cites.
+		fmt.Printf("  note: %d closure(s) cite no section this artifact heads, so they were checked only at FILE level — a commit that touched the document anywhere passes that. Cite the section id (D9) or the line and the check reaches the claim\n", sectionless)
+	}
+	if claims > 0 && checked == 0 {
+		fmt.Printf("  note: NOT A PASS — no closure could be checked. `wf round record` proves the sha EXISTS; this check proves the commit touched what the finding names, and it reaches a finding only where the finding names an artifact path\n")
+	}
+	if unnamed > 0 {
+		fmt.Printf("  note: %d closure(s) name no artifact path in the finding text and were NOT checked — write the path (and the line) into the finding and they become checkable\n", unnamed)
+	}
+	if unreadable > 0 {
+		fmt.Printf("  note: %d closure(s) name a commit git could not read here, so they are ABSENT from the count above rather than clean\n", unreadable)
+	}
+	for _, l := range bad {
+		fmt.Println("  " + l)
+	}
+	if len(bad) > 0 {
+		fmt.Printf("  note: a FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is a question to re-ask, not a verdict: the fix may have landed in the section that PRODUCES the defect rather than the one the finding cites, and a later batch in the same round shifts the numbers. Verified by hand on a live gate — 12 of 127, and the first three read that way\n")
+	}
+	return len(bad) > 0, nil
+}
+
+// overlaps is range-vs-range, where RangesCover is range-vs-line: a fix inside
+// a section rarely starts on the heading.
+func overlaps(rs [][2]int, r [2]int) bool {
+	for _, a := range rs {
+		if a[0] <= r[1] && a[1] >= r[0] {
+			return true
+		}
+	}
+	return false
+}
+
+// trimList caps a printed population and says so, rather than printing a
+// hundred tokens nobody reads.
+func trimList(xs []string, n int) []string {
+	if len(xs) <= n {
+		return xs
+	}
+	return append(append([]string{}, xs[:n]...), fmt.Sprintf("... +%d more", len(xs)-n))
+}
+
+func sortedKeys(m map[string][]int) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func fileList(m map[string][][2]int) string {
+	if len(m) == 0 {
+		return "nothing under artifacts/"
+	}
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return strings.Join(trimList(out, 4), ", ")
+}
+
 // cmdStats derives the numbers a close/continue decision needs from what the
 // workspace already records — the findings ledger and git — instead of the
 // operator's own awk. Measured need: hand-counting on the first live gate
@@ -1695,6 +2043,8 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// batch report that no apply commit existed, which is a stronger and false
 	// claim.
 	gateBatches := len(applyBatches(w, "HEAD"))
+	// ONE derivation of a round's window, shared with the cost meter.
+	windows := roundWindows(w)
 	var times map[int]roundTime
 	if showTimeFlag {
 		times = roundTimes(w)
@@ -1770,10 +2120,9 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			revF += findings
 			revB += blockers
 		}
-		tag := ws.RoundTag(n)
-		state := tag
-		if !w.Git.TagExists(tag) {
-			state, tag = "open", "HEAD"
+		state := ws.RoundTag(n)
+		if !w.Git.TagExists(state) {
+			state = "open"
 		}
 		if k := kinds[n]; k != "" {
 			state += ", " + k
@@ -1786,13 +2135,8 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		// a live gate: rounds 1, 2 and 3 each printed the workspace total, with
 		// ratios of 0.88 and 0.15 fabricated from the same 26 edits. A number
 		// that cannot be attributed is omitted, not printed.
-		lowerOK := n == 1 || w.Git.TagExists(ws.RoundTag(n-1))
-		upperOK := w.Git.TagExists(ws.RoundTag(n)) || n == w.M.Round
-		attributable := lowerOK && upperOK
-		rng := tag
-		if n > 1 {
-			rng = ws.RoundTag(n-1) + ".." + tag
-		}
+		rw := windows[n-1]
+		attributable, rng := rw.Attributable, rw.Range
 		batches, edits, lines, unknown := 0, 0, 0, 0
 		if attributable {
 			for _, b := range applyBatches(w, rng) {
@@ -1866,13 +2210,35 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 				ed += fmt.Sprintf(" (%d batch(es) unreadable — no ratio)", unknown)
 			}
 			if findings > 0 && lines > 0 && unknown == 0 {
-				ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
-					100*float64(findings)/float64(lines))
+				if rw.Authoring {
+					// The window that wrote the corpus prices nothing. Printing
+					// "377.8 finding(s) per 100 changed line(s)" in the register
+					// of a measurement is how the meter came to predict ~355
+					// findings for a round that produced 24.
+					ed += " (authoring window — the artifact was CREATED here, so there is no ratio)"
+				} else {
+					ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
+						100*float64(findings)/float64(lines))
+				}
 			}
 		}
 		fi := ""
 		if fixInduced > 0 {
 			fi = fmt.Sprintf("; fix-induced %d", fixInduced)
+		}
+		// The corpus each round froze. A document that doubles while the blocker
+		// count holds is a design being elaborated rather than settled, and this
+		// is the only place the shape is visible: measured 332 -> ~1050 lines
+		// over five rounds against blockers 13, 17, 10, 16, 11.
+		sz := ""
+		if cur, ok := frozenLines(w, n); ok {
+			sz = fmt.Sprintf("; artifact %d line(s)", cur)
+			for p := n - 1; p >= 1; p-- {
+				if prev, ok := frozenLines(w, p); ok {
+					sz += fmt.Sprintf(" (%+d)", cur-prev)
+					break
+				}
+			}
 		}
 		tm := ""
 		if rt, ok := times[n]; ok {
@@ -1881,8 +2247,8 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 				tm += fmt.Sprintf(" (review %.1f, fix %.1f, tail %.1f)", rt.Review, rt.Fix, rt.Tail)
 			}
 		}
-		_, _ = fmt.Fprintf(out, "  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s\n",
-			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi, tm)
+		_, _ = fmt.Fprintf(out, "  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s%s\n",
+			n, state, findings, blockers, byCommit, byProse, open, batches, ed, sz, fi, tm)
 	}
 	_, _ = fmt.Fprintf(out, "  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
 	if len(oneBlockerRun) >= 3 {
@@ -1995,6 +2361,27 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		}
 		_, _ = fmt.Fprintf(out, " across the gate\n")
 	}
+	// The cost line above is the WHOLE population — every batch, including the
+	// ones after the last freeze, which belong to no round window. `wf apply`
+	// predicts from a narrower one, and the two numbers therefore differ. That
+	// used to happen silently and by 60% on a live gate, which is why one
+	// derivation is shared; where they legitimately differ, the difference is
+	// PRINTED rather than reconciled by pretending one of them is the other.
+	if hist, skipped := batchHistory(w); len(hist) > 0 {
+		hl, hf := 0, 0
+		var ns []int
+		for _, h := range hist {
+			hl += h.Lines
+			hf += h.Findings
+			ns = append(ns, h.N)
+		}
+		line := fmt.Sprintf("  prediction basis — rounds %s, %d finding(s) over %d changed line(s), %.1f per 100; `wf apply` predicts from THIS, not from the gate total above",
+			roundList(ns), hf, hl, 100*float64(hf)/float64(hl))
+		if len(skipped) > 0 {
+			line += fmt.Sprintf(" (round(s) %s excluded — their window contains the authoring commit and prices a corpus their batches did not write)", roundList(skipped))
+		}
+		_, _ = fmt.Fprintln(out, line)
+	}
 	if showTimeFlag {
 		spans := make([]float64, 0, len(times))
 		longest, longestN := 0.0, 0
@@ -2021,6 +2408,24 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// frozenLines reads the artifact size a round's freeze recorded. Older freezes
+// carry no such field, and a missing one is ABSENT, never zero: a workspace
+// frozen by an earlier binary must not report its corpus as having shrunk to
+// nothing.
+func frozenLines(w *ws.Workspace, n int) (int, bool) {
+	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
+	if err != nil {
+		return 0, false
+	}
+	var m struct {
+		ArtifactLines int `json:"artifactLines"`
+	}
+	if json.Unmarshal(b, &m) != nil || m.ArtifactLines == 0 {
+		return 0, false
+	}
+	return m.ArtifactLines, true
 }
 
 // docNames maps a `wf docs` argument to its embedded reference. `guide` is a
@@ -2494,32 +2899,135 @@ func applyCommitEdits(msg string) (edits int, src string, ok bool) {
 	return 0, "", false
 }
 
-// batchHistory sums what this workspace has already measured about itself:
-// edits applied (from apply commit subjects) and findings filed (from the
-// ledger). P2e produced the number the meter exists for — roughly one finding
-// per four edits, stable across a 12x range of batch sizes — but a workspace's
-// OWN ratio is the only form in which that number will be believed.
-func batchHistory(w *ws.Workspace) (lines, findings int) {
-	for _, b := range applyBatches(w, "HEAD") {
-		lines += b.Lines
+// roundWindow is one round's apply window as BOTH readers of it see it — the
+// per-round report and the cost meter. It is one derivation because the two
+// used to compute the window separately, and a second copy of one rule is the
+// defect class this project names as its most frequent.
+type roundWindow struct {
+	N            int
+	Range        string
+	Attributable bool
+	// Authoring is true when the window contains the commit that first put an
+	// artifact under artifacts/. Such a window prices a corpus its batches did
+	// not produce: measured on a live decision gate, round 1 filed 34 findings
+	// against 9 attributable changed lines, the meter read 377.8 per 100, and
+	// `wf apply` predicted "~355 finding(s) in the next round" against an actual
+	// 24. A prediction from that window is not a large number, it is no number.
+	Authoring bool
+}
+
+// roundWindows bounds each round below by the previous round's tag and above by
+// its own. An untagged round earlier than the last has neither bound, so its
+// range would degrade to every ancestor — measured: three rounds each printed
+// the workspace total, with two different ratios fabricated from the same 26
+// edits.
+func roundWindows(w *ws.Workspace) []roundWindow {
+	created := map[string]bool{}
+	if out, err := w.Git.Run("log", "--format=%H", "--diff-filter=A", "--", "artifacts"); err == nil {
+		for _, f := range strings.Fields(out) {
+			created[f] = true
+		}
 	}
+	var out []roundWindow
 	for n := 1; n <= w.M.Round; n++ {
-		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
+		tag := ws.RoundTag(n)
+		ref := tag
+		if !w.Git.TagExists(tag) {
+			ref = "HEAD"
+		}
+		lowerOK := n == 1 || w.Git.TagExists(ws.RoundTag(n-1))
+		upperOK := w.Git.TagExists(tag) || n == w.M.Round
+		rw := roundWindow{N: n, Range: ref, Attributable: lowerOK && upperOK}
+		if n > 1 {
+			rw.Range = ws.RoundTag(n-1) + ".." + ref
+		}
+		if rw.Attributable {
+			for _, c := range commitLog(w, rw.Range) {
+				if created[c.SHA] {
+					rw.Authoring = true
+					break
+				}
+			}
+		}
+		out = append(out, rw)
+	}
+	return out
+}
+
+// histRound is one round the cost meter can actually learn from.
+type histRound struct {
+	N        int
+	Findings int
+	Lines    int
+}
+
+// batchHistory sums what this workspace has already measured about itself:
+// changed lines (from its apply commits) and findings filed (from the ledger).
+// A workspace's OWN ratio is the only form in which the number will be believed.
+//
+// Rounds whose window contains the authoring commit are EXCLUDED, not weighted:
+// their findings were filed against a corpus those batches did not write, and
+// including one made the meter predict ~355 findings for a round that produced
+// 24. Excluding is honest in a way that any correction factor would not be —
+// there is no ratio there to correct.
+func batchHistory(w *ws.Workspace) (hist []histRound, authoringSkipped []int) {
+	for _, rw := range roundWindows(w) {
+		if !rw.Attributable {
+			continue
+		}
+		lines := 0
+		for _, b := range applyBatches(w, rw.Range) {
+			if !b.Known {
+				// An unreadable batch is an unknown denominator, and a ratio over
+				// a denominator short by an unknown amount is not a smaller
+				// ratio, it is no ratio.
+				lines = 0
+				break
+			}
+			lines += b.Lines
+		}
+		findings := 0
+		if b, err := os.ReadFile(filepath.Join(w.RoundDir(rw.N), "findings.md")); err == nil {
 			for _, r := range ws.ParseFindings(b) {
 				if !r.Placeholder() && !r.Malformed {
 					findings++
 				}
 			}
 		}
+		if lines == 0 || findings == 0 {
+			continue
+		}
+		if rw.Authoring {
+			authoringSkipped = append(authoringSkipped, rw.N)
+			continue
+		}
+		hist = append(hist, histRound{N: rw.N, Findings: findings, Lines: lines})
 	}
-	return lines, findings
+	return hist, authoringSkipped
 }
 
 // batchNote is the apply-side half of the cost meter: a NOTE, never a refusal
 // — the operator may have a reason, and a tool that blocks a legal operation
 // on a heuristic gets worked around rather than heeded. No history, no claim:
 // an unmeasured workspace predicts nothing.
-func batchNote(edits, lines, histLines, histFindings int) (string, bool) {
+//
+// It prints the workspace's own TREND, not only its pooled ratio, and says
+// which regime the number came from. Measured on a live decision gate: the
+// fixes got steadily smaller (447 -> 354 -> 264 -> 204 changed lines) and
+// steadily denser in defects (5.4 -> 7.1 -> 8.7 -> 10.3 per 100), so a pooled
+// ratio predicted 5-6 findings against actuals of 21-25. A script gate measured
+// the ratio FLAT across a 12x range of batch sizes. The two do not disagree —
+// they measure different regimes, and the pooled number cannot say which one it
+// came from. The series can, and the operator reads it in one glance.
+func batchNote(edits, lines int, hist []histRound, authoringSkipped []int) (string, bool) {
+	if len(hist) == 0 {
+		return "", false
+	}
+	histLines, histFindings := 0, 0
+	for _, h := range hist {
+		histLines += h.Lines
+		histFindings += h.Findings
+	}
 	if histLines == 0 || histFindings == 0 {
 		return "", false
 	}
@@ -2528,13 +3036,40 @@ func batchNote(edits, lines, histLines, histFindings int) (string, bool) {
 	if predicted < 5 {
 		return "", false
 	}
-	// The second sentence is the one that matters and the tool cannot check it.
-	// Measured on the gate that produced the rule: its FOUR-edit batch was the
-	// most expensive of the run and its thirteen-edit batch the cheapest, and
-	// what separated them was whether the fix changed a RULE — whose consumers
-	// are not in the diff, so nothing here can see them.
-	return fmt.Sprintf("  note: %d edit(s) changing %d line(s); this workspace's own history (%d finding(s) over %d changed line(s), %.1f per 100) predicts ~%.0f finding(s) in the next round — split by RULE (one rule and all its copies per batch), never mechanically. And if this batch changed a RULE, its consumers are NOT in this diff: sweep for restatements of the OLD rule now, or the next round will do it for you",
-		edits, lines, histFindings, histLines, per100, predicted), true
+	var series []string
+	for _, h := range hist {
+		series = append(series, fmt.Sprintf("r%d %.1f", h.N, 100*float64(h.Findings)/float64(h.Lines)))
+	}
+	dir := ""
+	// Three rounds is the shortest run in which a direction is a direction and
+	// not two points. Only monotone runs are named: the reading is "which regime
+	// is this gate in", and a series that wanders is not in one.
+	if len(hist) >= 3 {
+		up, down := true, true
+		for k := 1; k < len(hist); k++ {
+			a := float64(hist[k-1].Findings) / float64(hist[k-1].Lines)
+			b := float64(hist[k].Findings) / float64(hist[k].Lines)
+			if b <= a {
+				up = false
+			}
+			if b >= a {
+				down = false
+			}
+		}
+		switch {
+		case up:
+			dir = " — RISING: the fixes are reaching the coupled core, where every changed line is a rule-changing line and the prediction below is a FLOOR"
+		case down:
+			dir = " — falling: the remaining work is prose, where batch size does predict cost"
+		}
+	}
+	note := fmt.Sprintf("  note: %d edit(s) changing %d line(s); this workspace's own history (%d finding(s) over %d changed line(s), %.1f per 100) predicts ~%.0f finding(s) in the next round — split by RULE (one rule and all its copies per batch), never mechanically. And if this batch changed a RULE, its consumers are NOT in this diff: `wf check stale` sweeps for restatements of the OLD rule, or the next round will do it for you",
+		edits, lines, histFindings, histLines, per100, predicted)
+	note += fmt.Sprintf("\n  trend: %s per 100 changed line(s)%s", strings.Join(series, ", "), dir)
+	if len(authoringSkipped) > 0 {
+		note += fmt.Sprintf("\n  note: round(s) %s are NOT in that history — their window contains the authoring commit, so their findings were filed against a corpus those batches did not write. One such round put the prediction at ~355 against an actual 24", roundList(authoringSkipped))
+	}
+	return note, true
 }
 
 // worktreeChangedLines is what git sees changed in the files just written, before

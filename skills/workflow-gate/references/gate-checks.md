@@ -614,10 +614,26 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       and disagrees with every statement of it; read the `compared` count, because ids that each sit
       at a single site are a check that reached nothing and still printed zero conflicts. So sweep
       mechanically for drift, mark the rules that repeat, and keep a human vector for the unmarked
-      contradictions. On a DERIVED artifact narrow the drift sweep with `-since gate-rN` — a context
+      contradictions. **And read what the marked check does NOT ask:** it compares the sites of one id
+      against each other, never a rule against the section that argues for it — on one gate both copies
+      of a rule agreed perfectly while both had gone FALSE against the four bullets beneath them,
+      because the fix rewrote the argument and not the rule, and `5 compared, 0 conflict(s)` was read
+      as a statement about correctness. That class is `wf check stale -since <ref>`, which mines the
+      OLD text of the fixes themselves and reports every untouched sentence still using the vocabulary
+      a fix retired. On a DERIVED artifact narrow the drift sweep with `-since gate-rN` — a context
       document restating the decisions satisfies both DIVERGENT conditions by construction (21-25
       flagged groups per one real contradiction, measured) — and do not let either green report stand
       in for the human pass.
+- [ ] **A closure names a commit; check that the commit touched what the finding NAMES.** That a sha
+      exists is what `wf round record` proves, and it is the smaller half: on one live gate two
+      reviewer lenses asked the larger one by hand-written prompt and reported 6 and 4 of 24 closures
+      not closed, three rounds running — the fix had corrected one copy of a rule and left the copy the
+      finding cited standing. `wf check closure` intersects each claimed commit's changed ranges with
+      the SECTION the finding cites — `D9`, `R12`, the form a ledger actually uses, since 126 of those
+      127 named no path at all — and with the artifact and line where it names them, and counts the findings that name no path at all,
+      because the checked share must be visible rather than assumed. A FILE the commit never opened is
+      a closure that did not land; a LINE it did not cover is a question to re-ask, since a later batch
+      in the same round shifts the numbers.
 - [ ] **Verify a batch of edits by SEARCHING for each one, not by the absence of an error.** A patch
       script that validates as it goes reports only the edit that FAILED and silently discards the ones
       that succeeded before it, because the write happens at the end — so a fix is reported applied,

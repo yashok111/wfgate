@@ -154,11 +154,36 @@ func TestApplyNotePricesLinesNotEdits(t *testing.T) {
 	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
 		t.Fatal(err)
 	}
+	// Round 1's window contains the commit that CREATED the artifact, so the
+	// meter refuses to predict from it (see the authoring test below). The
+	// history the note reads has to come from a round that only fixed.
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "second", "-kind", "delta"); err != nil {
+		t.Fatal(err)
+	}
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=a fix\n"+
+		"<<<<\nThe entry point is:\n====\nEntry point (fixed):\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", fix); err != nil {
+		t.Fatal(err)
+	}
+	ledger(t, wsDir, 2, rows)
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r2", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "third", "-kind", "delta"); err != nil {
+		t.Fatal(err)
+	}
 
 	// ONE edit, many lines.
-	big := "=== artifacts/decisions.md  count=1  note=one edit, many lines\n<<<<\nThe entry point is:\n====\n"
+	big := "=== artifacts/decisions.md  count=1  note=one edit, many lines\n<<<<\nEntry point (fixed):\n====\n"
 	for i := 0; i < 30; i++ {
-		big += fmt.Sprintf("The entry point is (restated %d):\n", i)
+		big += fmt.Sprintf("Entry point (restated %d):\n", i)
 	}
 	big += ">>>>\n"
 	second := filepath.Join(tmp, "second.txt")
@@ -167,6 +192,15 @@ func TestApplyNotePricesLinesNotEdits(t *testing.T) {
 	out, err := runWF(t, wsDir, "apply", "-f", second)
 	noErr(t, err, "apply")
 	mustContain(t, out, "1 edit(s) changing 31 line(s)", "predicts ~", "consumers are NOT in this diff")
+
+	// The same population, printed by `wf stats` where the operator can see WHICH
+	// rounds the prediction reads and which one it refuses to read. Round 1's
+	// window created the artifact: 10 findings against 2 changed lines would put
+	// the prediction an order of magnitude out, exactly as a live gate measured.
+	out, err = runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "prediction basis — rounds 2", "`wf apply` predicts from THIS",
+		"round(s) 1 excluded", "authoring commit")
 }
 
 // `wf stats`' gate-wide cost line and `wf apply`'s note are two readings of one
@@ -204,12 +238,24 @@ func TestStatsTotalAndApplyNoteShareABasis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	histLines, _ := batchHistory(w)
+	hist, _ := batchHistory(w)
+	histLines := 0
+	for _, h := range hist {
+		histLines += h.Lines
+	}
 	out, err := runWF(t, wsDir, "stats")
 	noErr(t, err, "stats")
-	want := fmt.Sprintf("over %d changed line(s)", histLines)
-	if !strings.Contains(out, want) {
-		t.Fatalf("the cost line must state the same population the apply note predicts from (%s), got:\n%s", want, out)
+	// The gate total is the WHOLE population and the prediction basis is
+	// narrower — the two are different questions and they now have different
+	// answers. What must never happen again is the two disagreeing SILENTLY, by
+	// 60% on a live gate: `wf stats` prints the basis `wf apply` predicts from,
+	// derived by the same function the note calls.
+	if histLines > 0 {
+		want := fmt.Sprintf("over %d changed line(s)", histLines)
+		if !strings.Contains(out, want) {
+			t.Fatalf("stats must print the population the apply note predicts from (%s), got:\n%s", want, out)
+		}
+		mustContain(t, out, "prediction basis", "`wf apply` predicts from THIS")
 	}
 	mustContain(t, out, "apply window not attributable")
 }
