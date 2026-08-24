@@ -200,7 +200,7 @@ func TestApplyNotePricesLinesNotEdits(t *testing.T) {
 	out, err = runWF(t, wsDir, "stats")
 	noErr(t, err, "stats")
 	mustContain(t, out, "prediction basis — rounds 2", "`wf apply` predicts from THIS",
-		"round(s) 1 excluded", "authoring commit")
+		"round(s) 1 excluded", "window ADDS an artifact")
 }
 
 // `wf stats`' gate-wide cost line and `wf apply`'s note are two readings of one

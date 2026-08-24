@@ -1753,8 +1753,8 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	// --unified=0 and forced prefixes for the same reason `check drift` uses
 	// them: the parse must not depend on a host diff config, and the OLD text is
 	// wanted without context lines around it.
-	raw, err := w.Git.Run("diff", "--no-renames", "--no-ext-diff", "--unified=0",
-		"--src-prefix=a/", "--dst-prefix=b/", since, "HEAD", "--", "artifacts")
+	raw, err := w.Git.Run("-c", "core.quotePath=false", "diff", "--no-renames", "--no-ext-diff",
+		"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", since, "HEAD", "--", "artifacts")
 	if err != nil {
 		return false, err
 	}
@@ -1765,11 +1765,18 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	rep := check.FindStale(sts, raw, maxDF)
 	fmt.Printf("## stale — %s..HEAD: %d retired token(s), %d sentence(s) still carrying them (%d scanned, %d written by the range)\n",
 		since, len(rep.Retired), len(rep.Hits), rep.Scanned, rep.Touched)
-	// The two populations that decide whether the line above is a measurement.
-	// A range that retired NO vocabulary checked nothing, and "0 sentences" over
-	// it is the vacuous pass this project names as its worst failure.
-	if len(rep.Retired) == 0 {
-		fmt.Printf("  note: NOT A PASS — this range retired no rare vocabulary at all, so nothing was swept. A fix that only ADDED text, or one whose every removed word survives elsewhere in the diff, is invisible to this check\n")
+	// The two populations that decide whether the line above is a measurement,
+	// and the distinction between them is the whole point. A range that MINED no
+	// vocabulary swept nothing — vacuous, and it says so. A range that mined
+	// plenty and finds none of it left in the corpus is a COMPLETE sweep, the
+	// best outcome this check has; both leave `Retired` empty, and printing the
+	// second as the first told an operator who had reached every consumer that
+	// nothing had been checked.
+	switch {
+	case rep.Mined == 0:
+		fmt.Printf("  note: NOT A PASS — this range retired no vocabulary at all, so nothing was swept. A fix that only ADDED text, or one whose every removed word survives elsewhere in the diff, is invisible to this check\n")
+	case rep.Swept > 0:
+		fmt.Printf("  swept: %d of %d retired token(s) survive NOWHERE in the untouched corpus — that fix reached its consumers\n", rep.Swept, rep.Mined)
 	}
 	if rep.Common > 0 {
 		fmt.Printf("  note: %d retired token(s) are used all over the corpus and were dropped rather than reported — the OUTPUT is narrowed, never the check; lower -max-df (now %d) to see them\n", rep.Common, maxDF)
@@ -1801,6 +1808,13 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	rounds := []int{}
 	if round > 0 {
+		// A round that does not exist is not a round with no closures. `-round
+		// 999` printed `0 closure(s) claiming a commit, 0 checked, 0 not closed`
+		// and exited zero: the report of a check that examined nothing, in the
+		// register of one that examined everything.
+		if round > w.M.Round {
+			return false, fmt.Errorf("round %d does not exist (this workspace has %d); a check over a round that is not there would report zero of everything and exit clean", round, w.M.Round)
+		}
 		rounds = append(rounds, round)
 	} else {
 		for n := 1; n <= w.M.Round; n++ {
@@ -1814,8 +1828,12 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 		if r, ok := touched[sha]; ok {
 			return r
 		}
-		raw, err := w.Git.Run("show", "--no-renames", "--no-ext-diff", "--unified=0",
-			"--src-prefix=a/", "--dst-prefix=b/", "--format=", sha)
+		// `-c` is git's, not the subcommand's, so it goes FIRST — as an option of
+		// `show` it is an unknown flag and every closure then reads as "a commit
+		// git could not read", which the report duly printed as an absent
+		// measurement over a workspace where every commit was fine.
+		raw, err := w.Git.Run("-c", "core.quotePath=false", "show", "--no-renames", "--no-ext-diff",
+			"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "--format=", sha)
 		var r map[string][][2]int
 		if err == nil {
 			r = check.TouchedRanges(raw)
@@ -1823,10 +1841,13 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 		touched[sha] = r
 		return r
 	}
-	claims, checked, unnamed, unreadable, implied, sectionless := 0, 0, 0, 0, 0, 0
+	claims, checked, unnamed, unreadable, implied, fileOnly := 0, 0, 0, 0, 0, 0
+	ambiguous, noLedger := 0, []int{}
 	// The artifact as it stood BEFORE a commit, which is the coordinate system
-	// that commit's old-side ranges are in. Cached: one round's closures name
-	// the same batch a dozen times.
+	// that commit's own old-side ranges are in. Keyed by BOTH, because a
+	// closure naming two commits has two coordinate systems and comparing one
+	// commit's ranges against the other's section numbers is arithmetic over
+	// two different documents.
 	sections := map[string]map[string][2]int{}
 	sectionsAt := func(sha, path string) map[string][2]int {
 		key := sha + "\x00" + path
@@ -1844,6 +1865,10 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	for _, n := range rounds {
 		b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md"))
 		if err != nil {
+			// A ledger that cannot be READ is not a ledger with no closures in
+			// it — the distinction `wf stats` already draws, and the one this
+			// command was missing.
+			noLedger = append(noLedger, n)
 			continue
 		}
 		for _, r := range ws.ParseFindings(b) {
@@ -1851,7 +1876,14 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 				continue
 			}
 			claims++
-			named := check.PathsNamed(r.Text, arts)
+			named, amb := check.PathsNamed(r.Text, arts)
+			if len(amb) > 0 {
+				// The `check cite` precedent: a path matching two artifacts
+				// resolves to neither. Guessing the first would report a closure
+				// as landed against a file nobody named.
+				ambiguous++
+				continue
+			}
 			if len(named) == 0 && len(arts) == 1 {
 				// A one-artifact workspace: the finding names the only document
 				// there is, and requiring it to say so out loud would make the
@@ -1866,100 +1898,125 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 				unnamed++
 				continue
 			}
-			// The union over every sha the row claims: a finding closed by three
-			// commits is closed by their combined diff.
-			union := map[string][][2]int{}
-			miss := false
+			// Every sha is read in ITS OWN coordinates and the claims are ORed:
+			// a closure carried by two commits is closed by their combined work,
+			// and each commit's line numbers mean something only against its own
+			// parent.
+			readable := true
 			for _, sha := range r.Shas() {
-				rr := ranges(sha)
-				if rr == nil {
-					miss = true
-					continue
-				}
-				for p, rs := range rr {
-					union[p] = append(union[p], rs...)
+				if ranges(sha) == nil {
+					readable = false
 				}
 			}
-			if miss {
+			if !readable {
 				unreadable++
 				continue
 			}
 			checked++
+			// One verdict per ROW. The first version appended a line per failed
+			// assertion and printed that count as "closures not closed", so a
+			// finding naming two paths could be counted twice and the headline
+			// could exceed the number of claims it was drawn from.
+			var why []string
+			sawSection, sawLine := false, false
 			for _, p := range sortedKeys(named) {
-				rs, ok := union[p]
-				if !ok {
-					bad = append(bad, fmt.Sprintf("round %d [%s] closed by %s, which changed %s and NOT %s",
-						n, r.Num, strings.Join(r.Shas(), " "), fileList(union), p))
-					continue
-				}
-				for _, ln := range named[p] {
-					if ln > 0 && !check.RangesCover(rs, ln) {
-						bad = append(bad, fmt.Sprintf("round %d [%s] closed by %s, which changed %s but not line %d",
-							n, r.Num, strings.Join(r.Shas(), " "), p, ln))
+				touchedAnywhere := false
+				for _, sha := range r.Shas() {
+					if _, ok := ranges(sha)[p]; ok {
+						touchedAnywhere = true
 					}
+				}
+				if !touchedAnywhere {
+					why = append(why, fmt.Sprintf("did not touch %s (it changed %s)", p, fileList(unionOf(r.Shas(), ranges))))
+					continue
 				}
 				// The SECTION the finding cites — the form a real ledger uses.
 				// Measured on a live decision gate: 126 of 127 closures named no
-				// path and nearly every one named a section, so this is the
-				// reach the check actually has.
+				// path and nearly every one named a section.
 				//
-				// ANY cited section, against the UNION of the closing commits.
-				// Demanding every one of them, per commit, flagged 89 of 127
-				// closures on that gate — a finding that mentions a neighbouring
-				// section in passing is not a finding about it, and a closure
-				// carried by two commits is closed by their combined diff. A
-				// check that paints most of its output is a check nobody runs
-				// twice; `dup` paid for that lesson at 161 groups of 176.
+				// ANY cited section, ANY commit. Demanding every one of them, per
+				// commit, flagged 89 of 127 closures there: a finding that
+				// mentions a neighbouring section in passing is not a finding
+				// about it. `dup` paid for that lesson at 161 groups of 176.
 				var resolved []string
-				hit := false
-				for _, id := range check.SectionsNamed(r.Text) {
-					var rng [2]int
-					ok := false
-					for _, sha := range r.Shas() {
-						if secs := sectionsAt(sha, p); secs != nil {
-							if rr, found := secs[id]; found {
-								rng, ok = rr, true
-								break
-							}
+				hitSection, anySection := false, false
+				for _, sha := range r.Shas() {
+					rs := ranges(sha)[p]
+					secs := sectionsAt(sha, p)
+					for _, id := range check.SectionsNamed(r.Text) {
+						rng, ok := secs[id]
+						if !ok {
+							continue
+						}
+						anySection = true
+						resolved = append(resolved, fmt.Sprintf("%s (%d-%d)", id, rng[0], rng[1]))
+						if overlaps(rs, rng) {
+							hitSection = true
 						}
 					}
-					if !ok {
+				}
+				if anySection {
+					sawSection = true
+					if !hitSection {
+						why = append(why, fmt.Sprintf("changed %s but NOT any section it cites: %s", p, strings.Join(uniqueStrings(resolved), ", ")))
+					}
+					continue
+				}
+				// No section: fall back to the line, where the finding cites one.
+				for _, ln := range named[p] {
+					if ln == 0 {
 						continue
 					}
-					resolved = append(resolved, fmt.Sprintf("%s (%d-%d)", id, rng[0], rng[1]))
-					if overlaps(rs, rng) {
-						hit = true
+					sawLine = true
+					covered := false
+					for _, sha := range r.Shas() {
+						if check.RangesCover(ranges(sha)[p], ln) {
+							covered = true
+						}
+					}
+					if !covered {
+						why = append(why, fmt.Sprintf("changed %s but not line %d", p, ln))
 					}
 				}
-				switch {
-				case len(resolved) == 0:
-					sectionless++
-				case !hit:
-					bad = append(bad, fmt.Sprintf("round %d [%s] closed by %s, which changed %s but NOT any section it cites: %s",
-						n, r.Num, strings.Join(r.Shas(), " "), p, strings.Join(resolved, ", ")))
-				}
+			}
+			// Counted ONCE per closure, and only when neither the section nor
+			// the line half ran: it used to be incremented per path and even
+			// where a line HAD been checked, so the report called closures
+			// file-only that were not.
+			if !sawSection && !sawLine {
+				fileOnly++
+			}
+			if len(why) > 0 {
+				bad = append(bad, fmt.Sprintf("round %d [%s] closed by %s, which %s",
+					n, r.Num, strings.Join(r.Shas(), " "), strings.Join(why, "; ")))
 			}
 		}
 	}
 	fmt.Printf("## closure — %d closure(s) claiming a commit, %d checked against the artifact they name, %d not closed by that commit\n",
 		claims, checked, len(bad))
+	if claims > 0 && checked == 0 {
+		fmt.Printf("  note: NOT A PASS — no closure could be checked. `wf round record` proves the sha EXISTS; this check proves the commit touched what the finding names, and it reaches a finding only where the finding names an artifact path\n")
+	}
 	if implied > 0 {
 		fmt.Printf("  note: %d closure(s) name no path and were checked against %s, the workspace's only artifact\n", implied, arts[0])
 	}
-	if sectionless > 0 {
+	if fileOnly > 0 {
 		// The weaker half of the check, and it has to say which half it ran. A
 		// commit that touched the artifact SOMEWHERE is a much smaller claim
 		// than one that touched the section the finding cites.
-		fmt.Printf("  note: %d closure(s) cite no section this artifact heads, so they were checked only at FILE level — a commit that touched the document anywhere passes that. Cite the section id (D9) or the line and the check reaches the claim\n", sectionless)
-	}
-	if claims > 0 && checked == 0 {
-		fmt.Printf("  note: NOT A PASS — no closure could be checked. `wf round record` proves the sha EXISTS; this check proves the commit touched what the finding names, and it reaches a finding only where the finding names an artifact path\n")
+		fmt.Printf("  note: %d closure(s) cite neither a section this artifact heads nor a line, so they were checked only at FILE level — a commit that touched the document anywhere passes that. Cite the section id (D9) or the line and the check reaches the claim\n", fileOnly)
 	}
 	if unnamed > 0 {
 		fmt.Printf("  note: %d closure(s) name no artifact path in the finding text and were NOT checked — write the path (and the line) into the finding and they become checkable\n", unnamed)
 	}
+	if ambiguous > 0 {
+		fmt.Printf("  note: %d closure(s) name a path matching more than one artifact and were NOT checked — the same class `wf check cite` reports; write the path from the workspace root\n", ambiguous)
+	}
 	if unreadable > 0 {
 		fmt.Printf("  note: %d closure(s) name a commit git could not read here, so they are ABSENT from the count above rather than clean\n", unreadable)
+	}
+	if len(noLedger) > 0 {
+		fmt.Printf("  note: %d round(s) have no readable findings.md (%s) — their closures are an ABSENT measurement, not a measured zero\n", len(noLedger), roundList(noLedger))
 	}
 	for _, l := range bad {
 		fmt.Println("  " + l)
@@ -1968,6 +2025,30 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 		fmt.Printf("  note: a FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is a question to re-ask, not a verdict: the fix may have landed in the section that PRODUCES the defect rather than the one the finding cites, and a later batch in the same round shifts the numbers. Verified by hand on a live gate — 12 of 127, and the first three read that way\n")
 	}
 	return len(bad) > 0, nil
+}
+
+// unionOf is for the REPORT only — "the commits changed these files" — never
+// for a verdict: each commit's ranges live in its own parent's coordinates.
+func unionOf(shas []string, ranges func(string) map[string][][2]int) map[string][][2]int {
+	out := map[string][][2]int{}
+	for _, sha := range shas {
+		for p, rs := range ranges(sha) {
+			out[p] = append(out[p], rs...)
+		}
+	}
+	return out
+}
+
+func uniqueStrings(xs []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // overlaps is range-vs-range, where RangesCover is range-vs-line: a fix inside
@@ -2215,7 +2296,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 					// "377.8 finding(s) per 100 changed line(s)" in the register
 					// of a measurement is how the meter came to predict ~355
 					// findings for a round that produced 24.
-					ed += " (authoring window — the artifact was CREATED here, so there is no ratio)"
+					ed += " (an artifact was ADDED in this window, so there is no ratio)"
 				} else {
 					ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
 						100*float64(findings)/float64(lines))
@@ -2378,7 +2459,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		line := fmt.Sprintf("  prediction basis — rounds %s, %d finding(s) over %d changed line(s), %.1f per 100; `wf apply` predicts from THIS, not from the gate total above",
 			roundList(ns), hf, hl, 100*float64(hf)/float64(hl))
 		if len(skipped) > 0 {
-			line += fmt.Sprintf(" (round(s) %s excluded — their window contains the authoring commit and prices a corpus their batches did not write)", roundList(skipped))
+			line += fmt.Sprintf(" (round(s) %s excluded — their window ADDS an artifact, so it prices a corpus their batches did not write)", roundList(skipped))
 		}
 		_, _ = fmt.Fprintln(out, line)
 	}
@@ -2907,9 +2988,13 @@ type roundWindow struct {
 	N            int
 	Range        string
 	Attributable bool
-	// Authoring is true when the window contains the commit that first put an
-	// artifact under artifacts/. Such a window prices a corpus its batches did
-	// not produce: measured on a live decision gate, round 1 filed 34 findings
+	// Authoring is true when the window contains ANY commit that ADDED an
+	// artifact — not only the first one. A round that brings a new 800-line
+	// document into the gate prices a corpus its batches did not write exactly
+	// as round 1 does, so both are excluded; the comment used to say "the first"
+	// while the code read every one, which is the text-code divergence this
+	// project names as its most frequent defect. Such a window prices a corpus
+	// its batches did not produce: measured on a live decision gate, round 1 filed 34 findings
 	// against 9 attributable changed lines, the meter read 377.8 per 100, and
 	// `wf apply` predicted "~355 finding(s) in the next round" against an actual
 	// 24. A prediction from that window is not a large number, it is no number.
@@ -3067,7 +3152,7 @@ func batchNote(edits, lines int, hist []histRound, authoringSkipped []int) (stri
 		edits, lines, histFindings, histLines, per100, predicted)
 	note += fmt.Sprintf("\n  trend: %s per 100 changed line(s)%s", strings.Join(series, ", "), dir)
 	if len(authoringSkipped) > 0 {
-		note += fmt.Sprintf("\n  note: round(s) %s are NOT in that history — their window contains the authoring commit, so their findings were filed against a corpus those batches did not write. One such round put the prediction at ~355 against an actual 24", roundList(authoringSkipped))
+		note += fmt.Sprintf("\n  note: round(s) %s are NOT in that history — their window ADDS an artifact, so their findings were filed against a corpus those batches did not write. One such round put the prediction at ~355 against an actual 24", roundList(authoringSkipped))
 	}
 	return note, true
 }

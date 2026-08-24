@@ -508,7 +508,9 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   run `wf check closure` before recording the closures, because it asks of every `closed by` sha the
   question `wf round record` does not — whether that commit's diff reaches the SECTION the finding
   cites (`D9`, `R12`: the form a ledger uses, and the only one that reaches a finding citing no line);
-  a FILE miss is a closure that did not land, a section miss is a question to re-ask; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
+  a FILE miss is a closure that did not land, a section miss is a question to re-ask, and a closure
+  carried by two commits is checked against each one's own parent rather than against a union of
+  coordinate systems; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
   `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines, and
   `wf apply` notes when a batch's CHANGED LINES predict a costly next round — measured, the case that

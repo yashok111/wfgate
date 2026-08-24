@@ -570,6 +570,32 @@ classes were things `wf` already held the data for and did not ask:
   blockers ran 13, 17, 10, 16, 11. The blocker count alone reads as progress; a
   corpus that doubles under it is a design being ELABORATED, and nothing else in
   the workspace showed it.
+- *And the wave earned its review round, for the third time running* — one
+  external model over the diff, four bars green, 14 findings, 8 of them real
+  bugs. The two worst were the tool's own named classes turned on it: `wf check
+  closure -round 999` printed `0 closure(s), 0 checked, 0 not closed` and exited
+  ZERO over a round that does not exist, and `stale` printed `NOT A PASS,
+  nothing was swept` over a COMPLETE sweep, because a range that mined nothing
+  and one whose every retired word is gone from the corpus both leave the
+  reported vocabulary empty. The rest came from one root: `parseUnified` keyed
+  only on the OLD path, so every file a diff ADDED was dropped — its words never
+  entered the "added" set (a fix that MOVED a rule retired its whole
+  vocabulary), and `check closure` reported the commit that CREATED an artifact
+  as not having touched it. Also: ranges from several closing commits were
+  unioned across DIFFERENT parents' coordinate systems (fixed, and it changed a
+  verdict on the live gate: 12 became 11); `len(bad)` counted failed assertions
+  rather than closures, so the headline could exceed the claims it was drawn
+  from; the FILE-only population was counted per path and even where a line HAD
+  been checked; an ambiguous basename silently resolved to the first artifact
+  (the class `check cite` reports); headings inside fenced code headed phantom
+  sections and a repeated id overwrote a real range; C-quoted paths matched
+  nothing. One of the review's own suggestions was refused after measurement:
+  `roundWindow.Authoring` reads EVERY artifact-addition commit deliberately — a
+  round adding a new document prices a corpus its batches did not write exactly
+  as round 1 does — so the COMMENT was wrong, not the code, which is this
+  project's most frequent defect wearing the reviewer's clothes. And one guard
+  written for the fix survived every mutation and was DELETED rather than
+  shipped unproven.
 - *Two items were NOT built, deliberately* — a review rung below the round
   (`wf apply -brief`) and a canned reviewer vector (`wf brief`), both with the
   deciding measurement written down in `IDEAS.md`. The second has a sharpened

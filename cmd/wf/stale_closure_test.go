@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -71,7 +72,7 @@ func TestCheckStale_saysWhenItSweptNothing(t *testing.T) {
 	}
 	out, err := runWF(t, wsDir, "check", "stale")
 	noErr(t, err, "check stale")
-	mustContain(t, out, "NOT A PASS", "retired no rare vocabulary")
+	mustContain(t, out, "NOT A PASS", "retired no vocabulary at all")
 }
 
 // Without a reference there is no fix range, and a check that silently swept
@@ -124,7 +125,7 @@ func TestCheckClosure_flagsACommitThatTouchedSomethingElse(t *testing.T) {
 	}
 	mustContain(t, out,
 		"round 1 [1] closed by "+sha,
-		"and NOT artifacts/context.md",
+		"did not touch artifacts/context.md",
 		"1 closure(s) name no artifact path")
 	// The closure that DID land must not be reported.
 	if strings.Contains(out, "[2] closed by") {
@@ -235,7 +236,7 @@ func TestStats_authoringWindowPrintsNoRatio(t *testing.T) {
 	}
 	out, err := runWF(t, wsDir, "stats")
 	noErr(t, err, "stats")
-	mustContain(t, out, "authoring window — the artifact was CREATED here, so there is no ratio")
+	mustContain(t, out, "an artifact was ADDED in this window, so there is no ratio")
 	if strings.Contains(out, "finding(s) per 100 changed line(s))") {
 		t.Fatalf("no per-round ratio may be printed for that window:\n%s", out)
 	}
@@ -341,5 +342,162 @@ func TestCheckClosure_namesTheWeakerHalfItRan(t *testing.T) {
 	}
 	out, err := runWF(t, wsDir, "check", "closure")
 	noErr(t, err, "check closure")
-	mustContain(t, out, "1 closure(s) cite no section this artifact heads", "only at FILE level")
+	mustContain(t, out, "1 closure(s) cite neither a section this artifact heads nor a line", "only at FILE level")
+}
+
+// A range that retired plenty and finds none of it left is a COMPLETE sweep —
+// the best outcome this check has. It printed as `NOT A PASS, nothing was
+// swept`, because a full sweep and an empty range both leave the reported
+// vocabulary empty: the good case reported as the vacuous one, in the tool
+// built to refuse exactly that.
+func TestCheckStale_aCompleteSweepIsNotAVacuousOne(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	seed := filepath.Join(tmp, "seed.txt")
+	write(t, seed, "=== artifacts/decisions.md  count=1  note=state the rule\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"The sequence counter is bumped in place by one on every single write.\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", seed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	// The fix reaches the only sentence that carried the vocabulary: nothing is
+	// left to re-read anywhere.
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=allocator\n"+
+		"<<<<\nThe sequence counter is bumped in place by one on every single write.\n====\n"+
+		"The allocator hands out a fresh version identifier on every single write.\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", fix); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "stale")
+	noErr(t, err, "check stale")
+	mustContain(t, out, "survive NOWHERE in the untouched corpus", "reached its consumers")
+	mustNotContain(t, out, "NOT A PASS")
+}
+
+// A round that does not exist is not a round with no closures. `-round 999`
+// printed `0 closure(s), 0 checked, 0 not closed` and exited zero: the report of
+// a check that examined nothing, in the register of one that examined
+// everything — the exact shape this tool exists to refuse, found by an external
+// reviewer in the check that refuses it.
+func TestCheckClosure_refusesARoundThatDoesNotExist(t *testing.T) {
+	wsDir := newGate(t)
+	out, err := runWF(t, wsDir, "check", "closure", "-round", "999")
+	if err == nil {
+		t.Fatalf("want a refusal, got a clean report:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("the refusal must say what is wrong: %v", err)
+	}
+	if strings.Contains(out, "0 closure(s) claiming a commit") {
+		t.Fatalf("and it must not print a report at all:\n%s", out)
+	}
+}
+
+// One verdict per closure. The first version appended a line per failed
+// assertion and printed that count as "closures not closed", so a finding
+// naming two artifacts could be counted twice — a headline that can exceed the
+// number of claims it is drawn from.
+func TestCheckClosure_countsRowsNotAssertions(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	other := filepath.Join(tmp, "context.md")
+	write(t, other, "# Context\n\nA second artifact nobody fixes in this round.\n")
+	if _, err := runWF(t, wsDir, "add", other); err != nil {
+		t.Fatal(err)
+	}
+	third := filepath.Join(tmp, "notes.md")
+	write(t, third, "# Notes\n\nA third artifact nobody fixes either.\n")
+	if _, err := runWF(t, wsDir, "add", third); err != nil {
+		t.Fatal(err)
+	}
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=a fix\n<<<<\n# Decisions\n====\n# Decisions (revised)\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	// ONE finding, naming TWO artifacts the commit never opened.
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | artifacts/context.md and artifacts/notes.md disagree | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	if !errors.Is(err, errFindings) {
+		t.Fatalf("want a finding, got %v\n%s", err, out)
+	}
+	mustContain(t, out, "1 closure(s) claiming a commit", "1 not closed by that commit",
+		"did not touch artifacts/context.md", "did not touch artifacts/notes.md")
+	if n := strings.Count(out, "round 1 [1] closed by"); n != 1 {
+		t.Fatalf("one closure is one verdict, got %d lines:\n%s", n, out)
+	}
+}
+
+// The FILE-only population is counted once per closure, and only when neither
+// the section nor the line half ran. It used to be incremented per named path
+// and even where a line HAD been checked, so the report called closures
+// file-only that were not.
+func TestCheckClosure_fileOnlyIsNotCountedWhenALineWasChecked(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=a fix\n<<<<\n# Decisions\n====\n# Decisions (revised)\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md:1 is loose | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustNotContain(t, out, "only at FILE level")
+}
+
+// A closure whose commit created the artifact must not read as one that never
+// touched it — the parser used to drop added files entirely.
+func TestCheckClosure_aCommitThatCreatedTheArtifactTouchedIt(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	other := filepath.Join(tmp, "context.md")
+	write(t, other, "# Context\n\nThe artifact this closure claims to have created.\n")
+	added, err := runWF(t, wsDir, "add", other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, added)
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/context.md was missing entirely | "+sha+" added it |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	if strings.Contains(out, "did not touch artifacts/context.md") {
+		t.Fatalf("the commit that CREATED it touched it:\n%s", out)
+	}
+}
+
+// A ledger that cannot be READ is not a ledger with no closures in it — the
+// distinction `wf stats` already draws, and the one this command was missing:
+// deleting a round's findings.md made its closures vanish into a report that
+// looked complete.
+func TestCheckClosure_anUnreadableLedgerIsAbsentNotEmpty(t *testing.T) {
+	wsDir := newGate(t)
+	if err := os.Remove(filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "1 round(s) have no readable findings.md (1)", "ABSENT measurement, not a measured zero")
 }

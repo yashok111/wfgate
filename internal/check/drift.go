@@ -49,6 +49,7 @@ type hunk struct {
 type fileDiff struct {
 	newPath string
 	deleted bool
+	isNew   bool // the file did not exist before this diff
 	hunks   []hunk
 	removed []string // the OLD text of every replacement, without its `-`
 	added   []string
@@ -144,8 +145,16 @@ func rangeStr(start, end int) string {
 
 var hunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 
-// parseUnified reads a --unified=0 diff into old-side hunks per old path, plus
-// the set of deleted files (new side /dev/null).
+// parseUnified reads a --unified=0 diff into one entry per file: the old-side
+// hunks (drift), the new-side hunk starts, and the text each side carried
+// (stale). An entry is created for EVERY file the diff names, including an
+// added one and a mode-only change that carries no hunk at all — a file with no
+// textual change is still a file this commit touched, and `check closure`'s
+// FILE-level test is exactly that question. The first version keyed only on the
+// OLD path and dropped `/dev/null` outright, so a commit that CREATED an
+// artifact was invisible: its words never entered the "added" set (making them
+// falsely retired) and closure reported the commit that added the document as
+// not having touched it.
 //
 // The `--- ` and `+++ ` headers are read ONLY inside a file's header block,
 // which begins at `diff --git` and ends at the first `+++` or `@@`. Outside it
@@ -159,9 +168,13 @@ var hunkRe = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
 // re-reading the claim.
 func parseUnified(raw string) map[string]*fileDiff {
 	files := map[string]*fileDiff{}
-	cur := ""
+	cur := ""     // the key this file's lines are filed under
+	oldPath := "" // "" for an added file
 	inHeader := false
 	get := func() *fileDiff {
+		if cur == "" {
+			return nil
+		}
 		fd := files[cur]
 		if fd == nil {
 			fd = &fileDiff{}
@@ -172,32 +185,44 @@ func parseUnified(raw string) map[string]*fileDiff {
 	for _, l := range strings.Split(raw, "\n") {
 		switch {
 		case strings.HasPrefix(l, "diff --git "):
-			cur, inHeader = "", true
-		case inHeader && strings.HasPrefix(l, "--- "):
-			cur = strings.TrimPrefix(l, "--- ")
-			if cur == "/dev/null" {
-				cur = "" // an added file has no old side to drift
-			} else {
-				cur = strings.TrimPrefix(cur, "a/")
+			// The header pair is authoritative, but a mode-only change has no
+			// header pair at all — only this line. Its paths are read here so
+			// such a file still gets an entry, and are overwritten below when
+			// the pair arrives.
+			cur, oldPath, inHeader = "", "", true
+			if a, b, ok := gitHeaderPaths(l); ok {
+				cur, oldPath = a, a
+				_ = b
+				get()
 			}
+		case inHeader && strings.HasPrefix(l, "--- "):
+			oldPath = diffPath(strings.TrimPrefix(l, "--- "), "a/")
+			cur = oldPath
 		case inHeader && strings.HasPrefix(l, "+++ "):
-			np := strings.TrimPrefix(l, "+++ ")
-			if cur != "" {
-				fd := get()
-				if np == "/dev/null" {
+			np := diffPath(strings.TrimPrefix(l, "+++ "), "b/")
+			if oldPath == "" {
+				// An added file: keyed by its NEW path, because that is the only
+				// name it has and the only one anything can cite.
+				cur = np
+			}
+			if fd := get(); fd != nil {
+				if np == "" {
 					fd.deleted = true
+					fd.newPath = ""
 				} else {
-					fd.newPath = strings.TrimPrefix(np, "b/")
+					fd.newPath = np
 				}
+				fd.isNew = oldPath == ""
 			}
 			inHeader = false
 		case strings.HasPrefix(l, "@@ "):
 			inHeader = false
-			if cur == "" {
-				continue
-			}
 			m := hunkRe.FindStringSubmatch(l)
 			if m == nil {
+				continue
+			}
+			fd := get()
+			if fd == nil {
 				continue
 			}
 			h := hunk{oldStart: mustAtoi(m[1]), oldCount: 1, newStart: mustAtoi(m[3]), newCount: 1}
@@ -207,17 +232,56 @@ func parseUnified(raw string) map[string]*fileDiff {
 			if m[4] != "" {
 				h.newCount = mustAtoi(m[4])
 			}
-			fd := get()
 			fd.hunks = append(fd.hunks, h)
-		case cur != "" && !inHeader && strings.HasPrefix(l, "-"):
-			fd := get()
-			fd.removed = append(fd.removed, l[1:])
-		case cur != "" && !inHeader && strings.HasPrefix(l, "+"):
-			fd := get()
-			fd.added = append(fd.added, l[1:])
+		case !inHeader && strings.HasPrefix(l, "-"):
+			if fd := get(); fd != nil {
+				fd.removed = append(fd.removed, l[1:])
+			}
+		case !inHeader && strings.HasPrefix(l, "+"):
+			if fd := get(); fd != nil {
+				fd.added = append(fd.added, l[1:])
+			}
 		}
 	}
 	return files
+}
+
+var gitHeaderRe = regexp.MustCompile(`^diff --git a/(.*) b/(.*)$`)
+
+// gitHeaderPaths reads the `diff --git` line, which is the only header a
+// mode-only change has. It is deliberately not trusted for anything else: a
+// path containing " b/" makes this line ambiguous, which is why git also emits
+// the unambiguous `---`/`+++` pair whenever there is content to describe.
+func gitHeaderPaths(l string) (string, string, bool) {
+	m := gitHeaderRe.FindStringSubmatch(l)
+	if m == nil || strings.Contains(m[1], " b/") {
+		return "", "", false
+	}
+	return unquotePath(m[1]), unquotePath(m[2]), true
+}
+
+// diffPath strips the diff prefix and returns "" for /dev/null.
+func diffPath(p, prefix string) string {
+	p = unquotePath(p)
+	if p == "/dev/null" {
+		return ""
+	}
+	return strings.TrimPrefix(p, prefix)
+}
+
+// unquotePath decodes the C-quoted form git writes for a path containing a
+// space, a quote or a non-ASCII byte. Same lesson as `gitx.Dirty`, which uses
+// -z for it: a quoted path matches nothing, so an artifact named in Cyrillic —
+// legal as DATA, and the citation checker has a test for exactly that — was
+// invisible to every check reading a diff.
+func unquotePath(p string) string {
+	if len(p) < 2 || p[0] != '"' {
+		return p
+	}
+	if u, err := strconv.Unquote(p); err == nil {
+		return u
+	}
+	return p
 }
 
 func mustAtoi(s string) int {

@@ -180,19 +180,59 @@ diff --git a/artifacts/gone.md b/artifacts/gone.md
 // abbreviated path as a missing one.
 func TestPathsNamed(t *testing.T) {
 	arts := []string{"artifacts/decisions.md", "artifacts/context.md"}
-	got := PathsNamed("The rule in `decisions.md:120` contradicts artifacts/context.md.", arts)
+	got, amb := PathsNamed("The rule in `decisions.md:120` contradicts artifacts/context.md.", arts)
+	if len(amb) != 0 {
+		t.Fatalf("nothing here is ambiguous: %v", amb)
+	}
 	if lines, ok := got["artifacts/decisions.md"]; !ok || len(lines) != 1 || lines[0] != 120 {
 		t.Fatalf("want decisions.md at line 120: %+v", got)
 	}
 	if lines, ok := got["artifacts/context.md"]; !ok || lines[0] != 0 {
 		t.Fatalf("a path named without a line is still named: %+v", got)
 	}
-	if len(PathsNamed("no path here at all", arts)) != 0 {
+	if n, _ := PathsNamed("no path here at all", arts); len(n) != 0 {
 		t.Fatal("a finding naming no artifact must resolve to nothing")
 	}
 	// An anchor is part of a citation, not part of the path.
-	if _, ok := PathsNamed("see artifacts/decisions.md:12#rule", arts)["artifacts/decisions.md"]; !ok {
+	if n, _ := PathsNamed("see artifacts/decisions.md:12#rule", arts); len(n["artifacts/decisions.md"]) == 0 {
 		t.Fatal("an anchored citation names its file")
+	}
+	// A path is a mention only when it stands on its own: an artifact named
+	// notes.md must not be found inside release-notes.md.
+	if n, _ := PathsNamed("see release-notes.md for the rest", []string{"artifacts/notes.md"}); len(n) != 0 {
+		t.Fatalf("a suffix of another filename is not a mention: %+v", n)
+	}
+}
+
+// A spelling matching two artifacts resolves to NEITHER — the class `check
+// cite` already reports as ambiguous. Taking the first match would report a
+// closure as landed against a file nobody named, which is worse than saying it
+// could not tell.
+func TestPathsNamed_ambiguousSpellingIsRefusedNotGuessed(t *testing.T) {
+	arts := []string{"artifacts/a/rules.md", "artifacts/b/rules.md"}
+	got, amb := PathsNamed("the rule in rules.md is wrong", arts)
+	if len(got) != 0 {
+		t.Fatalf("an ambiguous spelling names nothing: %+v", got)
+	}
+	if len(amb) != 1 || amb[0] != "rules.md" {
+		t.Fatalf("and it must be reported by name: %v", amb)
+	}
+	// Written from the workspace root it is unambiguous again.
+	got, amb = PathsNamed("the rule in artifacts/b/rules.md is wrong", arts)
+	if len(amb) != 0 || len(got["artifacts/b/rules.md"]) != 1 {
+		t.Fatalf("a full path resolves: %+v %v", got, amb)
+	}
+}
+
+// An artifact path may contain a space — the citation checker has a test for
+// exactly that class. Cutting the finding text into whitespace tokens made such
+// a path impossible to name, so every closure citing it counted as naming no
+// artifact at all.
+func TestPathsNamed_pathWithASpace(t *testing.T) {
+	arts := []string{"artifacts/design notes.md"}
+	got, _ := PathsNamed("the claim in `design notes.md:12` is stale", arts)
+	if lines, ok := got["artifacts/design notes.md"]; !ok || lines[0] != 12 {
+		t.Fatalf("want the spaced path at line 12: %+v", got)
 	}
 }
 
@@ -280,5 +320,161 @@ func TestFindStale_anInflectionIsNotARetirement(t *testing.T) {
 	}
 	if len(rep.Hits) != 0 {
 		t.Fatalf("and it must drag no sentence into the report: %+v", rep.Hits)
+	}
+}
+
+// The parser dropped every file the diff ADDED, because an added file has no
+// old side and the old path was the only key. Three checks read that parse: the
+// added file's words never entered the "added" set, so a fix that MOVED a rule
+// into a new artifact retired its whole vocabulary; the new file's own
+// sentences were then scanned as if they predated the fix; and `TouchedRanges`
+// could not see the commit that created a document at all.
+func TestParseUnified_addedFileIsNotInvisible(t *testing.T) {
+	diff := `diff --git a/artifacts/new.md b/artifacts/new.md
+new file mode 100644
+--- /dev/null
++++ b/artifacts/new.md
+@@ -0,0 +1,2 @@
++The allocator hands out a fresh version identifier on every single write.
++A second line.
+diff --git a/artifacts/old.md b/artifacts/old.md
+--- a/artifacts/old.md
++++ b/artifacts/old.md
+@@ -3,1 +3,0 @@
+-The allocator hands out a fresh version identifier on every single write.
+`
+	// The rule moved: every word of it is on both sides of the range, so nothing
+	// was retired.
+	_, sts := corpus(t, map[string]string{
+		"artifacts/b.md": "# B\n\nBecause the counter is bumped in place, a reader never observes any gap.\n",
+	})
+	rep := FindStale(sts, diff, 8)
+	for _, tok := range rep.Retired {
+		if tok == "allocator" || tok == "identifier" {
+			t.Fatalf("a word re-added in a NEW file is not retired: %v", rep.Retired)
+		}
+	}
+	// And closure can see the commit that created the file.
+	got := TouchedRanges(diff)
+	if _, ok := got["artifacts/new.md"]; !ok {
+		t.Fatalf("the created file must be a touched path: %+v", got)
+	}
+	if !RangesCover(got["artifacts/new.md"], 42) {
+		t.Fatalf("a file this commit created was touched everywhere: %+v", got)
+	}
+}
+
+// A mode change touches a file without changing a line. The FILE-level question
+// `check closure` asks of a finding citing no section is exactly "did this
+// commit open that document", and a missing key answered no.
+func TestTouchedRanges_modeOnlyChangeIsATouchedPath(t *testing.T) {
+	diff := `diff --git a/artifacts/a.md b/artifacts/a.md
+old mode 100644
+new mode 100755
+`
+	got := TouchedRanges(diff)
+	if _, ok := got["artifacts/a.md"]; !ok {
+		t.Fatalf("a mode-only change still touched the file: %+v", got)
+	}
+	if RangesCover(got["artifacts/a.md"], 5) {
+		t.Fatalf("but it covers no LINE: %+v", got)
+	}
+}
+
+// git C-quotes a path carrying a space or a non-ASCII byte, and a quoted path
+// matches nothing — the same lesson `gitx.Dirty` learned with -z. Cyrillic is
+// legal here as DATA, and the citation checker has a test for exactly that.
+func TestParseUnified_quotedPathIsDecoded(t *testing.T) {
+	diff := "diff --git \"a/artifacts/\\320\\264\\320\\276\\320\\272.md\" \"b/artifacts/\\320\\264\\320\\276\\320\\272.md\"\n" +
+		"--- \"a/artifacts/\\320\\264\\320\\276\\320\\272.md\"\n" +
+		"+++ \"b/artifacts/\\320\\264\\320\\276\\320\\272.md\"\n" +
+		"@@ -1,1 +1,1 @@\n-old\n+new\n"
+	got := TouchedRanges(diff)
+	if _, ok := got["artifacts/док.md"]; !ok {
+		t.Fatalf("the quoted path must decode to the real one: %+v", got)
+	}
+}
+
+// A decision document is full of fenced code, and `# D9 example` inside a block
+// is a shell comment. A phantom section would give the closure check a range to
+// measure a commit against, and a duplicate id would overwrite the real one.
+func TestSectionRanges_codeAndMalformedHeadings(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"# Decisions",          // 1
+		"",                     // 2
+		"## D1 — the rule",     // 3
+		"```sh",                // 4
+		"# D2 not a heading",   // 5
+		"```",                  // 6
+		"#not-a-heading",       // 7
+		"####### D3 too deep",  // 8
+		"body",                 // 9
+		"",                     // 10
+		"## D2 — the real one", // 11
+		"two",                  // 12
+	}, "\n"))
+	got := SectionRanges(body)
+	if r, ok := got["D2"]; !ok || r[0] != 11 {
+		t.Fatalf("D2 must be the real heading, not the one inside the fence: %+v", got)
+	}
+	if _, ok := got["D3"]; ok {
+		t.Fatalf("seven hashes are not a heading: %+v", got)
+	}
+	if r, ok := got["D1"]; !ok || r[1] != 10 {
+		t.Fatalf("D1 must run to the next real heading: %+v", got)
+	}
+}
+
+// One id heading two real sections gets the UNION: a finding citing it is
+// closed by a fix reaching either, which is the same "any" rule the closure
+// check applies to the ids themselves. Overwriting would silently move the
+// range a commit is measured against.
+func TestSectionRanges_repeatedIDIsUnioned(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"## D9 — first half", // 1
+		"a",                  // 2
+		"",                   // 3
+		"## Other",           // 4
+		"b",                  // 5
+		"",                   // 6
+		"## D9 — continued",  // 7
+		"c",                  // 8
+	}, "\n"))
+	got := SectionRanges(body)
+	r, ok := got["D9"]
+	if !ok || r[0] != 1 || r[1] != 8 {
+		t.Fatalf("want the union of both sections: %+v", got)
+	}
+}
+
+// A fix that MOVES a rule into a new artifact writes every sentence of that
+// artifact. They are the fix, not its consumers, and the parser's blindness to
+// added files made them both: the moved vocabulary counted as retired and the
+// new document counted as the paragraph still using it.
+func TestFindStale_sentencesOfANewFileAreNotConsumers(t *testing.T) {
+	_, sts := corpus(t, map[string]string{
+		"artifacts/new.md": "# New\n\n" +
+			"Because the counter is bumped in place, a reader never observes any gap at all.\n",
+	})
+	diff := `diff --git a/artifacts/new.md b/artifacts/new.md
+new file mode 100644
+--- /dev/null
++++ b/artifacts/new.md
+@@ -0,0 +1,3 @@
++# New
++
++Because the counter is bumped in place, a reader never observes any gap at all.
+diff --git a/artifacts/old.md b/artifacts/old.md
+--- a/artifacts/old.md
++++ b/artifacts/old.md
+@@ -3,1 +3,0 @@
+-Because the counter is bumped in place, a reader never observes any gap at all.
+`
+	rep := FindStale(sts, diff, 8)
+	if len(rep.Hits) != 0 {
+		t.Fatalf("the file the range CREATED is the fix, not a consumer: %+v", rep.Hits)
+	}
+	if rep.Touched == 0 {
+		t.Fatalf("and its sentences must be counted as written by the range: %+v", rep)
 	}
 }

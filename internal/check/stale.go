@@ -36,6 +36,23 @@ import (
 // together while leaving "version"/"versus" apart.
 const stemLen = 5
 
+// stemOf cuts a token at stemLen RUNES, not bytes: the artifacts are English by
+// workflow rule, but Cyrillic is legal as quoted data and a byte cut would
+// split a rune and compare halves of characters.
+func stemOf(t string) (string, bool) {
+	n := 0
+	for i := range t {
+		n++
+		if n > stemLen {
+			return t[:i], true
+		}
+	}
+	if n == stemLen {
+		return t, true
+	}
+	return "", false
+}
+
 // StaleHit is one untouched sentence still carrying vocabulary a fix retired.
 type StaleHit struct {
 	File   string
@@ -55,6 +72,17 @@ type StaleReport struct {
 	// corpus. Printed: the OUTPUT is narrowed, never the check, and a hidden
 	// population has to say its own size — `dup -since` established that.
 	Common int
+	// Mined is every token the range retired, before the corpus is consulted.
+	// It is what separates "this range removed no rare vocabulary, so nothing
+	// was swept" from "every word it retired is gone from the corpus too" — the
+	// second is a COMPLETE sweep and the best outcome the check has, and it was
+	// printed as `NOT A PASS, nothing was swept` because both left Retired
+	// empty. Reporting the good case as the vacuous one is the same defect
+	// class as the reverse, in the tool built to refuse it.
+	Mined int
+	// Swept is the retired vocabulary that survives nowhere in the untouched
+	// corpus: the consumers this fix DID reach.
+	Swept int
 	// Touched is the number of sentences skipped because the range itself wrote
 	// them. They are the fix, not its consumers.
 	Touched int
@@ -95,6 +123,13 @@ func FindStale(sts []Statement, diff string, maxDF int) StaleReport {
 		if p == "" || fd.deleted {
 			continue
 		}
+		// A file this range CREATED needs no special case here: its single hunk
+		// covers every line of it, so the loop below marks the whole document as
+		// written by the range. The branch that said so explicitly survived every
+		// mutation — an unprovable guard is a guard this project deletes, and the
+		// lesson it carried lives in the parser, which used to drop added files
+		// entirely (their words never entered the "added" set above, so a fix
+		// that MOVED a rule into a new artifact retired its whole vocabulary).
 		for _, h := range fd.hunks {
 			if h.newCount == 0 {
 				continue
@@ -111,8 +146,8 @@ func FindStale(sts []Statement, diff string, maxDF int) StaleReport {
 	// an English morphology table is not that argument.
 	addedStem := map[string]bool{}
 	for t := range added {
-		if len(t) >= stemLen {
-			addedStem[t[:stemLen]] = true
+		if st, ok := stemOf(t); ok {
+			addedStem[st] = true
 		}
 	}
 	var cand []string
@@ -123,7 +158,7 @@ func FindStale(sts []Statement, diff string, maxDF int) StaleReport {
 		if added[t] || len(t) < 4 || !hasLetter(t) {
 			continue
 		}
-		if len(t) >= stemLen && addedStem[t[:stemLen]] {
+		if st, ok := stemOf(t); ok && addedStem[st] {
 			continue
 		}
 		cand = append(cand, t)
@@ -148,11 +183,15 @@ func FindStale(sts []Statement, diff string, maxDF int) StaleReport {
 	rep.Scanned = len(open)
 
 	keep := map[string]bool{}
+	rep.Mined = len(cand)
 	for _, t := range cand {
 		switch n := df[t]; {
 		case n == 0:
 			// Retired everywhere it appeared. Nothing left to re-read: this is
-			// the fix that DID reach its consumers, and it is the good case.
+			// the fix that DID reach its consumers, and it is the good case —
+			// counted, so the report can tell it apart from a range that mined
+			// nothing at all.
+			rep.Swept++
 		case n > maxDF:
 			rep.Common++
 		default:
@@ -207,9 +246,18 @@ func FindStale(sts []Statement, diff string, maxDF int) StaleReport {
 func TouchedRanges(diff string) map[string][][2]int {
 	out := map[string][][2]int{}
 	for path, fd := range parseUnified(diff) {
-		if fd.deleted {
-			// A deleted file was touched everywhere. The finding's line, whatever
-			// it is, is inside the change.
+		// EVERY file the diff names gets a key, even one with no hunks at all: a
+		// mode change touches a file without changing a line, and the FILE-level
+		// question "did this commit open that document" is the whole of what
+		// `check closure` can ask about a finding citing no section. A missing
+		// key answered NO to it.
+		if _, ok := out[path]; !ok {
+			out[path] = nil
+		}
+		if fd.deleted || fd.isNew {
+			// Deleted or created: the finding's line, whatever it is, is inside
+			// the change. A commit that CREATED the artifact used to be reported
+			// as not having touched it.
 			out[path] = append(out[path], [2]int{1, 1 << 30})
 			continue
 		}
@@ -236,43 +284,112 @@ func inRanges(rs [][2]int, line int) bool {
 	return false
 }
 
-// PathsNamed returns the artifacts a finding's text names, resolved against the
-// workspace's own artifact list, with the line each mention cites (0 for none).
+// PathsNamed returns the artifacts a finding's text names, with the line each
+// mention cites (0 for none), and separately the spellings that matched MORE
+// than one artifact.
 //
-// It resolves rather than pattern-matches for the same reason the citation
-// checker does: a finding writes `decisions.md:120`, `artifacts/decisions.md`
-// and `./artifacts/decisions.md` for one file, and a check that treated those
-// as three paths would report a closure as unverified whenever the operator
-// abbreviated.
-func PathsNamed(text string, arts []string) map[string][]int {
-	out := map[string][]int{}
-	for _, tok := range strings.FieldsFunc(text, func(r rune) bool {
-		return r == ' ' || r == '\t' || r == ',' || r == ';' || r == '(' || r == ')' ||
-			r == '[' || r == ']' || r == '`' || r == '"' || r == '\'' || r == '<' || r == '>'
-	}) {
-		tok = strings.TrimRight(tok, ".:")
-		// The anchor comes off FIRST. A citation is written `file.md:12#rule`,
-		// and cutting the line number before the anchor left `:12#rule` as the
-		// number — which parses as no number, so the whole citation was read as
-		// a path and matched nothing. The finding then counted as naming no
-		// artifact at all, which is the shape this check exists to refuse.
-		if i := strings.IndexByte(tok, '#'); i >= 0 {
-			tok = tok[:i]
-		}
-		path, line := tok, 0
-		if i := strings.LastIndexByte(tok, ':'); i > 0 {
-			if n := atoiSafe(tok[i+1:]); n > 0 {
-				path, line = tok[:i], n
-			}
-		}
-		path = strings.TrimPrefix(path, "./")
-		for _, a := range arts {
-			if a == path || strings.HasSuffix(a, "/"+path) {
-				out[a] = append(out[a], line)
-				break
+// It searches for the KNOWN artifact paths inside the text rather than cutting
+// the text into whitespace tokens. Two reasons, both measured elsewhere in this
+// tool: an artifact path may contain a space (the citation checker has a test
+// for exactly that class), and a finding writes `decisions.md:120`,
+// `artifacts/decisions.md` and `./artifacts/decisions.md` for one file.
+//
+// An ambiguous spelling resolves to NOTHING, the way `check cite` treats a path
+// matching two tracked files. Returning the first match would report a closure
+// as landed against a file nobody named — and a check that guesses is worse
+// than one that says it could not tell.
+func PathsNamed(text string, arts []string) (named map[string][]int, ambiguous []string) {
+	named = map[string][]int{}
+	// Every spelling that could name an artifact: the full path and every
+	// suffix of it that begins at a path segment.
+	spellings := map[string][]string{} // spelling -> artifacts it could mean
+	for _, a := range arts {
+		spellings[a] = append(spellings[a], a)
+		for i := 0; i < len(a); i++ {
+			if a[i] == '/' {
+				spellings[a[i+1:]] = append(spellings[a[i+1:]], a)
 			}
 		}
 	}
+	seenAmb := map[string]bool{}
+	for sp, owners := range spellings {
+		for _, at := range indexAll(text, sp) {
+			// A spelling is only a mention when it stands on its own: the
+			// artifact `notes.md` must not match inside `release-notes.md`.
+			if at > 0 && !isBoundary(text[at-1]) {
+				continue
+			}
+			if len(owners) > 1 {
+				if !seenAmb[sp] {
+					seenAmb[sp] = true
+					ambiguous = append(ambiguous, sp)
+				}
+				continue
+			}
+			named[owners[0]] = append(named[owners[0]], lineAfter(text, at+len(sp)))
+		}
+	}
+	for a := range named {
+		named[a] = uniqueInts(named[a])
+	}
+	sort.Strings(ambiguous)
+	return named, ambiguous
+}
+
+// lineAfter reads the `:120` a citation may carry, ignoring an `#anchor`
+// between the path and the number. The anchor is cut FIRST: reading the line
+// number before it left `:12#rule` as the number, which parses as none, so the
+// whole citation was read as a path and matched nothing.
+func lineAfter(text string, i int) int {
+	if i < len(text) && text[i] == '#' {
+		for i < len(text) && !isBoundary(text[i]) && text[i] != ':' {
+			i++
+		}
+	}
+	if i >= len(text) || text[i] != ':' {
+		return 0
+	}
+	j := i + 1
+	for j < len(text) && text[j] >= '0' && text[j] <= '9' {
+		j++
+	}
+	return atoiSafe(text[i+1 : j])
+}
+
+func indexAll(hay, needle string) []int {
+	var out []int
+	for off := 0; ; {
+		i := strings.Index(hay[off:], needle)
+		if i < 0 {
+			return out
+		}
+		out = append(out, off+i)
+		off += i + len(needle)
+	}
+}
+
+// isBoundary is what may precede a path mention: anything that is not a
+// character a path segment can start with.
+func isBoundary(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return false
+	case c == '-' || c == '_' || c == '.' || c == '/':
+		return false
+	}
+	return true
+}
+
+func uniqueInts(xs []int) []int {
+	seen := map[int]bool{}
+	var out []int
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	sort.Ints(out)
 	return out
 }
 
@@ -305,6 +422,13 @@ var sectionIDRe = regexp.MustCompile(`\b[A-Z]{1,3}[0-9]{1,3}\b`)
 
 // SectionRanges maps each id that heads a markdown section to that section's
 // line range, ending where the next heading of the same or higher level begins.
+//
+// Fenced code is skipped, a heading needs a space after its hashes, and seven
+// hashes are not a heading: a decision document is full of shell and Go blocks,
+// and `# D9 example` inside one would head a phantom section that the closure
+// check then measures a commit against. An id heading two real sections gets
+// the UNION of them — a finding citing it is closed by a fix reaching either,
+// which is the same "any" rule the closure check applies to the ids themselves.
 func SectionRanges(body []byte) map[string][2]int {
 	lines := strings.Split(string(body), "\n")
 	type open struct {
@@ -313,24 +437,60 @@ func SectionRanges(body []byte) map[string][2]int {
 		start int
 	}
 	out := map[string][2]int{}
+	put := func(id string, r [2]int) {
+		if old, ok := out[id]; ok {
+			if old[0] < r[0] {
+				r[0] = old[0]
+			}
+			if old[1] > r[1] {
+				r[1] = old[1]
+			}
+		}
+		out[id] = r
+	}
 	var stack []open
 	closeTo := func(level, endLine int) {
 		for len(stack) > 0 && stack[len(stack)-1].level >= level {
 			o := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			for _, id := range o.ids {
-				out[id] = [2]int{o.start, endLine}
+				put(id, [2]int{o.start, endLine})
 			}
 		}
 	}
+	fence := ""
 	for i, l := range lines {
 		t := strings.TrimSpace(l)
+		// A fence opens with three or more backticks or tildes and closes with
+		// the same character. Everything between belongs to the code.
+		if f := fenceOf(t); f != "" {
+			switch {
+			case fence == "":
+				fence = f
+			case strings.HasPrefix(f, fence[:1]):
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			continue
+		}
+		// An indented code block is code too, and a heading is never indented
+		// by four spaces.
+		if strings.HasPrefix(l, "    ") || strings.HasPrefix(l, "\t") {
+			continue
+		}
 		if !strings.HasPrefix(t, "#") {
 			continue
 		}
 		level := 0
 		for level < len(t) && t[level] == '#' {
 			level++
+		}
+		// `#not-a-heading` is a fragment link or a shell comment, and `#######`
+		// is past the six levels markdown has.
+		if level > 6 || level >= len(t) || t[level] != ' ' {
+			continue
 		}
 		closeTo(level, i) // the previous section ends on the line before this heading
 		ids := sectionIDRe.FindAllString(t, -1)
@@ -341,6 +501,16 @@ func SectionRanges(body []byte) map[string][2]int {
 	}
 	closeTo(1, len(lines))
 	return out
+}
+
+// fenceOf returns the fence marker a line opens or closes with, or "".
+func fenceOf(t string) string {
+	for _, c := range []string{"```", "~~~"} {
+		if strings.HasPrefix(t, c) {
+			return c
+		}
+	}
+	return ""
 }
 
 // SectionsNamed returns the section ids a finding's text cites.

@@ -184,7 +184,7 @@ func TestBatchNote_authoringRoundIsExcludedAndSaidSoOutLoud(t *testing.T) {
 	if !warn {
 		t.Fatal("want a note")
 	}
-	if !strings.Contains(note, "round(s) 1 are NOT in that history") || !strings.Contains(note, "authoring commit") {
+	if !strings.Contains(note, "round(s) 1 are NOT in that history") || !strings.Contains(note, "window ADDS an artifact") {
 		t.Fatalf("the exclusion must be named, not silent: %q", note)
 	}
 	// The excluded round must not reach the prediction: 49 findings over 801
