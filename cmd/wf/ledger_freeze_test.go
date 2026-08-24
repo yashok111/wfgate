@@ -42,6 +42,22 @@ func newGate(t *testing.T) string {
 	return wsDir
 }
 
+// reviewedRound leaves a round the way a round that actually RAN leaves it:
+// one filed finding, recorded through `wf round record` so the ledger is
+// committed. It exists because freeze and close now refuse a round whose ledger
+// is the untouched scaffold and whose lenses nobody banked — a round nobody
+// reviewed must not read as a round that found nothing — and every fixture
+// below that closes or re-freezes a gate was taking exactly that shortcut.
+func reviewedRound(t *testing.T, wsDir string, round int) {
+	t.Helper()
+	ledger(t, wsDir, round, "| 1 | MAJOR | a wording this round filed |  |\n")
+	if _, err := runWF(t, wsDir, "round", "record",
+		filepath.Join(wsDir, "rounds", "r"+strconv.Itoa(round), "findings.md"),
+		"-round", strconv.Itoa(round)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func ledger(t *testing.T, wsDir string, round int, table string) {
 	t.Helper()
 	write(t, filepath.Join(wsDir, "rounds", "r"+strconv.Itoa(round), "findings.md"),

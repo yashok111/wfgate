@@ -270,7 +270,7 @@ measured failure, not taste:
   to the finding's author.
 
 **The fourth wave, from P2e — the first script gate** (`FEEDBACK-p2e.md`;
-17 rounds, 235 findings, 293 KB of artifacts):
+17 rounds, 234 findings by its own `wf stats`, 293 KB of artifacts):
 
 - *`dup` unwraps hard-wrapped paragraphs before sentence-splitting* — the
   line-bounded splitter turned two derived artifacts wrapping the same
@@ -601,8 +601,148 @@ classes were things `wf` already held the data for and did not ask:
   deciding measurement written down in `IDEAS.md`. The second has a sharpened
   form from that gate worth more than the command: a criterion vector must
   REQUIRE, per clause, either a named defeating implementation or an explicit "I
-  could not construct one" — the prose-about-soundness version produced 1
-  finding, the version demanding implementations produced 8.
+  could not construct one". **The 1-vs-8 number this once carried is withdrawn**
+  (2026-08-24): it compared round 1 with round 4 across a 6.4x growth in the
+  section, a different model and a different round position. Held fixed, the
+  strict brief LOWERED the yield (12, 14 loose -> 8 strict) while raising anchor
+  density. The canned vector is now on the do-not-build list for a further
+  reason measured on the A3 gate: a vector returning 12-18% of whatever surface
+  it is handed can never return zero against a nonempty acceptance criterion,
+  and each defeat is closed by adding a clause — it is a loop generator. The
+  rule that survives is the AUTHOR-side one already shipped at
+  `gate-checks.md:233`, which was never applied on that gate: 352 lines of
+  acceptance section carried 2 lines naming a defeat.
+
+**The ninth wave — the A3 loop, and the four-part answer that was measured and
+NOT built** (`IDEAS.md`, "A3 after eight reviewed rounds"). Eight reviewed
+rounds, 194 findings, 92 blockers, no descent; the artifact grew at every freeze
+(333 -> 1319 lines) and ONE section — `D13. Acceptance` — went 23 -> 352 lines,
+absorbed a third of all growth and was rewritten in every round. (What SHARE of
+the 92 blockers were its is deliberately not quoted: five derivations of that
+one quantity exist, 25 to 66, and the operator acted on the highest.) A human
+then cut that section to 92 lines of properties — and round 9, which reviewed
+the cut, returned 4 blockers and 20 findings, 17 of them defects IN the cut,
+two of them design decisions that survived nowhere afterwards. So the cut moved
+the loop rather than ending it, and this entry must not be read as saying
+otherwise. The
+obvious answer was a per-section loop meter with a verdict, a fourth closure
+kind, a second stop clause and a canned criterion vector; all four were rejected
+on measurements over five gate corpora, and the reasons are banked in `IDEAS.md`
+because the do-not-build list is the most reusable thing that file holds. The
+decisive datum was a counterfactual already on disk: the decision gate BEFORE
+it, same operator and same target, has an acceptance section too — its blockers
+ran 4, 2, 2 and then zero for four rounds, it was never cut, and its gate closed
+on a genuine zero. The difference is FORM, not diligence: D12's clauses point at
+things that execute or count, D13's specified tests in prose, and a clause whose
+only reader is a reviewer imagining a cheat has no floor. What shipped:
+
+- *One manual rule, zero lines of Go* — **an acceptance section states
+  OBSERVATIONS, never test designs**, in `gate-checks.md` beside the two
+  criterion rules it completes, with both gates' numbers. The rule that was
+  supposed to prevent this ALREADY SHIPPED (`gate-checks.md`: each criterion
+  names the wrong implementation it exists to fail) and had never been applied:
+  352 lines of acceptance section carried 2 lines naming a defeat. So the same
+  bullet now says the rule is AUTHOR-side and why moving it onto a reviewer was
+  rejected — across three rounds of one gate that vector named a defeat on
+  12-18% of the clauses it was handed (8/64, 9/51, 12/69) and never returned
+  zero, each defeat was closed by ADDING a clause, and its other 82-88% was
+  "none constructed", which nothing separates from "did not try". The mechanism
+  generalises; the percentage does not, and the manual says which is which.
+- *A round nobody read must not print what a round that found nothing prints* —
+  the live hole, and it stopped being hypothetical the same day: that gate's
+  round 9 was opened, tagged `gate-r9` and left undispatched, and `wf stats`
+  printed `round 9 — 0 finding(s), 0 blocker(s)`, which under the stop rule is a
+  legal close. It was then dispatched and returned FOUR blockers. `ws.ScaffoldOnly` names the shape
+  the existing `noLedger` guard sat one case away from; `wf stats` marks the
+  round line and names the rounds, `wf freeze` refuses to publish the round it
+  CLOSES in that state, and `wf close` refuses to bank it as the round that
+  ended the gate. A `-kind tool` round is exempt — its opening subject already
+  records that no reviewer was dispatched — and the open round is exempt in
+  freeze, because in the prescribed flow its scaffold is blank by construction.
+  Run over the three closed gates on disk it names four rounds — p2d 11-13 and
+  p2e 17 — every one a post-gate or relaunch bookkeeping round whose ledger
+  nobody filled, and the last of them is p2e's FINAL round. `-kind tool` is what
+  each of them should have been opened as, and none of them existed as a claim
+  about findings until now.
+- *`wf round lens <prompt> -name N -model M`* — the escape from that refusal is
+  a RECORD, not a flag, and it is the item the queue said to build if only one
+  was built. The roster was the largest visible driver in that gate and lived
+  as DATA: over the delta rounds 2-8 the criterion vector was EXTERNAL at 2/4/6
+  and internal at 3/5/7/8, blockers 17, 16, 12 against 10, 11, 6, 7 — 1.76x —
+  and the two lowest-blocker rounds are the two after the external lens was
+  dropped for quota. (Round 1 is outside that comparison because it is the full
+  round against a first draft; its criterion vector was external too, 13
+  blockers, and including it gives 1.71x. The narrowing is named at every site
+  that quotes the number.) Any descent a stop rule reads there is confounded
+  with a billing decision, and the roster survived only as prose in eight
+  findings headers — hand-readable, readable by no command. It writes `rounds/rN/lens-<name>.md`, the prompt verbatim with what
+  ran it — a FILE in the round directory, because `wf close` copies a round's
+  files and skips directories, so a roster under `lenses/` would be dropped from
+  the record and then deleted by `prune`. A banked prompt is never rewritten
+  (the findings lesson, one file over); `-name` and `-model` are both required,
+  because "unknown" in a roster is the same claim as no roster.
+- *The stop rule lived at five sites in four wordings and no check compared
+  them* — one of them lower-cased, which the case-erasing normaliser cannot see
+  as a difference. All five now read "The gate ends on a REVIEWER round that
+  produces no BLOCKER, and on nothing else [R1]" — the reviewer qualifier was
+  missing from the canonical statement — and the manual marks its own rule so a
+  gate over these documents compares the sites. **The claim was checked by
+  running the check, and the first run refuted it twice.** Two of the marked
+  sites were POINTERS the same wave had just written — a quotation and the
+  sentence announcing the marking — inside the bullet that says a marked pointer
+  disagrees with every statement of its rule; and the two `pre-flight-gate.md`
+  sites led with a COLON, so the statement unit began before the canonical
+  sentence and normalised differently, which is the sixth wave's terminator
+  defect in a new costume. Both repaired, plus the manual's own pointer EXAMPLES
+  ("because of [R2]"), which had been failing the check since before this wave.
+  The corpus now reports `4 marker(s), 1 id(s), 1 compared, 0 conflict(s)`. The
+  fifth site is a Go comment `wf check rules` can never reach, because it
+  compares artifacts; it is kept in the same wording by hand, and the manual
+  says so rather than counting it.
+- *And one rule from round 9, which reviewed the cut* — **a scope cut is an edit
+  like any other and it is reviewed like any other.** It is the largest single
+  edit a gate makes and its deletions are invisible to every check this tool
+  has: `rules` compares the SITES of a marked rule, `dup` and `stale` read what
+  is still written, and nothing at all watches a decision that stops existing.
+  The round that reviewed one diffed the pre-cut span against the whole post-cut
+  artifact token by token and asked, of every token whose count went to zero,
+  whether the decision it carried survives anywhere — 4 blockers, 17 of 20
+  findings defects in the cut, two deleted decisions recovered.
+- *And a gap in a shipped check, found by accident and written down* — `wf check
+  rules` cannot distinguish a STATEMENT from a POINTER to one, and a marked site
+  can DECAY into a pointer without the marker moving: the cut left one of the
+  two sites of three rules reading "every one of the five routes of [R1]" with
+  the enumeration deleted, and the check printed `5 compared, 0 conflict(s)`
+  over the broken document both before and after.
+
+- *And the wave earned its review round, for the fourth time running* — two
+  Opus vectors (Go correctness with a mutation sweep, and claims/specification)
+  plus one external model over the diff, against four green bars. They found
+  two BLOCKERS in the new code and refuted the wave's own flagship claim:
+  **freeze examined only the PREVIOUS round, and `wf round new` does not require
+  the current round to be frozen** — so a round opened past without a freeze was
+  examined by no refusal at all, reproduced end to end as a gate closing with an
+  undispatched round 2 that only `wf stats` named; and **the escape from both
+  refusals was a FILENAME** — `touch rounds/r1/lens-anything.md` cleared a
+  refusal that had just fired, the roster then printed a vector with no model
+  (the one thing the write path refuses to record), and an UNCOMMITTED lens
+  counted the same way, so a file that would not exist in the tag could
+  authorise it. Both refusals now sweep every closed round, and a lens counts
+  only where it says which vector, what ran it and what it was asked, and is
+  committed. Also found: a lens banked against a FUTURE round pre-authorised the
+  round the guard exists to refuse; the unchanged-detection stripped every
+  `Recorded:` line, so two DIFFERENT prompts compared equal and the second was
+  reported as already on file; and `wf stats` went on calling a round "not a
+  measured zero" after the refusals had accepted its banked roster — the report
+  contradicting the guard that let it through. **The stop-rule unification
+  failed its own check on the first run**, twice over, and the claim was only
+  believed after `wf check rules` was actually run over the two references.
+  Nine line citations in the wave's own prose had drifted — the `check drift`
+  class, committed by the wave that ships a false-zero guard. Two guards
+  survived every mutation: one was dead code and was deleted, one got the test
+  it lacked, and five more that were killed only in pairs got assertions on the
+  MESSAGE, because falling through to a true-but-useless refusal is not the same
+  guard.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
@@ -716,7 +856,8 @@ fixtures for the non-ASCII anchor detector).
 
 - **Four real gates have now run entirely through `wf`.** P2d (10 rounds, 98
   findings — `FEEDBACK-p2d.md`), P2e, the first over a workflow SCRIPT
-  (17 rounds, 235 findings, 293 KB of artifacts — `FEEDBACK-p2e.md`), and P2f,
+  (17 rounds, 234 findings — `FEEDBACK-p2e.md` says 235, and its own `wf stats` says 234; the
+  hand-count is the one that is wrong — 293 KB of artifacts), and P2f,
   the first carrying both gates in one workspace (13 rounds, 111 findings, 180
   KB over three artifacts — `FEEDBACK-p2f.md`; its implementing run then
   executed 20 agents over 149 minutes and came back green). P2e

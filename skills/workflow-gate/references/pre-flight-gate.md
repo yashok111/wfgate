@@ -12,7 +12,8 @@ whole set (2) → hand reviewers the frozen paths (3) → and when the gate is d
 re-freeze, which forced a whole round for a defect no reviewer ever saw (measured, P2e r12) — the
 dry-run reads the working copy, and the freeze exists to pin what REVIEWERS read, so it comes after
 the set executes clean. Each delta round repeats: collect the
-round's findings and record them with `wf round record` → fix with `wf apply` → fill the closed-by
+round's findings and record them with `wf round record` → bank the vectors that produced them with
+`wf round lens` → fix with `wf apply` → fill the closed-by
 column and re-record (`wf round record <file> -round N`) → static check → re-dry-run → open
 the next round → re-freeze → `wf verify` → hand the next reviewer `wf delta`.
 
@@ -75,6 +76,27 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `wf delta` puts in front of the next reviewer, whose first job is to check the claim that those
    findings were closed. Round N+1 is opened after the fixes, so at review time the open round's file
    is still blank; `wf delta` reads the file of the round it diffs FROM, which is the one being closed.
+
+   **Bank the round's LENS ROSTER with `wf round lens <prompt-file> -name NAME -model MODEL`,** one call
+   per vector, and it writes `rounds/rN/lens-<name>.md` — the prompt verbatim, with what ran it. It is
+   not bookkeeping: on one gate, across its delta rounds 2-8, the criterion vector was an external model
+   at rounds 2, 4 and 6 and an internal one at 3, 5, 7 and 8, and the gate blockers were 17, 16, 12
+   against 10, 11, 6, 7 — 1.76x, with the two lowest-blocker rounds of the whole gate being the two
+   after the external lens was dropped for quota. (Round 1 sits outside that comparison because it is
+   the full round against a first draft; its criterion vector was external too, at 13 blockers, and
+   including it gives 1.71x — the narrowing is named because a population narrowed in silence is this
+   tool's own named defect.) Any descent a stop rule reads there is confounded with a billing decision,
+   and nothing in the workspace recorded which model ran what AS DATA: `rounds/rN/brief.md` is the
+   `wf delta` output, not the reviewer prompt, and the roster survived only as prose in each findings
+   header — checkable by hand-reading eight of them, readable by no command and printable in no report.
+   One claim in this toolchain was withdrawn after exactly that hand-reading. **A lens counts only if it
+   is a RECORD** — it says which vector (`# Lens`), what ran it (`Model:`) and what it was asked (a
+   prompt after the `---`), and it is committed. The roster is the escape from the two refusals below,
+   so an empty file of the right name must not be one. `wf stats` prints each
+   round's roster and names the rounds carrying none (a `-kind tool` round is excluded from that note:
+   it dispatched no reviewer by declaration); a banked prompt is never rewritten, and
+   `wf round lens` with no file prints the roster. It is also how a round whose vectors ran and found
+   NOTHING says so: see the stop rule below, and the refusals in `wf freeze` and `wf close`.
 
    **The findings table is a validated ledger, not free text.** `wf round record` parses the scaffold's
    table before writing a byte: a `closed by` cell naming a commit that does not exist in the workspace
@@ -445,10 +467,12 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
 
   **What no similarity metric reaches, `[RN]` rule markers make mechanical.** Copies that CONTRADICT
   in different words share no wording — eight of those on the first live gate, every one found by a
-  reviewer and none by dup. Mark the sites of one rule with the same `[R12]` and `wf check rules`
+  reviewer and none by dup. Mark the sites of one rule with the same id — R12, say, written in
+  square brackets — and `wf check rules`
   (part of `wf check` with no argument) demands they normalise identically, quoting and case erased
   as in dup. **A marker means THIS TEXT STATES THE RULE.** A sentence that POINTS at one — "because
-  of [R2]", "forced by [R4]", "so [R8] is satisfied by" — states nothing, so the check compares it
+  of R2", "forced by R4", "so R8 is satisfied by" (each written with the marker) — states nothing,
+  so the check compares it
   against the statement beside it and reports a conflict that is not one: measured on a live gate,
   four ids in a single run, and the repair chosen was rewording the ARTIFACT until every id had one
   site left and the check reached nothing at all. Drop the marker from the reference instead. The
@@ -566,7 +590,7 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   a section reviewer was given a non-vacuity vector ("which line of this diff, if reverted, makes this
   check fail? if none, that is a blocker"). **Classify by actual downstream coverage** — check whether
   some later gate was actually assigned that vector before letting anything ride.
-- **Stop rule, decided in advance:** a round that produces no BLOCKER ends the gate. Majors ride into the
+- **Stop rule, decided in advance.** The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. Majors ride into the
   run — the per-section review gates exist to catch them, and another round costing 170k to fix one stale
   sentence is not a bargain. Read the trend off **`wf stats`**, not off your own awk: it prints each
   round's findings, blockers, closure split and apply batches from the ledger and git, and it knows the
@@ -577,8 +601,20 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   gates — a round that was 4 of 4 fix-induced and carried one blocker was followed by a round filing
   seven findings and another blocker, and a 3-of-3 fix-induced round carried a blocker itself. The
   blocker descent is not monotone either — 7, 5, 1, 0, 2, 5, 3, 2, 1, 0 on one gate — so a
-  zero is not a trend. The stop rule stays exactly what it says above and nothing else does: a round
-  that produces no BLOCKER ends the gate. Mark such findings with
+  zero is not a trend. The stop rule stays exactly what it says above, and nothing else does. The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1].
+  **And an UNFILLED findings scaffold is not a measured zero.** A round that was opened, frozen and
+  never dispatched leaves the ledger `wf round new` wrote, so `wf stats` printed `0 finding(s),
+  0 blocker(s)` — the same line the round that ENDS a gate prints, and under this rule a legal close
+  (measured: one gate's round 9, frozen as `gate-r9`, reviewed by nobody). `wf stats` names such rounds
+  and marks the line `ledger: UNFILLED scaffold, not a measured zero`; `wf freeze` refuses while ANY
+  closed round stands in that state and `wf close` refuses to bank one. EVERY closed round is checked,
+  not just the previous one: `wf round new` does not require the current round to be frozen, so a round
+  opened past without a freeze was examined by no refusal at all. A round whose vectors ran and found
+  nothing says so by banking them with `wf round lens`, and `wf stats` then reads it as `ledger: empty,
+  and its lenses are banked — a measured zero`. A `-kind tool` round is exempt, because its opening
+  subject already records that no reviewer was dispatched; the OPEN round is exempt because its
+  scaffold is blank by construction.
+  Mark such findings with
   a literal `[fix-induced]` in the finding text — `wf stats` counts the marker per round and in total,
   and prints "not measured" when nobody marked, because an unmarked corpus is a different claim from
   "no self-inflicted findings". It also names, BY ROUND NUMBER, the rounds it could not measure: the

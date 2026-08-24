@@ -44,7 +44,8 @@ func (r FindingRow) Placeholder() bool { return !r.Malformed && r.Text == "" }
 
 // FixInduced reports the opt-in `[fix-induced]` marker in the finding text.
 // The share of a round's findings introduced by the previous round's own fix
-// is a continue signal, not a stop signal: the gate ends on a round with no BLOCKER and on nothing else — it climbed to 100% on the
+// is a continue signal, not a stop signal: the gate ends on a REVIEWER round
+// that produces no BLOCKER, and on nothing else [R1] — it climbed to 100% on the
 // first live gate's last two rounds — and the ledger can only carry it where
 // the author marked it, which is why stats prints the marker's population
 // rather than pretending an unmarked corpus measured anything.
@@ -150,6 +151,32 @@ func isSeparator(cell string) bool {
 	}
 	for _, c := range cell {
 		if c != '-' && c != ':' {
+			return false
+		}
+	}
+	return true
+}
+
+// ScaffoldOnly reports a ledger that PARSED and carries nothing but the
+// scaffold's unfilled rows.
+//
+// It exists because `0 finding(s), 0 blocker(s)` was printed identically for a
+// round whose reviewers found nothing and for a round that was opened, frozen
+// and never dispatched — and under the stop rule the second reads as a legal
+// close. Measured on a live gate: round 9 was opened, tagged `gate-r9`, no lens
+// was ever run against it, and every derived number in the workspace called it
+// a measured zero. A missing ledger is already named (`noLedger`); an untouched
+// FORM fell through the same gap one case over.
+//
+// A malformed row makes this false, and it needs no clause of its own:
+// Placeholder is already false for one, by construction. An unreadable claim is
+// not an unfilled form, and the caller refuses it by its own name.
+func ScaffoldOnly(rows []FindingRow) bool {
+	if len(rows) == 0 {
+		return false
+	}
+	for _, r := range rows {
+		if !r.Placeholder() {
 			return false
 		}
 	}

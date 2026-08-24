@@ -64,6 +64,7 @@ wf round new -title "kernel + checkpoints"   # -kind delta for a delta round
 wf check                                   # cite + dup + rules + closure
 wf apply -f fixes.json -m "close r1 blockers"
 wf round record findings.md                # the round's ledger, closures validated
+wf round lens criterion.md -name CRITERION -model "external gpt-5.6-sol"   # what reviewed it
 wf freeze                                  # hashes + target HEAD + tool version → commit, tag gate-r1
 wf verify                                  # the pre-launch check: what runs is what was reviewed
 
@@ -80,13 +81,14 @@ wf delta                                   # the delta round's brief: findings +
 | `wf apply -f <edits> [-m msg] [--dry-run]` | all-or-nothing batch of edits (JSON or text blocks), then a commit of only the touched files |
 | `wf round new [-title T] [-kind full\|delta\|tool]` | open the next round, scaffold `rounds/rN/findings.md` with its scope |
 | `wf round record <file> [-round N]` | fill a round's findings.md, validating closures before writing |
-| `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts + the corpus size in lines (with the delta against the previous freeze — a document that doubles while the blocker count holds is a design being elaborated rather than settled) → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open; notes (never refuses) every citation that no longer RESOLVES against the target's HEAD, a round whose artifacts changed without `wf apply`, and — when it could not resolve them, or the round's window has no lower bound — that the check did not run |
+| `wf round lens <prompt> -name N -model M [-round N]` | bank one reviewer vector against a round — the prompt verbatim and what ran it — into `rounds/rN/lens-<name>.md`; no argument prints the roster. `-round` must name a round the gate has opened. A banked prompt is never rewritten, and one left uncommitted by a failed commit is committed on the next run. It is also how a round whose vectors ran and found NOTHING says so, which is what separates it from a round nobody dispatched. A file counts as a record only if it says which vector (`# Lens`), what ran it (`Model:`) and what it was asked (a prompt after the `---`), and only once committed — the roster is the escape from two refusals, so a `touch`ed filename must not be one |
+| `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts + the corpus size in lines (with the delta against the previous freeze — a document that doubles while the blocker count holds is a design being elaborated rather than settled) → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open; notes (never refuses) every citation that no longer RESOLVES against the target's HEAD, a round whose artifacts changed without `wf apply`, and — when it could not resolve them, or the round's window has no lower bound — that the check did not run. Refuses when ANY closed round carries an untouched findings scaffold and no banked lens: a round nobody is recorded as having read must not freeze as a round that found nothing (a `-kind tool` round is exempt — its opening subject already says no reviewer was dispatched; the OPEN round is exempt because its scaffold is blank by construction). Every closed round, not just the previous one — `wf round new` does not require the current round to be frozen, so a round opened past without a freeze was seen by no refusal at all |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules\|stale\|closure]` | deterministic checks (no argument = cite + dup + rules + closure); `dup` takes `-since REF`, `-threshold F` and `-min-words N`; `stale` takes `-since REF` (default the newest freeze) and `-max-df N` (default 3); `closure` takes `-round N` (refused when that round does not exist) |
-| `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a round whose window contains the commit that CREATED an artifact prints no ratio at all, because it prices a corpus its batches did not write), each round's frozen corpus size and its growth, the prediction basis `wf apply` reads (narrower than the gate total, and the difference printed rather than reconciled; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share (with the rounds carrying no marker named, so the share reads as the lower bound it is), the rounds that applied no batch at all, every run of three or more rounds at exactly ONE blocker, the rounds whose findings.md could not be read at all (an absent measurement, not a measured zero), and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
+| `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a round whose window contains the commit that CREATED an artifact prints no ratio at all, because it prices a corpus its batches did not write), each round's frozen corpus size and its growth, the prediction basis `wf apply` reads (narrower than the gate total, and the difference printed rather than reconciled; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share (with the rounds carrying no marker named, so the share reads as the lower bound it is), the rounds that applied no batch at all, every run of three or more rounds at exactly ONE blocker, the rounds whose findings.md could not be read at all (an absent measurement, not a measured zero), the rounds carrying an UNFILLED findings scaffold (an empty form, not a measured zero — the shape under which a gate can end without anyone having looked), each round's banked lens roster and the rounds that record none (tool rounds excluded from both, for the same reason), and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
 | `wf new-script <name> [-target REPO] [-o FILE]` | emit the orchestration-script harness — wrapper, schemas, per-section gate, liveness ledger, read-only accept, tally; `wfcheck`-clean and `wfdry` 7/7 as emitted, and re-verified by `make check-tools`. Never writes over an existing file |
-| `wf close [-archive DIR] [-artifacts=false]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and every file of every round, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten. the artifacts themselves are banked too, because their CONTENT is the one thing `prune` destroys that nothing else holds; `-artifacts=false` opts out, and `prune` then names each artifact before removing it |
+| `wf close [-archive DIR] [-artifacts=false]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and every file of every round, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten. Refuses while ANY round carries an untouched findings scaffold with no banked lens, and names a last round that dispatched no reviewer at all (a `-kind tool` round is exempt from the refusal and is instead NAMED, because its opening subject already records that no reviewer was dispatched). the artifacts themselves are banked too, because their CONTENT is the one thing `prune` destroys that nothing else holds; `-artifacts=false` opts out, and `prune` then names each artifact before removing it |
 | `wf prune [-yes]` | delete `artifacts/`, `rounds/` and then `.git` once the record is banked; refuses without one, refuses a stale one (including a record committed together with the work it describes), and reports without `-yes`. Measured on one closed gate: 4.2 MB down to 696 KB, and the record holds the artifacts, every round's files, the commit log and the stats |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
 | `wf version` | the binary's stamped build version |
@@ -300,6 +302,54 @@ share has to be visible rather than assumed. Measured: two reviewer lenses,
 told by hand-written prompt to ask exactly this, reported 6 and 4 of 24 closures
 not closed, three rounds running; it was the most valuable half of those rounds
 and it was produced entirely by prose instruction over data git already held.
+
+### `wf round lens`, and the round nobody read
+
+Two rounds print the same line. One dispatched its reviewers and they found
+nothing; the other was opened, frozen and never dispatched. Both leave the
+ledger `wf round new` scaffolded, both make `wf stats` say `0 finding(s),
+0 blocker(s)`, and under the stop rule — the gate ends on a REVIEWER round that
+produces no BLOCKER, and on nothing else — the second is a legal close.
+Measured, and not hypothetically: one decision gate's round 9 was tagged
+`gate-r9` over a blank scaffold and read as a zero for as long as nobody
+dispatched it. When it was finally reviewed it returned four blockers, two of
+them design decisions that a scope cut had deleted and that survived nowhere
+else — a gate that had trusted that line would have shipped a document missing
+both.
+
+So the difference is made a RECORD rather than a guess. `wf round lens <prompt>
+-name NAME -model MODEL` writes `rounds/rN/lens-<name>.md` — the prompt
+verbatim, with what ran it — and `wf freeze` refuses while ANY closed round's
+ledger is the untouched scaffold with no lens banked, `wf close` refuses to bank
+one, and `wf stats` marks the line `ledger: UNFILLED scaffold, not a measured
+zero` (and, when the lenses ARE banked, `ledger: empty, and its lenses are
+banked — a measured zero`, which is the distinction the whole feature is for).
+Every closed round is checked rather than only the previous one, because
+`wf round new` does not require the current round to be frozen: a round opened
+past without a freeze was examined by no refusal at all, and a gate closed
+carrying an undispatched round that only `wf stats` ever named. A `-kind tool`
+round is exempt: its opening subject already records that no reviewer was
+dispatched. And a lens counts only if it is a RECORD — a `# Lens` name, a
+`Model:` line, a prompt after the `---`, and a commit; the first version counted
+a FILENAME, and `touch rounds/r1/lens-anything.md` cleared a refusal that had
+just fired.
+
+The roster is worth banking for its own sake. On the gate above, over its delta
+rounds 2-8, the criterion vector was an external model at rounds 2, 4 and 6 and
+an internal one at 3, 5, 7 and 8; the gate blockers were 17, 16, 12 against 10,
+11, 6, 7 — 1.76x — and the two lowest-blocker rounds of the whole gate are the
+two after the external lens was dropped for quota. (Round 1 is outside the
+comparison because it is the full round against a first draft; its criterion
+vector was external too, at 13 blockers, and including it gives 1.71x.) None of
+that was recorded as data — it survives only as prose in eight findings headers,
+so no command can read it and no report can print it, and every claim about
+brief wording or model diversity made from those numbers had to be checked by
+hand-reading them. One such claim in this repository was withdrawn after exactly
+that reading. `wf stats` prints each round's roster and names the rounds
+carrying none, `wf close` banks the prompts with the round (they are FILES in
+`rounds/rN/`, which is what `close` copies and `prune` deletes), and a banked
+prompt is never rewritten: the prompt a round actually ran with is the whole
+point of the file.
 
 ### `wfcheck` and the target
 

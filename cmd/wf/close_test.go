@@ -57,6 +57,7 @@ func TestCloseRefusesBeforeWriting(t *testing.T) {
 // surviving half, and every round's ledger verbatim.
 func TestCloseBanksWhatTheRepositoryAloneHolds(t *testing.T) {
 	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
 	}
@@ -94,6 +95,7 @@ func TestCloseBanksWhatTheRepositoryAloneHolds(t *testing.T) {
 // and re-closing after a post-gate edit is a normal thing to do.
 func TestCloseKeepsAFilledFeedback(t *testing.T) {
 	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
 	}
@@ -129,6 +131,7 @@ func TestPruneRefusesWithoutARecord(t *testing.T) {
 // command reports and stops.
 func TestPruneNeedsYes(t *testing.T) {
 	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +165,7 @@ func TestPruneNeedsYes(t *testing.T) {
 // A snapshot taken before the last edit is a snapshot of a different gate.
 func TestPruneRefusesAStaleRecord(t *testing.T) {
 	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
 	tmp := filepath.Dir(wsDir)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
@@ -237,6 +241,7 @@ func TestNewScriptSubstitutesAndNeverOverwrites(t *testing.T) {
 // an irreversible delete while the snapshot held the pre-edit rows.
 func TestPruneRefusesARecordCommittedWithTheWorkItDescribes(t *testing.T) {
 	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
 	}
@@ -266,6 +271,7 @@ func TestPruneRefusesARecordCommittedWithTheWorkItDescribes(t *testing.T) {
 // and it lives in rounds/rN/, which prune deletes.
 func TestCloseBanksTheDeltaBrief(t *testing.T) {
 	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
 	tmp := filepath.Dir(wsDir)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
@@ -282,6 +288,7 @@ func TestCloseBanksTheDeltaBrief(t *testing.T) {
 	if _, err := runWF(t, wsDir, "delta", "-save"); err != nil {
 		t.Fatal(err)
 	}
+	reviewedRound(t, wsDir, 2)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
 	}
@@ -299,6 +306,7 @@ func TestCloseBanksTheDeltaBrief(t *testing.T) {
 func TestArtifactsAreNamedOrBanked(t *testing.T) {
 	t.Run("prune names what leaves the world when they were not banked", func(t *testing.T) {
 		wsDir := newGate(t)
+		reviewedRound(t, wsDir, 1)
 		if _, err := runWF(t, wsDir, "freeze"); err != nil {
 			t.Fatal(err)
 		}
@@ -313,6 +321,7 @@ func TestArtifactsAreNamedOrBanked(t *testing.T) {
 
 	t.Run("banked by default", func(t *testing.T) {
 		wsDir := newGate(t)
+		reviewedRound(t, wsDir, 1)
 		if _, err := runWF(t, wsDir, "freeze"); err != nil {
 			t.Fatal(err)
 		}
@@ -333,12 +342,14 @@ func TestArtifactsAreNamedOrBanked(t *testing.T) {
 // and printed its success block; a snapshot may not repeat that.
 func TestCloseRefusesAnUnreadableRound(t *testing.T) {
 	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runWF(t, wsDir, "round", "new", "-title", "second", "-kind", "delta"); err != nil {
 		t.Fatal(err)
 	}
+	reviewedRound(t, wsDir, 2)
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatal(err)
 	}

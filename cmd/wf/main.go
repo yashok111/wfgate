@@ -46,6 +46,7 @@ const usage = `wf — gate harness
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta|tool]  open the next round, scaffold its findings file
   wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
+  wf round lens <prompt> -name N -model M   bank a reviewer vector against the round (no argument: print the roster)
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
@@ -459,8 +460,11 @@ func cmdRound(args []string) error {
 	if len(args) > 0 && args[0] == "record" {
 		return cmdRoundRecord(args[1:])
 	}
+	if len(args) > 0 && args[0] == "lens" {
+		return cmdRoundLens(args[1:])
+	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file>")
+		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> | wf round lens <prompt> -name N -model M")
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
@@ -691,6 +695,20 @@ func cmdFreeze(args []string) error {
 	// ones that must be closed by now. The open round is checked too, for the
 	// operator who records into it before freezing.
 	prose := 0
+	// The kind is read from the opening subject: a `tool` round declares in the
+	// one place nothing rewrites that no reviewer was dispatched, so its empty
+	// ledger is not a false zero — it is the round saying so.
+	kinds := roundKinds(w)
+	// A round nobody reviewed must not freeze as a round that found nothing.
+	// EVERY closed round is checked, not just the previous one: `wf round new`
+	// does not require the current round to be frozen, so a round opened past
+	// without a freeze was examined by no refusal at all — reproduced end to
+	// end, a gate closed carrying an undispatched round 2 that `wf stats` alone
+	// named. The OPEN round is exempt: in the prescribed flow it is frozen right
+	// after it is opened, so its scaffold is blank by construction.
+	if unread := unreadRounds(w, w.M.Round-1, kinds); len(unread) > 0 {
+		return fmt.Errorf("round(s) %s: the findings ledger is the untouched scaffold and no lens is recorded, so this freeze would publish a round nobody is recorded as having read as a round that found nothing.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt> -name N -model M -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
+	}
 	for _, rn := range []int{w.M.Round - 1, w.M.Round} {
 		if rn < 1 {
 			continue
@@ -2140,6 +2158,11 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// the whole second script gate then contributed neither an edit count nor a
 	// fix-induced marker while the totals above kept reading as measured.
 	var handRounds, unmarkedRounds, noLedger []int
+	// A round whose ledger parsed and holds nothing but the scaffold's unfilled
+	// rows, and a round whose reviewer vectors nobody banked. Both print `0
+	// finding(s), 0 blocker(s)` and a bare round line today, which is what a
+	// measured zero prints — and a measured zero is a legal close.
+	var scaffoldRounds, noRoster []int
 	// The longest run of reviewer rounds carrying exactly ONE blocker, and their
 	// texts — see the note where it is printed.
 	var oneBlockerRun []int
@@ -2159,8 +2182,23 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			// vacuous-pass shape this tool exists to refuse.
 			noLedger = append(noLedger, n)
 		}
+		rows := ws.ParseFindings(b)
+		scaffold := ledgerErr == nil && kinds[n] != "tool" && ws.ScaffoldOnly(rows)
+		reviewedEmpty := scaffold && validLenses(roundLenses(w, n)) > 0
+		scaffoldOnly := scaffold && !reviewedEmpty
+		if scaffoldOnly {
+			scaffoldRounds = append(scaffoldRounds, n)
+		}
+		// The roster is what reviewed the round. Absent, every claim about
+		// model diversity or brief wording made from this workspace is
+		// unfalsifiable — measured on a live gate where the vector's model
+		// alone separated the blocker counts by 1.76x and nothing recorded it.
+		lenses := roundLenses(w, n)
+		if validLenses(lenses) == 0 && kinds[n] != "tool" {
+			noRoster = append(noRoster, n)
+		}
 		if ledgerErr == nil {
-			for _, r := range ws.ParseFindings(b) {
+			for _, r := range rows {
 				// A row the parser could not split into four cells is neither a
 				// finding nor a form. It is counted apart and named below: a
 				// ledger the tool half-read must not be reported as a ledger it
@@ -2321,6 +2359,21 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 				}
 			}
 		}
+		ln := ""
+		if len(lenses) > 0 {
+			ln = "; lenses: " + lensList(lenses)
+		}
+		switch {
+		case scaffoldOnly:
+			// Inline, where the zero is read. A note at the foot of the report
+			// is not where an operator decides whether the descent reached zero.
+			ln += "; ledger: UNFILLED scaffold, not a measured zero"
+		case reviewedEmpty:
+			// The other half of the same distinction, said in the same place:
+			// this one IS a measured zero, and the banked roster is what makes
+			// it one.
+			ln += "; ledger: empty, and its lenses are banked — a measured zero"
+		}
 		tm := ""
 		if rt, ok := times[n]; ok {
 			tm = fmt.Sprintf("; %.1f min", rt.Span)
@@ -2328,8 +2381,8 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 				tm += fmt.Sprintf(" (review %.1f, fix %.1f, tail %.1f)", rt.Review, rt.Fix, rt.Tail)
 			}
 		}
-		_, _ = fmt.Fprintf(out, "  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s%s\n",
-			n, state, findings, blockers, byCommit, byProse, open, batches, ed, sz, fi, tm)
+		_, _ = fmt.Fprintf(out, "  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s%s%s\n",
+			n, state, findings, blockers, byCommit, byProse, open, batches, ed, sz, fi, ln, tm)
 	}
 	_, _ = fmt.Fprintf(out, "  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
 	if len(oneBlockerRun) >= 3 {
@@ -2358,6 +2411,20 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	if gateBatches > 0 && len(handRounds) > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d round(s) with findings applied no `wf apply` batch (%s) — their edits and changed lines are absent from every ratio above, which therefore prices only the rounds that used it\n",
 			len(handRounds), roundList(handRounds))
+	}
+	// The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing
+	// else [R1] — and this is the one shape in which "produced none" and "was
+	// never dispatched" are the same line. Measured: a gate's round 9 was
+	// opened, frozen as `gate-r9` and left undispatched, and read as a zero
+	// until somebody ran it — at which point it returned four blockers, two of
+	// them decisions a scope cut had deleted.
+	if len(scaffoldRounds) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) carry an UNFILLED findings scaffold (%s) — their 0/0 above is an empty form, not a measured zero, and the stop rule must not read it as one; a round whose vectors ran and found nothing says so with `wf round lens`\n",
+			len(scaffoldRounds), roundList(scaffoldRounds))
+	}
+	if len(noRoster) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) record NO lens (%s) — what reviewed them is not in this workspace, so no claim about brief wording or model diversity made from these numbers can be checked against it; bank each vector with `wf round lens <prompt> -name N -model M`\n",
+			len(noRoster), roundList(noRoster))
 	}
 	if len(noLedger) > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d round(s) have no readable findings.md (%s) — their 0/0 above is an ABSENT measurement, not a measured zero, and the totals do not include them\n", len(noLedger), roundList(noLedger))
@@ -3186,6 +3253,30 @@ func worktreeChangedLines(w *ws.Workspace, paths []string) int {
 // on purpose, and `wf round record` overwrites the scaffold that carries the
 // kind line — the commit subject is the copy nothing rewrites.
 var roundOpenRe = regexp.MustCompile(`^round (\d+): open \((full|delta|tool)\)`)
+
+// unreadRounds names every round up to `upto` that was opened and shows no sign
+// of having been reviewed: its ledger parsed and holds nothing but the
+// scaffold's unfilled rows, it is not a `-kind tool` round (whose opening
+// subject already records that no reviewer was dispatched), and it banks no
+// VALID lens. A round whose ledger cannot be read is not this shape and is
+// named by its own check.
+func unreadRounds(w *ws.Workspace, upto int, kinds map[int]string) []int {
+	var out []int
+	for n := 1; n <= upto; n++ {
+		if kinds[n] == "tool" {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md"))
+		if err != nil || !ws.ScaffoldOnly(ws.ParseFindings(b)) {
+			continue
+		}
+		if validLenses(roundLenses(w, n)) > 0 {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
 
 func roundKinds(w *ws.Workspace) map[int]string {
 	out := map[int]string{}

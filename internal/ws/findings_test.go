@@ -148,3 +148,33 @@ func TestParseFindings_scaffoldKeepsItsEmptyClosure(t *testing.T) {
 		t.Fatalf("the scaffold row must parse as a placeholder, got %+v", rows)
 	}
 }
+
+// The four states of a ledger the callers must keep apart. A missing file
+// already had its own name (`noLedger`); an unfilled FORM fell through the same
+// gap one case over and printed `0 finding(s), 0 blocker(s)` — which is what
+// the round that ENDS a gate prints.
+func TestScaffoldOnlySeparatesAnEmptyFormFromEverythingElse(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		// No table at all is "nothing was validated", which is a different
+		// refusal with a different repair — never an unfilled form.
+		{"no table", "# Findings\n\nprose only\n", false},
+		{"the untouched scaffold", head + "| 1 | BLOCKER |  |  |\n", true},
+		{"two untouched rows", head + "| 1 | BLOCKER |  |  |\n| 2 | MAJOR |  |  |\n", true},
+		{"one filled row", head + "| 1 | MAJOR | the seam is undecided |  |\n", false},
+		// An unreadable claim and an unfilled form are opposite things:
+		// collapsing them hands a malformed row the scaffold's exemption.
+		{"a malformed row", head + "| 1 | BLOCKER | still open |\n", false},
+		{"a malformed row beside an empty one", head + "| 1 | BLOCKER |  |  |\n| 2 | BLOCKER | open |\n", false},
+	}
+	for _, c := range cases {
+		if got := ScaffoldOnly(ParseFindings([]byte(c.body))); got != c.want {
+			t.Errorf("%s: ScaffoldOnly = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+const head = "# Findings\n\n| # | level | finding | closed by |\n|---|-------|---------|-----------|\n"

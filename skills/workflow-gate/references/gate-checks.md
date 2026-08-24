@@ -234,7 +234,43 @@ compiles, passes every test, and does nothing.
       your head — written beside the check, as "this fails an implementation that does X". A criterion
       that cannot name one is decoration. Measured: three review rounds over one acceptance list found
       almost nothing while the entries were bare assertions; the round after each entry carried its own
-      claim found six, because a reviewer can audit a CLAIM and cannot audit an assertion.
+      claim found six, because a reviewer can audit a CLAIM and cannot audit an assertion. **This is an
+      AUTHOR-side rule and it is the whole of what survives here.** Moving it onto the reviewer — a canned
+      vector required to name a defeating implementation per clause — was measured and rejected: across
+      three rounds of one gate that vector named a defeat on 12-18% of the clauses it was handed (8/64,
+      9/51, 12/69) and never returned zero, and each defeat it named was closed by ADDING a clause, so it
+      fed the loop it appeared to detect. The mechanism is what generalises, not the percentage: a
+      reviewer asked for a per-clause verdict over a nonempty criterion returns SOMETHING, and its other
+      82-88% is "none constructed", which nothing separates from "did not try". Measured on the gate that ran it: 352 lines of acceptance section carried 2
+      lines naming a defeat, so the rule had never been applied at all.
+- [ ] **An acceptance section states OBSERVATIONS, never test designs.** Every clause names a command whose
+      exit status decides it, a number a query returns, or a property a reviewer can hold against a real
+      diff — never a test to be written later and argued about now. A clause whose only reader is a
+      reviewer IMAGINING an implementation has no floor: each round imagines a better cheat, the fix for
+      each defeat is another clause, and the section grows faster than it hardens (measured on one gate:
+      the assertion count went 51 → 69 in the round where the number carrying a named defeat went 9 → 12).
+      Verification of a property that needs a test moves to the implementing run, and the section-review
+      gate over the real diff judges whether the tests discriminate. Measured on two decision gates over
+      one product, same operator, same target: the acceptance section written as observations — "`make
+      test` and `make lint` are green", "the population literal equals the number of method+path
+      operations in `api/openapi.json`, 48, not the number of `paths` keys, 31" — produced 8 blockers,
+      went quiet after round 4, was never cut, and its gate closed on a genuine zero; the one written as
+      prose test specifications was rewritten in EVERY round of its gate and grew 23 → 352 lines while
+      the document around it grew 333 → 1319, absorbing a third of all growth, until a human cut it back
+      to 92 lines of properties. **What share of that gate's 92 blockers were its is deliberately not
+      quoted here**: five derivations of that one quantity exist, from 25 to 66, they disagree by up to
+      2.4x on individual rounds, and the one the operator acted on was the highest — a verdict must not
+      be the first consumer of a quantity nobody has agreed how to count.
+- [ ] **A scope cut is an edit like any other and it is reviewed like any other.** Cutting a section back
+      to its properties is the largest single edit a gate makes, and its DELETIONS are invisible to every
+      check this tool has: `wf check rules` compares the SITES of a marked rule and cannot tell a
+      statement from a pointer to one, `dup` and `stale` read what is still written, and nothing at all
+      watches a decision that stops existing. Aim the round that reviews a cut at the deletion — diff the
+      pre-cut span against the WHOLE post-cut artifact token by token, and for every token whose count
+      went to zero ask whether the decision it carried survives anywhere. Measured: the round that did
+      this returned 4 blockers and 20 findings, 17 of them defects IN the cut, and two of them were
+      design decisions that survived nowhere afterwards — one of which had already been caught by hand
+      two minutes after the cut landed, which is how the class was known to exist at all.
 - [ ] **A criterion can be wrong in the direction of FALSE FAILURE, and that direction is worse.**
       Everyone checks whether a check is too weak. One that goes red against a CORRECT implementation
       stalls the run at the single step usually forbidden to change production code — so the agent that
@@ -610,9 +646,23 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       UNLESS the author marked the rule: `[RN]` markers on every site of one rule let `wf check rules`
       demand the sites normalise identically, which is the only mechanical reach into that class
       (measured need: eight such contradictions on one live gate, all found by reviewers). Mark only
-      a site that STATES the rule — a sentence referring to one ("because of [R2]") states nothing
+      a site that STATES the rule — a sentence referring to one ("because of R2", written with the
+      marker) states nothing
       and disagrees with every statement of it; read the `compared` count, because ids that each sit
-      at a single site are a check that reached nothing and still printed zero conflicts. So sweep
+      at a single site are a check that reached nothing and still printed zero conflicts. **And a marked
+      site can DECAY into a pointer without the marker moving.** Measured: a fix that cut a section left
+      one of the two sites of three rules reading "every one of the five routes of R1" — the marker
+      still there, the enumeration it named deleted from the document — and `wf check rules` printed
+      `5 compared, 0 conflict(s)` over the broken artifact both before and after, because it compares
+      sites carrying an id and cannot tell a statement from a pointer to one. After any fix that DELETES
+      text, re-read the marked sites: the check cannot. **These documents mark their own stop rule with
+      the id R1**, at every site that STATES it here and in `pre-flight-gate.md`, because it lived at
+      five sites in four wordings — one of them lower-cased, which the case-erasing normaliser cannot
+      see as a difference and no check then compares — and the "reviewer rounds only" half was missing
+      from the canonical statement. Neither this sentence nor the quotation above carries the marker in
+      its bracket form: both POINT at the rule, and a marked pointer is the defect this bullet is about.
+      One of the five sites is a Go comment (`internal/ws/findings.go`) that `wf check rules` can never
+      reach, because it compares ARTIFACTS — it is kept in the same wording by hand. So sweep
       mechanically for drift, mark the rules that repeat, and keep a human vector for the unmarked
       contradictions. **And read what the marked check does NOT ask:** it compares the sites of one id
       against each other, never a rule against the section that argues for it — on one gate both copies
@@ -663,7 +713,14 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       After the fixes, fill the `closed by` column with the apply commit and re-record (`-round N`):
       `wf freeze` reads the findings of the round being CLOSED (the frozen round's own file is always
       a blank scaffold) and refuses while a BLOCKER stands without a closure; a prose closure passes
-      with a "verify by hand" note. Then `wf round new`, then `wf freeze` — which
+      with a "verify by hand" note. It also refuses when that round's ledger is the UNTOUCHED scaffold
+      and no lens was banked for it — and it checks EVERY closed round, not only the previous one,
+      because `wf round new` does not require the current round to be frozen and a round opened past
+      without a freeze was examined by nothing. A round nobody is recorded as having read must not
+      freeze as a round that found nothing: bank the vectors with `wf round lens <prompt> -name N -model
+      M -round N`, which is also the record that makes the round's reviewers part of the corpus, and
+      which counts only where it says which vector, what ran it and what it was asked. A `-kind tool`
+      round is exempt: its opening subject already records that no reviewer was dispatched. Then `wf round new`, then `wf freeze` — which
       refuses while any ARTIFACT is uncommitted and refuses to re-freeze a round that is already
       tagged, and records one manifest over the whole artifact set plus the reviewed repository's HEAD
       and the `wf` version that wrote it. `wfdry` runs BEFORE that freeze — a dry-run defect found
@@ -677,11 +734,11 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       introduced by the previous round's own fix describes what THIS round found; it is a continue
       signal, never a stop signal. Measured on three gates: a 4-of-4 fix-induced round carrying one
       blocker was followed by a round filing seven findings and another blocker, and a 3-of-3 round
-      carried a blocker itself. The gate ends on a round with no BLOCKER, and on nothing else.
+      carried a blocker itself. The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1].
       `wf stats` can only print the share where the author marked it — an unmarked corpus reads as
       "not measured", never as "none".
 - [ ] **Budget rounds, not perfection.** Reviewer COUNT descends (3 → 2 → 1); the round count does not cap.
-      The gate ends on a round that produces no blocker — the last phase needed four.
+      The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. The last phase needed four.
 
 ---
 

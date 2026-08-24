@@ -227,6 +227,11 @@ func cmdClose(args []string) error {
 	}
 
 	fmt.Printf("closed %s — %d round(s)\n", w.M.Name, last)
+	// The stop rule reads the REVIEWER descent, so a gate whose LAST round
+	// dispatched none did not end on the rule; it stopped next to it.
+	if roundKinds(w)[last] == "tool" {
+		fmt.Printf("  note: round %d is a `tool` round — this gate's last round dispatched no reviewer, and the stop rule reads the REVIEWER descent\n", last)
+	}
 	for _, f := range written {
 		fmt.Printf("  %s\n", f)
 	}
@@ -263,6 +268,19 @@ func closeBlockersOpen(w *ws.Workspace, round int) error {
 	rows := ws.ParseFindings(b)
 	if len(rows) == 0 {
 		return fmt.Errorf("round %d's findings table did not parse — a ledger the tool cannot read must not be banked as one it read", round)
+	}
+	// The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing
+	// else [R1] — so the last round's ledger is the evidence the close rests on,
+	// and an untouched scaffold is not evidence. Measured: a live gate's round 9
+	// was opened, frozen and left undispatched, and `wf stats` printed it as `0
+	// finding(s), 0 blocker(s)`, which is exactly what the round that ends a
+	// gate prints; when it was finally reviewed it returned four blockers. EVERY
+	// round is checked, not only the last: `wf round new` does not require the
+	// current round to be frozen, so a round opened past without one is seen by
+	// no freeze. A `-kind tool` round is exempt — its opening subject already
+	// records that no reviewer was dispatched.
+	if unread := unreadRounds(w, round, roundKinds(w)); len(unread) > 0 {
+		return fmt.Errorf("round(s) %s carry an UNFILLED findings scaffold and record no lens, so this close would bank a round nobody is recorded as having read.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt> -name N -model M -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
 	}
 	var open []string
 	for _, r := range rows {
