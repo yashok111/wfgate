@@ -83,11 +83,23 @@ YOU OWN
   web/src/components/PreviewPanel.tsx
 ```
 
+**The gate's `owns` array is the other end of the same check**, and `wfcheck` compares them: a path a
+producer declares that no gate lists is a file a reviewer can be briefed on and no fix agent may
+touch. A gate config is recognised as `owns` AND `reviewers` together, so `owns` on an agent's own
+options object is not one. An entry may be a sentence about a path
+(`internal/mcp/tools.go (the table only)`) and may end in `/` to own a directory; an entry naming no
+path at all leaves the rest of the comparison NOT JUDGED and prints the gate's name, because a list the
+tool could not read cannot convict a path of being unowned. It reads what the prompts DECLARE — a file
+a phase is ordered to touch and nobody assigned to anyone is invisible to it.
+
 A path in the middle of a sentence ("read `internal/router/router.go` for context") is prose and is not
 counted; a `file:line` citation owns nothing; a line under `DO NOT`/`must not` is read as an exclusion.
-The block ends at the next SHOUTY heading. `wfcheck` prints the population it parsed — `0 owned path(s)
-parsed from 4 prompt(s) declaring YOU OWN` is a check going unrun over a script that thought it had
-declared ownership, and one live run shipped exactly that: adopting the form turned the note into `12
+A repository-root file with no slash is recognised by name (`CLAUDE.md`, `Makefile`, `go.mod`), and a
+path declared twice is NEW if either of its lines says so. The block ends at the next SHOUTY heading.
+`wfcheck` prints the population it parsed — `0 owned path(s) parsed from 4 prompt(s) declaring YOU OWN`
+is a check going unrun over a script that thought it had declared ownership, and the DENOMINATOR counts
+prompts that carry a `YOU OWN` heading whether or not their entries parsed, so the two numbers say
+different things on purpose, and one live run shipped exactly that: adopting the form turned the note into `12
 owned path(s) parsed from 8 prompt(s)` and found two pairs of sections writing into the same Go package.
 
 **Write `phase()` titles as LITERALS at the call site.** A gate helper that takes the title as a

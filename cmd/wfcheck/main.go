@@ -28,13 +28,16 @@ var version = "devel"
 
 func main() {
 	freeze := flag.Bool("freeze", false, "copy the script under .wf/gate/ and print the frozen path")
-	root := flag.String("root", ".", "repository the script will run in (for the file-existence checks)")
+	// Empty, not "." — inside a gate workspace the right answer is the
+	// workspace's target, and the working directory is the wrong tree.
+	root := flag.String("root", "", "repository the script will run in (default: the gate workspace's target, else the working directory)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `wfcheck — static check over a Workflow orchestration script
 
 usage:
-  wfcheck [-root <dir>] <script.mjs>
+  wfcheck [-root <dir>] <script.mjs>      (-root defaults to the gate
+                                           workspace's target when run inside one)
   wfcheck --freeze <script.mjs>
 `)
 	}

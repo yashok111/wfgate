@@ -5,10 +5,12 @@
 package wfscript
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func load(t *testing.T, body string) *Script {
@@ -378,4 +380,179 @@ return {}`)
 			t.Fatalf("want 2 call sites through the outer wrapper, got %d", got)
 		}
 	})
+}
+
+// A prompt assembled from many concatenated pieces used to lose its LEFTMOST
+// ones: the depth budget was charged per node, `a + b + c + ...` is
+// left-associative, and past a dozen pieces the head of the chain fell off the
+// budget. Measured on mocker slice A round 24 — a schema field named in the
+// first chunk was reported as never mentioned after an unrelated insert made
+// the chain longer, and an 8.3 KB prompt metered at 4.5 KB.
+func TestStaticString_aLongConcatChainKeepsItsHead(t *testing.T) {
+	const chunks = 40
+	var b strings.Builder
+	b.WriteString("'HEADMARKER. '")
+	for i := 0; i < chunks; i++ {
+		b.WriteString(" +\n  'filler. '")
+	}
+	s := load(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(
+  `+b.String()+`,
+  { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return {}`)
+	c := s.AgentCalls()[0]
+	if !c.PromptOK {
+		t.Fatal("a chain of literals is statically known however long it is")
+	}
+	if !strings.Contains(c.Prompt, "HEADMARKER") {
+		t.Fatalf("the head of the chain was dropped: %.60q", c.Prompt)
+	}
+	if want := len("HEADMARKER. ") + chunks*len("filler. "); len(c.Prompt) != want {
+		t.Fatalf("prompt is %d bytes, want %d — a size read off this is a floor, not a measurement", len(c.Prompt), want)
+	}
+}
+
+// Indirection is still charged, so a cycle through member hops terminates with
+// "unknown" instead of hanging — consts memoise their own text, member lookups
+// do not, and dropping the per-node charge must not drop the bound.
+func TestStaticString_aMemberCycleTerminates(t *testing.T) {
+	done := make(chan bool, 1)
+	go func() {
+		s := load(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const M = { a: M.b, b: M.a }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(M.a, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return {}`)
+		done <- s.AgentCalls()[0].PromptOK
+	}()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("a cycle resolves to nothing knowable, never to a string")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the indirection budget no longer bounds a cycle")
+	}
+}
+
+// ArrayOf is the array half of ObjectOf, and it exists because a check that
+// type-asserted straight to *ast.ArrayLiteral saw NOTHING through a name — the
+// shape both live scripts write on their closing gate.
+func TestArrayOf(t *testing.T) {
+	s := load(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const HEAD = ['a/one.go', 'a/two.go']
+const CLOSING = [...HEAD, 'b/three.go']
+const HOLDER = { owns: CLOSING }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn('p', { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return {}`)
+
+	consts := s.Consts()
+	for _, tc := range []struct {
+		name  string
+		of    string
+		want  []string
+		whole bool
+	}{
+		{"a literal", "HEAD", []string{"a/one.go", "a/two.go"}, true},
+		{"a spread of another array", "CLOSING", []string{"a/one.go", "a/two.go", "b/three.go"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			elems, complete := s.ArrayOf(consts[tc.of].Init)
+			if complete != tc.whole {
+				t.Fatalf("complete = %v, want %v", complete, tc.whole)
+			}
+			var got []string
+			for _, e := range elems {
+				txt, ok := s.StaticString(e)
+				if !ok {
+					t.Fatalf("element %v is not a static string", e)
+				}
+				got = append(got, txt)
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	// Through a member expression, which is how a gate config reaches a list
+	// held on a shared object.
+	t.Run("through a member expression", func(t *testing.T) {
+		props, _ := s.ObjectOf(consts["HOLDER"].Init)
+		elems, complete := s.ArrayOf(props["owns"])
+		if !complete || len(elems) != 3 {
+			t.Fatalf("got %d element(s), complete=%v; want 3 and true", len(elems), complete)
+		}
+	})
+
+	// A name it cannot follow is reported as incomplete, never as an empty
+	// array: a caller that reads "no elements" as "owns nothing" convicts on
+	// what it could not see.
+	t.Run("an unknown name is incomplete, not empty", func(t *testing.T) {
+		u := load(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const HOLDER = { owns: someRuntimeList }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn('p', { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return {}`)
+		props, _ := u.ObjectOf(u.Consts()["HOLDER"].Init)
+		if elems, complete := u.ArrayOf(props["owns"]); complete || len(elems) != 0 {
+			t.Fatalf("got %d element(s), complete=%v; want 0 and false", len(elems), complete)
+		}
+	})
+
+	// A self-referential array is legal JavaScript. It must terminate.
+	t.Run("a cycle terminates", func(t *testing.T) {
+		done := make(chan bool, 1)
+		go func() {
+			c := load(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const A = [...B, 'a/one.go']
+const B = [...A, 'a/two.go']
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn('p', { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return {}`)
+			_, complete := c.ArrayOf(c.Consts()["A"].Init)
+			done <- complete
+		}()
+		select {
+		case complete := <-done:
+			if complete {
+				t.Fatal("a cycle is never read in full")
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the indirection budget no longer bounds a cycle")
+		}
+	})
+}
+
+// A legal, acyclic chain of objects each composing the one below it. Without
+// memoisation each level resolves its predecessor TWICE: k=12 took 22 s and
+// k=14 did not finish in two minutes. A checker a legal script can hang returns
+// a timeout instead of a report, which is the same silence as a false green.
+func TestStaticString_aDoublingChainIsBounded(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }\nconst C0 = { v: 'seed' }\n")
+	for k := 1; k <= 40; k++ {
+		fmt.Fprintf(&b, "const C%d = { v: C%d.v + C%d.v }\n", k, k-1, k-1)
+	}
+	b.WriteString("const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\nphase('P')\n")
+	b.WriteString("await spawn(C40.v, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}\n")
+
+	done := make(chan struct{})
+	go func() {
+		s := load(t, b.String())
+		_ = s.AgentCalls()[0].PromptOK
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("a doubling chain is no longer bounded — the resolver is recomputing what it already knows")
+	}
 }

@@ -775,6 +775,37 @@ func cmdFreeze(args []string) error {
 			fm.CiteAnchored++
 		}
 	}
+	// Freeze counted the anchors and never asked whether the citations still
+	// RESOLVE. Measured on mocker slice A: the gate shipped its own first slice
+	// mid-run, the target moved under a document that was long since frozen, and
+	// twenty-six citations pointed at lines that had drifted by a few — read as
+	// correct by every producer of the next artifact. The operator had the check
+	// and ran it only while the cited document was the artifact under review;
+	// the tree it cites keeps moving after that.
+	//
+	// A note, never a refusal — `wf apply`'s split note is the precedent. A
+	// round whose whole purpose is re-aiming these citations must still freeze.
+	// "A note, never a refusal" has to hold for the check's own failures too. An
+	// unreadable target made freeze EXIT — the one command a round cannot skip,
+	// refusing over a check the same paragraph calls advisory.
+	var citeFindings []check.Finding
+	citeNote := ""
+	if ix, err := check.NewIndex(w.M.Target); err != nil {
+		citeNote = "the target could not be indexed (" + err.Error() + "), so no citation was resolved for this freeze"
+	} else if fs, err := check.VerifyCitations(w.M.Target, ix, cits); err != nil {
+		citeNote = "the citations could not be resolved (" + err.Error() + ")"
+	} else {
+		citeFindings = fs
+	}
+	// A round whose artifacts were edited by hand costs the gate its cost meter,
+	// and nothing said a word: on mocker slice A the operator stopped using
+	// `wf apply` at round 18 and found out at close, seven rounds and 35
+	// findings later — `wf stats` prints "0 apply batch(es)" for each of them
+	// and omits their edit and changed-line figures entirely. Every gate
+	// discipline held; only the measurement broke, which is exactly the failure
+	// nobody notices in time. Freeze knows the round's commit range, so it is
+	// the moment the loss is still one round old.
+	handEdited, handAttributable, handUnreadable := handEditedArtifactCommits(w)
 	// The previous freeze is the ratchet's baseline. Compared by cross-product
 	// so a share is never computed over zero.
 	var prev freezeManifest
@@ -824,12 +855,85 @@ func cmdFreeze(args []string) error {
 	if prose > 0 {
 		fmt.Printf("  note: %d closure(s) not naming a commit — verify by hand\n", prose)
 	}
+	if citeNote != "" {
+		fmt.Printf("  note: %s — this freeze pins artifacts whose citations were NOT checked against the target\n", citeNote)
+	}
+	if len(citeFindings) > 0 {
+		// "do NOT resolve" is the honest headline for the whole set: a citation
+		// naming a path that matches two files, or carrying an anchor the
+		// grammar refuses, resolves to nothing a reviewer can follow either.
+		// Each finding prints its own class on the line below.
+		fmt.Printf("  note: %d citation(s) do NOT resolve against %s — reviewers of this freeze will read them as written:\n", len(citeFindings), fm.TargetRef)
+		for i, f := range citeFindings {
+			if i == 10 {
+				fmt.Printf("    ... and %d more — `wf check cite` prints them all\n", len(citeFindings)-10)
+				break
+			}
+			fmt.Println("    " + f.String())
+		}
+	}
+	if handEdited > 0 {
+		fmt.Printf("  note: %d commit(s) in this round changed an artifact without `wf apply` — this round contributes NO edit count to `wf stats`, and the batch-size note in `wf apply` has that much less history to read\n", handEdited)
+	}
+	// The two ways this check can know nothing, each said out loud. A silent
+	// zero here reads exactly like a round that used `wf apply` throughout,
+	// which is the reading that cost a live gate seven rounds of its cost meter.
+	if !handAttributable {
+		fmt.Printf("  note: round %d has no `%s` tag, so its commit window has no lower bound and the hand-edit check above did not run — it says nothing about this round either way\n", w.M.Round, ws.RoundTag(w.M.Round-1))
+	}
+	if handUnreadable > 0 {
+		fmt.Printf("  note: %d commit(s) of this round could not be read by git, so the hand-edit count above is a LOWER BOUND\n", handUnreadable)
+	}
 	if prev.CiteTotal > 0 && fm.CiteTotal > 0 &&
 		fm.CiteAnchored*prev.CiteTotal < prev.CiteAnchored*fm.CiteTotal {
 		fmt.Printf("  note: anchored %d/%d, down from %d/%d (round %d) — the share this gate can really verify fell\n",
 			fm.CiteAnchored, fm.CiteTotal, prev.CiteAnchored, prev.CiteTotal, prev.Round)
 	}
 	return nil
+}
+
+// handEditedArtifactCommits counts the commits of the OPEN round that changed an
+// artifact that already existed, and did not come from `wf apply`.
+//
+// Modified, never added: `wf add` adopts a draft and is not an edit batch, and a
+// round whose only artifact commit is an adoption has lost nothing. An apply
+// commit is recognised the way `wf stats` recognises one, so the two derivations
+// of "was this batch measured" cannot disagree — a second copy of one rule is
+// this project's most repeated defect.
+//
+// It returns the count, whether the window could be attributed to this round at
+// all, and how many of its commits git refused to read. The last two used to be
+// folded into the count as a zero, which is the accusation the note exists to
+// avoid: an unknown printed as a measured zero. A round with no previous tag has
+// no lower bound, so its window is every ancestor and a count over it says
+// nothing about THIS round.
+func handEditedArtifactCommits(w *ws.Workspace) (n int, attributable bool, unreadable int) {
+	rng := "HEAD"
+	if r := w.M.Round; r > 1 {
+		prev := ws.RoundTag(r - 1)
+		if !w.Git.TagExists(prev) {
+			return 0, false, 0
+		}
+		rng = prev + "..HEAD"
+	}
+	for _, c := range commitLog(w, rng) {
+		if _, _, isApply := applyCommitEdits(c.Msg); isApply {
+			continue
+		}
+		out, err := w.Git.Run("show", "--name-only", "--diff-filter=M", "--format=", c.SHA, "--", "artifacts")
+		if err != nil {
+			// A commit git would not show is not a commit that changed no
+			// artifact. Counting it as one turns an unreadable window into a
+			// clean one.
+			unreadable++
+			continue
+		}
+		if strings.TrimSpace(out) == "" {
+			continue
+		}
+		n++
+	}
+	return n, true, unreadable
 }
 
 // newestFrozen returns the newest round with a freeze.json, 0 if none. Both
@@ -1503,8 +1607,21 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 	}
 	conflicts := check.RuleConflicts(sites)
 	compared := check.ComparedIDs(sites)
-	fmt.Printf("## rules — %d marker(s), %d id(s), %d compared, %d conflict(s)\n",
+	hdr := fmt.Sprintf("## rules — %d marker(s), %d id(s), %d compared, %d conflict(s)",
 		markers, len(sites), compared, len(conflicts))
+	// The note below said this and was still missed, on a gate with eighteen
+	// markers and eighteen ids: it printed under a line whose other three
+	// numbers read like a pass. The headline carries it now — a reader who reads
+	// one line of this section must not read "0 conflict(s)" as coverage.
+	// The condition is `compared == 0`, not `markers > 0 && compared == 0`. An
+	// UNMARKED corpus compares nothing either, and it is the larger population
+	// by far: it printed `0 marker(s), 0 id(s), 0 compared, 0 conflict(s)` with
+	// no qualifier at all — four numbers that read like a pass, which is the
+	// exact line this wave exists to kill.
+	if compared == 0 {
+		hdr += " — NOT A PASS, nothing was compared"
+	}
+	fmt.Println(hdr)
 	// A marked corpus where every id sits at ONE site reaches nothing, and the
 	// bare conflict count then reads as a pass. Measured on a live gate, after
 	// the repair below was done the wrong way round.
@@ -1585,11 +1702,33 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	kinds := roundKinds(w)
 	totalF, totalB, totalFI, totalEdits, totalLines := 0, 0, 0, 0, 0
 	unattributed := 0
+	// The rounds the two derived numbers cannot see, kept BY NUMBER: "some
+	// rounds are missing" is a sentence an operator reads past, "rounds 18-25"
+	// is one they act on. Measured on mocker slice A, where both holes opened in
+	// the same place — the operator stopped using `wf apply` at round 18, and
+	// the whole second script gate then contributed neither an edit count nor a
+	// fix-induced marker while the totals above kept reading as measured.
+	var handRounds, unmarkedRounds, noLedger []int
+	// The longest run of reviewer rounds carrying exactly ONE blocker, and their
+	// texts — see the note where it is printed.
+	var oneBlockerRun []int
+	var oneBlockerText []string
+	var flatRuns [][]int
+	var flatTexts [][]string
 	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
 	unparsable := 0
 	for n := 1; n <= w.M.Round; n++ {
 		findings, blockers, byCommit, byProse, open, fixInduced := 0, 0, 0, 0, 0, 0
-		if b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md")); err == nil {
+		soleBlocker := ""
+		b, ledgerErr := os.ReadFile(filepath.Join(w.RoundDir(n), "findings.md"))
+		if ledgerErr != nil {
+			// A round whose ledger cannot be read is not a round with no
+			// findings. Both printed `0 finding(s), 0 blocker(s)` and both fed
+			// the totals, so a missing file read as a measured zero — the
+			// vacuous-pass shape this tool exists to refuse.
+			noLedger = append(noLedger, n)
+		}
+		if ledgerErr == nil {
 			for _, r := range ws.ParseFindings(b) {
 				// A row the parser could not split into four cells is neither a
 				// finding nor a form. It is counted apart and named below: a
@@ -1605,6 +1744,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 				findings++
 				if r.Blocker() {
 					blockers++
+					soleBlocker = r.Text
 				}
 				if r.FixInduced() {
 					fixInduced++
@@ -1666,6 +1806,42 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		} else {
 			unattributed++
 		}
+		// An attributable window with zero batches is a round somebody edited by
+		// hand — a real population of zero, not an unknown one — and the round
+		// still has findings to price. It is the shape that hid seven rounds of
+		// a live gate inside a total that read as measured.
+		if attributable && batches == 0 && findings > 0 {
+			handRounds = append(handRounds, n)
+		}
+		// The marker is opt-in per FINDING, so a round with none is a round
+		// nobody measured. The gate total then silently mixes measured rounds
+		// with unmeasured ones, and it reads as a share of the whole.
+		if findings > 0 && fixInduced == 0 {
+			unmarkedRounds = append(unmarkedRounds, n)
+		}
+		// The stop rule reads the DESCENT and is right to keep a gate open at one
+		// blocker a round. What it cannot say is that four such rounds in a row
+		// were the same predicate rewritten — measured on mocker slice A, where
+		// rounds 21-24 each closed one real escape from one enumeration floor,
+		// because every version of it constrained a property of the REPORT and
+		// for every "at least N" there is an N. A run of them is the signature of
+		// a guard asking the wrong KIND of question, and only the ROUND SHAPE is
+		// mechanical — the reading stays the operator's.
+		if kinds[n] != "tool" && blockers == 1 {
+			oneBlockerRun = append(oneBlockerRun, n)
+			oneBlockerText = append(oneBlockerText, soleBlocker)
+		} else if kinds[n] != "tool" {
+			// EVERY qualifying run, not the longest one. Keeping only the
+			// longest meant keeping the FIRST longest, and the gate this note
+			// was derived from has three runs of three: it would have named
+			// rounds 5-7 of the decision gate and attached the script gate's
+			// enumeration-floor story to them.
+			if len(oneBlockerRun) >= 3 {
+				flatRuns = append(flatRuns, oneBlockerRun)
+				flatTexts = append(flatTexts, oneBlockerText)
+			}
+			oneBlockerRun, oneBlockerText = nil, nil
+		}
 		_ = edits
 		_ = lines
 		// The window's edits precede the window's findings: the fixes land
@@ -1709,6 +1885,16 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			n, state, findings, blockers, byCommit, byProse, open, batches, ed, fi, tm)
 	}
 	_, _ = fmt.Fprintf(out, "  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
+	if len(oneBlockerRun) >= 3 {
+		flatRuns = append(flatRuns, oneBlockerRun)
+		flatTexts = append(flatTexts, oneBlockerText)
+	}
+	for i, run := range flatRuns {
+		_, _ = fmt.Fprintf(out, "  note: rounds %s each produced exactly ONE blocker — a flat descent closes a real escape every round and never reaches the question underneath it. Measured: three such rounds were one enumeration floor rewritten, because every version constrained a property of the REPORT and for every \"at least N\" there is an N\n", roundList(run))
+		if p := sharedPath(flatTexts[i]); p != "" {
+			_, _ = fmt.Fprintf(out, "  note: every blocker in that run cites %s — one region, %d rounds: re-ask what the guard over it is FOR before patching it again\n", p, len(run))
+		}
+	}
 	// Zero over a whole gate is a POPULATION, and it has to say so. P2f applied
 	// 27 batches and this meter printed "0 apply batch(es)" thirteen times
 	// without a word, so the number that decides the next batch's size looked
@@ -1716,6 +1902,18 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// in his own scratch files.
 	if gateBatches == 0 {
 		_, _ = fmt.Fprintf(out, "  note: no apply commit was found in this workspace — the cost meter has NO population, and the findings/edit numbers above are absent rather than zero. Artifacts changed by hand are invisible to it; a batch applied by `wf apply` records its own size and is counted whatever subject you give it\n")
+	}
+	// The whole-gate note above fires only when the meter has NO population at
+	// all. A gate that used `wf apply` for its first seventeen rounds and stopped
+	// has a population, a headline ratio, and seven rounds inside it that the
+	// ratio never saw — printed per round as a bare "0 apply batch(es)", which is
+	// the same silence with a number in front of it.
+	if gateBatches > 0 && len(handRounds) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) with findings applied no `wf apply` batch (%s) — their edits and changed lines are absent from every ratio above, which therefore prices only the rounds that used it\n",
+			len(handRounds), roundList(handRounds))
+	}
+	if len(noLedger) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) have no readable findings.md (%s) — their 0/0 above is an ABSENT measurement, not a measured zero, and the totals do not include them\n", len(noLedger), roundList(noLedger))
 	}
 	if unparsable > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d ledger row(s) are not four cells and were counted as nothing — a hand-awk once closed a gate on 99/27 against a true 98/26, and a row the parser cannot read is the same error with a different sign\n", unparsable)
@@ -1732,6 +1930,15 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// author of a finding can make the second.
 	if totalFI > 0 {
 		_, _ = fmt.Fprintf(out, "  fix-induced — %d of %d finding(s); a CONTINUE signal, never a stop signal — it says what these rounds found, not whether the next one will be empty\n", totalFI, totalF)
+		// A share computed over rounds where nobody marked is a LOWER BOUND, and
+		// its error has a direction: on mocker slice A eight of a script gate's
+		// fifteen blockers were induced by the previous round's own fix and none
+		// of them were marked, so the ledger read as if the self-inflicted share
+		// had tapered off in exactly the rounds where it was everything.
+		if len(unmarkedRounds) > 0 {
+			_, _ = fmt.Fprintf(out, "  note: %d round(s) with findings carry NO [fix-induced] marker (%s) — the share above is a lower bound over the rounds that were marked, not a measurement of the gate\n",
+				len(unmarkedRounds), roundList(unmarkedRounds))
+		}
 	} else {
 		_, _ = fmt.Fprintf(out, "  fix-induced — no [fix-induced] markers; the self-inflicted share was not measured\n")
 	}
@@ -2169,7 +2376,7 @@ func roundTimes(w *ws.Workspace) map[int]roundTime {
 		var first, last int64
 		seen := false
 		for j := lo; j <= hi && j < len(recs); j++ {
-			if !isApply(recs[j].Msg, recs[j].Subj) {
+			if !isApply(recs[j].Msg) {
 				continue
 			}
 			if !seen {
@@ -2235,43 +2442,56 @@ func authoringWindow(w *ws.Workspace) (float64, bool) {
 
 // isApply is the meter's classification, reused by the timing so the two never
 // disagree about what an apply commit is.
-func isApply(msg, subj string) bool {
-	return applyTrailerRe.MatchString(msg) ||
-		applySubjectRe.MatchString(subj) ||
-		applyBodyEdits(msg) > 0
+// isApply delegates to applyCommitEdits so that "was this an apply commit" has
+// ONE reading. Its own copy of the three patterns took a caller-supplied
+// subject rather than the message's first line, so the two could disagree about
+// the same commit — the second copy of one rule, which is this project's most
+// repeated defect class.
+func isApply(msg string) bool {
+	_, _, ok := applyCommitEdits(msg)
+	return ok
 }
 
 func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 	var out []applyBatch
 	for _, c := range commitLog(w, rng) {
-		sha, m := c.SHA, c.Msg
-		add := func(n int, src string) {
-			lines, ok := changedLines(w, sha)
-			out = append(out, applyBatch{Edits: n, Lines: lines, Known: ok, Src: src})
-		}
-		// The LAST match, not the first: the trailer is written at the end of
-		// the message, and an edit whose own text quotes one ("wf-apply: 999
-		// edit(s)") lands in the per-edit list ABOVE it. Reading the first would
-		// let the batch's own content restate the batch's size.
-		if t := applyTrailerRe.FindAllStringSubmatch(m, -1); t != nil {
-			n, _ := strconv.Atoi(t[len(t)-1][1])
-			add(n, "trailer")
+		n, src, ok := applyCommitEdits(c.Msg)
+		if !ok {
 			continue
 		}
-		subject := m
-		if i := strings.IndexByte(m, '\n'); i >= 0 {
-			subject = m[:i]
-		}
-		if sm := applySubjectRe.FindStringSubmatch(subject); sm != nil {
-			n, _ := strconv.Atoi(sm[1])
-			add(n, "subject")
-			continue
-		}
-		if n := applyBodyEdits(m); n > 0 {
-			add(n, "body")
-		}
+		lines, known := changedLines(w, c.SHA)
+		out = append(out, applyBatch{Edits: n, Lines: lines, Known: known, Src: src})
 	}
 	return out
+}
+
+// applyCommitEdits is the ONE reading of "this commit came from `wf apply`, and
+// this is how many edits it carried". The cost meter and the freeze note that
+// warns about hand-edited rounds both ask it, because two derivations of one
+// number is the defect class this project names as its most frequent — and this
+// number has already been wrong once: the meter parsed the default SUBJECT, `-m`
+// replaces it, and a whole gate of 27 batches measured zero.
+func applyCommitEdits(msg string) (edits int, src string, ok bool) {
+	// The LAST match, not the first: the trailer is written at the end of the
+	// message, and an edit whose own text quotes one ("wf-apply: 999 edit(s)")
+	// lands in the per-edit list ABOVE it. Reading the first would let the
+	// batch's own content restate the batch's size.
+	if t := applyTrailerRe.FindAllStringSubmatch(msg, -1); t != nil {
+		n, _ := strconv.Atoi(t[len(t)-1][1])
+		return n, "trailer", true
+	}
+	subject := msg
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		subject = msg[:i]
+	}
+	if sm := applySubjectRe.FindStringSubmatch(subject); sm != nil {
+		n, _ := strconv.Atoi(sm[1])
+		return n, "subject", true
+	}
+	if n := applyBodyEdits(msg); n > 0 {
+		return n, "body", true
+	}
+	return 0, "", false
 }
 
 // batchHistory sums what this workspace has already measured about itself:
@@ -2412,3 +2632,78 @@ func firstLine(note, fallback string) string {
 	}
 	return trunc(strings.TrimSpace(s), 90)
 }
+
+// roundList prints round numbers as ranges: "18-25" is a fact an operator acts
+// on, "18, 19, 20, 21, 22, 23, 24, 25" is a line they skim.
+func roundList(ns []int) string {
+	if len(ns) == 0 {
+		return ""
+	}
+	var parts []string
+	start, prev := ns[0], ns[0]
+	flush := func() {
+		switch {
+		case start == prev:
+			parts = append(parts, strconv.Itoa(start))
+		case prev == start+1:
+			parts = append(parts, strconv.Itoa(start)+", "+strconv.Itoa(prev))
+		default:
+			parts = append(parts, strconv.Itoa(start)+"-"+strconv.Itoa(prev))
+		}
+	}
+	for _, n := range ns[1:] {
+		if n == prev+1 {
+			prev = n
+			continue
+		}
+		flush()
+		start, prev = n, n
+	}
+	flush()
+	return strings.Join(parts, ", ")
+}
+
+// sharedPath returns the file path every one of these finding texts cites, ""
+// when they do not agree on one. A run of single-blocker rounds over ONE region
+// is the strong form of the signal; over several regions it is just a gate
+// converging.
+func sharedPath(texts []string) string {
+	if len(texts) == 0 {
+		return ""
+	}
+	var common map[string]bool
+	for _, t := range texts {
+		here := map[string]bool{}
+		for _, m := range citePathRe.FindAllStringSubmatch(t, -1) {
+			here[m[1]] = true
+		}
+		if common == nil {
+			common = here
+			continue
+		}
+		for p := range common {
+			if !here[p] {
+				delete(common, p)
+			}
+		}
+	}
+	// One path, or none: two shared paths say the run touches a pair of files,
+	// which is not the "one region" claim this note makes.
+	if len(common) != 1 {
+		return ""
+	}
+	for p := range common {
+		return p
+	}
+	return ""
+}
+
+// The citation form the ledger's finding cells carry: `path/file.ext:12` or a
+// bare path. The anchor and the line range are irrelevant here — the claim is
+// about the REGION, and the file is as fine-grained as a ledger row gets.
+// The stem must be at least two characters and the extension alphabetic and at
+// least two, because the loose form matched the prose it reads: on four rounds
+// whose findings all say "e.g." the note read `every blocker in that run cites
+// e.g — one region`. `i.e` and a version number `1.2` are the same class. The
+// rule is the one `internal/check/cite.go` already applies to a citation.
+var citePathRe = regexp.MustCompile(`\b([\w./-]*[\w-]{2,}\.[A-Za-z]{2,8})(?::\d+)?\b`)

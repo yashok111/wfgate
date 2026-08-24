@@ -90,9 +90,14 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    claim needs at least one digit. A comma-separated list of shas is fine, and case does not matter.
 
 0. **`wfcheck -root <the repository the script will run in> <script>`** (`~/.local/bin/wfcheck`) — a
-   static checker for these scripts. `-root` defaults to the working directory and is load-bearing:
-   with the wrong one, the ownership check WARNs that every owned path is missing and the
-   drifted-test-name check silently does not apply. It must report
+   static checker for these scripts. `-root` is load-bearing: with the wrong one, the ownership check
+   WARNs that every owned path is missing and the drifted-test-name check silently does not apply.
+   **Run inside a gate workspace it defaults to that workspace's `target`** and says so in a note; run
+   anywhere else it defaults to the working directory. It used to default to the working directory
+   always, and a live gate paid for it — twenty-two "owns X, which does not exist" WARNs on a correct
+   script, because a script's owned paths are relative to the repository under review and the
+   workspace is not that tree. Pass `-root` explicitly to check a script against a tree the workspace
+   does not name. It must report
    **zero ERRORs** before the gate runs. It catches, for free, what four phases of opus gating kept
    spending rounds on: a report field named in a prompt that the agent's schema does not declare; a
    SIG/contract block interpolated into the writer but not its callers; one file claimed by two agents;
@@ -102,13 +107,33 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    that goes straight to `agent()` with no wrapper; a missing
    `model:`/`effort:`/`schema:`, and an `effort` outside `low|medium|high|xhigh|max`; an unused const;
    per-agent prompt sizes and per-blob multiplicity; a required
-   schema field no consumer's prompt explains; a test name the tree does not declare. It reads the
+   schema field no consumer's prompt explains; a test name the tree does not declare; **and a path a
+   producer owns that no gate's `owns` array lists** — a reviewer briefed on that file can file a
+   blocker the fix agent that gate spawns is forbidden to touch. It is script-wide, not per phase: in
+   the shape this manual prescribes a producer runs in `Build` and the gate reviewing it in `Gate 1`,
+   so joining the two on the phase title would report every correct script. **Read its boundary before
+   you trust it**: it enumerates the paths a prompt DECLARES, so of the three blockers of this shape on
+   the gate it came from it reaches the one where a producer declared a path no gate listed. The other
+   two were files that appeared in NO `YOU OWN` block and in no `owns` array — a phase was ordered by
+   its prompt to convert files nobody had assigned to anyone — and which files a phase was ORDERED to
+   touch is judgement, not a list this tool can read. A `owns` entry is a sentence about a path
+   (`internal/admin/server.go (the one comment, nothing else)`), so it is read for the paths it names;
+   an entry naming no path this tool recognises, or an array it cannot resolve, makes the remainder
+   NOT JUDGED and says so by gate name — a path missing from a list it could not read is not a path
+   nobody owns. A gate is recognised as `owns` AND `reviewers` together: `owns` alone is a key an
+   author writes on an agent's own options object, and counting one made a script with no gate at all
+   report full coverage. It reads the
    PARSED program, so an options object built by spreading a shared const, an options factory, a
    wrapper under any name and an inline schema are all understood — and where it cannot resolve
    something statically it says so as a note rather than reporting what it could not see as absent.
    It also PRINTS its populations on every run — call sites, wrappers, owned paths — because a check
    over an empty set reports zero findings and exits clean, which is indistinguishable from a clean
-   script and is trusted more, since a tool said so. Reviewer rounds are
+   script and is trusted more, since a tool said so. **Every size it prints over a prompt composed at
+   run time is a LOWER BOUND and says so**, and the checks that read a whole prompt — the schema's
+   required fields above all — are skipped for such a call rather than answered over the half it could
+   read: asking whether evidence is ABSENT over text the tool never saw is the same polarity error the
+   gate briefs its reviewers about, and it cost a live round when a field named in a prompt's first
+   chunk was reported as never mentioned. Reviewer rounds are
    worth ~10 minutes and six figures of tokens each — do not spend one on a regex. Re-run it after EVERY
    round's fixes: it has caught an unescaped apostrophe inside a quoted string that would have failed a
    run at launch.
@@ -167,7 +192,19 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    run against the new one), and the citation counts for the anchor RATCHET — commits it and tags the
    round `gate-rN`. The ratchet is a direction, not a threshold: a fixed bar would be arbitrary, but
    when the anchored share falls against the previous freeze the note says so, because an author who
-   stopped anchoring is writing citations the gate cannot really verify. Hand reviewers every path in the manifest, and diff
+   stopped anchoring is writing citations the gate cannot really verify.
+
+   **Freeze also RESOLVES the citations, and names every one that no longer does** — a note, never a
+   refusal, because a round whose whole purpose is re-aiming them must still freeze. It counted the
+   anchors and never asked whether the citations still pointed at anything: on a gate that shipped its
+   own first slice mid-run, the target moved under a document frozen ten rounds earlier and 26
+   citations drifted by a few lines each, read as correct by every producer of the next artifact and
+   found at close. Running `wf check cite` while the cited document is the artifact under review is
+   not enough — the tree it cites keeps moving after that, and freeze is the moment every round has.
+   **And it names a round whose artifacts were changed without `wf apply`.** Every gate discipline
+   survives a hand edit; only the measurement breaks, silently — one gate stopped using `wf apply` at
+   round 18 for a real reason and found out at close, seven rounds and 39 findings later, all of them
+   absent from the cost meter. Hand reviewers every path in the manifest, and diff
    every path in a delta round. Otherwise you patch the working copy while they read, their line numbers
    drift, and a round burns findings on defects you already fixed (measured: two of four findings in one
    round).
@@ -318,7 +355,13 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
 
 **Round discipline** — the gate itself has failure modes, and these were paid for:
 - **Barrier each round.** Collect ALL vectors of a round before applying ANY fix. Patching between two
-  reviewers of the same round means the second reports what you already fixed.
+  reviewers of the same round means the second reports what you already fixed. **The temptation is
+  strongest exactly when one vector is fast and its findings look obviously correct** — measured: an
+  external lens returned first, its five fixes went in while two internal lenses were still reading,
+  and one of them judged a moving target and reported two blockers as open against a file where they
+  were already closed. Nothing was lost that round because the other lens happened to read after the
+  write, which is luck and not design. Dispatch every vector against ONE frozen snapshot and batch the
+  fixes after the last one returns.
 - **Later rounds are DELTA rounds.** A fix is unreviewed code — in one phase, *half* the blockers of
   rounds 3+ were introduced by the previous round's own fix; in the next, 5 of 11; and in the one after
   that, round 2 was **9 out of 9**: every blocker that round existed only because round 1's fix created
@@ -406,7 +449,15 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   site left and the check reached nothing at all. Drop the marker from the reference instead. The
   population line prints the marker count, the id count and how many ids were actually COMPARED —
   zero markers is a corpus that opted out, and ids all sitting at one site each is a check that ran
-  over nothing; neither is a pass. The unmarked contradictions stay a reviewer's find. **Mark the rules while
+  over nothing; neither is a pass — the header line says NOT A PASS whenever nothing was compared,
+  the UNMARKED corpus included, because the note under it was missed on a gate carrying eighteen
+  markers and eighteen ids: the other three numbers on that line read like a pass, and
+  `0 marker(s), 0 id(s), 0 compared, 0 conflict(s)` reads like four of them. **Mark the PAIR, not the rule you happen to be proud of.** One
+  id per rule at one site each is decoration; the check reaches a rule only where the same id marks two
+  or more sites. The class it is for is a description and an enumeration of the same set disagreeing —
+  the single most expensive failure of one decision gate, three separate times, each costing rounds —
+  so the id goes on the sentence that describes the set AND on the list that enumerates it.
+  The unmarked contradictions stay a reviewer's find. **Mark the rules while
   the gate is still running, not afterwards** — this is where the check earns its keep, and it earned
   it on the first run that did: two rules marked after they had bitten in three consecutive rounds
   produced a divergence across the DERIVED pair on the check's first run over it, which is exactly the
@@ -504,7 +555,23 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   that produces no BLOCKER ends the gate. Mark such findings with
   a literal `[fix-induced]` in the finding text — `wf stats` counts the marker per round and in total,
   and prints "not measured" when nobody marked, because an unmarked corpus is a different claim from
-  "no self-inflicted findings".
+  "no self-inflicted findings". It also names, BY ROUND NUMBER, the rounds it could not measure: the
+  ones with findings and no `[fix-induced]` marker (the share is then a lower bound over the marked
+  rounds, not a measurement of the gate) and the ones with findings and no `wf apply` batch (their
+  edits are absent from every ratio it prints). Both holes opened in the same place on one gate — from
+  round 18 to the close — and the totals above them kept reading as measured while the true
+  fix-induced share was nearer 38% than the 34% printed, with every blocker of five consecutive rounds
+  induced by the round before.
+
+- **A run of rounds at exactly ONE blocker is a guard asking the wrong KIND of question.** `wf stats`
+  names EVERY such run (three or more) and, where every blocker in it cites one file, says so. The
+  stop rule is right to keep the gate open — each of those rounds does close a real escape — but
+  measured on one gate, rounds 22 to 24 were one enumeration floor rewritten: a free-text sentence,
+  then a non-empty array, then a distinct-member count, then a fixed cardinality, then exact member
+  names, then stable ids. Every version but the last two constrained a property of the REPORT, and for
+  every "at least N" there is an N, so the next degenerate report satisfied the new shape. **A guard
+  over a report asks "is this what the document NAMES", never "does this look like enough".** When the
+  signal fires, stop patching the guard and re-ask what it is for.
 4. **When the gate is done: `wf close`.** It writes the gate's own record into the workspace and
    commits it — the commit log as text (the timings that price every round live there and nowhere
    else), `wf stats -time` verbatim, the freeze manifests' surviving half, every FILE of every round

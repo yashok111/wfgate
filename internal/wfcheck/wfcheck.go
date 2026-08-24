@@ -77,19 +77,25 @@ var effortTiers = []string{"low", "medium", "high", "xhigh", "max"}
 
 // Run performs every check against the script at path. root is the repository
 // the script will run in; it is used only by the checks that ask whether a file
-// a prompt names actually exists.
+// a prompt names actually exists. An EMPTY root means "work it out": inside a
+// gate workspace that is the workspace's target, and the report says so.
 func Run(path, root string) (*Report, error) {
 	s, err := wfscript.Load(path)
 	if err != nil {
 		return nil, err
 	}
+	root, rootNote := resolveRoot(root)
 	r := &Report{}
+	if rootNote != "" {
+		r.add(INFO, 1, "%s", rootNote)
+	}
 	checkMeta(r, s)
 	calls := s.AgentCalls()
 	checkInventory(r, s, calls)
 	checkOptions(r, s, calls)
 	checkPromptsVsSchemas(r, s, calls)
 	checkOwnership(r, s, calls, root)
+	checkFixerReach(r, s, calls)
 	checkPromptFootguns(r, calls)
 	checkResultSafety(r, s)
 	checkConsts(r, s, calls)
@@ -323,7 +329,7 @@ func checkOptions(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 		if !c.PromptSet {
 			r.add(ERROR, c.Line, "agent %s: no prompt argument", c.Label)
 		} else if !c.PromptOK {
-			r.add(INFO, c.Line, "agent %s: its prompt is composed at run time — size and content checks below cover only the static part", c.Label)
+			r.add(INFO, c.Line, "agent %s: its prompt is composed at run time — checks that read the whole prompt (the schema's required fields, the size meter) do not cover this call; the ones that fire on text FOUND still do", c.Label)
 		}
 		if !c.OptsFound {
 			r.add(ERROR, c.Line, "agent %s: no options object — model, effort and schema have nowhere to be", c.Label)
@@ -425,6 +431,16 @@ func checkPromptsVsSchemas(r *Report, s *wfscript.Script, calls []wfscript.Agent
 		}
 		// A domain-specific required field the prompt never mentions is a value
 		// the agent must report without having been told how to obtain it.
+		//
+		// This one asks whether evidence is ABSENT, so it is the one check here
+		// that a partially-read prompt can turn into a false report — and it
+		// did, on a live gate: the missing text was the prompt's own first
+		// chunk. The polarity rule this project briefs its reviewers with
+		// applies to the checker itself. The ERROR above is unaffected: it fires
+		// on text it FOUND.
+		if !c.PromptOK {
+			continue
+		}
 		for _, f := range schemaRequired(s, e) {
 			if genericRequired[f] || strings.Contains(c.Prompt, f) {
 				continue
@@ -502,83 +518,130 @@ func schemaRequired(s *wfscript.Script, e ast.Expression) []string {
 // (internal|cmd|scripts|pkg|src|test|tests), so on a JS, Python or
 // `packages/`-shaped tree the ownership map came out EMPTY and the
 // dual-ownership error looped over zero entries without a word.
-var pathRe = regexp.MustCompile(`[\w.@{}-]+(?:/[\w.@{}-]+)+\.\w{1,8}|\b(?:Makefile|Dockerfile|README\.md|go\.mod|go\.sum|package\.json|compose\.yaml|docker-compose\.yml)\b`)
+// The third alternative is any bare filename at a repository root, because the
+// hardcoded list was a vocabulary too: two live gates own `CLAUDE.md`, which is
+// in no list and has no slash, so the entry naming it read as unreadable. Its
+// shape is deliberately narrow — a stem of at least two characters and an
+// ALPHABETIC extension of at least two — because the loose form matches `e.g`
+// and `i.e`, and a check that reports "every blocker in this run cites e.g" is
+// worse than one that misses a file.
+var pathRe = regexp.MustCompile(`[\w.@{}-]+(?:/[\w.@{}-]+)+\.\w{1,8}|\b(?:Makefile|Dockerfile|README\.md|go\.mod|go\.sum|package\.json|compose\.yaml|docker-compose\.yml)\b|\b[\w@{}-]{2,}\.[A-Za-z]{2,8}\b`)
 var citationRe = regexp.MustCompile(`^[\w./-]+\.\w+:\d+`)
 var shoutyRe = regexp.MustCompile(`^[A-Z][A-Z0-9 ,'()-]{8,}$`)
 var proseRe = regexp.MustCompile(`(?i)[—:]|\s(and|for|the|from|via|see|read)\s`)
 var afterPathRe = regexp.MustCompile(`^(\s*$|\s*[—–\-(,:]|\s{2,})`)
 var forbidRe = regexp.MustCompile(`(?i)DO NOT|must not|may not|forbidden`)
 
+// ownedPaths returns the paths a prompt's `YOU OWN` block declares, in the
+// order it declares them. ONE parser: the dual-ownership error, the
+// existence check and the reviewer/fixer reach check all read ownership from
+// it, because two readings of "what does this agent own" is the second-copy
+// defect this project names as its most frequent.
+func ownedPaths(prompt string) []ownedPath {
+	i := strings.Index(strings.ToUpper(prompt), "YOU OWN")
+	if i == -1 {
+		return nil
+	}
+	var out []ownedPath
+	lines := strings.Split(prompt[i:], "\n")
+	excluding := false
+	for n, l := range lines {
+		if n >= 40 {
+			break
+		}
+		t := strings.TrimSpace(l)
+		if n > 0 && shoutyRe.MatchString(t) {
+			break
+		}
+		// A blank line ends an exclusion region. The region is a REGION and
+		// not the rest of the prompt: ending the whole scan at "DO NOT" lost
+		// every owner declared after it, and — because the header line
+		// itself often reads "YOU OWN these files and must not write
+		// anywhere else" — lost every owner of such a prompt outright. That
+		// silenced a real dual-ownership ERROR the previous release
+		// reported, which is a worse defect than the false one it was
+		// fixing: this checker may neither invent an ERROR nor lose one.
+		if t == "" {
+			excluding = false
+			continue
+		}
+		if forbidRe.MatchString(t) {
+			// Pathless and below the header: the heading of an exclusion
+			// block ("DO NOT"), which shoutyRe cannot end because it demands
+			// nine characters and "DO NOT" is six. Carrying a path: an
+			// inline exclusion, and only that line is skipped. On the header
+			// line itself: prose about the block, never a heading.
+			if n > 0 && pathRe.FindString(t) == "" {
+				excluding = true
+			}
+			continue
+		}
+		if excluding {
+			continue
+		}
+		first := pathRe.FindString(t)
+		// An ownership entry STARTS with the path. A path mid-sentence
+		// ("read internal/x.go for context") is prose, and counting it
+		// manufactures a collision.
+		if first == "" || !strings.HasPrefix(t, first) {
+			continue
+		}
+		if citationRe.MatchString(t) {
+			continue // a file:line citation owns nothing
+		}
+		if !afterPathRe.MatchString(t[len(first):]) {
+			continue // a path followed by a verb is prose about that file
+		}
+		for _, m := range pathRe.FindAllStringIndex(t, -1) {
+			if proseRe.MatchString(t[:m[0]]) {
+				break
+			}
+			p := t[m[0]:m[1]]
+			// NEW is read off the DECLARING line, never off the prompt: a file
+			// the run is to create does not exist yet, and a mention of the word
+			// three paragraphs away says nothing about this entry.
+			//
+			// A path declared twice keeps NEW if EITHER line carries it. First
+			// occurrence wins made the flag order-dependent: `src/x.ts — NEW`
+			// then `src/x.ts — and you also finish it` was silent, and the same
+			// two lines swapped drew a "does not exist and is not marked NEW"
+			// WARN on a file the script creates.
+			isNew := strings.Contains(strings.ToUpper(t), "NEW")
+			if i := indexOfPath(out, p); i >= 0 {
+				out[i].New = out[i].New || isNew
+				continue
+			}
+			out = append(out, ownedPath{Path: p, New: isNew})
+		}
+	}
+	return out
+}
+
 func checkOwnership(r *Report, s *wfscript.Script, calls []wfscript.AgentCall, root string) {
 	owners := map[string][]string{}
 	declaring := 0
 	for _, c := range calls {
-		i := strings.Index(strings.ToUpper(c.Prompt), "YOU OWN")
-		if i == -1 {
+		// The denominator counts prompts that CLAIM ownership, not prompts the
+		// parser managed to read. Moving it behind the parse collapsed it onto
+		// its numerator, so `0 owned path(s) parsed from 4 prompt(s)` — the line
+		// authoring.md tells an author to read as "your ownership block is in a
+		// form this tool cannot parse" — became `parsed from 0 prompt(s)`, which
+		// reads as a script that declares nothing. Measured on two live scripts:
+		// the population dropped 5 to 4 and 2 to 1.
+		if strings.Contains(strings.ToUpper(c.Prompt), "YOU OWN") {
+			declaring++
+		}
+		paths := ownedPaths(c.Prompt)
+		if len(paths) == 0 {
 			continue
 		}
-		declaring++
-		lines := strings.Split(c.Prompt[i:], "\n")
-		excluding := false
-		for n, l := range lines {
-			if n >= 40 {
-				break
+		for _, o := range paths {
+			if !contains(owners[o.Path], c.Label) {
+				owners[o.Path] = append(owners[o.Path], c.Label)
 			}
-			t := strings.TrimSpace(l)
-			if n > 0 && shoutyRe.MatchString(t) {
-				break
-			}
-			// A blank line ends an exclusion region. The region is a REGION and
-			// not the rest of the prompt: ending the whole scan at "DO NOT" lost
-			// every owner declared after it, and — because the header line
-			// itself often reads "YOU OWN these files and must not write
-			// anywhere else" — lost every owner of such a prompt outright. That
-			// silenced a real dual-ownership ERROR the previous release
-			// reported, which is a worse defect than the false one it was
-			// fixing: this checker may neither invent an ERROR nor lose one.
-			if t == "" {
-				excluding = false
-				continue
-			}
-			if forbidRe.MatchString(t) {
-				// Pathless and below the header: the heading of an exclusion
-				// block ("DO NOT"), which shoutyRe cannot end because it demands
-				// nine characters and "DO NOT" is six. Carrying a path: an
-				// inline exclusion, and only that line is skipped. On the header
-				// line itself: prose about the block, never a heading.
-				if n > 0 && pathRe.FindString(t) == "" {
-					excluding = true
-				}
-				continue
-			}
-			if excluding {
-				continue
-			}
-			first := pathRe.FindString(t)
-			// An ownership entry STARTS with the path. A path mid-sentence
-			// ("read internal/x.go for context") is prose, and counting it
-			// manufactures a collision.
-			if first == "" || !strings.HasPrefix(t, first) {
-				continue
-			}
-			if citationRe.MatchString(t) {
-				continue // a file:line citation owns nothing
-			}
-			if !afterPathRe.MatchString(t[len(first):]) {
-				continue // a path followed by a verb is prose about that file
-			}
-			for _, m := range pathRe.FindAllStringIndex(t, -1) {
-				if proseRe.MatchString(t[:m[0]]) {
-					break
-				}
-				p := t[m[0]:m[1]]
-				if !contains(owners[p], c.Label) {
-					owners[p] = append(owners[p], c.Label)
-				}
-				if !strings.Contains(strings.ToUpper(t), "NEW") && !strings.Contains(p, "{") && root != "" {
-					if _, err := os.Stat(filepath.Join(root, p)); err != nil {
-						r.add(WARN, c.Line, "agent %s owns %s, which does not exist and is not marked NEW", c.Label, p)
-					}
+			if !o.New && !strings.Contains(o.Path, "{") && root != "" {
+				if _, err := os.Stat(filepath.Join(root, o.Path)); err != nil {
+					r.add(WARN, c.Line, "agent %s owns %s, which does not exist and is not marked NEW", c.Label, o.Path)
 				}
 			}
 		}
@@ -598,6 +661,23 @@ func checkOwnership(r *Report, s *wfscript.Script, calls []wfscript.AgentCall, r
 				p, len(owners[p]), strings.Join(owners[p], ", "))
 		}
 	}
+}
+
+// ownedPath is one entry of a `YOU OWN` block.
+type ownedPath struct {
+	Path string
+	New  bool // the entry marks it as a file this run creates
+}
+
+func containsPath(ps []ownedPath, p string) bool { return indexOfPath(ps, p) >= 0 }
+
+func indexOfPath(ps []ownedPath, p string) int {
+	for i, x := range ps {
+		if x.Path == p {
+			return i
+		}
+	}
+	return -1
 }
 
 // ------------------------------------------------------ 6. shell footguns --
@@ -699,19 +779,39 @@ func checkConsts(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 // --------------------------------------------------------------- 9. cost --
 
 func checkCost(r *Report, calls []wfscript.AgentCall) {
-	biggest, biggestLabel := 0, ""
+	biggest, biggestLabel, biggestPartial, partial := 0, "", false, 0
 	for _, c := range calls {
 		n := len(c.Prompt)
+		// A prompt whose text is only partly known measures a LOWER BOUND. The
+		// WARN below is unaffected in its POLARITY — it fires on bytes counted,
+		// never on bytes missing — but the number it prints is still a floor,
+		// and it said so nowhere: a reader told "this prompt is 41 KB" acts on
+		// 41 KB. The headline has the same duty for the same reason: a size
+		// budget read off a partially resolved prompt is read off fiction.
+		if c.PromptSet && !c.PromptOK {
+			partial++
+		}
 		if n > biggest {
-			biggest, biggestLabel = n, c.Label
+			biggest, biggestLabel, biggestPartial = n, c.Label, c.PromptSet && !c.PromptOK
 		}
 		if n > 40*1024 {
-			r.add(WARN, c.Line, "agent %s: composed prompt is %s — over the ~40 KB mark, split its scope or move a blob to a file", c.Label, kb(n))
+			at := "is " + kb(n)
+			if c.PromptSet && !c.PromptOK {
+				at = "is at LEAST " + kb(n) + " (composed at run time — the rest is not readable here)"
+			}
+			r.add(WARN, c.Line, "agent %s: composed prompt %s — over the ~40 KB mark, split its scope or move a blob to a file", c.Label, at)
 		}
 	}
 	switch {
 	case biggestLabel != "":
-		r.add(INFO, 1, "largest composed prompt: %s at %s", biggestLabel, kb(biggest))
+		at := "at " + kb(biggest)
+		if biggestPartial {
+			at = "at LEAST " + kb(biggest) + " (composed at run time — the rest is not readable here)"
+		}
+		r.add(INFO, 1, "largest composed prompt: %s %s", biggestLabel, at)
+		if partial > 0 {
+			r.add(INFO, 1, "%d of %d prompt(s) are composed at run time — every size above is a lower bound", partial, len(calls))
+		}
 	case len(calls) > 0:
 		// 0.0 KB with no name attached is the founding symptom restated.
 		r.add(INFO, 1, "no statically readable prompt in %d call site(s) — the size and content checks covered nothing", len(calls))

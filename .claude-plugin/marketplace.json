@@ -1,5 +1,6 @@
 {
   "name": "wfgate-tools",
+  "description": "The wfgate review-gate toolchain: the workflow-gate operating manual as a skill, and the two PreToolUse hooks that trigger it",
   "owner": {
     "name": "Yakov Kurbatov",
     "url": "https://git.sumka.site/yakov/wfgate"
@@ -9,7 +10,7 @@
       "name": "wfgate",
       "source": ".",
       "description": "Workflow gate harness: the workflow-gate skill and the Workflow pre-flight hook",
-      "version": "1.3.0",
+      "version": "1.16.0",
       "author": {
         "name": "Yakov Kurbatov"
       },

@@ -80,11 +80,11 @@ wf delta                                   # the delta round's brief: findings +
 | `wf apply -f <edits> [-m msg] [--dry-run]` | all-or-nothing batch of edits (JSON or text blocks), then a commit of only the touched files |
 | `wf round new [-title T] [-kind full\|delta\|tool]` | open the next round, scaffold `rounds/rN/findings.md` with its scope |
 | `wf round record <file> [-round N]` | fill a round's findings.md, validating closures before writing |
-| `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open |
+| `wf freeze` | sha256 of all artifacts + target HEAD + tool version + citation counts → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open; notes (never refuses) every citation that no longer RESOLVES against the target's HEAD, a round whose artifacts changed without `wf apply`, and — when it could not resolve them, or the round's window has no lower bound — that the check did not run |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping |
 | `wf check [cite\|dup\|drift\|rules]` | deterministic checks (no argument = cite + dup + rules); `dup` takes `-since REF`, `-threshold F` and `-min-words N` |
-| `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share, and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
+| `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history), the opt-in `[fix-induced]` share (with the rounds carrying no marker named, so the share reads as the lower bound it is), the rounds that applied no batch at all, every run of three or more rounds at exactly ONE blocker, the rounds whose findings.md could not be read at all (an absent measurement, not a measured zero), and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round |
 | `wf new-script <name> [-target REPO] [-o FILE]` | emit the orchestration-script harness — wrapper, schemas, per-section gate, liveness ledger, read-only accept, tally; `wfcheck`-clean and `wfdry` 7/7 as emitted, and re-verified by `make check-tools`. Never writes over an existing file |
 | `wf close [-archive DIR] [-artifacts=false]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and every file of every round, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten. the artifacts themselves are banked too, because their CONTENT is the one thing `prune` destroys that nothing else holds; `-artifacts=false` opts out, and `prune` then names each artifact before removing it |
 | `wf prune [-yes]` | delete `artifacts/`, `rounds/` and then `.git` once the record is banked; refuses without one, refuses a stale one (including a record committed together with the work it describes), and reports without `-yes`. Measured on one closed gate: 4.2 MB down to 696 KB, and the record holds the artifacts, every round's files, the commit log and the stats |
@@ -218,12 +218,44 @@ A marked rule may be written with any markdown around it — emphasis, a bullet,
 a table cell — and may share its line with other prose: sites are compared as
 SENTENCES, and the normaliser erases the markup.
 
+Nothing compared makes the header say `NOT A PASS` — ids all sitting at ONE
+site, and an unmarked corpus, whose `0 marker(s), 0 id(s), 0 compared, 0
+conflict(s)` reads like four numbers that passed: the note under it was missed on a gate carrying eighteen
+markers and eighteen ids, because the other three numbers on that line read
+like a pass. The class the markers exist for is a description and an
+enumeration of one set disagreeing — mark the description AND the list.
+
 Every conflict — here, and `dup`'s `NUMERIC`, `OPERATOR` and near-match groups
 — is printed at the point the copies STOP agreeing, with the shared opening
 trimmed to a few anchor words. Copies that conflict agree almost everywhere, so
 truncating them from the start prints the same characters for every site: one
 gate reported five sites of one rule as five byte-identical lines, and the
 difference was found with `cat -A`.
+
+### `wfcheck` and the target
+
+`wfcheck -root <repo>` names the repository whose files a script's prompts
+claim to own. Run inside a gate workspace, `-root` defaults to that workspace's
+`target` and the report says so; anywhere else it is the working directory. The
+default used to be the working directory always, which produced twenty-two
+"owns X, which does not exist" warnings on a correct script — a script's owned
+paths are relative to the tree under review, and the workspace is not it.
+
+It also cross-references every `YOU OWN` path against the `owns` array of every
+gate config in the script: a path no gate owns is a file a reviewer can be
+briefed on and no fix agent may touch. The reach is script-wide, because a
+producer and the gate reviewing it live in different phases by design.
+
+A gate config is `owns` AND `reviewers` together — `owns` alone is a key an
+author writes on an agent's own options object. The array is followed through a
+name (`owns: closingOwns`) and a spread, and each entry is read for the PATHS it
+names, because an entry is a sentence about a path rather than a path
+(`internal/admin/server.go (the one comment, nothing else)`); an entry ending in
+`/` owns the directory beneath it. What it cannot read it does not judge: an
+unresolvable array, or an entry naming no path, leaves the remainder `NOT
+JUDGED` and names the gate. It covers only what a prompt DECLARES — a file a
+phase was ordered to touch and nobody assigned to anyone is invisible to it, and
+that is judgement rather than a list.
 
 ## Boundaries
 

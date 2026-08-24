@@ -77,7 +77,7 @@ func TestStatsOmitsAnUnattributableWindow(t *testing.T) {
 // One classifier, asserted here against all three of its sources.
 func TestIsApplyAgreesWithEverySource(t *testing.T) {
 	cases := []struct {
-		name, subj, msg string
+		name, subj, msg string //nolint:unused // subj documents the message's first line
 		want            bool
 	}{
 		{"trailer", "r3: close the seam finding",
@@ -92,7 +92,10 @@ func TestIsApplyAgreesWithEverySource(t *testing.T) {
 			"notes\n\n- artifacts/context.md: what I owe\n\nand the rest in prose\n", false},
 	}
 	for _, c := range cases {
-		if got := isApply(c.msg, c.subj); got != c.want {
+		// The subject is read off the message's first line, never handed in
+		// beside it: a caller passing one that disagrees with the message made
+		// two readings of one commit possible.
+		if got := isApply(c.msg); got != c.want {
 			t.Errorf("%s: want %v, got %v", c.name, c.want, got)
 		}
 	}

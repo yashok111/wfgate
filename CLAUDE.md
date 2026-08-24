@@ -431,6 +431,88 @@ it:
   second found a hand-pinned total in a test file that eight decision rounds
   missed.
 
+**The seventh wave — mocker slice A, the first gate carrying THREE gates in one
+workspace and shipping two slices of the repository under review**
+(`FEEDBACK-a-mcp.md`; 25 rounds, 196 findings, 58 blockers, four artifacts at
+262 KB, 139 workspace commits, ~6.5 h of real gate work). Its report is in two
+halves and the first is the more useful one: four ways the OPERATOR stopped
+using the tool correctly partway through, none of which the tool objected to.
+That is the shape of every item below — the discipline held and only the
+MEASUREMENT broke, silently:
+
+- *The operator stopped using `wf apply` at round 18 and found out at close* —
+  seven rounds and 39 findings absent from the cost meter, printed per round as
+  a bare "0 apply batch(es)". The whole-gate note fires only when the meter has
+  NO population at all, so a gate that used `wf apply` for seventeen rounds and
+  stopped has a population, a headline ratio and seven rounds the ratio never
+  saw. `wf freeze` now names a round whose artifacts changed without `wf apply`
+  — one round old rather than seven — and `wf stats` names those rounds BY
+  NUMBER. Same for the `[fix-induced]` marker: the rounds carrying none are
+  named, because a share computed over the marked rounds is a lower bound, and
+  its error has a direction — the true share was nearer 38% than the 34%
+  printed, with every blocker of five consecutive rounds induced by the round
+  before.
+- *`wf freeze` counted anchors and never asked whether a citation still
+  RESOLVED* — the gate shipped its own first slice mid-run, the target moved
+  under a document frozen ten rounds earlier, and 26 citations drifted by a few
+  lines each and were read as correct by every producer of the next artifact.
+  Freeze resolves them now and names every one that does not, as a note: a round
+  whose purpose is re-aiming them must still freeze.
+- *`wfcheck`'s prompt resolver charged its depth budget PER NODE* — and `a + b +
+  c + ...` is left-associative, so a prompt assembled from more than a dozen
+  concatenated pieces lost its leftmost ones. A schema field named in the first
+  chunk was reported as never mentioned after an unrelated insert made the chain
+  longer, and every size the tool printed over such a prompt was a size budget
+  read off fiction. Depth is charged per INDIRECTION now, the accounting `objectOf`
+  already used. The check that asks whether a field is ABSENT is skipped
+  entirely for a prompt composed at run time — the polarity rule the gate briefs
+  its reviewers with, applied to the checker itself — and every size over such a
+  prompt prints as a lower bound. Writing the test for it found a second defect:
+  `const M = { a: M.b, b: M.a }` is legal JavaScript and crashed `wfcheck` with a
+  stack overflow, because `memberOf` re-entered `ObjectOf` with a fresh budget
+  (`wfdry` survives it and reports 0/7 modes). A script that kills the checker is
+  a script nobody checked.
+- *`wfcheck -root` defaulted to the working directory* — twenty-two "owns X,
+  which does not exist" WARNs on a correct script run from the workspace, whose
+  `gate.json` already records the target. It reads that now and says which tree
+  it read.
+- *The pre-flight sequence reads as a gate and is a smoke test* — both round-19
+  blockers passed `wfcheck` 0/0 and `wfdry` 7/7, because both are properties of
+  PROMPT TEXT and OWNERSHIP LISTS rather than of control flow. `wfcheck` now
+  cross-references every `YOU OWN` path against the `owns` array of every gate
+  config: a path no gate owns is a file a reviewer can be briefed on and no fix
+  agent may touch. It reaches ONE of that gate's three blockers of this shape —
+  round 20's, where a producer declared the path and no gate listed it. The other
+  two were files named in NO `YOU OWN` block and no `owns` array at all, and a
+  check that enumerates declared paths cannot see a file nobody declared: which
+  files a phase was ORDERED to touch is judgement, and the manual says so rather
+  than letting the sequence read as covering the class. The reach is script-WIDE — phase was the first join tried and it
+  reported every correct script, because in the prescribed shape a producer runs
+  in `Build` and its gate in `Gate 1`.
+- *Two report changes for things the tool already said and nobody read* — `check
+  rules` prints `NOT A PASS` in the HEADER when nothing was compared (eighteen
+  markers, eighteen ids, zero comparisons: the note said so under a line whose
+  other three numbers read like a pass — and the condition is `compared == 0`,
+  not `markers > 0 && compared == 0`, because an UNMARKED corpus compares nothing
+  either and is the far larger population), and `wf stats` names EVERY run of
+  three or more rounds at exactly ONE blocker, with the file they all cite when
+  they cite one. Keeping only the longest kept the FIRST longest, and that gate
+  has three such runs: it would have named rounds 5-7 of the decision gate and
+  attached the script gate's story to them. The measured run is rounds 22-24 —
+  three rounds, one enumeration floor.
+- *Four findings changed the MANUAL, not the tool* — the polarity rule's
+  corollary (**a floor must be armed on a DIFFERENT field than the one it
+  constrains**, or it disables itself at exactly the degenerate value the defect
+  produces; four instances in ONE script over three rounds — r19, r21, r22 twice), the kind-of-question rule (**a guard
+  over a report asks "is this what the document NAMES", never "does this look
+  like enough"**), the barrier's sharper form (the pull to patch is strongest
+  when one vector returns early and its findings look obviously correct), and
+  **starting a script from a gated one copies its UNFOUND defects** — re-read
+  that gate's ROUNDS FILE, not its code: a reviewer guard testing
+  `findings.length` instead of "any finding of severity blocker" survived its own
+  seven-round gate and was copied forward along with the first blocker it had
+  already cost.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file
@@ -524,7 +606,7 @@ the vacuous deletion, two spellings of one path, the chained batch),
 markers, the operator conflict, drift), `internal/ws` (the ledger parser),
 `internal/gitx` (porcelain quoting), `internal/wfscript` (every script shape
 that defeated the text scanner), `internal/wfcheck` and `internal/wfdry` (one
-case per finding and per guard), and three end-to-end files under `cmd/wf`
+case per finding and per guard), and the end-to-end files under `cmd/wf`
 driving the prescribed sequence and asserting on OUTPUT.
 
 Coverage is NOT complete and the claim that it is has been wrong once: a
@@ -539,9 +621,9 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-23 — read before trusting
+## State as of 2026-08-24 — read before trusting
 
-- **Three real gates have now run entirely through `wf`.** P2d (10 rounds, 98
+- **Four real gates have now run entirely through `wf`.** P2d (10 rounds, 98
   findings — `FEEDBACK-p2d.md`), P2e, the first over a workflow SCRIPT
   (17 rounds, 235 findings, 293 KB of artifacts — `FEEDBACK-p2e.md`), and P2f,
   the first carrying both gates in one workspace (13 rounds, 111 findings, 180
@@ -554,13 +636,22 @@ fixtures for the non-ASCII anchor detector).
   it found a divergence across the derived pair on its FIRST run, which is the
   case the feature was built for — plus eight mis-aimed anchors and three
   citations that resolved, sat inside the file and pointed at the wrong lines.
+  And mocker slice A (`FEEDBACK-a-mcp.md`, `~/projects/gates/mocker-a-mcp`): 25
+  rounds, 196 findings, 58 blockers, THREE gates in one workspace — a decision
+  gate and one script gate per shipped slice — 262 KB over four artifacts, both
+  slices shipped with every bar green. It is the first run whose report is
+  mostly about the OPERATOR: four ways of drifting out of the tool that the tool
+  watched in silence, which is what the seventh wave above answers.
   `check drift` is STILL unexercised live.
 - **The validation corpus DOES survive, and it is the best evidence this
   repository has.** The claim that it did not was stale and cost an
   investigation an hour of archaeology before it was checked: four gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
-  `~/gates/p2f` (82 / 102 / 87 commits) and `~/projects/gates/mocker-a-mcp`,
-  live. The six tracked orchestration scripts are in
+  `~/gates/p2f` (82 / 102 / 87 commits, verified 2026-08-24). The fourth,
+  `~/projects/gates/mocker-a-mcp`, has been CLOSED AND PRUNED: no `.git`, no
+  `artifacts/`, no `rounds/` — its numbers survive only in `close/stats.txt`,
+  `close/history.tsv`, `close/freezes.tsv` and `close/rounds/`, and `wf stats`
+  cannot be run there. Read the banked file; do not try to re-derive them. The six tracked orchestration scripts are in
   `~/projects/mocker/.claude/workflows/` (769-2658 lines each, 10 823 total; a
   live gate's own script sits there untracked while it runs). Run `wf stats
   -time` inside a workspace before reasoning about cost; the commit timestamps
@@ -577,6 +668,25 @@ fixtures for the non-ASCII anchor detector).
   before the script exists took one gate from 10+6 rounds to 8+3, about an hour.
   The authoring window — init to the first artifact, 31.7 and 42.2 minutes — is
   the largest block no round covers.
+- **The seventh wave was reviewed the same way, and the review is again why it
+  is trustworthy** (2026-08-24; two Opus vectors — Go correctness with a
+  mutation sweep, and the claims/specification — plus one external model on the
+  whole diff). It found FIVE blockers in a wave whose four bars were green, and
+  the flagship feature was the worst of them: `checkFixerReach` ran over ZERO
+  paths on both scripts of the very gate it was derived from, because `owns:
+  closingOwns` is an identifier and the code type-asserted straight to an array
+  literal. It also accepted any object carrying an `owns` key as a gate config
+  (an agent's own options object reported full coverage on a script with no gate
+  at all; a JSON schema whose `properties` names `owns` disabled the check
+  script-wide, as an INFO), compared whole `owns` entries by string equality
+  against entries that are SENTENCES about paths, and had moved the ownership
+  denominator behind the parse so `0 owned path(s) parsed from 4 prompt(s)` — the
+  line `authoring.md` tells authors to read — could no longer be printed. The
+  claims vector found nine numbers wrong against the workspace's own banked
+  `wf stats`, including the corpus claim above. Every fix carries a test that
+  fails without it; two of the first tests written did NOT fail under mutation
+  and were rewritten until they did. Same lesson as the wave before, now
+  measured twice: a tooling change earns its review round.
 - **The 2026-08-23 tooling wave was reviewed by three disjoint vectors, and the
   review is why it is trustworthy.** Two opus agents (one on Go correctness, one
   on the claimed measurements and the specification) and one external model on

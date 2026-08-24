@@ -445,6 +445,25 @@ passing one.
       to turn a raise into a null, so each assertion was caught, recorded as a dead agent, and the run
       reported OK — three injected defects, three green runs. Any checker embedded in the code it
       checks must report out of band, and fail on its own record rather than on the host's reaction.
+- [ ] **A floor must be ARMED ON A DIFFERENT FIELD than the one it constrains**, or it disables itself
+      at exactly the degenerate value the defect produces. This is the corollary of asking whether
+      evidence of FAILURE is present rather than whether evidence of success is absent, and one gate
+      hit it four times in ONE script over three rounds — r19, r21 and r22 twice:
+      `seam.allowlistCount !== 40` seeds a blocker — an integer has no "not answered yet" value, so it
+      fired on every dry fixture and made the clean mode unsatisfiable; `clauseNumbers.size > 1 &&
+      size < 8` — eight rows all numbered `1` give size 1, not `> 1`, so the check switched itself off
+      at the defect; `enumSets.size !== 4` — four distinct STRINGS is not the four REQUIRED names, and
+      a bogus fourth stood in for a missing real one; `expected.length !== 6` — counts slots, not
+      members, and six copies of one name passed. The fix each time had one shape: arm on a field the
+      report cannot fake by repetition (a two-value enum, a decided-row count), then demand the
+      identity in full. **An integer compared to a constant is the single easiest way to write a
+      verdict no honest fixture can satisfy.**
+- [ ] **A guard over a REPORT asks "is this what the document NAMES", never "does this look like
+      enough".** For every "at least N" there is an N: a distinct-member count, a fixed cardinality
+      and a non-empty array are all satisfied by the next degenerate report, which is why one gate
+      spent three consecutive rounds at one blocker each rewriting a single enumeration floor. Name the
+      members, then demand them by name; the property-of-the-report forms are what you write when the
+      document has not decided what the set IS.
 - [ ] **The guard's population is pinned by number**, so silently narrowing it is visible.
 - [ ] **Everything the result depends on is pinned**, not just the obvious half: the request shape feeds a
       seeded generator as much as its options do.
@@ -548,7 +567,18 @@ it.
 
 The fix is the largest single source of blockers. These are protocol, not taste.
 
-- [ ] **Apply a round's fixes at a barrier**, never between two reviewers of the same round.
+- [ ] **Apply a round's fixes at a barrier**, never between two reviewers of the same round. The pull is
+      strongest when one vector returns early and its findings look obviously correct: measured, five
+      such fixes went in while two other vectors were still reading, and one then reported two blockers
+      as open against a file where they were already closed.
+- [ ] **Starting a script from a gated one copies its UNFOUND defects, so re-read that gate's ROUNDS
+      FILE, not its code.** Measured: an A2 script built from a shipped A1 script inherited its harness
+      verbatim, including a reviewer guard that tested `findings.length` instead of "does any finding
+      carry severity blocker" — so a reviewer returning `verdict: "blockers"` with advisory-only
+      findings read as CLEAN. That defect had survived A1's own seven-round gate and is still in the
+      script that ran. Copying the code also reproduced A1's FIRST blocker as A2's first blocker, an
+      ownership hole, which the rounds file would have handed over for free. (`wf check dup` flags the
+      copied harness and is right to; the harness being deliberate is not the finding.)
 - [ ] **Execute the procedure you wrote, literally, once**, in a scratch copy and never in the live
       one. Reading checks whether the steps are right; only running checks whether they are reachable
       in the order given. One round found three blockers this way that no reading had found, and the

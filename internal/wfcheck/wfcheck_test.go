@@ -8,6 +8,7 @@ package wfcheck
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -513,5 +514,381 @@ func TestStripNonCode_regexLiterals(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// B1, mocker slice A round 24: the "required field the prompt never mentions"
+// WARN is the one check here that asks whether evidence is ABSENT, so it is the
+// one a partially-read prompt can turn into a false report — and it did, twice
+// over. Once because the resolver dropped the head of a long concat chain (fixed
+// in wfscript), and structurally because a prompt composed at run time is text
+// the checker never sees. A gate whose author closes a WARN by restating a
+// keyword has been taught to pad prompts.
+func TestRequiredFieldWarn_isSilentOverAPromptItCouldNotRead(t *testing.T) {
+	const schema = "const S = { type: 'object', properties: { seams: { type: 'array' } }, required: ['seams'] }\n"
+	const wrap = "const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\n"
+	head := "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }\n"
+
+	t.Run("a prompt it CAN read still fires", func(t *testing.T) {
+		r := run(t, head+schema+wrap+"phase('P')\nawait spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}")
+		if !has(r, WARN, "never mentions") {
+			t.Fatalf("the check must still fire on text it read:\n%s", dump(r))
+		}
+	})
+
+	t.Run("a run-time prompt does not", func(t *testing.T) {
+		r := run(t, head+schema+wrap+"phase('P')\nawait spawn(`go ` + someRuntimeValue, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}")
+		if has(r, WARN, "never mentions") {
+			t.Fatalf("absence over unread text is not evidence:\n%s", dump(r))
+		}
+		if !has(r, INFO, "composed at run time") {
+			t.Fatalf("and the report must say the check did not cover it:\n%s", dump(r))
+		}
+	})
+
+	// A prompt the checker only partly read measures a LOWER BOUND, and the
+	// size line must not read as a measurement: an 8.3 KB prompt metered at
+	// 4.5 KB is a size budget read off fiction.
+	t.Run("the size meter says lower bound", func(t *testing.T) {
+		r := run(t, head+schema+wrap+"phase('P')\nawait spawn(`go ` + someRuntimeValue, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}")
+		if !has(r, INFO, "at LEAST") {
+			t.Fatalf("want the largest-prompt line marked as a floor:\n%s", dump(r))
+		}
+		if !has(r, INFO, "every size above is a lower bound") {
+			t.Fatalf("want the population of unread prompts:\n%s", dump(r))
+		}
+	})
+}
+
+// B2, mocker slice A: run from the gate workspace with no -root, every ownership
+// path in a correct script came back "does not exist" — twenty-two of them —
+// because the default root was the working directory and a script's owned paths
+// are relative to the TARGET. gate.json already records the target.
+func TestRootDefaultsToTheWorkspaceTarget(t *testing.T) {
+	target := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(target, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"src/real.ts", "x_test.go"} {
+		if err := os.WriteFile(filepath.Join(target, f), []byte("package x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	work := t.TempDir()
+	if err := os.WriteFile(filepath.Join(work, "gate.json"), []byte(`{"name":"g","target":`+strconv.Quote(target)+`,"round":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(work, "s.mjs")
+	body := preamble + "phase('P')\nawait spawn(`YOU OWN\\n  src/real.ts — the thing\\n`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"
+	if err := os.WriteFile(script, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(cwd) }()
+
+	rep, err := Run(script, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has(rep, WARN, "does not exist") {
+		t.Fatalf("the owned path exists in the target; the workspace is the wrong tree to ask:\n%s", dump(rep))
+	}
+	// A root the reader did not ask for must be named, or the next divergence
+	// between the two trees reads as a script defect.
+	if !has(rep, INFO, "the target of gate workspace") {
+		t.Fatalf("want the report to say which tree it read:\n%s", dump(rep))
+	}
+
+	// An explicit -root still wins — it is the only way to check a script
+	// against a tree the workspace does not name.
+	if rep, err := Run(script, work); err != nil {
+		t.Fatal(err)
+	} else if !has(rep, WARN, "does not exist") {
+		t.Fatalf("an explicit root is not overridden:\n%s", dump(rep))
+	}
+}
+
+// B3, mocker slice A rounds 19 and 20: a section owned files that appeared in no
+// gate's `owns`, so a reviewer briefed on them could file a blocker the fix agent
+// that gate spawns was forbidden to touch. Both blockers passed `wfcheck` 0/0 and
+// `wfdry` 7/7 — neither is reachable by a dry mode, because both are properties
+// of prompt text and ownership lists rather than of control flow.
+func TestFixerReach(t *testing.T) {
+	head := "export const meta = { name: 'x', description: 'd', phases: [{ title: 'Build' }, { title: 'Gate 1' }] }\n"
+	const wrap = "const S = { type: 'object' }\nconst spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\nconst runGate = async (cfg) => spawn('YOU OWN\\n' + cfg.owns.map((p) => '  ' + p).join('\\n'), { model: 'sonnet', effort: 'high', label: 'fix:' + cfg.slug, phase: cfg.phase, schema: S })\n"
+	producer := func(own string) string {
+		return "phase('Build')\nawait spawn(`YOU OWN\\n  " + own + " — NEW, you create it\\n`, { model: 'sonnet', effort: 'low', label: 'build', phase: 'Build', schema: S })\n"
+	}
+	// A gate is recognised by `owns` AND `reviewers` together: `owns` alone is a
+	// key an author writes on an agent's own options object, and counting one
+	// made a script with no gate report full coverage.
+	const revs = ", reviewers: [{ slug: 'correctness', vector: 'v', model: 'sonnet' }]"
+	gate := func(owns string) string {
+		return "phase('Gate 1')\nawait runGate({ slug: 'gate1', phase: 'Gate 1', owns: [" + owns + "]" + revs + " })\nreturn {}"
+	}
+
+	t.Run("a path no gate owns", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/seam.ts")+gate("'src/other.ts'"))
+		if !has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("want the reach WARN:\n%s", dump(r))
+		}
+		if !has(r, INFO, "0 reachable by a fix agent, 1 NOT") {
+			t.Fatalf("and the population must carry the count:\n%s", dump(r))
+		}
+	})
+
+	// The canonical shape the manual prescribes: a producer in phase Build, the
+	// gate reviewing it in phase Gate 1. Joining the two on the phase TITLE
+	// reported every correct script, which is why the reach is script-wide.
+	t.Run("the prescribed producer/gate phase split is not a finding", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/seam.ts")+gate("'src/seam.ts'"))
+		if has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("a producer and its gate live in different phases by design:\n%s", dump(r))
+		}
+	})
+
+	// An owns array it could not read in full disables the check for the whole
+	// script and says so — reporting the unseen as missing is the phantom-ERROR
+	// failure this checker was rebuilt to end.
+	t.Run("an unreadable owns array reports nothing", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/seam.ts")+"phase('Gate 1')\nawait runGate({ slug: 'gate1', phase: 'Gate 1', owns: someRuntimeList"+revs+" })\nreturn {}")
+		if has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("what it could not see is not missing:\n%s", dump(r))
+		}
+		if !has(r, INFO, "could not be read in full") {
+			t.Fatalf("and it must say the check was skipped:\n%s", dump(r))
+		}
+	})
+
+	// An `owns` behind a NAME is the shape both scripts of the gate this check
+	// was derived from write on their closing gate: `owns: closingOwns`, a plain
+	// array one screen above. A type assertion to *ast.ArrayLiteral saw nothing
+	// through it, so the gate counted as unreadable and the check disabled
+	// itself for the whole script — on both.
+	t.Run("an owns array behind a const name is read", func(t *testing.T) {
+		src := head + wrap + "const closingOwns = ['src/seam.ts']\n" + producer("src/seam.ts") +
+			"phase('Gate 1')\nawait runGate({ slug: 'gate1', phase: 'Gate 1', owns: closingOwns" + revs + " })\nreturn {}"
+		r := run(t, src)
+		if has(r, INFO, "could not be read in full") {
+			t.Fatalf("the const is right there in the tree:\n%s", dump(r))
+		}
+		if !has(r, INFO, "1 reachable by a fix agent, 0 NOT") {
+			t.Fatalf("and it must be compared:\n%s", dump(r))
+		}
+	})
+
+	// A gate's entry is a SENTENCE about a path, not a path: 19 entries of one
+	// live script read `internal/admin/server.go (the one D7 comment, nothing
+	// else)`. Whole-string equality drew a WARN on every one of them.
+	t.Run("a prose owns entry is read for the path it names", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/seam.ts")+gate("'src/seam.ts (the one comment above the route, nothing else)'"))
+		if has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("the entry names the path it owns:\n%s", dump(r))
+		}
+	})
+
+	// A gate owning a directory reaches what is under it.
+	t.Run("a directory entry reaches the files beneath it", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/deep/seam.ts")+gate("'src/deep/ (the new table, helper and test files)'"))
+		if has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("the directory covers the file:\n%s", dump(r))
+		}
+	})
+
+	// An entry naming nothing this tool recognises is an entry it did not read,
+	// and it must say so rather than judge the rest against a short list.
+	t.Run("an entry naming no path makes the gate incomplete", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/seam.ts")+gate("'the four new test files under src'"))
+		if has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("a list it could not read cannot convict:\n%s", dump(r))
+		}
+		if !has(r, INFO, "NOT JUDGED") {
+			t.Fatalf("and the unjudged remainder must be named:\n%s", dump(r))
+		}
+	})
+
+	// The founding false green of this check: an agent's OWN options object
+	// carries an `owns` list in the shape the emitted harness uses, so a script
+	// with no gate at all reported full coverage.
+	t.Run("an agent options object is not a gate config", func(t *testing.T) {
+		src := head + wrap + "phase('Build')\nawait spawn(`YOU OWN\\n  src/seam.ts — NEW, you create it\\n`, { model: 'sonnet', effort: 'low', label: 'build', phase: 'Build', schema: S, owns: ['src/seam.ts'] })\nreturn {}"
+		r := run(t, src)
+		if has(r, INFO, "reachable by a fix agent") {
+			t.Fatalf("no gate spawns a fix agent here:\n%s", dump(r))
+		}
+		if !has(r, INFO, "the reviewer/fixer reach check covered nothing") {
+			t.Fatalf("want the population line:\n%s", dump(r))
+		}
+	})
+
+	// A JSON schema with a property NAMED owns switched the whole check off,
+	// script-wide, as an INFO — the `effort:`-inside-a-schema-description class,
+	// re-entering through a property name.
+	t.Run("a schema property named owns disables nothing", func(t *testing.T) {
+		// The trap is the `properties` object, which carries BOTH keys — so the
+		// gate shape alone does not exclude it, and its `owns` is a schema node
+		// rather than an array. It used to set OwnsComplete=false and switch the
+		// whole check off, script-wide, as an INFO naming the schema as a gate.
+		src := head + "const GATE_SCHEMA = { type: 'object', properties: { owns: { type: 'array', description: 'the paths you own' }, reviewers: { type: 'array' } } }\n" +
+			wrap + producer("src/seam.ts") + gate("'src/other.ts'")
+		r := run(t, src)
+		if !has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("a schema is not a gate, and must not silence the check:\n%s", dump(r))
+		}
+	})
+
+	// Populations, both directions.
+	t.Run("no gate config at all is a population, not a pass", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/seam.ts")+"return {}")
+		if !has(r, INFO, "the reviewer/fixer reach check covered nothing") {
+			t.Fatalf("want the population line:\n%s", dump(r))
+		}
+	})
+
+	t.Run("a gate path nobody produces is a note", func(t *testing.T) {
+		r := run(t, head+wrap+producer("src/seam.ts")+gate("'src/seam.ts', 'src/nobody.ts'"))
+		if !has(r, INFO, "declares owning: gate1: src/nobody.ts") {
+			t.Fatalf("want the stale-entry note:\n%s", dump(r))
+		}
+		// It is the ABSENCE half of the check, so it must carry its bound: a
+		// harness composes its prompts, and a note that waits for a script
+		// with none never prints.
+		if !has(r, INFO, "CANDIDATE list, not a verdict") {
+			t.Fatalf("and the unread prompts must bound it:\n%s", dump(r))
+		}
+		if has(r, WARN, "no gate lists it in `owns`") {
+			t.Fatalf("the extra gate path is not a reach failure:\n%s", dump(r))
+		}
+	})
+}
+
+// resolveRoot decides which tree the file-existence checks read. Every branch is
+// pinned: the silent fallback is ONLY "no workspace above here", and each way of
+// having a workspace it cannot use says so — a check answering about the wrong
+// tree and exiting zero is the failure this default was added to remove.
+func TestResolveRoot(t *testing.T) {
+	newWS := func(t *testing.T, manifest string) string {
+		t.Helper()
+		dir := t.TempDir()
+		wsDir := filepath.Join(dir, "gate")
+		if err := os.MkdirAll(wsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(wsDir, "gate.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return wsDir
+	}
+	chdir := func(t *testing.T, dir string) {
+		t.Helper()
+		old, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chdir(old) })
+	}
+
+	t.Run("an explicit root wins and says nothing", func(t *testing.T) {
+		got, note := resolveRoot("/somewhere")
+		if got != "/somewhere" || note != "" {
+			t.Fatalf("got %q, note %q", got, note)
+		}
+	})
+
+	t.Run("the workspace target, with a note naming it", func(t *testing.T) {
+		target := t.TempDir()
+		wsDir := newWS(t, `{"name":"g","target":"`+target+`"}`)
+		chdir(t, wsDir)
+		got, note := resolveRoot("")
+		if got != target {
+			t.Fatalf("got %q, want the target %q", got, target)
+		}
+		if !strings.Contains(note, target) {
+			t.Fatalf("a resolution the reader did not ask for must name itself: %q", note)
+		}
+	})
+
+	// The tool would otherwise stat every owned path under the workspace and
+	// report each as missing — the twenty-two-WARN noise, with the reader told
+	// nothing about why.
+	t.Run("a target that is not a directory is named, not swallowed", func(t *testing.T) {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "not-a-dir")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		wsDir := newWS(t, `{"name":"g","target":"`+file+`"}`)
+		chdir(t, wsDir)
+		got, note := resolveRoot("")
+		if got == file {
+			t.Fatal("a file is not a tree to check against")
+		}
+		if !strings.Contains(note, "not a directory") {
+			t.Fatalf("want the note naming it: %q", note)
+		}
+	})
+
+	t.Run("a workspace that cannot be read is named", func(t *testing.T) {
+		wsDir := newWS(t, `{"name": broken`)
+		chdir(t, wsDir)
+		_, note := resolveRoot("")
+		if !strings.Contains(note, "could not be read") {
+			t.Fatalf("a manifest that will not parse is not the absence of a workspace: %q", note)
+		}
+	})
+
+	t.Run("no workspace at all is the silent case", func(t *testing.T) {
+		dir := t.TempDir()
+		chdir(t, dir)
+		got, note := resolveRoot("")
+		if note != "" {
+			t.Fatalf("the ordinary case says nothing: %q", note)
+		}
+		if got == "" {
+			t.Fatal("want the working directory")
+		}
+	})
+}
+
+// The denominator counts prompts that CLAIM ownership, not prompts the parser
+// managed to read. Collapsing it onto its numerator turned `0 owned path(s)
+// parsed from 4 prompt(s)` — the line authoring.md tells an author to read as
+// "your block is in a form this tool cannot parse" — into `from 0 prompt(s)`,
+// which reads as a script that declares nothing.
+func TestOwnershipDenominatorCountsUnreadableBlocks(t *testing.T) {
+	// Bulleted entries: the line does not START with the path, so ownedPaths
+	// rejects every one of them.
+	r := run(t, preamble+`phase('P')
+await spawn(`+"`YOU OWN\n  - src/app/one.ts — the entry point\n  - src/app/two.ts — and its test\n`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`)
+	if !has(r, INFO, "0 owned path(s) parsed from 1 prompt(s) declaring YOU OWN") {
+		t.Fatalf("a prompt whose block could not be parsed still declares one:\n%s", dump(r))
+	}
+}
+
+// NEW is read off the declaring line, and a path declared twice keeps it if
+// EITHER line carries it. First-occurrence-wins made the flag order-dependent:
+// the same two lines swapped drew a "does not exist and is not marked NEW" WARN
+// on a file the script creates.
+func TestNewFlagIsOrderIndependent(t *testing.T) {
+	for _, order := range []string{
+		"YOU OWN\n  src/gone.ts — NEW, you create it\n  src/gone.ts — and you also finish it\n",
+		"YOU OWN\n  src/gone.ts — and you also finish it\n  src/gone.ts — NEW, you create it\n",
+	} {
+		r := run(t, preamble+`phase('P')
+await spawn(`+"`"+order+"`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`)
+		if has(r, WARN, "is not marked NEW") {
+			t.Fatalf("one declaration marks it NEW, in either order:\n%s", dump(r))
+		}
 	}
 }

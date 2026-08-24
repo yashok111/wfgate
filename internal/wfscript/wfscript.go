@@ -76,6 +76,32 @@ type Script struct {
 	// whole wrapper body resolved against the globals and a script with a real
 	// dual ownership and an invalid effort reported zero findings.
 	shadowed map[string]bool
+
+	// resolving is the re-entrancy guard for member lookups. `memberOf` asks
+	// `ObjectOf` for the object, and that entry point starts a FRESH depth
+	// budget and a fresh visited set — so the budgets inside objectOf bound one
+	// call and never the ring between them. `const M = { a: M.b, b: M.a }` is
+	// legal JavaScript and crashed both tools with a stack overflow, which is
+	// the one failure mode a checker may not have: a script that kills the
+	// checker is a script nobody checked.
+	resolving map[ast.Node]bool
+
+	// strCache memoises staticStr for a node resolved at the TOP level with no
+	// factory binding in effect and no member lookup in flight — the only scope
+	// in which one node has one answer for the life of the Script.
+	//
+	// It is not an optimisation, it is a bound. `const Ck = { v: C(k-1).v +
+	// C(k-1).v }` is a legal, acyclic chain, and without the cache each level
+	// resolves the one below it TWICE: k=12 took 22 s and k=14 did not finish in
+	// two minutes, on a script whose only sin is composing a prompt out of
+	// pieces. A checker that a legal script can hang is a checker that gets a
+	// timeout instead of a report, which is the same silence as a false green.
+	strCache map[ast.Node]strResult
+}
+
+type strResult struct {
+	txt string
+	ok  bool
 }
 
 // withScope resolves fn with a parameter binding in effect.
@@ -343,10 +369,36 @@ func (s *Script) topLevel() []ast.Statement {
 // It returns false when any part is unknown — and the CALLER decides what that
 // means. The text scanner had no such distinction: an unresolvable prompt was
 // simply the empty string, so every check over it passed silently.
+// Depth is charged per INDIRECTION — a const, a parameter binding or a member
+// hop — never per node, which is the accounting `objectOf` already uses and for
+// the same measured reason. Charging every node made the budget a function of a
+// prompt's SHAPE: `a + b + c + ...` parses left-associative, so a prompt
+// assembled from more than a dozen concatenated pieces lost its leftmost
+// segments. Measured on a live gate (mocker slice A, round 24): a field named
+// in the prompt's first chunk read as never mentioned once the chunk count
+// crossed the budget, and an 8.3 KB prompt was metered at 4.5 KB — so the size
+// guard could be walked past by splitting the same text into more pieces.
+// A cycle must pass through an indirection, so charging only those still bounds
+// it.
 func (s *Script) staticStr(e ast.Expression, depth int) (string, bool) {
 	if depth > 12 {
 		return "", false
 	}
+	if e != nil && s.cacheableStr(depth) {
+		if r, ok := s.strCache[e]; ok {
+			return r.txt, r.ok
+		}
+		txt, ok := s.staticStrUncached(e, depth)
+		if s.strCache == nil {
+			s.strCache = map[ast.Node]strResult{}
+		}
+		s.strCache[e] = strResult{txt, ok}
+		return txt, ok
+	}
+	return s.staticStrUncached(e, depth)
+}
+
+func (s *Script) staticStrUncached(e ast.Expression, depth int) (string, bool) {
 	switch v := e.(type) {
 	case *ast.StringLiteral:
 		return v.Value.String(), true
@@ -359,7 +411,7 @@ func (s *Script) staticStr(e ast.Expression, depth int) (string, bool) {
 		for i, el := range v.Elements {
 			b.WriteString(el.Parsed.String())
 			if i < len(v.Expressions) {
-				if sub, sok := s.staticStr(v.Expressions[i], depth+1); sok {
+				if sub, sok := s.staticStr(v.Expressions[i], depth); sok {
 					b.WriteString(sub)
 				} else {
 					ok = false
@@ -371,8 +423,8 @@ func (s *Script) staticStr(e ast.Expression, depth int) (string, bool) {
 		if v.Operator.String() != "+" {
 			return "", false
 		}
-		l, lok := s.staticStr(v.Left, depth+1)
-		r, rok := s.staticStr(v.Right, depth+1)
+		l, lok := s.staticStr(v.Left, depth)
+		r, rok := s.staticStr(v.Right, depth)
 		return l + r, lok && rok
 	case *ast.DotExpression:
 		// `o.prompt` where `o` is the caller's options object, `SCHEMAS.review`
@@ -406,6 +458,13 @@ func (s *Script) staticStr(e ast.Expression, depth int) (string, bool) {
 // and any parameter binding currently in scope — applied.
 func (s *Script) StaticString(e ast.Expression) (string, bool) { return s.staticStr(e, 0) }
 
+// cacheableStr says whether a node's resolution is scope-independent right now.
+// A parameter binding gives one node different answers per call site, and a
+// member lookup in flight can report a cycle that is not one outside the ring.
+func (s *Script) cacheableStr(depth int) bool {
+	return depth == 0 && s.subst == nil && len(s.resolving) == 0
+}
+
 // ObjectOf resolves an expression to an object literal's own properties,
 // following an identifier to its const and merging `...SPREAD` from another
 // object literal. A spread whose source is not statically known is reported by
@@ -413,7 +472,12 @@ func (s *Script) StaticString(e ast.Expression) (string, bool) { return s.static
 // reporting the properties it could not see as missing — which is what the text
 // scanner did to every `{...BASE, model:'sonnet'}` call.
 func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, complete bool) {
-	props, _, complete = s.objectOf(e)
+	// wantText is false: this caller throws the text away, and computing it
+	// resolved every property of every literal with a fresh budget. It is not
+	// hypothetical work — checkFixerReach walks EVERY object literal in the
+	// program, and a chain of a dozen objects each concatenating the one before
+	// it took 22 s to answer `not knowable`.
+	props, _, complete = s.objectOf(e, false)
 	return props, complete
 }
 
@@ -422,10 +486,10 @@ func (s *Script) ObjectOf(e ast.Expression) (props map[string]ast.Expression, co
 // and resolves them later does it with the binding popped, which is how a
 // factory parameter came back as a same-named global.
 func (s *Script) ObjectText(e ast.Expression) (props map[string]ast.Expression, text map[string]string, complete bool) {
-	return s.objectOf(e)
+	return s.objectOf(e, true)
 }
 
-func (s *Script) objectOf(e ast.Expression) (props map[string]ast.Expression, text map[string]string, complete bool) {
+func (s *Script) objectOf(e ast.Expression, wantText bool) (props map[string]ast.Expression, text map[string]string, complete bool) {
 	props, text, complete = map[string]ast.Expression{}, map[string]string{}, true
 	// Depth is charged per INDIRECTION — a const or a factory hop — not per
 	// node, and a visited set bounds a cycle. Charging every step made the
@@ -451,8 +515,10 @@ func (s *Script) objectOf(e ast.Expression) (props map[string]ast.Expression, te
 					}
 					if k, ok := propKey(pv.Key); ok {
 						props[k] = s.resolveSubst(pv.Value)
-						if txt, ok := s.staticStr(pv.Value, 0); ok {
-							text[k] = txt
+						if wantText {
+							if txt, ok := s.staticStr(pv.Value, 0); ok {
+								text[k] = txt
+							}
 						}
 					} else {
 						complete = false
@@ -460,8 +526,10 @@ func (s *Script) objectOf(e ast.Expression) (props map[string]ast.Expression, te
 				case *ast.PropertyShort:
 					k := string(pv.Name.Name)
 					props[k] = s.resolveSubst(&pv.Name)
-					if txt, ok := s.staticStr(&pv.Name, 0); ok {
-						text[k] = txt
+					if wantText {
+						if txt, ok := s.staticStr(&pv.Name, 0); ok {
+							text[k] = txt
+						}
 					}
 				case *ast.SpreadElement:
 					merge(pv.Expression, depth)
@@ -509,6 +577,72 @@ func (s *Script) objectOf(e ast.Expression) (props map[string]ast.Expression, te
 	}
 	merge(e, 0)
 	return props, text, complete
+}
+
+// ArrayOf resolves an expression to an array literal's elements, following an
+// identifier to its const and a member expression to its property, and merging
+// `...SPREAD` from another array. The second return value is false when an
+// element could not be seen, exactly as ObjectOf reports it, and for the same
+// reason: a caller must be able to say "not knowable here" instead of reporting
+// what it could not read as absent.
+//
+// It exists because a check that type-asserted the value straight to
+// *ast.ArrayLiteral saw NOTHING through a name. Measured on the two scripts of
+// the gate that motivated the reach check: both write `owns: closingOwns` on
+// their closing gate, whose const is a plain array of string literals one screen
+// above — and the assertion failed, the gate counted as unreadable, and the
+// check disabled itself for the whole script on both.
+func (s *Script) ArrayOf(e ast.Expression) (elems []ast.Expression, complete bool) {
+	complete = true
+	// Depth per INDIRECTION and a visited set, the accounting objectOf uses.
+	seen := map[ast.Node]bool{}
+	var merge func(ast.Expression, int)
+	merge = func(e ast.Expression, depth int) {
+		if e == nil || depth > 12 || seen[e] {
+			complete = false
+			return
+		}
+		seen[e] = true
+		switch v := e.(type) {
+		case *ast.ArrayLiteral:
+			for _, el := range v.Value {
+				if el == nil { // a hole: `[a, , b]`
+					complete = false
+					continue
+				}
+				if sp, ok := el.(*ast.SpreadElement); ok {
+					merge(sp.Expression, depth)
+					continue
+				}
+				elems = append(elems, s.resolveSubst(el))
+			}
+		case *ast.Identifier:
+			name := string(v.Name)
+			if sub, ok := s.subst[name]; ok {
+				merge(sub, depth+1)
+				return
+			}
+			if s.scopeParams[name] || s.shadowed[name] {
+				complete = false
+				return
+			}
+			if c, ok := s.consts[name]; ok && c.Init != nil {
+				merge(c.Init, depth+1)
+				return
+			}
+			complete = false
+		case *ast.DotExpression:
+			if inner, ok := s.memberOf(v); ok {
+				merge(inner, depth+1)
+				return
+			}
+			complete = false
+		default:
+			complete = false
+		}
+	}
+	merge(e, 0)
+	return elems, complete
 }
 
 // factoryBody returns the object literal a const arrow function returns, plus
@@ -583,6 +717,14 @@ func (s *Script) resolveSubst(e ast.Expression) ast.Expression {
 // memberOf resolves `x.y` to the expression bound to property y of x, when x
 // itself resolves to an object literal.
 func (s *Script) memberOf(d *ast.DotExpression) (ast.Expression, bool) {
+	if s.resolving[d] {
+		return nil, false
+	}
+	if s.resolving == nil {
+		s.resolving = map[ast.Node]bool{}
+	}
+	s.resolving[d] = true
+	defer delete(s.resolving, d)
 	props, _ := s.ObjectOf(d.Left)
 	e, ok := props[string(d.Identifier.Name)]
 	return e, ok
