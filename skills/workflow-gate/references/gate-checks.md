@@ -244,6 +244,13 @@ compiles, passes every test, and does nothing.
       claim by id, and fail the run on a claim that resolves to nothing — then normalise the claim
       (trim, strip a list marker) or an honest claim fails the run instead.
 
+- [ ] **Two agents asked the SAME question from two prompts are two copies of one briefing.** Diff the
+      instruction sets, not the code: five of one gate's script blockers were a sentence the first
+      prompt carried and the second lacked — the field definitions, the carve-out for the one item the
+      question does not fit, the discipline sentence, the severity that item earns. `dup` cannot reach
+      them (the two prompts share no rare tokens there) and `stale` cannot (nothing was retired); it
+      is found by printing the sentences one prompt has and the other does not.
+
 ## C. Ownership and definition of done
 
 - [ ] **Every file an agent must change is owned by exactly one agent**, and every file whose behaviour
@@ -488,6 +495,16 @@ compiles, passes every test, and does nothing.
       isolates a phase is a BASE — a tree object recorded partway through the run captures the whole
       working tree, untracked files included, without moving HEAD or touching the index.
 
+- [ ] **`git add -N .` mutates an index every concurrent agent shares.** Two reviewers in one barrier,
+      or five walkers in one phase, race on the index lock; one fails and its following diff is blind
+      to exactly the untracked files the command was added to reveal. Read-only alternatives cost
+      nothing: the diff of tracked files, plus a listing of untracked ones, as two commands.
+- [ ] **A pathspec interpolated into a shell command is quoted for the SHELL, not for the reader.**
+      Double quotes let the shell expand anything a filename legitimately contains — a `$` in a
+      route-file naming convention, a backtick, a `!` under some shells — so the command names a path
+      that does not exist and the agent reads an empty diff it cannot tell from a clean section. Single
+      quotes with the embedded-quote escape, or a literal the tool never re-parses.
+
 ## F. Guard integrity
 
 The regression guard is the thing most worth attacking, because a vacuous guard looks exactly like a
@@ -579,6 +596,16 @@ passing one.
       to diff against the default one, and the shared text is what an agent follows. When a parameter
       becomes per-agent, grep the shared material for the old constant.
 
+- [ ] **A completeness check over a population an agent REPORTS belongs in the schema, not in a loop.**
+      As an array the schema is satisfied by one entry naming anything, so the only place left to check
+      the population is code that can log and cannot make the model answer again — and a hard check
+      there fails every fixture, so the clean dry-run mode goes red and the check gets softened to a
+      warning. Measured: a green run over twenty-six "not reported" warnings, two of them the one bar
+      proving the feature was wired in at all. Make the population the REQUIRED KEYS of an object
+      (the commands a step must run, the numbered items it must answer, the findings it must
+      re-judge): the fixture fills every key so the clean path stays green, and a real omission is
+      refused where a report can still be sent back.
+
 ## G. Failure handling in the script itself
 
 - [ ] **A dead agent and a clean result are not the same value.** Findings `[]` from two dead reviewers
@@ -627,6 +654,14 @@ passing one.
       for a defect the tree can prove never existed.
 - [ ] **The no-findings path still ends on an observation.** If "nothing actionable" skips fix AND verify,
       the run's verdict is the self-report of the agent that wrote and graded its own acceptance test.
+
+- [ ] **Classify EVERY term of the final verdict as a fact about the RUN or about the TREE, in the
+      artifact, before fixing any one of them.** A run fact accumulates honestly — an agent that died
+      cannot be un-died. A tree fact must be re-derived after the last mutation, or a defect a later
+      step actually fixed keeps the verdict red, and a regression the last step introduced keeps it
+      green. Measured: four consecutive rounds on one rule, each closing the variable that round
+      happened to name, including a round whose own finding text said "one fix must cover both" where
+      there were three.
 
 ## H. Cost
 
@@ -803,6 +838,12 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       "not measured", never as "none".
 - [ ] **Budget rounds, not perfection.** Reviewer COUNT descends (3 → 2 → 1); the round count does not cap.
       The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. The last phase needed four.
+
+- [ ] **When a finding names a CLASS, enumerate the class before fixing a member.** "Both of the
+      accumulating terms", "every copy of this rule", "each of these prompts" — fixing the members the
+      finding happened to list is the same defect one round later, and it reads as closed in the
+      ledger. Write the enumeration into the artifact; the next round checks it instead of rediscovering
+      it.
 
 ---
 
