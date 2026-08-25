@@ -55,9 +55,11 @@ gates keep being readable.
 **A finding's level is decided by what catches it downstream, never by how bad it reads [R2].**
 
 - **BLOCKER** — no later gate catches it: if it rides, the run produces a wrong result that nothing
-  refuses. Always BLOCKER whatever it looks like: a finding that makes an observation, a guard or a
-  criterion *vacuous* — it passes whether or not the thing it checks exists. Only BLOCKER loops the
-  gate, and only BLOCKER is what the stop rule reads.
+  refuses. Only BLOCKER loops the gate, and only BLOCKER is what the stop rule reads. **Vacuity starts
+  here**: a finding that makes an observation, a guard or a tripwire *vacuous* — it passes whether or
+  not the thing it checks exists — is classified BLOCKER, and rides only if this row can name the later
+  gate that was ACTUALLY assigned a non-vacuity vector for it, which is the MAJOR test below and not a
+  separate rule.
 - **MAJOR** — a real defect, and the row **NAMES the later gate that catches it**. Cannot name one?
   Then it is a BLOCKER. That naming is what turns the classification from a feeling into a claim the
   next round can check, and it is the operative half of "classify by actual downstream coverage".
@@ -65,13 +67,16 @@ gates keep being readable.
 - **NOTE** — not a defect. An observation or a question with no failure attached. Counted in a round's
   findings, never subtracted from them, and named apart by `wf stats`.
 
-**Measured, which is why the scale is closed rather than suggested.** The six gate ledgers on disk hold
-1065 findings under FOUR vocabularies for one scale: BLOCKER is universal, the tier under it is MAJOR on
-five gates and CONCERN on one, and the tier under that is MINOR on four, ADVISORY on one and NIT on one.
-172 of the 1065 — 16% — carry a level no other gate can be read against, so no report could put a round
-of one gate beside a round of another. The same six phases' orchestration SCRIPTS, whose severity is a
-JSON Schema `enum` checked at the tool-call layer, drift not at all: all six declare exactly
-`['blocker','major','minor']`. The scale drifts precisely where nothing validates it.
+**Measured, which is why the scale is closed rather than suggested.** The six gate ledgers on disk held,
+on 2026-08-25, 1065 findings under FOUR vocabularies for one scale: BLOCKER is universal, the tier under
+it is MAJOR on five gates and CONCERN on one, and the tier under that is MINOR on four, ADVISORY on one
+and NIT on one. 172 of the 1065 — 16% — carry a level no other gate can be read against, so no report
+could put a round of one gate beside a round of another. (One of those gates is still open, so the
+totals move; the shape does not.) A JSON Schema `enum` does not save the script side either: it
+validates the VALUE against a declared list and never the LIST, and the scripts these six gates PRODUCED
+carry four lists of their own — none at all, `['MAJOR','MINOR']`, `['BLOCKER','MAJOR','MINOR']`, and the
+`['blocker','advisory']` that `wf new-script` itself used to ship. The scale is closed here because this
+is the one place both paths meet.
 
 ---
 
@@ -772,7 +777,7 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       and no lens was banked for it — and it checks EVERY closed round, not only the previous one,
       because `wf round new` does not require the current round to be frozen and a round opened past
       without a freeze was examined by nothing. A round nobody is recorded as having read must not
-      freeze as a round that found nothing: bank the vectors with `wf round lens <prompt> -name N -model
+      freeze as a round that found nothing: bank the vectors with `wf round lens <prompt> -name N -asks Q -model
       M -round N`, which is also the record that makes the round's reviewers part of the corpus, and
       which counts only where it says which vector, what ran it and what it was asked. A `-kind tool`
       round is exempt: its opening subject already records that no reviewer was dispatched. Then `wf round new`, then `wf freeze` — which

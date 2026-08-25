@@ -513,6 +513,38 @@ var failBools = regexp.MustCompile(`(?i)fail|broken|vacuous|missing|stale|dead|u
 // made `defects` a "good" array — one element even in `clean` — so the mode the
 // package calls the one that matters most walked the failure branch, and the
 // happy path was executed in no mode at all.
+// The two vocabularies that read an enum MEMBER, kept apart from failArrayRe
+// above, which reads an array's NAME — reusing that one picked `not-run` out of
+// `['pass','fail','not-run']` for the CLEAN mode, because "not-run" names no
+// failure word while being exactly a failure. Clean prefers the first member
+// that reads as success; every other mode takes the first that reads as a
+// failure; neither falls through to a position.
+var enumPassRe = regexp.MustCompile(`(?i)pass|ok|green|clean|success|met|none|note|minor|advisory|info|yes`)
+var enumFailRe = regexp.MustCompile(`(?i)blocker|fail|error|reject|refus|violat|unfixed|not-?run|red|major`)
+
+// pickEnum chooses one member of a declared enum for the mode being walked.
+func pickEnum(members []string, mode string) string {
+	if mode == "clean" {
+		for _, m := range members {
+			if enumPassRe.MatchString(m) {
+				return m
+			}
+		}
+		for i := len(members) - 1; i >= 0; i-- {
+			if !enumFailRe.MatchString(members[i]) {
+				return members[i]
+			}
+		}
+		return members[len(members)-1]
+	}
+	for _, m := range members {
+		if enumFailRe.MatchString(m) {
+			return m
+		}
+	}
+	return members[0]
+}
+
 var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|concern|dead|unverified|violation|gap|risk|defect|error|issue|problem`)
 
 // `done` and its synonyms belong here for the same reason `ok` and `green` do:
@@ -611,6 +643,33 @@ func synthMap(schema map[string]any, mode, label string, depth int, rec map[stri
 
 func value(name string, v map[string]any, mode, label string, depth int, rec map[string]int) any {
 	t, _ := v["type"].(string)
+	// A declared `enum` is the only place a script says which STRINGS its own
+	// branches compare against, and ignoring it meant no `x === 'literal'`
+	// branch of any orchestration script was reachable in a dry run. Measured
+	// 2026-08-25 on the emitted skeleton: every string synthesised to
+	// "<severity from review:…>", which equals no enum member, so
+	// `f.severity === 'blocker'` was FALSE in all seven modes — the gate logged
+	// "gate clean" and `openBlockers` was empty in every one of them, and the
+	// entire fix-round and re-review path was executed by no mode at all. That
+	// is P2e's finding 8 one layer down: the runner's fixture, not the script,
+	// decided what was exercised.
+	//
+	// The member is chosen by what the WORD means, never by its position: this
+	// corpus writes severity worst-first (`['blocker','major','minor','note']`)
+	// and verdicts worst-last (`['pass','blockers']`), so a positional rule
+	// walks one of them backwards — measured, picking the last member for
+	// `clean` handed the clean mode `verdict: 'blockers'`.
+	if es, ok := v["enum"].([]any); ok && len(es) > 0 && t == "string" {
+		var members []string
+		for _, e := range es {
+			if str, ok := e.(string); ok {
+				members = append(members, str)
+			}
+		}
+		if len(members) > 0 {
+			return pickEnum(members, mode)
+		}
+	}
 	switch t {
 	case "array":
 		return arrayOf(name, v, mode, label, depth, rec)

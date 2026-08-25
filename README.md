@@ -354,7 +354,7 @@ else — a gate that had trusted that line would have shipped a document missing
 both.
 
 So the difference is made a RECORD rather than a guess. `wf round lens <prompt>
--name NAME -model MODEL` writes `rounds/rN/lens-<name>.md` — the prompt
+-name NAME -model MODEL -asks Q[,Q]` writes `rounds/rN/lens-<name>.md` — the prompt
 verbatim, with what ran it — and `wf freeze` refuses while ANY closed round's
 ledger is the untouched scaffold with no lens banked, `wf close` refuses to bank
 one, and `wf stats` marks the line `ledger: UNFILLED scaffold, not a measured

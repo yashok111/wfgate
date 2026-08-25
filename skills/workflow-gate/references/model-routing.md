@@ -96,7 +96,9 @@ inside a `parallel()`.
 findings, so the tiers above are derived from the cost model — reasoning tokens are output tokens,
 billed per call and multiplied by the fan-out width — and from the reproducibility hole, not from a
 measurement of quality lost. Until a run measures it, an over-powered effort is treated the way an
-over-powered model is: an ADVISORY downgrade, never a blocker. A MISSING effort is a blocker, because
+over-powered model is: a MAJOR downgrade, never a blocker ("advisory" here means it does not loop the
+gate; the LEVEL you file is MAJOR or MINOR, because `wf round record` refuses any word off the closed
+BLOCKER/MAJOR/MINOR/NOTE scale). A MISSING effort is a blocker, because
 that is not a tier judgement — it is a script whose cost is written in someone else's session.
 
 **The pre-flight gate's own reviewers carry no effort knob.** They are out-of-band `Agent` calls, whose

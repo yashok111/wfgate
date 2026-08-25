@@ -156,7 +156,7 @@ async function runGate(cfg) {
       'REPORT\n' +
       'Report only defects: no praise, no summary of what the code does, no scope beyond the section goal.\n' +
       'A finding\'s level is decided by what catches it downstream, never by how bad it reads.\n' +
-      'blocker = no later gate catches it, so it ships; ALWAYS blocker if it makes a guard or a criterion vacuous.\n' +
+      'blocker = no later gate catches it, so it ships; a finding that makes a guard or a tripwire VACUOUS starts here.\n' +
       'major = a real defect, and your summary NAMES the later gate that catches it; cannot name one means blocker.\n' +
       'minor = a real defect cheaper to leave standing. note = not a defect, asserts no failure.\n' +
       'For each finding give the file, a one-sentence summary, the concrete failure it produces, and a fix.\n' +
@@ -237,10 +237,19 @@ async function runGate(cfg) {
 }
 
 const openBlockers = []
+const carried = []
 const barFailures = []
 const inconsistent = []
 function bank(section, result) {
   for (const f of result.open) openBlockers.push({ section, ...f })
+  // Everything that does NOT loop the section is carried into the result, not
+  // thrown away. Under the old two-value enum the only non-blocking word was
+  // `advisory`, described in-schema as "worth knowing, does not stop the
+  // slice"; the scale's `major` is "a real defect", and dropping the bucket
+  // would let a real defect survive a green run as a number in one log line.
+  // It does not gate `green` — a major rides into the run by design [R2] — it
+  // is REPORTED, the way barFailures and inconsistent are.
+  for (const f of result.advisories || []) carried.push({ section, ...f })
 }
 
 // Every bar failure, from every agent, in ONE place. Logging a producer's red
@@ -368,6 +377,7 @@ if (dead.length) log('DEAD: ' + dead.join(', '))
 if (openBlockers.length) log('OPEN BLOCKERS: ' + openBlockers.length)
 if (barFailures.length) log('BAR FAILURES: ' + barFailures.map((b) => b.section + ' ' + b.command + ' ' + b.result).join('; '))
 if (inconsistent.length) log('SELF-CONTRADICTING REVIEWS: ' + inconsistent.join(', '))
+if (carried.length) log('CARRIED (major/minor/note, do not loop a section): ' + carried.length)
 
 return {
   green:
@@ -379,6 +389,7 @@ return {
     Boolean(accept && accept.goalMet),
   dead,
   openBlockers,
+  carried,
   barFailures,
   inconsistent,
   acceptBlockers,

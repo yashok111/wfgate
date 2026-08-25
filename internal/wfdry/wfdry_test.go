@@ -422,3 +422,52 @@ return { done: true, green: Boolean(r && r.` + field + `) }`
 		})
 	}
 }
+
+// A declared `enum` is the only place a script says which STRINGS its own
+// branches compare against, and ignoring it left every `x === 'literal'` branch
+// of every orchestration script unreachable in a dry run — measured on the
+// emitted skeleton, `f.severity === 'blocker'` was false in all seven modes, so
+// the gate logged "clean" and the whole fix-round path was executed by no mode.
+// That is P2e's finding 8 one layer down: the runner's fixture, not the script,
+// decided what was exercised.
+func TestPickEnum_choosesByMeaningNotPosition(t *testing.T) {
+	cases := []struct {
+		name           string
+		members        []string
+		clean, failing string
+	}{
+		// Worst-FIRST, as this corpus writes severity.
+		{"severity", []string{"blocker", "major", "minor", "note"}, "minor", "blocker"},
+		// Worst-LAST, as it writes verdicts. A positional rule walks one of
+		// these two backwards, whichever way it is written.
+		{"verdict", []string{"pass", "blockers"}, "pass", "blockers"},
+		// `not-run` names no failure word and IS a failure: reusing the
+		// array-name vocabulary picked it for the clean mode and turned every
+		// clean run red.
+		{"bar result", []string{"pass", "fail", "not-run"}, "pass", "fail"},
+	}
+	for _, c := range cases {
+		if got := pickEnum(c.members, "clean"); got != c.clean {
+			t.Errorf("%s clean: pickEnum(%v) = %q, want %q", c.name, c.members, got, c.clean)
+		}
+		if got := pickEnum(c.members, "blockers"); got != c.failing {
+			t.Errorf("%s failing: pickEnum(%v) = %q, want %q", c.name, c.members, got, c.failing)
+		}
+	}
+}
+
+// And the choice must reach the synthesised object, not merely exist.
+func TestValue_honoursADeclaredEnum(t *testing.T) {
+	schema := map[string]any{"type": "string", "enum": []any{"blocker", "major", "minor", "note"}}
+	if got := value("severity", schema, "blockers", "review:gate1", 0, nil); got != "blocker" {
+		t.Fatalf("a failing mode synthesised %q, so no `severity === 'blocker'` branch is reachable", got)
+	}
+	if got := value("severity", schema, "clean", "review:gate1", 0, nil); got != "minor" {
+		t.Fatalf("the clean mode synthesised %q, which walks the failure path of every gate", got)
+	}
+	// A string with no enum keeps the old, deliberately unmatchable placeholder.
+	plain := map[string]any{"type": "string"}
+	if got, _ := value("summary", plain, "clean", "review:gate1", 0, nil).(string); got == "" || got[0] != '<' {
+		t.Fatalf("a plain string stopped being the recorded placeholder: %q", got)
+	}
+}

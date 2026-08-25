@@ -280,7 +280,7 @@ func closeBlockersOpen(w *ws.Workspace, round int) error {
 	// no freeze. A `-kind tool` round is exempt — its opening subject already
 	// records that no reviewer was dispatched.
 	if unread := unreadRounds(w, round, roundKinds(w)); len(unread) > 0 {
-		return fmt.Errorf("round(s) %s carry an UNFILLED findings scaffold and record no lens, so this close would bank a round nobody is recorded as having read.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt> -name N -model M -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
+		return fmt.Errorf("round(s) %s carry an UNFILLED findings scaffold and record no lens, so this close would bank a round nobody is recorded as having read.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt> -name N -model M -asks Q -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
 	}
 	var open []string
 	for _, r := range rows {

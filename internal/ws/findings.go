@@ -47,25 +47,43 @@ type FindingRow struct {
 // BLOCKER is universal. Under it, MAJOR on five gates and CONCERN on one; under
 // THAT, MINOR on four, ADVISORY on one, NIT on one. Four vocabularies for one
 // scale, and 172 of the 1065 findings — 16% — carry a level no other gate can
-// be read against. The same six phases' orchestration SCRIPTS, whose severity is
-// a JSON Schema `enum` validated at the tool-call layer, drift not at all: all
-// six declare exactly `['blocker','major','minor']`. The scale drifts precisely
-// where nothing validates it, and this is the validation.
+// be read against. Those 172 live in TWO workspaces, one closed and pruned
+// (a-mcp, ADVISORY 81) and one still OPEN (p3a, CONCERN 70 + NIT 21), so the
+// figure above is dated rather than current.
 //
-// BLOCKER / MAJOR / MINOR is therefore not an invention — it is what four of the
-// six ledgers and all six scripts already used. NOTE is the fourth because two
-// gates reached for a non-defect row under their own names (NOTE, NIT) and had
-// nowhere to put it, so a finding asserting no failure was counted as one.
+// A JSON Schema `enum` does NOT save the script side, and the first version of
+// this comment claimed it did. An enum validates the VALUE against a declared
+// list and never the LIST itself, and the list drifted exactly as the ledgers
+// did — the scripts these six gates PRODUCED carry four of them: none at all
+// (p2d), `['MAJOR','MINOR']` (p2e), `['BLOCKER','MAJOR','MINOR']` (p2f) and
+// `['blocker','advisory']` (a1, a2, a3, straight out of this repository's own
+// template). Six OTHER phases' scripts do agree on `['blocker','major','minor']`,
+// and they agree because all six descend from one ancestor — a fact about
+// copying, not about validation. So this is not "the layer that validates";
+// it is the one place both paths meet, which is why the scale is closed here.
+//
+// BLOCKER / MAJOR / MINOR is not an invention — it is what four of the six
+// ledgers already used, and what one gate's own script declared. NOTE is the
+// fourth because ONE gate reached for a non-defect row and had nowhere to file
+// it (a3's single NOTE row: "The script executed as written: 38 agents, 0
+// errors. No finding."). p3a's NIT is that gate's MINOR tier, not a non-defect
+// level.
 var Levels = []string{"BLOCKER", "MAJOR", "MINOR", "NOTE"}
 
 // KnownLevel reports whether the row's level is on the closed scale. Reading
-// stays permissive on purpose: three closed workspaces carry CONCERN, NIT and
-// ADVISORY rows, and a report that refused to read them would destroy the only
-// corpus this project reasons from. The refusal lives on the WRITE path, which
-// is the one place a new spelling can still be prevented.
+// stays permissive on purpose: two workspaces — one closed and pruned, one
+// still open — carry ADVISORY, CONCERN and NIT rows, and a report that refused
+// to read them would destroy the only corpus this project reasons from. The
+// refusal lives on the WRITE path, which is the one place a new spelling can
+// still be prevented.
+//
+// No TrimSpace here or below: splitCells already trims every cell and
+// ParseFindings is the only constructor of a FindingRow, so a trim added here
+// survived every mutation. This project deletes a guard nothing can make fail
+// rather than shipping it unproven.
 func (r FindingRow) KnownLevel() bool {
 	for _, l := range Levels {
-		if strings.EqualFold(strings.TrimSpace(r.Level), l) {
+		if strings.EqualFold(r.Level, l) {
 			return true
 		}
 	}
@@ -74,7 +92,7 @@ func (r FindingRow) KnownLevel() bool {
 
 // Blocker matches by word, not by list: only BLOCKER carries the scaffold's
 // "must be closed before freezing" contract, and the stop rule reads it alone.
-func (r FindingRow) Blocker() bool { return strings.EqualFold(strings.TrimSpace(r.Level), "BLOCKER") }
+func (r FindingRow) Blocker() bool { return strings.EqualFold(r.Level, "BLOCKER") }
 
 // Note reports the one level that is NOT a defect claim.
 //
@@ -83,7 +101,7 @@ func (r FindingRow) Blocker() bool { return strings.EqualFold(strings.TrimSpace(
 // removing them from the count would silently move five gates' numbers. The
 // report says how many of the findings asserted no failure and leaves the total
 // where the corpus can still be compared against it.
-func (r FindingRow) Note() bool { return strings.EqualFold(strings.TrimSpace(r.Level), "NOTE") }
+func (r FindingRow) Note() bool { return strings.EqualFold(r.Level, "NOTE") }
 
 // Placeholder reports the scaffold's empty row, which is a form to fill, not a
 // claim to validate. A malformed row is never a placeholder: an unreadable

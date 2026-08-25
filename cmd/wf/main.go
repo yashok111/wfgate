@@ -46,7 +46,7 @@ const usage = `wf — gate harness
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
   wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
-  wf round lens <prompt> -name N -model M   bank a reviewer vector against the round (no argument: print the roster)
+  wf round lens <prompt> -name N -model M -asks Q   bank a reviewer vector against the round (no argument: print the roster)
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
@@ -572,7 +572,7 @@ func cmdRound(args []string) error {
 		return cmdRoundLens(args[1:])
 	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> | wf round lens <prompt> -name N -model M")
+		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> | wf round lens <prompt> -name N -model M -asks Q")
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
@@ -638,8 +638,9 @@ A finding's level is decided by what catches it downstream, never by how bad it
 reads [R2]. The scale is closed — wf round record refuses anything else:
 
 - **BLOCKER** — no later gate catches it: if it rides, the run produces a wrong
-  result nothing refuses. Always BLOCKER, whatever it looks like: a finding that
-  makes a guard, an observation or a criterion VACUOUS.
+  result nothing refuses. Vacuity starts here: a finding that makes an
+  observation, a guard or a tripwire VACUOUS is classified BLOCKER, and rides
+  only where this row can name the gate that catches it — the MAJOR test below.
 - **MAJOR** — a real defect, and this row NAMES the later gate that catches it.
   Cannot name one? Then it is a BLOCKER.
 - **MINOR** — a real defect whose cost, standing forever, is below the round it
@@ -711,20 +712,27 @@ func cmdRoundRecord(args []string) error {
 			return fmt.Errorf("line %d is a table row of %d cell(s), not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
 				r.Line, r.Cells, trunc(r.Raw, 60))
 		}
-		if r.Placeholder() {
-			continue
-		}
 		// The scale is closed on the write path and open on every read path.
 		// Measured over the six ledgers on disk: one scale, four vocabularies
 		// (MAJOR/CONCERN, MINOR/ADVISORY/NIT), because a markdown cell validates
-		// nothing while the same six phases' script schemas — one `enum`,
-		// checked at the tool-call layer — never drifted at all. A level the
-		// gate cannot compare across rounds is a level no report can read, and
-		// a rejected record announces itself where a landed one briefs the next
-		// round with a word only its author understood.
-		if !r.KnownLevel() {
+		// nothing — and neither does a script's `enum`, which validates the
+		// VALUE and never the LIST: the scripts these six gates produced carry
+		// four enums of their own. A level the gate cannot compare across rounds
+		// is a level no report can read, and a rejected record announces itself
+		// where a landed one briefs the next round with a word only its author
+		// understood.
+		//
+		// Checked BEFORE the placeholder skip, and that order is the whole
+		// point: `Placeholder()` is "the text cell is empty", so the first
+		// version let `| 1 | CONCERN |  |  |` through as an unfilled form and
+		// the closed scale had a hole exactly the width of the scaffold's own
+		// row. An empty LEVEL on an empty row is still a form and stays legal.
+		if strings.TrimSpace(r.Level) != "" && !r.KnownLevel() {
 			return fmt.Errorf("row %s (line %d): level %q is not one of %s; the scale is closed so a round of one gate can be compared with a round of another — nothing was recorded",
-				r.Num, r.Line, strings.TrimSpace(r.Level), strings.Join(ws.Levels, ", "))
+				r.Num, r.Line, r.Level, strings.Join(ws.Levels, ", "))
+		}
+		if r.Placeholder() {
+			continue
 		}
 		if r.Blocker() {
 			blockers++
@@ -787,11 +795,13 @@ func cmdRoundRecord(args []string) error {
 	lenses := roundLenses(w, n)
 	if validLenses(lenses) == 0 {
 		fmt.Printf("  lenses: NONE banked for round %d — the findings are recorded and the prompts that produced them are not. `wf round lens <prompt> -name N -model M -asks Q -round %d`\n", n, n)
-	} else if miss := missingDeltaAsks(lenses); len(miss) > 0 {
+	} else if note := classifyAsks(roundKinds(w)[n], lenses).Note(); note != "" {
 		// Which QUESTIONS the round put is the half a roster of names cannot
 		// answer: measured over the two gates that banked any roster, ten
-		// distinct vector names of which one appears in the manual.
-		fmt.Printf("  lenses: %d banked, and none asks %s — required of a DELTA round [R3]\n", validLenses(lenses), strings.Join(miss, ", "))
+		// distinct vector names of which one appears in this manual as a vector
+		// name. Through the shared classifier, so this line cannot disagree
+		// with the roster and `wf stats` about one round again.
+		fmt.Printf("  lenses: %d banked — %s\n", validLenses(lenses), note)
 	}
 	fmt.Printf("committed %s\n", short(sha))
 	return nil
@@ -879,7 +889,7 @@ func cmdFreeze(args []string) error {
 	// named. The OPEN round is exempt: in the prescribed flow it is frozen right
 	// after it is opened, so its scaffold is blank by construction.
 	if unread := unreadRounds(w, w.M.Round-1, kinds); len(unread) > 0 {
-		return fmt.Errorf("round(s) %s: the findings ledger is the untouched scaffold and no lens is recorded, so this freeze would publish a round nobody is recorded as having read as a round that found nothing.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt> -name N -model M -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
+		return fmt.Errorf("round(s) %s: the findings ledger is the untouched scaffold and no lens is recorded, so this freeze would publish a round nobody is recorded as having read as a round that found nothing.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt> -name N -model M -asks Q -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
 	}
 	for _, rn := range []int{w.M.Round - 1, w.M.Round} {
 		if rn < 1 {
@@ -2360,6 +2370,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// finding(s), 0 blocker(s)` and a bare round line today, which is what a
 	// measured zero prints — and a measured zero is a legal close.
 	var scaffoldRounds, noRoster, askShort, askUnstated []int
+	askMissing := map[int][]string{}
 	// The longest run of reviewer rounds carrying exactly ONE blocker, and their
 	// texts — see the note where it is printed.
 	var oneBlockerRun []int
@@ -2393,23 +2404,22 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		lenses := roundLenses(w, n)
 		if validLenses(lenses) == 0 && kinds[n] != "tool" {
 			noRoster = append(noRoster, n)
-		} else if kinds[n] == "delta" {
+		} else {
 			// Which QUESTIONS a delta round put, separated from whether it
 			// stated them at all: a roster banked before `-asks` existed asked
 			// something, and reporting it as uncovered would be the same
 			// absent-vs-measured-zero collapse this report refuses everywhere
-			// else.
-			stated := false
-			for _, l := range lenses {
-				if l.Valid && len(l.Asks) > 0 {
-					stated = true
-				}
-			}
+			// else. ONE unstated lens is enough — the first version asked only
+			// whether ANY lens stated its questions, so a round with one legacy
+			// lens and one new one was reported as measured and short.
+			c := classifyAsks(kinds[n], lenses)
 			switch {
-			case !stated:
+			case !c.Applicable || c.Valid == 0:
+			case c.Unstated > 0:
 				askUnstated = append(askUnstated, n)
-			case len(missingDeltaAsks(lenses)) > 0:
+			case len(c.Missing) > 0:
 				askShort = append(askShort, n)
+				askMissing[n] = c.Missing
 			}
 		}
 		if ledgerErr == nil {
@@ -2679,12 +2689,18 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			len(scaffoldRounds), roundList(scaffoldRounds))
 	}
 	if len(noRoster) > 0 {
-		_, _ = fmt.Fprintf(out, "  note: %d round(s) record NO lens (%s) — what reviewed them is not in this workspace, so no claim about brief wording or model diversity made from these numbers can be checked against it; bank each vector with `wf round lens <prompt> -name N -model M`\n",
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) record NO lens (%s) — what reviewed them is not in this workspace, so no claim about brief wording or model diversity made from these numbers can be checked against it; bank each vector with `wf round lens <prompt> -name N -model M -asks Q`\n",
 			len(noRoster), roundList(noRoster))
 	}
 	if len(askShort) > 0 {
-		_, _ = fmt.Fprintf(out, "  note: %d DELTA round(s) bank a roster that asks none of %s (%s) — a delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3]\n",
-			len(askShort), strings.Join(lensDeltaRequired, ", "), roundList(askShort))
+		// Each round's ACTUAL missing set. Printing `lensDeltaRequired` told a
+		// round that asked two of the three it had asked "none of" all three —
+		// and this line is what `wf close` banks into close/stats.txt, the one
+		// artifact that survives `wf prune`.
+		for _, n := range askShort {
+			_, _ = fmt.Fprintf(out, "  note: round %d banks a roster that does not ask %s — a delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3]\n",
+				n, strings.Join(askMissing[n], ", "))
+		}
 	}
 	if len(askUnstated) > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d DELTA round(s) bank a roster that states no questions (%s) — banked before `-asks` existed, so what they covered is UNRECORDED rather than uncovered\n",

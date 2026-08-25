@@ -85,7 +85,7 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    findings were closed. Round N+1 is opened after the fixes, so at review time the open round's file
    is still blank; `wf delta` reads the file of the round it diffs FROM, which is the one being closed.
 
-   **Bank the round's LENS ROSTER with `wf round lens <prompt-file> -name NAME -model MODEL`,** one call
+   **Bank the round's LENS ROSTER with `wf round lens <prompt-file> -name NAME -model MODEL -asks Q[,Q]`,** one call
    per vector, and it writes `rounds/rN/lens-<name>.md` — the prompt verbatim, with what ran it. It is
    not bookkeeping: on one gate, across its delta rounds 2-8, the criterion vector was an external model
    at rounds 2, 4 and 6 and an internal one at 3, 5, 7 and 8, and the gate blockers were 17, 16, 12
@@ -347,8 +347,8 @@ Default = **3 reviewers, each a different vector** (round 1 only — see round d
 1. **Orchestration correctness & safety** — control flow is right: `pipeline()` vs `parallel()`-barrier choice justified; loop termination sound and every `while`-loop guards on `budget.total` (can't run to the 1000-agent cap); dedup-vs-`seen` correct; `schema` present on every structured return; stage args threaded; return shape sane; `.filter(Boolean)` after `parallel()`; no race on global `phase()` inside a fan-out (use `opts.phase`); `isolation:'worktree'` only when agents mutate files in parallel. ALSO enforce the **Workflow cost & context discipline** section: flag read-amplification (N producers each re-reading the whole corpus instead of working from a map + named slices), any large shared blob (>~10-20 KB) inlined into every fan-out agent, and run the total-agents × per-agent-read sanity estimate — a read-amplifying design is a BLOCKER (redesign before launch), not an advisory.
 2. **Model- and effort-routing conformance & tier fit** — the script obeys the model-routing section above: every `agent()` carries an explicit `model` AND an explicit `effort`, the model mirrored on its `meta.phases[]` entry for a single-tier phase and named in that entry's `detail` for a phase that deliberately mixes tiers (a mixed phase has one metadata slot and two models — do not report the absent mirror as a violation, and do not accept a phase flattened to one tier just to produce one). `effort` has NO metadata slot at all: a mixed-effort phase names its efforts in the `detail` string, and an absent `meta.phases[].effort` is never a finding — a MISSING per-call `effort` always is, because the omitted value is inherited from whichever session launches the run. Beyond that mechanical check, this reviewer ALWAYS judges tier fit and never rubber-stamps the author's choice — but reasons per *role*, not per call (a fan-out's N identical producers are ONE role, judged once; then spot-check that no individual call deviates from its role's tier). For each role, honestly weigh the assigned model's real capability against the task as written, then apply the routing tier-list:
    - **Under-powered → propose an UPGRADE, treated as a BLOCKER** — but ONLY when the assignment fails the routing section's *full* three-prong opus test: the error must also be uncatchable by the section-review gate or any cheap downstream step (prong 2) and costly to undo (prong 3). A producer whose error the gate catches stays cheap; never upgrade on prong-1 ("might err") alone.
-   - **Over-powered → propose a DOWNGRADE, ADVISORY only** (recorded/surfaced, never loops the gate) — flag a tier above what the tier-list assigns (opus inside a fan-out is a hard ban; sonnet doing pure grep-and-report → haiku). Over-spend is a soft target, not a defect.
-   The downgrade lens targets the *workflow's* runtime agents (which run at scale, up to the 1000-agent cap), NOT this gate's own opus reviewers (their top-tier spend is justified separately above). Task scope/shape is vector 3's call; runtime cost/cap safety (budget-guards, agent-count, fan-out size) is vector 1's — this reviewer judges only which *tier* and which *effort* each role should be. Judge the two axes SEPARATELY: an opus role at `low` and a haiku role at `high` are both legitimate, and a script where every tier moves in lockstep with its effort has almost certainly chosen one of them by reflex. The effort tiers are the ones in the routing section (mechanical → `low`, ordinary producer → `medium`, a step nothing downstream re-checks → `high`, a once-only step whose error burns the fan-out → `xhigh`/`max`), and `high`+ on a per-item agent inside a `parallel()`/`pipeline()` is the same defect as opus there. Until a run measures what a lower effort costs in findings, an over-powered effort is ADVISORY like an over-powered model; treat only the absence as a blocker. Direct this reviewer at the `agent()` calls and their `meta.phases[]` pairs.
+   - **Over-powered → propose a DOWNGRADE, MAJOR at most** (recorded/surfaced, never loops the gate — "advisory" is the ROLE, not the level: the level you file is on the closed BLOCKER/MAJOR/MINOR/NOTE scale) — flag a tier above what the tier-list assigns (opus inside a fan-out is a hard ban; sonnet doing pure grep-and-report → haiku). Over-spend is a soft target, not a defect.
+   The downgrade lens targets the *workflow's* runtime agents (which run at scale, up to the 1000-agent cap), NOT this gate's own opus reviewers (their top-tier spend is justified separately above). Task scope/shape is vector 3's call; runtime cost/cap safety (budget-guards, agent-count, fan-out size) is vector 1's — this reviewer judges only which *tier* and which *effort* each role should be. Judge the two axes SEPARATELY: an opus role at `low` and a haiku role at `high` are both legitimate, and a script where every tier moves in lockstep with its effort has almost certainly chosen one of them by reflex. The effort tiers are the ones in the routing section (mechanical → `low`, ordinary producer → `medium`, a step nothing downstream re-checks → `high`, a once-only step whose error burns the fan-out → `xhigh`/`max`), and `high`+ on a per-item agent inside a `parallel()`/`pipeline()` is the same defect as opus there. Until a run measures what a lower effort costs in findings, an over-powered effort is advisory like an over-powered model — filed MAJOR or MINOR, never looping the gate; treat only the absence as a blocker. Direct this reviewer at the `agent()` calls and their `meta.phases[]` pairs.
 3. **Goal alignment, prompt adequacy & completeness** — the script actually fulfills the user's request and covers the full scope (no silent top-N / sampling caps without a `log()`); each agent's *prompt* carries the context/inputs it needs and the `schema`'s intent is unambiguous (its mere presence is vector 1's check; a correctly-wired agent still produces garbage if briefed badly); every artifact-producing section ends with the dual section-review gate; the `meta` block is a pure literal whose phase titles match the `phase()` calls.
 
 **Where to aim them, from five phases of evidence.** Across the nine rounds of the last two gates, ZERO
@@ -410,15 +410,17 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   closure, fix-induced, ripple, other`) that lets one gate's roster be read beside another's, and `other`
   is always available so a vector your slice needs is never refused. Each required question has a
   measured origin, not a taxonomy's symmetry: **CLOSURE** — two hand-written closure lenses returned 6
-  and 4, 5 and 4, 6 and 4 findings of rounds of 25, 23 and 21, the most valuable half of those rounds,
+  and 4, 5 and 4, 6 and 4 closures they judged NOT closed, out of rounds of 25, 23 and 21 findings — the
+  most valuable half of those rounds,
   produced by prose over data git already held (`wf check closure` mechanised the reachable part, not
-  this one); **FIX-INDUCED** — a fix is the largest single source of blockers, half of rounds 3+ on one
-  phase, 5 of 11 on the next, and 9 of 9 on the one after; **RIPPLE** — a fix that changes a RULE has
-  consumers that are not in the diff, and four such ripples on one run argued from the retired rule
+  this one); **FIX-INDUCED** — a fix is the largest single source of blockers, half the BLOCKERS of rounds 3+
+  on one phase, 5 of 11 on the next, and 9 of 9 on the one after; **RIPPLE** — a fix that changes a RULE has
+  consumers that are not in the diff, and THREE of four such ripples on one run argued from the retired rule
   while containing none of its keywords, so `grep` returned nothing (`wf check stale` narrows that read
   and says NOT A PASS where it swept nothing). Measured on the two gates that banked any roster at all:
-  17 lens files under TEN distinct names, of which exactly one — `criterion` — appears anywhere in this
-  manual, and the other four gates banked no roster, so their prompts are gone.
+  13 lens RECORDS under TEN distinct names (measured 2026-08-25; one gate is open and the figure moves),
+  of which exactly one — `criterion` — appears as a vector name anywhere in this manual, and the other
+  four gates banked no roster, so their prompts are gone.
 - **Later rounds are DELTA rounds.** A fix is unreviewed code — in one phase, *half* the blockers of
   rounds 3+ were introduced by the previous round's own fix; in the next, 5 of 11; and in the one after
   that, round 2 was **9 out of 9**: every blocker that round existed only because round 1's fix created
@@ -644,8 +646,10 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   scale is BLOCKER / MAJOR / MINOR / NOTE and `wf round record` refuses anything else — measured, the six
   ledgers on disk hold 1065 findings under four vocabularies for one scale, 172 of them at a level no
   other gate can be read against, while the same six phases' script schemas, whose `enum` is checked at
-  the tool-call layer, never drifted. BLOCKER is what no later gate catches, and always what makes a
-  guard or a criterion vacuous; MAJOR is a real defect whose row NAMES the later gate that catches it,
+  the tool-call layer, never drifted. BLOCKER is what no later gate catches, and it is where vacuity STARTS —
+  a finding that makes an observation, a guard or a tripwire vacuous is classified BLOCKER and rides only
+  where the row can name the later gate actually assigned a non-vacuity vector for it, which is the MAJOR
+  test and not a second rule; MAJOR is a real defect whose row NAMES the later gate that catches it,
   and a row that cannot name one is a BLOCKER; MINOR is cheaper standing than looped for; NOTE asserts no
   failure. The full statement of each is in `gate-checks.md`, which every gate reviewer already gets.
 - **Stop rule, decided in advance.** The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. Majors ride into the

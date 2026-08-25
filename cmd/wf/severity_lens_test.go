@@ -6,9 +6,10 @@
 // every total reconciled against that workspace's own `wf stats`: 1065 findings
 // under FOUR vocabularies for one scale (BLOCKER universal; MAJOR on five gates,
 // CONCERN on one; MINOR on four, ADVISORY on one, NIT on one), 172 of them —
-// 16% — at a level no other gate can be read against. The same six phases'
-// orchestration scripts, whose severity is a JSON Schema enum checked at the
-// tool-call layer, declare exactly ['blocker','major','minor'] all six times.
+// 16% — at a level no other gate can be read against. The script side is no
+// better: an enum validates the VALUE and never the LIST, and the scripts these
+// six gates produced carry four enums of their own, one of them the
+// ['blocker','advisory'] this repository's own template shipped.
 package main
 
 import (
@@ -107,24 +108,102 @@ func TestRoundLens_requiresAsks(t *testing.T) {
 	}
 }
 
-// The coverage rule is a NOTE, never a refusal: it is new, and every corpus that
-// would have to satisfy it is closed. What it must do is name what is missing.
-func TestRoundLens_rosterNamesTheUncoveredDeltaQuestions(t *testing.T) {
+// The coverage rule is a NOTE, never a refusal, and it belongs to DELTA rounds
+// alone. The first version printed "required of a DELTA round" on round 1 of
+// every gate — a FULL round the manual gives three different vectors — which is
+// the sixth wave's own class: a note nobody can clear is a note nobody reads.
+func TestRoundLens_deltaCoverageNoteIsKindAwareAndNamesWhatIsMissing(t *testing.T) {
 	wsDir := newGate(t)
 	prompt := filepath.Join(t.TempDir(), "p.md")
 	write(t, prompt, "did the closures land\n")
-	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "REPAIRS", "-model", "opus", "-asks", "closure"); err != nil {
+
+	// Round 1 is FULL. A round-1 vector must draw no delta note.
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "FACTS", "-model", "opus", "-asks", "facts"); err != nil {
 		t.Fatal(err)
+	}
+	full, err := runWF(t, wsDir, "round", "lens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(full, "[R3]") {
+		t.Fatalf("a FULL round was held to the delta questions: %s", full)
+	}
+
+	// Round 2 is a DELTA round, and it asks two of the three.
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-kind", "delta", "-title", "the r1 fixes"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "REPAIRS", "-model", "opus", "-asks", "closure, fix-induced"); err != nil {
+		t.Fatalf("a multi-question -asks was refused: %v", err)
 	}
 	out, err := runWF(t, wsDir, "round", "lens")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "fix-induced") || !strings.Contains(out, "ripple") {
-		t.Fatalf("the roster does not name the delta questions nothing asked: %s", out)
+	// The ACTUALLY missing question, not the required list: a roster asking two
+	// of the three was reported as asking "none of" all three.
+	if !strings.Contains(out, "no banked lens asks ripple") {
+		t.Fatalf("the note does not name the one missing question: %s", out)
 	}
-	if strings.Contains(out, "no banked lens asks closure") {
-		t.Fatalf("a covered question was reported as missing: %s", out)
+	if strings.Contains(out, "closure, fix-induced, ripple") {
+		t.Fatalf("the note lists questions the roster DOES ask: %s", out)
+	}
+	// The comma-separated list round-trips: trimmed, canonical, both kept.
+	if !strings.Contains(out, "closure+fix-induced") {
+		t.Fatalf("the two questions did not round-trip through the file: %s", out)
+	}
+}
+
+// A lens whose questions are not on file makes the round's coverage UNRECORDED.
+// Reporting it as uncovered is the absent-vs-measured-zero collapse this report
+// refuses everywhere else — and the first version committed it in two of the
+// three places that answer this question.
+func TestRoundLens_oneUnstatedLensMakesCoverageUnrecorded(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-kind", "delta", "-title", "the r1 fixes"); err != nil {
+		t.Fatal(err)
+	}
+	// One lens banked the way every lens on disk was banked before -asks.
+	write(t, filepath.Join(wsDir, "rounds", "r2", "lens-legacy.md"),
+		"# Lens LEGACY\n\nModel: opus\nRecorded: 2026-08-01T00:00:00Z\n\n---\n\nthe prompt as it was banked\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "round 2: lens LEGACY")
+
+	prompt := filepath.Join(t.TempDir(), "p.md")
+	write(t, prompt, "did the closures land\n")
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "REPAIRS", "-model", "opus", "-asks", "closure"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runWF(t, wsDir, "round", "lens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "coverage UNRECORDED") {
+		t.Fatalf("a roster holding one unstated lens claimed measured coverage: %s", out)
+	}
+	if strings.Contains(out, "no banked lens asks") {
+		t.Fatalf("a claim the workspace cannot support: %s", out)
+	}
+	if !strings.Contains(out, "asks not stated") {
+		t.Fatalf("the legacy lens is not named as unstated: %s", out)
+	}
+	// And `wf stats` must say the same thing about the same round — two
+	// commands contradicting each other about one round is worse than either.
+	stats, err := runWF(t, wsDir, "stats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stats, "states no questions") {
+		t.Fatalf("stats disagrees with the roster about round 2: %s", stats)
 	}
 }
 
@@ -154,5 +233,111 @@ func TestStats_readsAnOffScaleLedgerAndNamesIt(t *testing.T) {
 	}
 	if !strings.Contains(out, "1 of the findings above are NOTE rows") {
 		t.Fatalf("the NOTE row is not named apart: %s", out)
+	}
+}
+
+// The header states questions this build cannot compare. That is a THIRD state,
+// and the first version collapsed it into "banked before the question set
+// existed" — the absent-vs-measured-zero collapse in reverse. It is reachable
+// whenever the closed set is NARROWED: every lens banked under a removed word
+// would silently claim to predate the flag.
+func TestRoundLens_statedButUncomparableIsNotUnstated(t *testing.T) {
+	wsDir := newGate(t)
+	write(t, filepath.Join(wsDir, "rounds", "r1", "lens-odd.md"),
+		"# Lens ODD\n\nModel: opus\nAsks: repairs, tree-truth\nRecorded: 2026-08-01T00:00:00Z\n\n---\n\nthe prompt\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "round 1: lens ODD")
+
+	out, err := runWF(t, wsDir, "round", "lens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "asks stated, none comparable") {
+		t.Fatalf("a header that said something was reported as saying nothing: %s", out)
+	}
+	if strings.Contains(out, "not stated") {
+		t.Fatalf("stated-but-uncomparable collapsed into unstated: %s", out)
+	}
+	if !strings.Contains(out, "repairs") || !strings.Contains(out, "tree-truth") {
+		t.Fatalf("the uncomparable words are dropped in silence: %s", out)
+	}
+}
+
+// An UNCOMMITTED lens is not a record, so it must not authorise coverage
+// either. This is the ninth wave's scar — a file that would not exist in the
+// tag cleared a refusal — applied to the question this wave added. The ghost
+// supplies exactly the two questions the committed lens lacks, so dropping the
+// validity test makes the note disappear instead of merely widening.
+func TestRoundLens_anUncommittedLensDoesNotCoverAQuestion(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-kind", "delta", "-title", "the r1 fixes"); err != nil {
+		t.Fatal(err)
+	}
+	prompt := filepath.Join(t.TempDir(), "p.md")
+	write(t, prompt, "did the closures land\n")
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "REPAIRS", "-model", "opus", "-asks", "closure"); err != nil {
+		t.Fatal(err)
+	}
+	// Written, never committed — every field present, so only tracking separates
+	// it from a record.
+	write(t, filepath.Join(wsDir, "rounds", "r2", "lens-ghost.md"),
+		"# Lens GHOST\n\nModel: opus\nAsks: fix-induced, ripple\nRecorded: 2026-08-01T00:00:00Z\n\n---\n\nthe prompt\n")
+
+	out, err := runWF(t, wsDir, "round", "lens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "NOT a record") {
+		t.Fatalf("an uncommitted lens was read as a record: %s", out)
+	}
+	if !strings.Contains(out, "no banked lens asks fix-induced, ripple") {
+		t.Fatalf("an uncommitted file authorised coverage only a committed one may: %s", out)
+	}
+}
+
+// The scaffold `wf round new` writes carries the scale itself. It is the one
+// place a reviewer who reads nothing else still meets the definition.
+func TestRoundNew_scaffoldCarriesTheScale(t *testing.T) {
+	wsDir := newGate(t)
+	b, err := os.ReadFile(filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"BLOCKER", "MAJOR", "MINOR", "NOTE", "[R2]",
+		"what catches it downstream", "NAMES the later gate"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("the scaffold does not carry %q — a reviewer who reads nothing else meets the definition here", want)
+		}
+	}
+}
+
+// The level is checked BEFORE the placeholder skip, and that order is the whole
+// guard. `Placeholder()` means "the text cell is empty", so the first version
+// let `| 1 | CONCERN |  |  |` through as an unfilled form and the closed scale
+// had a hole exactly the width of the scaffold's own row — found by an external
+// reviewer over a diff whose four bars were green.
+func TestRoundRecord_refusesAnOffScaleLevelOnAnEmptyRow(t *testing.T) {
+	wsDir := newGate(t)
+	src := filepath.Join(t.TempDir(), "findings.md")
+	write(t, src, "# Findings\n\n| # | level | finding | closed by |\n|---|-------|---------|-----------|\n"+
+		"| 1 | CONCERN |  |  |\n")
+
+	if _, err := runWF(t, wsDir, "round", "record", src); err == nil {
+		t.Fatal("an off-scale level rode in on an empty row; a form that teaches the wrong word is how the next round learns it")
+	} else if !strings.Contains(err.Error(), "CONCERN") {
+		t.Fatalf("the refusal does not name the level: %v", err)
+	}
+
+	// And an empty LEVEL on an empty row is still a form, which must stay legal:
+	// that is the scaffold nobody has filled yet.
+	blank := filepath.Join(t.TempDir(), "blank.md")
+	write(t, blank, "# Findings\n\n| # | level | finding | closed by |\n|---|-------|---------|-----------|\n"+
+		"| 1 |  |  |  |\n")
+	if _, err := runWF(t, wsDir, "round", "record", blank); err != nil {
+		t.Fatalf("the untouched form was refused: %v", err)
 	}
 }
