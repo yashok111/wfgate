@@ -60,7 +60,24 @@ Eleven units, each one decision.
 - `internal/gitx` — the only place that runs `git`. Git is not an integration
   here, it is the storage layer; the wrapper exists so that "the workspace is a
   repository" stays a single decision instead of a shell-out smeared across six
-  commands.
+  commands. Being the single seam is also what makes the **diff algorithm
+  pinnable**: every invocation carries `-c diff.algorithm=histogram`, because it
+  is an UNDECLARED INPUT otherwise (measured 2026-08-25 over the three closed
+  gates — git's default is myers, this box carried histogram in `~/.gitconfig`,
+  and `wf stats` priced p2e at 4586 changed lines against 4482, 2.8% apart and
+  5.3% on its round 2, which moves a round's cost ratio by 0.2 per 100).
+  `check drift` is immune — byte-identical across myers/minimal/patience/
+  histogram over 235/343/230 citations, because `--unified=0` leaves only
+  old-side ranges and their union is stable — and `check stale` moved one range's
+  boundary between "the fix wrote this sentence" and "this is an untouched
+  consumer" (22 vs 25 scanned of 1891; the verdict held, the denominator did
+  not). histogram rather than myers is not a claim about diff quality: it is
+  what every banked number was measured under, so pinning myers would silently
+  invalidate the corpus. `diff.indentHeuristic` was measured on the same corpora
+  and changes nothing, so it is left UNPINNED rather than pinned on principle —
+  a guard nothing can make fail is a guard nothing proves. The fixture is the
+  real divergent region (p2e r4, `d698b29`) banked under
+  `internal/gitx/testdata/`.
 - `internal/ws` — the workspace: `gate.json` (the marker; `Find` walks up
   looking for it the way git itself does), `artifacts/`, `rounds/`. The
   findings-table parser (`findings.go`) lives here too — the table is

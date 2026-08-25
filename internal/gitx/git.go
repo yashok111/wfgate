@@ -17,9 +17,36 @@ import (
 // Repo is a git working tree. The zero value is unusable; Dir must be set.
 type Repo struct{ Dir string }
 
+// pinned is prepended to every invocation so that what this tool reports does
+// not depend on the operator's ~/.gitconfig.
+//
+// Measured 2026-08-25, on the three closed gates: the diff algorithm is an
+// UNDECLARED INPUT that moves the numbers. git's default is myers; this box
+// carried `diff.algorithm = histogram` in ~/.gitconfig, so every figure the
+// project has banked was produced under histogram while a stock machine would
+// have produced others. `wf stats` totals over p2e: 4586 changed lines under
+// myers, 4482 under histogram, 4458 minimal, 4512 patience — 2.8% apart, and
+// per round up to 5.3% (r2: 985 vs 933), enough to move a round's cost ratio
+// by 0.2 per 100. `check stale` moved one range's boundary between "the fix
+// wrote this sentence" and "this is an untouched consumer" (p2e gate-r1..HEAD:
+// 22 vs 25 scanned of 1891) — the verdict held, the denominator did not.
+//
+// histogram rather than myers is not a claim about diff quality: it is what
+// every banked number was measured under, so pinning myers would silently
+// invalidate the corpus this project reasons from.
+//
+// `check drift` is immune — byte-identical across all four algorithms over
+// 235/343/230 citations, because --unified=0 leaves only old-side ranges and
+// their union is stable. So is diff.indentHeuristic: measured on the same three
+// corpora, both settings produce identical `stats` and `drift`. It is left
+// unpinned rather than pinned on principle, because a guard nothing can make
+// fail is a guard nothing proves.
+var pinned = []string{"-c", "diff.algorithm=histogram"}
+
 // Run executes git in the repo and returns trimmed stdout. Stderr is folded
 // into the error because git says the useful half there.
 func (r Repo) Run(args ...string) (string, error) {
+	args = append(append([]string{}, pinned...), args...)
 	cmd := exec.Command("git", args...)
 	cmd.Dir = r.Dir
 	var out, errb bytes.Buffer

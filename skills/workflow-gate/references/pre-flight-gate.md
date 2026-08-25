@@ -565,7 +565,10 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   carried by two commits is checked against each one's own parent rather than against a union of
   coordinate systems; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
-  `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines, and
+  `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines —
+  counted under a PINNED diff algorithm (`histogram`), so the denominator is comparable across gates
+  and across machines rather than reading whatever `diff.algorithm` the operator's gitconfig carries;
+  measured, the two readings of one gate differ by 2.8% overall and 5.3% on a round — and
   `wf apply -rule RN` declares the rule a batch changes and NAMES the other sites carrying that
   marker, marking the ones in files the batch wrote — the sweep the note beside the number has been
   pointing at since the meter existed, done at the moment the fix lands;

@@ -1,9 +1,11 @@
 package gitx
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +69,77 @@ func TestDirty_pathsWithSpacesAreNotQuoted(t *testing.T) {
 		if !c.Untracked() {
 			t.Fatalf("both files are untracked: %+v", c)
 		}
+	}
+}
+
+// The diff algorithm is an UNDECLARED INPUT unless the wrapper pins it, and it
+// moves the numbers this tool reports. Measured 2026-08-25 over the three
+// closed gates: `wf stats` priced p2e at 4586 changed lines under myers and
+// 4482 under histogram (2.8% apart, and 5.3% on its round 2), which moves a
+// round's cost ratio. git's default is myers; the box that produced every
+// banked figure carried `diff.algorithm = histogram` in ~/.gitconfig, so the
+// corpus and a stock machine did not agree and nothing said so.
+//
+// The fixture is the real region where they diverge: artifacts/decisions.md of
+// the p2e gate at r4 (commit d698b29), lines 520-553 before and 625-656 after —
+// markdown prose whose paragraph boundaries the two algorithms attribute
+// differently. myers reads it as 9 added / 11 removed, histogram as 8 / 10.
+//
+// The repo-local config below sets myers deliberately: that is precisely what
+// an operator's own gitconfig would do, and the pin must beat it.
+func TestRun_pinsTheDiffAlgorithmOverRepoConfig(t *testing.T) {
+	r := repo(t)
+	if _, err := r.Run("config", "diff.algorithm", "myers"); err != nil {
+		t.Fatal(err)
+	}
+	for i, name := range []string{"algo-before.md", "algo-after.md"} {
+		body, err := os.ReadFile(filepath.Join("testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(r.Dir, "d.md"), body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.Commit(fmt.Sprintf("rev %d", i), []string{"d.md"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := r.Run("show", "--numstat", "--format=", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		histogram = "8\t10\td.md"
+		myers     = "9\t11\td.md"
+	)
+	if got == myers {
+		t.Fatalf("the repo's own diff.algorithm won: got %q (myers), want %q (histogram) — "+
+			"the wrapper is reading the operator's config instead of pinning the algorithm", got, histogram)
+	}
+	if got != histogram {
+		t.Fatalf("numstat = %q, want %q; neither is the myers reading %q, so the fixture no longer "+
+			"separates the two algorithms and this test proves nothing", got, histogram, myers)
+	}
+}
+
+// The pin must not disturb what the caller asked for: several call sites pass
+// their own `-c` ahead of the subcommand, and the pin now sits in front of it.
+//
+// The path is Cyrillic because that is the only thing core.quotePath governs —
+// a SPACE is quoted in porcelain regardless, which is why `Dirty` reads -z
+// rather than trusting the setting. Quoted DATA, per the repository's rule on
+// non-Latin text.
+func TestRun_pinDoesNotDisplaceCallerFlags(t *testing.T) {
+	r := repo(t)
+	if err := os.WriteFile(filepath.Join(r.Dir, "тест.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := r.Run("-c", "core.quotePath=false", "status", "--porcelain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "тест.md") || strings.Contains(out, `\321`) {
+		t.Fatalf("core.quotePath=false did not survive the pin: %q", out)
 	}
 }

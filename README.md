@@ -49,7 +49,20 @@ make test           # go test -race
 make check-tools    # the built binaries against the banked fixtures (meta-guard must FAIL)
 ```
 
-`git` is taken from `PATH`. One dependency, `goja`: it is the JavaScript
+`git` is taken from `PATH`, and every invocation is pinned with
+`-c diff.algorithm=histogram` so that what this tool reports does not depend on
+the operator's `~/.gitconfig`. Measured over the three closed gates: git's
+default is myers, the box that produced every banked figure carried histogram,
+and `wf stats` priced one gate at 4586 changed lines under myers against 4482
+under histogram — 2.8 % apart, and 5.3 % on a single round, enough to move that
+round's cost ratio. `check drift` is immune (byte-identical across all four
+algorithms over 235/343/230 citations, because `--unified=0` leaves only
+old-side ranges); `check stale` moved one range's boundary between "the fix
+wrote this sentence" and "this is an untouched consumer". histogram rather than
+myers is not a claim about diff quality: it is what every banked number was
+measured under.
+
+One dependency, `goja`: it is the JavaScript
 parser `wfcheck` reads a script with and the engine `wfdry` runs it on. The
 dependencies.
 
