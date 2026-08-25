@@ -23,7 +23,7 @@ func corpus(t *testing.T, files map[string]string) (string, []Statement) {
 		}
 		names = append(names, rel)
 	}
-	sts, err := CollectStatements(root, names, 8)
+	sts, _, err := CollectStatements(root, names, 8)
 	if err != nil {
 		t.Fatal(err)
 	}

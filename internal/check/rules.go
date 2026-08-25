@@ -36,16 +36,16 @@ type RuleConflict struct {
 // CollectRuleSites scans the artifacts for `[RN]` markers and groups the
 // statements that carry them by id. The marker itself is stripped before
 // normalising, so the same rule marked in two files compares by its words.
-func CollectRuleSites(root string, files []string) (map[string][]RuleSite, int, error) {
+func CollectRuleSites(root string, files []string) (map[string][]RuleSite, int, []Note, error) {
 	// Built on the SAME unwrapping collector dup uses, not on a line scan. The
 	// line scan compared only the physical line the marker sat on, so a rule
 	// hard-wrapped across two lines was compared by its first line alone: two
 	// copies whose continuations said "three times" and "five times" agreed.
 	// A rule is a sentence, and it is compared as one — the lesson dup paid for
 	// on P2e, applied to the check that needs it just as much.
-	sts, err := CollectStatements(root, files, 0)
+	sts, notes, err := CollectStatements(root, files, 0)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 	sites := map[string][]RuleSite{}
 	markers := 0
@@ -62,7 +62,7 @@ func CollectRuleSites(root string, files []string) (map[string][]RuleSite, int, 
 			sites["R"+m[1]] = append(sites["R"+m[1]], RuleSite{File: st.File, Line: st.Line, Text: text, Norm: norm, Ops: ops})
 		}
 	}
-	return sites, markers, nil
+	return sites, markers, notes, nil
 }
 
 // ComparedIDs is the population the check actually REACHED: ids marked at two
@@ -212,6 +212,11 @@ func Divergence(texts []string, width int) []string {
 	}
 	return out
 }
+
+// Cut is cut for a caller outside this package: `wf apply -rule` prints rule
+// sites too, and a second truncation helper written beside it would be this
+// project's most-repeated defect class in miniature.
+func Cut(s string, width int) (string, bool) { return cut(s, width) }
 
 // cut truncates on a RUNE boundary. The corpus is English by workflow rule, but
 // a quoted identifier or an em dash is not ASCII, and a byte cut through one

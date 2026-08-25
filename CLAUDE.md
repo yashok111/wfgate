@@ -55,7 +55,7 @@ judgement.
 
 ## Architecture
 
-Ten units, each one decision.
+Eleven units, each one decision.
 
 - `internal/gitx` — the only place that runs `git`. Git is not an integration
   here, it is the storage layer; the wrapper exists so that "the workspace is a
@@ -91,6 +91,16 @@ Ten units, each one decision.
   on an embedded engine with every orchestration hook stubbed, across the seven
   modes a real run can enter. Fixtures live in `testdata/` — the meta-guard
   fixture is the P2e false green, banked.
+- `internal/jstext` — the ONE character-level reader of JavaScript, because two
+  units need the same split from opposite sides: `wfcheck`'s textual backstop
+  needs the CODE (a `agent(` inside a comment or a string is not a call), and
+  `check` needs the PROSE (a script's prompts restate the document's decisions
+  and must be compared against them). The polarity is two callbacks rather than
+  a flag — a comment's `//` is blanked by one reader and is not prose to the
+  other, a regex body is words to neither — and each prose span says whether it
+  CONTINUES the one before it, which is the half a caller cannot recover:
+  blanking the code alone left two literals on neighbouring lines joined into a
+  sentence nobody wrote.
 - `internal/cli` — `ParseMixed`, shared by all three binaries.
 - `scripts/` — no longer code: the two PreToolUse hooks and `install.sh`.
 - `skills/workflow-gate/` — the operating manual as a Claude Code skill: a thin
@@ -743,6 +753,84 @@ only reader is a reviewer imagining a cheat has no floor. What shipped:
   it lacked, and five more that were killed only in pairs got assertions on the
   MESSAGE, because falling through to a true-but-useless refusal is not the same
   guard.
+
+**The tenth wave — mocker A3 closed, and the gate whose script actually RAN**
+(`FEEDBACK-a3.md`; 13 rounds, 268 findings, 114 blockers, 151 fix-induced, then
+a launch of 38 agents over 4h36m that came back `green: true` with 0 dead and 0
+open blockers, six bars re-verified by hand). It is the first entry in this
+corpus written AFTER an execution rather than before one, and the first with a
+number for what the gate was worth: four blockers of rounds 10-12 would have
+burned the fan-out outright, at ~5.7 M subagent tokens. What shipped here is
+four measured items and two the feedback asked for; the manual's new JUDGEMENT
+rules from that file (an acceptance section states observations; wfdry's clean
+mode as a semantic constraint on `green`) were deliberately NOT applied — they
+change what every future gate is told, which is a separate decision.
+
+- *The queue's flagship ask was ALREADY SHIPPED, and the tool never said so* —
+  "let a `[RN]` marker be recognised inside a `.mjs` string literal" was checked
+  by putting one there before any code was written, and `wf check rules` printed
+  the exact conflict the gate had paid six blockers for. `ArtifactList` takes
+  every file and the collector read the script as text. What was missing was
+  that nothing in the manual said a script could carry markers — and a real
+  defect next door: the collector read CODE and COMMENTS as statements, so a
+  marker on a code line made a rule site whose text was joined JavaScript
+  (`const A = { owns: ['internal/api'], vector: 'reviewer' } const P = "The two
+  routes…`), and a comment quoting an id joined the population. A `.js`/`.mjs`
+  artifact is now read as PROSE — comments and the literal chunks of strings,
+  via the new `internal/jstext` — and each prose SPAN is its own paragraph:
+  blanking the code alone was NOT enough, because two literals on neighbouring
+  lines still joined into a sentence nobody wrote, which is the same defect one
+  layer down. Comments stay in (a rule restated in a comment is a copy that can
+  drift); `${...}` interpolations leave a hole rather than splicing an
+  identifier, and the string inside one is an argument, not prose. Every report
+  says which artifacts it read as programs, and a script whose prose is EMPTY is
+  named rather than counted clean.
+- *`wf stats` said "an artifact was ADDED in this window" AFTER the counts* —
+  nine rounds of descent (13, 17, 10, 16, 11, 12, 6, 7, 4) read as convergence,
+  one more empty round would have closed the gate under the stop rule, and then
+  the script was added and round 10 produced 38 findings and 12 blockers over an
+  artifact nobody had reviewed. The tool KNEW and put it in a parenthesis. It
+  leads the line now — `FIRST REVIEW of an artifact ADDED in this window` — and
+  it prints whether or not the round has edits to price, because the previous
+  form only existed inside the ratio branch. The prescribed-sequence fixture
+  turned out to contain the shape already: `notes.md` was added after `gate-r2`,
+  so round 3 is the first to review it.
+- *`wf apply -rule RN`* — the note beside the prediction has advised the sweep
+  since the meter existed ("if this batch changed a RULE, its consumers are NOT
+  in this diff") and named nothing, so the operator had to go and look. It now
+  lists every site of the declared id, marking the ones in files the batch
+  wrote; a declared rule that NOTHING marks prints as exactly that, because an
+  unmarked rule is the case `wf check rules` cannot reach either. What predicted
+  the next round across A3's three script rounds was not batch size but whether
+  the batch changed a rule with consumers elsewhere.
+- *`-kind run`, and the median that called a launch a break* — round 13 spans
+  288.2 min against a median of 45.3 because it CONTAINED the run, and
+  `wf stats -time`'s own note reads "a span far above the median is a break, not
+  work". A run round is a REVIEWER round everywhere else (what a run reports is
+  evidence produced by executing, so its zero is a measured zero); only the
+  clock treats it apart, and its span prints on its own line.
+- *And the wave earned its review round, for the fifth time running* — one
+  external model over the diff, four bars green, three findings and two of them
+  real. **A `-kind tool` round was printing FIRST REVIEW**: it dispatched no
+  reviewer by declaration, so the new line claimed a reading nobody did — the
+  wave's own defect class committed inside the fix for it, and the
+  prescribed-sequence fixture had been asserting it. It now says an artifact was
+  added and NO reviewer was dispatched. **A run round's split still read
+  `review`**, and that first segment is open-to-first-fix, which on such a round
+  IS the run. The third was taken by HALF: the median line had been renamed
+  "review round(s)" while a `-kind tool` round is in that median and always has
+  been — the reviewer proposed narrowing the population, and narrowing it
+  silently is the defect one line up, so the LABEL was fixed instead and the
+  time line over the three closed gates is byte-identical to before.
+- *Two small ones from the feedback's own list* — the `closed by` refusal now
+  names the repository it looked in and says when the sha IS a commit in the
+  TARGET, which is what a round recording a LAUNCH reaches for (the rule itself
+  stands: a closure cites the workspace commit that landed the fix). And
+  `wf round record` prints a note when the round banks no lens: eleven of that
+  gate's thirteen rounds banked none, the prompts for rounds 1-10 are gone, and
+  the claim the operator most wanted to make from those numbers cannot be
+  checked against anything. Recording findings is the step that feels like the
+  work.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own

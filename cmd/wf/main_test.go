@@ -358,8 +358,8 @@ func TestPrescribedSequence(t *testing.T) {
 |---|-------|---------|-----------|
 | 1 | BLOCKER | stale copy | 1234567890abcdef |
 `)
-	if _, err = runWF(t, wsDir, "round", "record", bogus); err == nil || !strings.Contains(err.Error(), "not a commit in this workspace") {
-		t.Fatalf("bogus record: want 'not a commit in this workspace', got %v", err)
+	if _, err = runWF(t, wsDir, "round", "record", bogus); err == nil || !strings.Contains(err.Error(), "not a commit in this GATE WORKSPACE") {
+		t.Fatalf("bogus record: want 'not a commit in this GATE WORKSPACE', got %v", err)
 	}
 
 	// Findings are recorded when FILED, before the fixes — an open blocker is
@@ -399,7 +399,9 @@ func TestPrescribedSequence(t *testing.T) {
 	out, err = runWF(t, wsDir, "stats")
 	noErr(t, err, "stats mid-run")
 	mustContain(t, out,
-		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 0 commit, 0 prose, 1 open",
+		// Round 1's window IS the authoring commit, so the line leads with the
+		// first review and the counts follow it.
+		"round 1 [gate-r1, full] — FIRST REVIEW of an artifact ADDED in this window (a descent before it says nothing about it); 1 finding(s), 1 blocker(s); closed: 0 commit, 0 prose, 1 open",
 		"round 2 [open, delta] — 0 finding(s), 0 blocker(s); closed: 0 commit, 0 prose, 0 open; 2 apply batch(es), 3 edit(s)",
 		"no [fix-induced] markers; the self-inflicted share was not measured")
 
@@ -529,7 +531,7 @@ func TestPrescribedSequence(t *testing.T) {
 	noErr(t, err, "stats")
 	mustContain(t, out,
 		"## stats — workspace demo, 2 round(s)",
-		"round 1 [gate-r1, full] — 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
+		"round 1 [gate-r1, full] — FIRST REVIEW of an artifact ADDED in this window (a descent before it says nothing about it); 1 finding(s), 1 blocker(s); closed: 1 commit, 0 prose, 0 open; 0 apply batch(es)",
 		"round 2 [gate-r2, delta] — 1 finding(s), 1 blocker(s); closed: 0 commit, 1 prose, 0 open; 2 apply batch(es), 3 edit(s) / 6 changed line(s) (16.7 finding(s) per 100 changed line(s)); artifact 11 line(s) (+0); fix-induced 1",
 		"total — 2 finding(s), 2 blocker(s)",
 		"fix-induced — 1 of 2 finding(s)",
@@ -550,7 +552,13 @@ func TestPrescribedSequence(t *testing.T) {
 	out, err = runWF(t, wsDir, "stats")
 	noErr(t, err, "stats with tool round")
 	mustContain(t, out,
-		"round 3 [open, tool] — 1 finding(s), 1 blocker(s)",
+		// notes.md was added AFTER gate-r2, so it lands in round 3's window and
+		// the round is the first to review it — the mocker A3 shape, in the
+		// prescribed sequence's own fixture.
+		// A tool round dispatched no reviewer by declaration, so the line must
+		// not claim a first REVIEW of the artifact its window added; what is
+		// true of the window still is.
+		"round 3 [open, tool] — an artifact was ADDED in this window and NO reviewer was dispatched — nothing here reviewed it; 1 finding(s), 1 blocker(s)",
 		"reviewer rounds — 2 finding(s), 2 blocker(s); tool rounds — 1 finding(s), 1 blocker(s)",
 		"the stop rule reads the REVIEWER descent")
 }

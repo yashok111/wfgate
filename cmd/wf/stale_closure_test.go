@@ -236,7 +236,10 @@ func TestStats_authoringWindowPrintsNoRatio(t *testing.T) {
 	}
 	out, err := runWF(t, wsDir, "stats")
 	noErr(t, err, "stats")
-	mustContain(t, out, "an artifact was ADDED in this window, so there is no ratio")
+	// The suppression is stated BEFORE the counts now — mocker A3 read nine
+	// rounds of descent as convergence with this said in a parenthesis after
+	// them — and where the ratio would have stood only its absence is printed.
+	mustContain(t, out, "FIRST REVIEW of an artifact ADDED in this window", "(no ratio)")
 	if strings.Contains(out, "finding(s) per 100 changed line(s))") {
 		t.Fatalf("no per-round ratio may be printed for that window:\n%s", out)
 	}

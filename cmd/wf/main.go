@@ -44,7 +44,7 @@ const usage = `wf — gate harness
   wf status                       manifest, round, dirty artifacts
   wf apply -f <edits>             all-or-nothing batch (JSON array or === text blocks), then commit
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
-  wf round new [-title T] [-kind full|delta|tool]  open the next round, scaffold its findings file
+  wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
   wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
   wf round lens <prompt> -name N -model M   bank a reviewer vector against the round (no argument: print the roster)
   wf freeze                       hash the artifacts, commit, tag gate-rN
@@ -246,11 +246,16 @@ func cmdApply(args []string) error {
 	file := fs.String("f", "", "edits JSON file, or - for stdin (required)")
 	msg := fs.String("m", "", "commit subject (default derived from the batch)")
 	dry := fs.Bool("dry-run", false, "plan and report, write nothing")
+	rule := fs.String("rule", "", "the [RN] rule this batch changes; the note then names the OTHER sites carrying it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *file == "" {
-		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [--dry-run]")
+		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [--dry-run]")
+	}
+	ruleID, err := normaliseRuleID(*rule)
+	if err != nil {
+		return err
 	}
 	w, err := open()
 	if err != nil {
@@ -308,6 +313,13 @@ func cmdApply(args []string) error {
 	if *dry {
 		fmt.Printf("\ndry run: %d file(s) would change\n", len(bufs))
 		fmt.Printf("  note: the cost estimate is not printed on a dry run — it counts the lines git sees changed, which needs the write\n")
+		touched := make([]string, 0, len(bufs))
+		for rel := range bufs {
+			touched = append(touched, rel)
+		}
+		if err := printRuleSpread(w, ruleID, touched); err != nil {
+			return err
+		}
 		return nil
 	}
 	written, err := apply.Write(w.Root, bufs)
@@ -340,6 +352,14 @@ func cmdApply(args []string) error {
 	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), hist, authoringSkipped); warn {
 		fmt.Println(note)
 	}
+	// Named, not merely remembered. The prediction beside it prices CHANGED
+	// LINES; what actually predicted the next round across three script rounds
+	// of mocker A3 was whether the batch changed a RULE with consumers
+	// elsewhere, and the sentence saying so did more work all gate than the
+	// number it was attached to.
+	if err := printRuleSpread(w, ruleID, written); err != nil {
+		return err
+	}
 	subject := *msg
 	if subject == "" {
 		subject = fmt.Sprintf("apply: %d edit(s) across %d file(s)", len(edits), len(written))
@@ -363,6 +383,94 @@ func cmdApply(args []string) error {
 	}
 	fmt.Printf("\ncommitted %s  (%d file(s))\n", short(sha), len(written))
 	return nil
+}
+
+// normaliseRuleID accepts what an operator will actually type — `R6`, `r6` or
+// `6` — and rejects anything else by NAME rather than sweeping it into "no rule
+// declared", which would be a silent opt-out of the check the flag exists for.
+func normaliseRuleID(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	t := strings.TrimSuffix(strings.TrimPrefix(s, "["), "]")
+	t = strings.TrimPrefix(strings.TrimPrefix(t, "R"), "r")
+	if t == "" || strings.TrimLeft(t, "0123456789") != "" {
+		return "", fmt.Errorf("-rule %q: a rule id is RN — the marker `[R6]`, `R6` or `6`", s)
+	}
+	return "R" + t, nil
+}
+
+// printRuleSpread names the sites of the declared rule that this batch did NOT
+// write. `wf apply`'s own note has advised the sweep since the cost meter
+// existed — "if this batch changed a RULE, its consumers are NOT in this diff"
+// — and it named nothing, so the operator had to go and look. Measured on
+// mocker A3: six of round 10's twelve blockers were one decision repaired in
+// the document and left standing in the prompt restating it.
+//
+// A file the batch wrote is marked rather than dropped: a document holding
+// three sites of one rule is exactly where the copy gets left behind, and the
+// operator must see them together.
+func printRuleSpread(w *ws.Workspace, ruleID string, touched []string) error {
+	if ruleID == "" {
+		return nil
+	}
+	arts, err := w.ArtifactList()
+	if err != nil {
+		return err
+	}
+	sites, _, notes, err := check.CollectRuleSites(w.Root, arts)
+	if err != nil {
+		return err
+	}
+	in := map[string]bool{}
+	for _, t := range touched {
+		in[filepath.ToSlash(t)] = true
+	}
+	ss := sites[ruleID]
+	// A declared rule that no artifact marks is the loudest outcome here, and
+	// it is not an error: the marker discipline is the author's, and a batch
+	// changing an unmarked rule is exactly the case `wf check rules` cannot
+	// reach at all.
+	if len(ss) == 0 {
+		fmt.Printf("  rule: NO site carries [%s] — this batch declares a rule nothing marks, so neither `wf check rules` nor this note can reach its other copies. Mark the sites that STATE it\n", ruleID)
+		return nil
+	}
+	outside := 0
+	for _, st := range ss {
+		if !in[filepath.ToSlash(st.File)] {
+			outside++
+		}
+	}
+	fmt.Printf("  rule: [%s] is marked at %d site(s), %d of them outside this batch\n", ruleID, len(ss), outside)
+	for _, st := range ss {
+		mark := ""
+		if in[filepath.ToSlash(st.File)] {
+			mark = "  ← a file this batch wrote"
+		}
+		txt, _ := check.Cut(st.Text, 100)
+		fmt.Printf("    %s:%d  %s%s\n", st.File, st.Line, txt, mark)
+	}
+	for _, n := range notes {
+		fmt.Printf("  note: %s — %s\n", n.File, n.Text)
+	}
+	return nil
+}
+
+// closedByError says which repository the sha was looked for in, and whether it
+// is a commit in the OTHER one. A closure cites the workspace's own commit —
+// the fix that closed the finding — and that rule stands: a sha the workspace
+// does not have cannot be verified by anything here, and a landed lie briefs
+// the next round with fiction. But the round that records a LAUNCH has the
+// target's commit in hand and nothing else, and the refusal used to name
+// neither repository, so it read as the tool being unable to see a commit that
+// obviously exists.
+func closedByError(w *ws.Workspace, prefix, sha string) error {
+	msg := fmt.Sprintf("%s: closed by names %s, which is not a commit in this GATE WORKSPACE (%s)", prefix, sha, w.Root)
+	if w.M.Target != "" && (gitx.Repo{Dir: w.M.Target}).CommitExists(sha) {
+		msg += fmt.Sprintf("; it IS a commit in the TARGET repository (%s) — a closure names the workspace commit that landed the fix, so write the target's sha as prose (\"target %s\") and cite the workspace commit here", w.M.Target, sha)
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 // cmdAdd brings an existing file into the workspace as an artifact.
@@ -468,7 +576,7 @@ func cmdRound(args []string) error {
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
-	kind := fs.String("kind", "full", "full: re-reads the whole set; delta: reviews the diff only; tool: no reviewer dispatched")
+	kind := fs.String("kind", "full", "full: re-reads the whole set; delta: reviews the diff only; tool: no reviewer dispatched; run: contains a live run of what the gate built")
 	if _, err := parseMixed(fs, args[1:]); err != nil {
 		return err
 	}
@@ -480,13 +588,26 @@ func cmdRound(args []string) error {
 	// wfdry findings, and a launch death) as ordinary rounds — and the stop
 	// rule then read a blocker descent of 15→13→4→1→1 where the REVIEWER
 	// descent, the one the rule is about, was 15→13→4→1.
+	// `run` exists because a round that EXECUTES what the gate built is not a
+	// long round, and every reader of the timing was told it was. Measured on
+	// mocker A3: round 13 spans 288.2 minutes against a median of 45.3 because
+	// it contained the launch — 38 agents over 4h36m — and `wf stats -time`
+	// answered with its own note, "a span far above the median is a break, not
+	// work", which is precisely backwards there. The launch is the one event in
+	// a gate's life most worth timing, and it had no name.
+	//
+	// It is a REVIEWER round everywhere else, deliberately: what a run reports
+	// is evidence produced by executing, so its zero is a measured zero and its
+	// findings belong in the descent the stop rule reads. Only the clock treats
+	// it apart.
 	scope := map[string]string{
 		"full":  "Kind: full — this round re-reads the whole artifact set.",
 		"delta": "Kind: delta — this round reviews the delta only; state below what was NOT re-read.",
 		"tool":  "Kind: tool — findings from static/dynamic tooling or the launch itself; no reviewer was dispatched.",
+		"run":   "Kind: run — this round CONTAINS a live run of what the gate built; its span is the run, not a break.",
 	}[*kind]
 	if scope == "" {
-		return fmt.Errorf("-kind %q: full, delta or tool", *kind)
+		return fmt.Errorf("-kind %q: full, delta, tool or run", *kind)
 	}
 	w, err := open()
 	if err != nil {
@@ -587,7 +708,7 @@ func cmdRoundRecord(args []string) error {
 		shas := r.Shas()
 		for _, s := range shas {
 			if !w.Git.CommitExists(s) {
-				return fmt.Errorf("row %s (line %d): closed by names %s, which is not a commit in this workspace; nothing was recorded", r.Num, r.Line, s)
+				return fmt.Errorf("%w; nothing was recorded", closedByError(w, fmt.Sprintf("row %s (line %d)", r.Num, r.Line), s))
 			}
 		}
 		switch {
@@ -620,6 +741,18 @@ func cmdRoundRecord(args []string) error {
 	} else {
 		fmt.Printf("  findings: %d row(s), %d blocker(s); closed by commit %d, by prose %d, open %d\n",
 			len(rows), blockers, byCommit, byProse, open)
+	}
+	// The roster, asked for where the round's work is recorded. Measured on
+	// mocker A3: ELEVEN of thirteen rounds bank no lens — the operator started
+	// at round 11 — so for rounds 1-10 the findings are in the ledger and the
+	// PROMPTS that produced them are gone, and the claim that gate most wanted
+	// to make from its own numbers (tightly-scoped vectors aimed at the
+	// previous round's repairs produced its two best rounds) cannot be checked
+	// against anything. Recording findings is the step that feels like the
+	// work; this is the other half of the same record, and a note is all it is
+	// — a refusal here would be a refusal to write down what was found.
+	if validLenses(roundLenses(w, n)) == 0 {
+		fmt.Printf("  lenses: NONE banked for round %d — the findings are recorded and the prompts that produced them are not. `wf round lens <prompt> -name N -model M -round %d`\n", n, n)
 	}
 	fmt.Printf("committed %s\n", short(sha))
 	return nil
@@ -738,7 +871,7 @@ func cmdFreeze(args []string) error {
 			}
 			for _, sha := range r.Shas() {
 				if !w.Git.CommitExists(sha) {
-					return fmt.Errorf("round %d findings row %s: closed by names %s, which is not a commit in this workspace", rn, r.Num, sha)
+					return closedByError(w, fmt.Sprintf("round %d findings row %s", rn, r.Num), sha)
 				}
 			}
 			switch {
@@ -1568,8 +1701,30 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, er
 	return len(findings) > 0, nil
 }
 
+// printProseScope says which artifacts were read as programs rather than as
+// documents, and it prints ALWAYS where any of them exist. A script's prompts
+// are compared; its code is not, and the difference decides what a clean line
+// means. Measured on mocker A3: a decision that moved in the document and did
+// not move in the prompt restating it produced six of one round's twelve
+// blockers, and the operator did not know a script could be compared at all.
+func printProseScope(arts []string, notes []check.Note) {
+	var js []string
+	for _, a := range arts {
+		if check.IsProseJS(a) {
+			js = append(js, a)
+		}
+	}
+	if len(js) > 0 {
+		fmt.Printf("  scope: %d JS artifact(s) read as PROSE — comments and string literals only (%s); what the engine executes is not compared\n",
+			len(js), strings.Join(js, ", "))
+	}
+	for _, n := range notes {
+		fmt.Printf("  note: %s — %s\n", n.File, n.Text)
+	}
+}
+
 func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since string) (bool, error) {
-	sts, err := check.CollectStatements(w.Root, arts, minWords)
+	sts, notes, err := check.CollectStatements(w.Root, arts, minWords)
 	if err != nil {
 		return false, err
 	}
@@ -1626,6 +1781,7 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	}
 	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent, %d numeric, %d operator\n",
 		len(sts), len(groups), divergent, len(nums), len(ops))
+	printProseScope(arts, notes)
 	if hidden > 0 {
 		fmt.Printf("  note: %d group(s) predate %s, not shown\n", hidden, since)
 	}
@@ -1679,7 +1835,7 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 // blind spot (copies contradicting in DIFFERENT words: eight on the first live
 // gate, all found by reviewers) is only closed where an author marked the rule.
 func runRules(w *ws.Workspace, arts []string) (bool, error) {
-	sites, markers, err := check.CollectRuleSites(w.Root, arts)
+	sites, markers, notes, err := check.CollectRuleSites(w.Root, arts)
 	if err != nil {
 		return false, err
 	}
@@ -1709,6 +1865,7 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 	// the rule. A reviewer filed it as a blocker over a check that had just
 	// printed a clean line.
 	fmt.Printf("  scope: this compares the SITES of one [RN] id against each other. It never asks whether a rule still agrees with the section that ARGUES for it — that class is `wf check stale`, and no count here says anything about it\n")
+	printProseScope(arts, notes)
 	// A marked corpus where every id sits at ONE site reaches nothing, and the
 	// bare conflict count then reads as a pass. Measured on a live gate, after
 	// the repair below was done the wrong way round.
@@ -1776,13 +1933,14 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	if err != nil {
 		return false, err
 	}
-	sts, err := check.CollectStatements(w.Root, arts, minWords)
+	sts, notes, err := check.CollectStatements(w.Root, arts, minWords)
 	if err != nil {
 		return false, err
 	}
 	rep := check.FindStale(sts, raw, maxDF)
 	fmt.Printf("## stale — %s..HEAD: %d retired token(s), %d sentence(s) still carrying them (%d scanned, %d written by the range)\n",
 		since, len(rep.Retired), len(rep.Hits), rep.Scanned, rep.Touched)
+	printProseScope(arts, notes)
 	// The two populations that decide whether the line above is a measurement,
 	// and the distinction between them is the whole point. A range that MINED no
 	// vocabulary swept nothing — vacuous, and it says so. A range that mined
@@ -2333,8 +2491,10 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 					// The window that wrote the corpus prices nothing. Printing
 					// "377.8 finding(s) per 100 changed line(s)" in the register
 					// of a measurement is how the meter came to predict ~355
-					// findings for a round that produced 24.
-					ed += " (an artifact was ADDED in this window, so there is no ratio)"
+					// findings for a round that produced 24. WHY there is no
+					// ratio is said in the headline above; this says only that
+					// there is none, where the number would have stood.
+					ed += " (no ratio)"
 				} else {
 					ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
 						100*float64(findings)/float64(lines))
@@ -2378,11 +2538,40 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		if rt, ok := times[n]; ok {
 			tm = fmt.Sprintf("; %.1f min", rt.Span)
 			if rt.Split {
-				tm += fmt.Sprintf(" (review %.1f, fix %.1f, tail %.1f)", rt.Review, rt.Fix, rt.Tail)
+				// The first segment is "open to the first fix commit". On a
+				// `-kind run` round that window IS the run, and calling it
+				// review names the wrong activity in the one round whose
+				// minutes are least like a review's.
+				head := "review"
+				if kinds[n] == "run" {
+					head = "run"
+				}
+				tm += fmt.Sprintf(" (%s %.1f, fix %.1f, tail %.1f)", head, rt.Review, rt.Fix, rt.Tail)
 			}
 		}
-		_, _ = fmt.Fprintf(out, "  round %d [%s] — %d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s%s%s\n",
-			n, state, findings, blockers, byCommit, byProse, open, batches, ed, sz, fi, ln, tm)
+		// BEFORE the counts, because that is where the reading happens.
+		// Measured on mocker A3: nine rounds of blocker descent on the decision
+		// document — 13, 17, 10, 16, 11, 12, 6, 7, 4 — read exactly like
+		// convergence, and under the stop rule one more round with no blocker
+		// closes the gate. The script was then added to the workspace, and
+		// round 10 produced 38 findings and 12 blockers over an artifact nobody
+		// had reviewed at all. The tool KNEW: it printed "(an artifact was
+		// ADDED in this window, so there is no ratio)" in a parenthesis after
+		// the numbers, and the operator read the numbers. A descent that
+		// precedes a first review says nothing about it.
+		first := ""
+		if rw.Authoring {
+			first = "FIRST REVIEW of an artifact ADDED in this window (a descent before it says nothing about it); "
+			if kinds[n] == "tool" {
+				// A `-kind tool` round dispatched no reviewer by declaration,
+				// so "first review" would claim a reading nobody did — the
+				// wave's own defect class, committed by the wave. What is true
+				// of the WINDOW is still true and still suppresses the ratio.
+				first = "an artifact was ADDED in this window and NO reviewer was dispatched — nothing here reviewed it; "
+			}
+		}
+		_, _ = fmt.Fprintf(out, "  round %d [%s] — %s%d finding(s), %d blocker(s); closed: %d commit, %d prose, %d open; %d apply batch(es)%s%s%s%s%s\n",
+			n, state, first, findings, blockers, byCommit, byProse, open, batches, ed, sz, fi, ln, tm)
 	}
 	_, _ = fmt.Fprintf(out, "  total — %d finding(s), %d blocker(s)\n", totalF, totalB)
 	if len(oneBlockerRun) >= 3 {
@@ -2533,12 +2722,25 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	if showTimeFlag {
 		spans := make([]float64, 0, len(times))
 		longest, longestN := 0.0, 0
+		// A round that CONTAINS a live run is not a long round, and the median
+		// is a statement about review rounds. Measured on mocker A3: round 13
+		// spans 288.2 min against a median of 45.3 because it held the launch
+		// — 38 agents over 4h36m — and the note under the line said a span far
+		// above the median is a break rather than work, which is exactly
+		// backwards there. Its span is printed on its own, because the launch
+		// is the one event in a gate's life most worth timing.
+		var runs []int
 		for n, rt := range times {
+			if kinds[n] == "run" {
+				runs = append(runs, n)
+				continue
+			}
 			spans = append(spans, rt.Span)
 			if rt.Span > longest {
 				longest, longestN = rt.Span, n
 			}
 		}
+		sort.Ints(runs)
 		sort.Float64s(spans)
 		auth := ""
 		if m, ok := authoringWindow(w); ok {
@@ -2547,12 +2749,31 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		if len(spans) > 0 {
 			recs := commitLog(w, "HEAD")
 			gate := float64(recs[len(recs)-1].At-recs[0].At) / 3600
-			_, _ = fmt.Fprintf(out, "  time — %s%d round(s) over %.1f h, median round %.1f min, longest %.1f min (round %d)\n",
-				auth, len(spans), gate, spans[len(spans)/2], longest, longestN)
+			// The population is every round the gate opened MINUS the run
+			// rounds, and the line says exactly that rather than calling it
+			// "review rounds": a `-kind tool` round is in this median too, it
+			// always has been, and the medians this project has published (15.5
+			// over 35 rounds of three gates) were measured over it. Narrowing a
+			// population silently is the defect one line up.
+			apart := ""
+			if len(runs) > 0 {
+				apart = fmt.Sprintf(" (%d run round(s) counted apart, below)", len(runs))
+			}
+			_, _ = fmt.Fprintf(out, "  time — %s%d round(s) over %.1f h, median round %.1f min, longest %.1f min (round %d)%s\n",
+				auth, len(spans), gate, spans[len(spans)/2], longest, longestN, apart)
 			// The median, not the mean: a span of several hours is the operator
 			// away from the desk, and three of the four measured gates carry one.
 			// A mean over those describes nobody's round.
 			_, _ = fmt.Fprintf(out, "  note: read the median — a span far above it is a break, not work, and it is in the total\n")
+		}
+		if len(spans) == 0 && len(runs) > 0 {
+			// Every round of this gate contains a run, so there is no review
+			// median at all — said, rather than left as a missing line.
+			_, _ = fmt.Fprintf(out, "  time — %sno round to take a median over; every round below CONTAINS a run\n", auth)
+		}
+		for _, n := range runs {
+			_, _ = fmt.Fprintf(out, "  run — round %d spans %.1f min and CONTAINS a run of what the gate built: not a break, not a review, and outside the median above\n",
+				n, times[n].Span)
 		}
 	}
 	return nil
@@ -3252,7 +3473,7 @@ func worktreeChangedLines(w *ws.Workspace, paths []string) int {
 // ("round N: open (kind) — title"). Derived, not stored: the manifest is small
 // on purpose, and `wf round record` overwrites the scaffold that carries the
 // kind line — the commit subject is the copy nothing rewrites.
-var roundOpenRe = regexp.MustCompile(`^round (\d+): open \((full|delta|tool)\)`)
+var roundOpenRe = regexp.MustCompile(`^round (\d+): open \((full|delta|tool|run)\)`)
 
 // unreadRounds names every round up to `upto` that was opened and shows no sign
 // of having been reviewed: its ledger parsed and holds nothing but the

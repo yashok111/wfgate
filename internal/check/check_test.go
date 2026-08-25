@@ -201,7 +201,7 @@ func TestRuleMarkers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sites, markers, err := CollectRuleSites(root, []string{"a.md", "b.md", "c.md"})
+	sites, markers, _, err := CollectRuleSites(root, []string{"a.md", "b.md", "c.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestRuleMarkers_singleSiteIDsAreNotAComparison(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sites, markers, err := CollectRuleSites(root, []string{"a.md"})
+	sites, markers, _, err := CollectRuleSites(root, []string{"a.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestFindDuplicates_divergentCopy(t *testing.T) {
 		"artifacts/context.md": "- The composition is a pure function called from buildRuntime, not a branch inside it.\n",
 		"artifacts/script.js":  "// the composition is a PURE function called from buildRuntime, not a branch inside it\n",
 	})
-	sts, err := CollectStatements(root, []string{"artifacts/context.md", "artifacts/script.js"}, 8)
+	sts, _, err := CollectStatements(root, []string{"artifacts/context.md", "artifacts/script.js"}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func TestFindDuplicates_divergentCopy(t *testing.T) {
 	commit(t, root, "correct the rule in the context only", map[string]string{
 		"artifacts/context.md": "- The composition is a pure function called from buildRuntime, never a branch inside it.\n",
 	})
-	sts, err = CollectStatements(root, []string{"artifacts/context.md", "artifacts/script.js"}, 8)
+	sts, _, err = CollectStatements(root, []string{"artifacts/context.md", "artifacts/script.js"}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestCollectStatements_unwrapsHardWrappedParagraphs(t *testing.T) {
 		"artifacts/a.md": "The override store keeps exactly one variant per\noperation and the smoke check reads it back after every write.\n",
 		"artifacts/b.md": "The override store keeps exactly one\nvariant per operation and the smoke check reads it back after\nevery write.\n",
 	})
-	sts, err := CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
+	sts, _, err := CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestCollectStatements_unwrapsHardWrappedParagraphs(t *testing.T) {
 	commit(t, root, "rewrap b only", map[string]string{
 		"artifacts/b.md": "The override store keeps exactly one variant per operation\nand the smoke check reads it back after every write.\n",
 	})
-	sts, err = CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
+	sts, _, err = CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestCollectStatements_blocksDoNotJoin(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sts, err := CollectStatements(root, []string{"a.md"}, 8)
+	sts, _, err := CollectStatements(root, []string{"a.md"}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestFindNumericDrift(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sts, err := CollectStatements(root, []string{"a.md", "b.md"}, 5)
+	sts, _, err := CollectStatements(root, []string{"a.md", "b.md"}, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +406,7 @@ func TestFindDuplicates_ignoresSameFileAndShortLines(t *testing.T) {
 		"artifacts/a.md": "short line here\nsame sentence repeated twice in one file for emphasis today\nsame sentence repeated twice in one file for emphasis today\n",
 		"artifacts/b.md": "short line here\n",
 	})
-	sts, err := CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
+	sts, _, err := CollectStatements(root, []string{"artifacts/a.md", "artifacts/b.md"}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,7 +474,7 @@ func TestFindDuplicates_thirdCopyIsStillCompared(t *testing.T) {
 	commit(t, root, "the prompt restates it, differently", map[string]string{"artifacts/prompt.md": contra})
 
 	files := []string{"artifacts/decisions.md", "artifacts/context.md", "artifacts/prompt.md"}
-	sts, err := CollectStatements(root, files, 8)
+	sts, _, err := CollectStatements(root, files, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +510,7 @@ func TestOperatorConflict_wordsAgreeComparisonsDoNot(t *testing.T) {
 		"a.md": "[R1] The retry counter must satisfy retry_count == 3 in every client.\n",
 		"b.md": "[R1] The retry counter must satisfy retry_count != 3 in every client.\n",
 	})
-	sts, err := CollectStatements(root, []string{"a.md", "b.md"}, 8)
+	sts, _, err := CollectStatements(root, []string{"a.md", "b.md"}, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +534,7 @@ func TestOperatorConflict_wordsAgreeComparisonsDoNot(t *testing.T) {
 		}
 	}
 
-	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	sites, _, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -610,7 +610,7 @@ func TestRuleMarkers_wrappedRuleIsComparedWhole(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sites, markers, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	sites, markers, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -641,7 +641,7 @@ func TestFindDuplicates_differingCopiesFromOneCommitAreNotDivergent(t *testing.T
 	root := mkrepo(t, map[string]string{"artifacts/a.md": a, "artifacts/b.md": b})
 
 	files := []string{"artifacts/a.md", "artifacts/b.md"}
-	sts, err := CollectStatements(root, files, 8)
+	sts, _, err := CollectStatements(root, files, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -660,7 +660,7 @@ func TestFindDuplicates_differingCopiesFromOneCommitAreNotDivergent(t *testing.T
 	commit(t, root, "reword one copy alone", map[string]string{
 		"artifacts/b.md": "The reviewer must record any blocker in the findings ledger before the freeze.\n",
 	})
-	sts, err = CollectStatements(root, files, 8)
+	sts, _, err = CollectStatements(root, files, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +691,7 @@ func TestRuleMarkers_emphasisDoesNotEndAStatement(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	sites, _, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -713,7 +713,7 @@ func TestRuleMarkers_emphasisDoesNotHideARealConflict(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	sites, _, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -807,7 +807,7 @@ func TestSplitSentences_codeSpanIsNotATerminator(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	sites, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
+	sites, _, _, err := CollectRuleSites(root, []string{"a.md", "b.md"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -825,5 +825,114 @@ func TestSplitSentences_tabSeparatesSentences(t *testing.T) {
 	got := splitSentencesAt("The first sentence ends here.\tThe second one starts here.")
 	if len(got) != 2 {
 		t.Fatalf("want two sentences, got %d: %+v", len(got), got)
+	}
+}
+
+// The mocker A3 class, and the reason the collector reads a script at all: a
+// decision moved in the document and did NOT move in the prompt restating it —
+// six of one round's twelve blockers. The prompt is a rule SITE, and its text
+// is the prompt's, never the JavaScript around it.
+func TestCollectRuleSites_scriptPromptIsASite(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"artifacts/d.md": "## D6\n\nThe two routes that already answer a 409 must DETACH their envelope from the\nshared component rather than retype it in place [R6].\n",
+		"artifacts/s.mjs": "const GATE = { owns: ['internal/api'], vector: 'reviewer' }\n" +
+			"const CONTRACT = `\nThe two routes that already answer a 409 keep their existing envelope beside\nthe new one [R6].\n`\n" +
+			"await agent(CONTRACT, { label: 'contract' })\n",
+	}
+	for rel, body := range files {
+		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sites, markers, notes, err := CollectRuleSites(root, []string{"artifacts/d.md", "artifacts/s.mjs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if markers != 2 || len(sites) != 1 {
+		t.Fatalf("want the rule marked once in each artifact, got %d marker(s) over %d id(s)", markers, len(sites))
+	}
+	if len(notes) != 0 {
+		t.Fatalf("the script HAS prose, so there is nothing to note: %+v", notes)
+	}
+	c := RuleConflicts(sites)
+	if len(c) != 1 || c[0].ID != "R6" {
+		t.Fatalf("the two sites say different things; want R6 in conflict, got %+v", c)
+	}
+	var script *RuleSite
+	for i, s := range c[0].Sites {
+		if s.File == "artifacts/s.mjs" {
+			script = &c[0].Sites[i]
+		}
+	}
+	if script == nil {
+		t.Fatal("the script's prompt must be one of the sites")
+	}
+	// The defect this replaced: the site's text was joined JavaScript —
+	// `const GATE = { owns: ['internal/api'], vector: 'reviewer' } const ...`.
+	if strings.Contains(script.Text, "const") || strings.Contains(script.Text, "owns") {
+		t.Fatalf("a rule site must be the PROMPT, not the code around it: %q", script.Text)
+	}
+	if !strings.HasPrefix(script.Text, "The two routes") {
+		t.Fatalf("want the prompt sentence, got %q", script.Text)
+	}
+	// Line 3 is the first line of the template, which is where the sentence
+	// starts and where blame must read.
+	if script.Line != 3 {
+		t.Fatalf("want the site attributed to line 3, got %d", script.Line)
+	}
+}
+
+// Two literals on neighbouring lines are two texts. Blanking the code alone
+// left them joined into a sentence nobody wrote, which is the same defect one
+// layer down.
+func TestCollectStatements_scriptLiteralsDoNotJoin(t *testing.T) {
+	root := t.TempDir()
+	body := "const A = 'The override store keeps exactly one variant per operation.'\n" +
+		"const B = 'The smoke check reads it back after every single write.'\n"
+	if err := os.WriteFile(filepath.Join(root, "s.mjs"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sts, _, err := CollectStatements(root, []string{"s.mjs"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 2 {
+		t.Fatalf("want one statement per literal, got %d: %+v", len(sts), sts)
+	}
+	for _, s := range sts {
+		if strings.Contains(s.Text, "const") {
+			t.Fatalf("code reached a statement: %q", s.Text)
+		}
+		if strings.Contains(s.Text, "variant") && strings.Contains(s.Text, "smoke") {
+			t.Fatalf("two literals were joined into one statement: %q", s.Text)
+		}
+	}
+	if sts[1].Line != 2 {
+		t.Fatalf("the second literal is on line 2, got %d", sts[1].Line)
+	}
+}
+
+// A script whose prompts are all assembled somewhere else contributes nothing
+// to any check here, and it would otherwise print the usual clean line. The
+// population is stated instead.
+func TestCollectStatements_scriptWithoutProseSaysSo(t *testing.T) {
+	root := t.TempDir()
+	body := "import { readFileSync } from 'node:fs'\nconst P = readFileSync(pathToPrompt)\nawait agent(P, opts)\n"
+	if err := os.WriteFile(filepath.Join(root, "s.mjs"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sts, notes, err := CollectStatements(root, []string{"s.mjs"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 0 {
+		t.Fatalf("nothing here is prose, got %+v", sts)
+	}
+	if len(notes) != 1 || notes[0].File != "s.mjs" {
+		t.Fatalf("want one note naming the file, got %+v", notes)
 	}
 }

@@ -649,7 +649,15 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       a site that STATES the rule — a sentence referring to one ("because of R2", written with the
       marker) states nothing
       and disagrees with every statement of it; read the `compared` count, because ids that each sit
-      at a single site are a check that reached nothing and still printed zero conflicts. **And a marked
+      at a single site are a check that reached nothing and still printed zero conflicts. **A `.mjs`
+      artifact carries markers too**: it is compared as PROSE — its comments and the literal chunks of
+      its strings, never its code — so an orchestration script's prompt restating a decision is a site
+      like any other, and marking it together with the document's statement is the only mechanical
+      comparison of what the two copies SAY (`dup` reports the pair as `sim 1.00` for a whole gate and
+      correctly declines to call it a defect: a script restating a decision IS the design). Measured on
+      mocker A3: six of round 10's twelve blockers were one decision that moved in the document during
+      round 9 and did not move in the prompt restating it, and the dearest of them carried, verbatim,
+      the document's own sentence warning that this half read alone is wrong. **And a marked
       site can DECAY into a pointer without the marker moving.** Measured: a fix that cut a section left
       one of the two sites of three rules reading "every one of the five routes of R1" — the marker
       still there, the enumeration it named deleted from the document — and `wf check rules` printed

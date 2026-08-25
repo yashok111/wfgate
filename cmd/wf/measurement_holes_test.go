@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -369,4 +370,242 @@ func TestRulesHeaderSaysItComparedNothingOnAnUnmarkedCorpus(t *testing.T) {
 	out, err := runWF(t, wsDir, "check", "rules")
 	noErr(t, err, "check rules")
 	mustContain(t, out, "0 marker(s), 0 id(s), 0 compared, 0 conflict(s) — NOT A PASS, nothing was compared")
+}
+
+// mocker A3: nine rounds of blocker descent on the decision document read like
+// convergence, the orchestration script was then ADDED to the workspace, and
+// round 10 produced 38 findings and 12 blockers over an artifact nobody had
+// reviewed. The tool knew — it said so in a parenthesis AFTER the counts, and
+// the operator read the counts.
+func TestStatsSaysAFirstReviewBeforeTheCounts(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "the script arrives", "-kind", "delta"); err != nil {
+		t.Fatal(err)
+	}
+	// The A3 shape exactly: a second artifact enters an open gate.
+	script := filepath.Join(filepath.Dir(wsDir), "gate.mjs")
+	write(t, script, "const P = `\nThe two routes keep their existing envelope beside the new one.\n`\n")
+	if _, err := runWF(t, wsDir, "add", script); err != nil {
+		t.Fatal(err)
+	}
+	reviewedRound(t, wsDir, 2)
+
+	out, err := runWF(t, wsDir, "stats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := ""
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "round 2 [") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("no round 2 line in:\n%s", out)
+	}
+	at := strings.Index(line, "FIRST REVIEW")
+	if at < 0 {
+		t.Fatalf("round 2 reviewed an artifact for the first time and must say so: %s", line)
+	}
+	// BEFORE the counts is the whole finding: the parenthesis after them was
+	// already there and was read as a footnote.
+	if c := strings.Index(line, "finding(s)"); at > c {
+		t.Fatalf("the first review must be stated before the counts: %s", line)
+	}
+}
+
+// The other half of the same population: an ordinary delta round must not carry
+// the mark, or it stops meaning anything.
+func TestStatsDoesNotCallEveryRoundAFirstReview(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "the fixes", "-kind", "delta"); err != nil {
+		t.Fatal(err)
+	}
+	edits := filepath.Join(filepath.Dir(wsDir), "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=reword\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", edits); err != nil {
+		t.Fatal(err)
+	}
+	reviewedRound(t, wsDir, 2)
+
+	out, err := runWF(t, wsDir, "stats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "round 2 [") && strings.Contains(l, "FIRST REVIEW") {
+			t.Fatalf("round 2 added nothing: %s", l)
+		}
+	}
+}
+
+// A round that records a LAUNCH has the TARGET's commit in hand and nothing
+// else, and the refusal used to name neither repository — so it read as the
+// tool being unable to see a commit that obviously exists. The rule stands (a
+// closure names the workspace commit that landed the fix); what changed is that
+// the error says where it looked and what it found.
+func TestRecordSaysWhichRepositoryTheShaIsMissingFrom(t *testing.T) {
+	wsDir := newGate(t)
+	target := filepath.Join(filepath.Dir(wsDir), "target")
+	raw, err := gitOut(t, target, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(raw)
+
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | the slice shipped | "+head[:8]+" |\n")
+	out, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	if err == nil {
+		t.Fatalf("a sha the workspace does not have must be refused:\n%s", out)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "GATE WORKSPACE") || !strings.Contains(msg, wsDir) {
+		t.Fatalf("the error must name the repository it looked in: %s", msg)
+	}
+	if !strings.Contains(msg, "TARGET repository") || !strings.Contains(msg, target) {
+		t.Fatalf("this sha IS a commit in the target, and the error must say so: %s", msg)
+	}
+}
+
+// The other half: a sha that is in NEITHER repository gets no invented claim
+// about the target.
+func TestRecordDoesNotInventATargetCommit(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | a claim | 1234567890abcdef |\n")
+	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	if err == nil {
+		t.Fatal("a sha nothing has must be refused")
+	}
+	if strings.Contains(err.Error(), "TARGET repository") {
+		t.Fatalf("that sha is in no repository at all: %s", err)
+	}
+}
+
+// Round 13 of mocker A3 spans 288.2 min against a median of 45.3 because it
+// CONTAINED the launch — 38 agents over 4h36m — and `wf stats -time` answered
+// with "a span far above the median is a break, not work". The launch is the
+// one event in a gate's life most worth timing, and it had no name.
+func TestStatsTimeKeepsARunRoundOutOfTheMedian(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "round", "new", "-title", "the launch", "-kind", "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out, "round 2 opened (run)")
+	scaffold, err := os.ReadFile(filepath.Join(wsDir, "rounds", "r2", "findings.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, string(scaffold), "Kind: run", "its span is the run, not a break")
+	reviewedRound(t, wsDir, 2)
+
+	out, err = runWF(t, wsDir, "stats", "-time")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out,
+		"round 2 [open, run]",
+		"run — round 2 spans",
+		"CONTAINS a run of what the gate built",
+		// One round of two is outside the run, and the median is over that
+		// one. The population is NOT renamed "review rounds": a tool round is
+		// in this median too and always has been, and the medians published
+		// from these gates were measured over it.
+		"1 round(s) over", "1 run round(s) counted apart")
+}
+
+// The first segment of the split is "open to the first fix commit", and on a
+// run round that window IS the run. Calling it review names the wrong activity
+// in the one round whose minutes are least like a review's.
+func TestStatsTimeCallsARunRoundsFirstSegmentTheRun(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "the launch", "-kind", "run"); err != nil {
+		t.Fatal(err)
+	}
+	// A fix commit inside the round is what makes the span split at all.
+	edits := filepath.Join(filepath.Dir(wsDir), "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=reword\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", edits); err != nil {
+		t.Fatal(err)
+	}
+	reviewedRound(t, wsDir, 2)
+	out, err := runWF(t, wsDir, "stats", "-time")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if !strings.Contains(l, "round 2 [open, run]") {
+			continue
+		}
+		if strings.Contains(l, "(review ") {
+			t.Fatalf("a run round's first segment is the run: %s", l)
+		}
+		if !strings.Contains(l, "(run ") {
+			t.Fatalf("the split must name the run: %s", l)
+		}
+		return
+	}
+	t.Fatalf("no round 2 line in:\n%s", out)
+}
+
+// A kind the tool does not know must be refused by name, not written into a
+// commit subject nothing can parse back.
+func TestRoundNewRefusesAnUnknownKind(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runWF(t, wsDir, "round", "new", "-title", "x", "-kind", "launch")
+	if err == nil {
+		t.Fatal("an unknown kind must be refused")
+	}
+	if !strings.Contains(err.Error(), "full, delta, tool or run") {
+		t.Fatalf("the refusal must name the kinds: %s", err)
+	}
+}
+
+// Eleven of mocker A3's thirteen rounds bank no lens: the operator started at
+// round 11, and for rounds 1-10 the findings are in the ledger while the
+// prompts that produced them are gone. A note, never a refusal — refusing here
+// would be refusing to write down what was found.
+func TestRecordAsksForTheRosterItDoesNotHave(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | MAJOR | a wording this round filed |  |\n")
+	out, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out, "lenses: NONE banked for round 1", "wf round lens")
+
+	// And it stops asking once the roster exists.
+	prompt := filepath.Join(filepath.Dir(wsDir), "citations.md")
+	write(t, prompt, "Find every citation in the artifact that no longer resolves to the line it names.\n")
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "citations", "-model", "opus"); err != nil {
+		t.Fatal(err)
+	}
+	ledger(t, wsDir, 1, "| 1 | MAJOR | a wording this round filed |  |\n| 2 | MAJOR | and a second one |  |\n")
+	out, err = runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustNotContain(t, out, "lenses: NONE banked")
 }

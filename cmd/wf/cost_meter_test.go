@@ -275,3 +275,80 @@ func TestStatsPrintsTheFixInducedRuleTheManualHas(t *testing.T) {
 	mustContain(t, out, "fix-induced — 1 of 1 finding(s)", "CONTINUE signal, never a stop signal")
 	mustNotContain(t, out, "climbs toward 100%")
 }
+
+// The note beside the prediction has advised this sweep since the meter existed
+// — "if this batch changed a RULE, its consumers are NOT in this diff" — and it
+// named nothing, so the operator had to go and look. Measured on mocker A3: six
+// of round 10's twelve blockers were one decision repaired in the document and
+// left standing in the prompt restating it.
+func TestApplyRuleNamesTheSitesOutsideTheBatch(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	doc := filepath.Join(tmp, "rules.md")
+	// TWO sites in the file the batch writes and ONE outside it, so the count
+	// of sites outside the batch cannot coincide with the count inside.
+	write(t, doc, "# Rules\n\n- [R6] The two routes DETACH their envelope from the shared component.\n\n"+
+		"## Restated for the reviewer\n\n- [R6] The two routes DETACH their envelope from the shared component.\n")
+	if _, err := runWF(t, wsDir, "add", doc); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(tmp, "gate.mjs")
+	write(t, script, "const CONTRACT = `\nThe two routes keep their existing envelope beside the new one [R6].\n`\n")
+	if _, err := runWF(t, wsDir, "add", script); err != nil {
+		t.Fatal(err)
+	}
+
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/rules.md  count=2  note=R6 repair\n"+
+		"<<<<\nfrom the shared component.\n====\nfrom the shared component, and the 409 stays where it is.\n>>>>\n")
+	out, err := runWF(t, wsDir, "apply", "-f", edits, "-rule", "6", "-m", "rules: repair R6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out,
+		"rule: [R6] is marked at 3 site(s), 1 of them outside this batch",
+		"artifacts/gate.mjs:",
+		"← a file this batch wrote")
+	// The site the batch did NOT write is the whole point, and it must not be
+	// marked as one it did.
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "artifacts/gate.mjs:") && strings.Contains(l, "this batch wrote") {
+			t.Fatalf("the script was not in this batch: %s", l)
+		}
+	}
+}
+
+// A batch declaring a rule nothing marks is the loudest outcome of the flag,
+// and it is not an error: that is exactly the corpus `wf check rules` cannot
+// reach either.
+func TestApplyRuleSaysWhenNothingCarriesTheMarker(t *testing.T) {
+	wsDir := newGate(t)
+	edits := filepath.Join(filepath.Dir(wsDir), "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=reword\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	out, err := runWF(t, wsDir, "apply", "-f", edits, "-rule", "R9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out, "rule: NO site carries [R9]")
+}
+
+// The id is normalised where an operator will actually type it, and refused by
+// NAME otherwise — swept into "no rule declared" it would be a silent opt-out
+// of the check the flag exists for.
+func TestNormaliseRuleID(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"", ""}, {"R6", "R6"}, {"r6", "R6"}, {"6", "R6"}, {"[R6]", "R6"}, {" R12 ", "R12"},
+	} {
+		got, err := normaliseRuleID(c.in)
+		if err != nil || got != c.want {
+			t.Errorf("%q: got %q, %v; want %q", c.in, got, err, c.want)
+		}
+	}
+	for _, bad := range []string{"six", "R", "R6a", "-1", "[]"} {
+		if _, err := normaliseRuleID(bad); err == nil {
+			t.Errorf("%q must be refused by name", bad)
+		}
+	}
+}

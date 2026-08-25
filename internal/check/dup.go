@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"git.sumka.site/yakov/wfgate/internal/jstext"
 )
 
 // A gate's artifacts restate the same rules in different places: the decision
@@ -118,6 +119,26 @@ func trimMarkers(s string) string {
 	}
 }
 
+// Note is something the collector must SAY about a file it read, carried out
+// to the report instead of being decided in silence. A JavaScript artifact
+// whose prose is empty compares nothing, and a check that compared nothing
+// must not print like a check that found nothing.
+type Note struct {
+	File string
+	Text string
+}
+
+// IsProseJS reports an artifact whose prose is written INSIDE a program: the
+// orchestration script of a gate is an artifact like any other, and its prompts
+// restate the decisions of the document beside it.
+func IsProseJS(rel string) bool {
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".js", ".mjs", ".cjs":
+		return true
+	}
+	return false
+}
+
 // CollectStatements splits artifacts into comparable sentences. minWords drops
 // fragments: below roughly eight words, two unrelated sentences collide often
 // enough that the report stops being worth reading.
@@ -128,69 +149,120 @@ func trimMarkers(s string) string {
 // fragment pairs — measured on P2e: 92 divergent groups, ZERO real, 36 of them
 // provable prefix-pairs of a wrap split. A sentence is compared as a sentence,
 // not as whatever happened to fit on a line.
-func CollectStatements(root string, files []string, minWords int) ([]Statement, error) {
+//
+// A `.js`/`.mjs` artifact is read as PROSE ONLY — its comments and the literal
+// chunks of its strings — and each prose SPAN is its own paragraph. Measured on
+// mocker A3: reading the whole file as prose made `const A = { owns:
+// ['internal/api'], vector: 'reviewer' } const P = "The two routes…` one
+// statement, and `wf check rules` compared a rule against joined JavaScript.
+// Blanking the code was not enough on its own — two literals on neighbouring
+// lines still joined into a sentence nobody wrote — so the boundary is the
+// literal, not the line. Comments stay in: a rule restated in a comment is a
+// copy that can drift, which is the whole subject of this file. Only what the
+// engine EXECUTES goes out.
+func CollectStatements(root string, files []string, minWords int) ([]Statement, []Note, error) {
 	var out []Statement
+	var notes []Note
 	for _, rel := range files {
 		b, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		lines := strings.Split(string(b), "\n")
-		type piece struct {
-			text string
-			line int
-		}
+		src := string(b)
+		before := len(out)
 		var para []piece
 		flush := func() {
-			if len(para) == 0 {
-				return
-			}
-			texts := make([]string, len(para))
-			starts := make([]int, len(para))
-			off := 0
-			for i, p := range para {
-				texts[i] = p.text
-				starts[i] = off
-				off += len(p.text) + 1 // the joining space
-			}
-			joined := strings.Join(texts, " ")
-			for _, s := range splitSentencesAt(joined) {
-				norm, toks := normalise(s.text)
-				ops := opsOf(s.text)
-				if len(strings.Fields(norm)) < minWords {
-					continue
-				}
-				// The sentence is attributed to the line it STARTS on; blame
-				// reads that line. A sentence spanning a wrap whose edit landed
-				// on its second line attributes to the first — the price of
-				// comparing sentences instead of fragments, and the smaller
-				// error of the two.
-				line := para[0].line
-				for i := len(para) - 1; i >= 0; i-- {
-					if starts[i] <= s.off {
-						line = para[i].line
-						break
-					}
-				}
-				out = append(out, Statement{File: rel, Line: line, Text: strings.TrimSpace(s.text), Norm: norm, Toks: toks, Ops: ops})
-			}
+			out = append(out, statementsOf(rel, para, minWords)...)
 			para = para[:0]
 		}
-		for n := 1; n <= len(lines); n++ {
-			raw := lines[n-1]
-			t := trimMarkers(raw)
-			if t == "" {
-				flush()
-				continue
+		// A chunk is a run of lines the paragraph rules apply WITHIN: the whole
+		// file for a document, one prose span for a program. Chunks never join.
+		feed := func(pieces []piece) {
+			for _, p := range pieces {
+				if p.text == "" {
+					flush()
+					continue
+				}
+				if startsBlock(p.raw) {
+					flush()
+				}
+				para = append(para, p)
 			}
-			if startsBlock(raw) {
-				flush()
-			}
-			para = append(para, piece{t, n})
 		}
-		flush()
+		if IsProseJS(rel) {
+			for _, sp := range jstext.ProseSpans(src) {
+				if !sp.Join {
+					flush()
+				}
+				feed(piecesOf(src[sp.From:sp.To], jstext.LineAt(src, sp.From)))
+			}
+			flush()
+		} else {
+			feed(piecesOf(src, 1))
+			flush()
+		}
+		// The population, per file, said where it matters. A script whose
+		// prompts are all built somewhere else contributes nothing to any
+		// check here, and it would otherwise print the usual clean line.
+		if IsProseJS(rel) && len(out) == before {
+			notes = append(notes, Note{File: rel, Text: "JS artifact: 0 statement(s) in its comments and string literals — nothing from this file was compared"})
+		}
 	}
-	return out, nil
+	return out, notes, nil
+}
+
+// piece is one line of prose, kept with the line it came from so blame reads
+// that line, and with its RAW text so the block rules see the decoration
+// trimMarkers strips.
+type piece struct {
+	text string
+	raw  string
+	line int
+}
+
+func piecesOf(s string, firstLine int) []piece {
+	lines := strings.Split(s, "\n")
+	out := make([]piece, len(lines))
+	for i, raw := range lines {
+		out[i] = piece{text: trimMarkers(raw), raw: raw, line: firstLine + i}
+	}
+	return out
+}
+
+// statementsOf splits one paragraph into sentences, attributing each to the
+// line it STARTS on. A sentence spanning a wrap whose edit landed on its second
+// line attributes to the first — the price of comparing sentences instead of
+// fragments, and the smaller error of the two.
+func statementsOf(rel string, para []piece, minWords int) []Statement {
+	if len(para) == 0 {
+		return nil
+	}
+	texts := make([]string, len(para))
+	starts := make([]int, len(para))
+	off := 0
+	for i, p := range para {
+		texts[i] = p.text
+		starts[i] = off
+		off += len(p.text) + 1 // the joining space
+	}
+	joined := strings.Join(texts, " ")
+	var out []Statement
+	for _, s := range splitSentencesAt(joined) {
+		norm, toks := normalise(s.text)
+		ops := opsOf(s.text)
+		if len(strings.Fields(norm)) < minWords {
+			continue
+		}
+		line := para[0].line
+		for i := len(para) - 1; i >= 0; i-- {
+			if starts[i] <= s.off {
+				line = para[i].line
+				break
+			}
+		}
+		out = append(out, Statement{File: rel, Line: line, Text: strings.TrimSpace(s.text), Norm: norm, Toks: toks, Ops: ops})
+	}
+	return out
 }
 
 // startsBlock reports a line that opens a new statement even without a blank

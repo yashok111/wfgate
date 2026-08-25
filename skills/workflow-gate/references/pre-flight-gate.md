@@ -57,7 +57,7 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    does. A hand edit plus `git commit` gives up both properties, which are the only reasons the command
    exists.
 
--1b. **Open the round: `wf round new -title "<what this round must find or close>" [-kind full|delta|tool]`.**
+-1b. **Open the round: `wf round new -title "<what this round must find or close>" [-kind full|delta|tool|run]`.**
    It scaffolds `rounds/rN/findings.md`. This is not optional bookkeeping: `wf freeze` refuses while no
    round is open, so a gate that skips it cannot reach step 2. Each later round opens its own before
    re-freezing — a frozen round is never re-frozen. The KIND is recorded in the scaffold because the
@@ -68,6 +68,14 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    itself: P2e recorded two of those as ordinary rounds, and the stop rule then read a blocker descent
    of 15→13→4→1→1 where the reviewer descent, the one the rule is about, was 15→13→4→1. `wf stats`
    counts tool rounds apart, and a tooling round's blocker does not restart the stop rule's clock.
+   `run` marks a round that CONTAINS a live run of what the gate built. It is a reviewer round
+   everywhere else — what a run reports is evidence produced by executing, so its zero is a measured
+   zero and its findings belong in the descent the stop rule reads — and only the CLOCK treats it
+   apart: `wf stats -time` keeps its span out of the median and prints it on its own line. Measured:
+   one gate's round 13 spans 288.2 minutes against a median of 45.3 because it held the launch (38
+   agents over 4h36m), and the note under the time line — "a span far above the median is a break,
+   not work" — is precisely backwards there. The launch is the one event in a gate's life most worth
+   timing.
 
    **The scaffold is a form, and an empty form briefs nobody.** When round N's reviewers report, write
    what they found up and put it in with `wf round record <file>` BEFORE applying the fixes — the
@@ -97,11 +105,18 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    it dispatched no reviewer by declaration); a banked prompt is never rewritten, and
    `wf round lens` with no file prints the roster. It is also how a round whose vectors ran and found
    NOTHING says so: see the stop rule below, and the refusals in `wf freeze` and `wf close`.
+   `wf round record` prints a note when the round it just recorded banks no lens, because recording
+   the findings is the step that feels like the work: measured on mocker A3, eleven of thirteen rounds
+   banked none, and for rounds 1-10 the findings are in the ledger while the prompts that produced
+   them are gone — so the claim that gate most wanted to make from its own numbers could not be
+   checked against anything.
 
    **The findings table is a validated ledger, not free text.** `wf round record` parses the scaffold's
    table before writing a byte: a `closed by` cell naming a commit that does not exist in the workspace
    rejects the whole record (a landed lie briefs the next round with fiction; a rejected one announces
-   itself), and the report prints the closure split — by commit / by prose / open. An OPEN blocker is
+   itself) — the refusal names the repository it looked in, and says so when the sha IS a commit in the
+   TARGET, which is what a round recording a LAUNCH reaches for; cite the workspace commit that landed
+   the fix and write the target's sha as prose, and the report prints the closure split — by commit / by prose / open. An OPEN blocker is
    legal at record time — findings are recorded when FILED, closures land later — but not at freeze
    time: `wf freeze` reads the findings of the round being CLOSED (the previous round — the frozen
    round's own file is always a blank scaffold, so checking only it would pass vacuously forever) as
@@ -486,7 +501,18 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   or more sites. The class it is for is a description and an enumeration of the same set disagreeing —
   the single most expensive failure of one decision gate, three separate times, each costing rounds —
   so the id goes on the sentence that describes the set AND on the list that enumerates it.
-  The unmarked contradictions stay a reviewer's find. **Mark the rules while
+  The unmarked contradictions stay a reviewer's find.
+  **Mark the SCRIPT's restatements too.** A `.js`/`.mjs` artifact is compared as PROSE — its comments
+  and the literal chunks of its strings, each literal its own text, never the code — so a prompt that
+  restates a decision is a rule SITE like any other, and marking both it and the document's statement
+  with one id is the only mechanical comparison of what the two copies SAY. `dup` sees the pair — a
+  script restating a decision reports `sim 1.00` for a whole gate — and correctly declines to call it
+  a defect, because that restatement IS the design. Measured on mocker A3: six of round 10's twelve
+  blockers were one decision that moved in the document during round 9 and did not move in the prompt
+  restating it, and the most expensive instance carried, verbatim, the document's own sentence warning
+  that this half read alone is wrong. `wf check stale` catches the vocabulary half and misses every
+  restatement that paraphrased the old rule in new words, which is most of them.
+  **Mark the rules while
   the gate is still running, not afterwards** — this is where the check earns its keep, and it earned
   it on the first run that did: two rules marked after they had bitten in three consecutive rounds
   produced a divergence across the DERIVED pair on the check's first run over it, which is exactly the
@@ -513,7 +539,10 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   quoted for the command sequence measures a narrower span (the last apply to the next round's open)
   and is not the `tail` column.
   Read the median: a span of several hours is the operator away from the desk, and three of the four
-  measured workspaces carry one. The same line prints the AUTHORING window — init to the first
+  measured workspaces carry one. A `-kind run` round's span is the run: it is printed on its own line,
+  split under the head `run` rather than `review`, and kept out of the median rather than counted as a
+  long round or a break. Nothing else narrows that population — a tool round is in this median too, and
+  the figures above were measured over it. The same line prints the AUTHORING window — init to the first
   artifact, 42 and 10 minutes on two gates — which no round covers because it happens before round 1
   opens.
 - **Drop FACTS first when the count descends.** One gate's round 1 returned: SEAMS 3 blockers,
@@ -537,6 +566,9 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   coordinate systems; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
   `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
   `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines, and
+  `wf apply -rule RN` declares the rule a batch changes and NAMES the other sites carrying that
+  marker, marking the ones in files the batch wrote — the sweep the note beside the number has been
+  pointing at since the meter existed, done at the moment the fix lands;
   `wf apply` notes when a batch's CHANGED LINES predict a costly next round — measured, the case that
   matters is few edits over many lines: one gate's two-edit window changed 933 lines, 931 of them in
   a single commit, and the per-edit meter — which had seen only the other, one-line edit — called the
@@ -602,6 +634,15 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   seven findings and another blocker, and a 3-of-3 fix-induced round carried a blocker itself. The
   blocker descent is not monotone either — 7, 5, 1, 0, 2, 5, 3, 2, 1, 0 on one gate — so a
   zero is not a trend. The stop rule stays exactly what it says above, and nothing else does. The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1].
+  **And a descent that PRECEDES a first review says nothing about it.** A round whose window brings a
+  new artifact into the gate reviews it for the first time, and `wf stats` says so BEFORE that round's
+  counts — the suppressed ratio used to sit in a parenthesis after them. Measured on mocker A3: nine
+  rounds of blocker descent on the decision document — 13, 17, 10, 16, 11, 12, 6, 7, 4 — read exactly
+  like convergence, one more empty round would have closed the gate under this rule, and then the
+  orchestration script was added and round 10 produced 38 findings and 12 blockers over an artifact
+  nobody had reviewed at all. On a `-kind tool` round the same line says an artifact was added and NO
+  reviewer was dispatched: that round reviewed nothing by declaration, and claiming a first review for
+  it would be this bullet's own defect committed in the fix for it.
   **And an UNFILLED findings scaffold is not a measured zero.** A round that was opened, frozen and
   never dispatched leaves the ledger `wf round new` wrote, so `wf stats` printed `0 finding(s),
   0 blocker(s)` — the same line the round that ENDS a gate prints, and under this rule a legal close

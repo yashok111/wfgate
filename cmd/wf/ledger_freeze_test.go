@@ -228,7 +228,7 @@ func TestRefusals(t *testing.T) {
 		if out, err := runWF(t, wsDir, "freeze"); err == nil {
 			t.Fatalf("want a refusal, got:\n%s", out)
 		} else {
-			mustContain(t, err.Error(), "not a commit in this workspace")
+			mustContain(t, err.Error(), "not a commit in this GATE WORKSPACE")
 		}
 	})
 
