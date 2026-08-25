@@ -347,8 +347,8 @@ Default = **3 reviewers, each a different vector** (round 1 only — see round d
 1. **Orchestration correctness & safety** — control flow is right: `pipeline()` vs `parallel()`-barrier choice justified; loop termination sound and every `while`-loop guards on `budget.total` (can't run to the 1000-agent cap); dedup-vs-`seen` correct; `schema` present on every structured return; stage args threaded; return shape sane; `.filter(Boolean)` after `parallel()`; no race on global `phase()` inside a fan-out (use `opts.phase`); `isolation:'worktree'` only when agents mutate files in parallel. ALSO enforce the **Workflow cost & context discipline** section: flag read-amplification (N producers each re-reading the whole corpus instead of working from a map + named slices), any large shared blob (>~10-20 KB) inlined into every fan-out agent, and run the total-agents × per-agent-read sanity estimate — a read-amplifying design is a BLOCKER (redesign before launch), not an advisory.
 2. **Model- and effort-routing conformance & tier fit** — the script obeys the model-routing section above: every `agent()` carries an explicit `model` AND an explicit `effort`, the model mirrored on its `meta.phases[]` entry for a single-tier phase and named in that entry's `detail` for a phase that deliberately mixes tiers (a mixed phase has one metadata slot and two models — do not report the absent mirror as a violation, and do not accept a phase flattened to one tier just to produce one). `effort` has NO metadata slot at all: a mixed-effort phase names its efforts in the `detail` string, and an absent `meta.phases[].effort` is never a finding — a MISSING per-call `effort` always is, because the omitted value is inherited from whichever session launches the run. Beyond that mechanical check, this reviewer ALWAYS judges tier fit and never rubber-stamps the author's choice — but reasons per *role*, not per call (a fan-out's N identical producers are ONE role, judged once; then spot-check that no individual call deviates from its role's tier). For each role, honestly weigh the assigned model's real capability against the task as written, then apply the routing tier-list:
    - **Under-powered → propose an UPGRADE, treated as a BLOCKER** — but ONLY when the assignment fails the routing section's *full* three-prong opus test: the error must also be uncatchable by the section-review gate or any cheap downstream step (prong 2) and costly to undo (prong 3). A producer whose error the gate catches stays cheap; never upgrade on prong-1 ("might err") alone.
-   - **Over-powered → propose a DOWNGRADE, MAJOR at most** (recorded/surfaced, never loops the gate — "advisory" is the ROLE, not the level: the level you file is on the closed BLOCKER/MAJOR/MINOR/NOTE scale) — flag a tier above what the tier-list assigns (opus inside a fan-out is a hard ban; sonnet doing pure grep-and-report → haiku). Over-spend is a soft target, not a defect.
-   The downgrade lens targets the *workflow's* runtime agents (which run at scale, up to the 1000-agent cap), NOT this gate's own opus reviewers (their top-tier spend is justified separately above). Task scope/shape is vector 3's call; runtime cost/cap safety (budget-guards, agent-count, fan-out size) is vector 1's — this reviewer judges only which *tier* and which *effort* each role should be. Judge the two axes SEPARATELY: an opus role at `low` and a haiku role at `high` are both legitimate, and a script where every tier moves in lockstep with its effort has almost certainly chosen one of them by reflex. The effort tiers are the ones in the routing section (mechanical → `low`, ordinary producer → `medium`, a step nothing downstream re-checks → `high`, a once-only step whose error burns the fan-out → `xhigh`/`max`), and `high`+ on a per-item agent inside a `parallel()`/`pipeline()` is the same defect as opus there. Until a run measures what a lower effort costs in findings, an over-powered effort is advisory like an over-powered model — filed MAJOR or MINOR, never looping the gate; treat only the absence as a blocker. Direct this reviewer at the `agent()` calls and their `meta.phases[]` pairs.
+   - **Over-powered → propose a DOWNGRADE, filed as a NOTE** (recorded/surfaced, never loops the gate — "advisory" is the ROLE, not the level, and over-spend is by this section's own words not a defect, which is what NOTE means on the closed scale; file MINOR where the row names a concrete cost) — flag a tier above what the tier-list assigns (opus inside a fan-out is a hard ban; sonnet doing pure grep-and-report → haiku). Over-spend is a soft target, not a defect.
+   The downgrade lens targets the *workflow's* runtime agents (which run at scale, up to the 1000-agent cap), NOT this gate's own opus reviewers (their top-tier spend is justified separately above). Task scope/shape is vector 3's call; runtime cost/cap safety (budget-guards, agent-count, fan-out size) is vector 1's — this reviewer judges only which *tier* and which *effort* each role should be. Judge the two axes SEPARATELY: an opus role at `low` and a haiku role at `high` are both legitimate, and a script where every tier moves in lockstep with its effort has almost certainly chosen one of them by reflex. The effort tiers are the ones in the routing section (mechanical → `low`, ordinary producer → `medium`, a step nothing downstream re-checks → `high`, a once-only step whose error burns the fan-out → `xhigh`/`max`), and `high`+ on a per-item agent inside a `parallel()`/`pipeline()` is the same defect as opus there. Until a run measures what a lower effort costs in findings, an over-powered effort is advisory like an over-powered model — filed NOTE, or MINOR where the row names a concrete cost, never looping the gate; treat only the absence as a blocker. Direct this reviewer at the `agent()` calls and their `meta.phases[]` pairs.
 3. **Goal alignment, prompt adequacy & completeness** — the script actually fulfills the user's request and covers the full scope (no silent top-N / sampling caps without a `log()`); each agent's *prompt* carries the context/inputs it needs and the `schema`'s intent is unambiguous (its mere presence is vector 1's check; a correctly-wired agent still produces garbage if briefed badly); every artifact-producing section ends with the dual section-review gate; the `meta` block is a pure literal whose phase titles match the `phase()` calls.
 
 **Where to aim them, from five phases of evidence.** Across the nine rounds of the last two gates, ZERO
@@ -409,8 +409,9 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   findings use, `-asks` is the closed set (`orchestration, routing, alignment, facts, seams, criterion,
   closure, fix-induced, ripple, other`) that lets one gate's roster be read beside another's, and `other`
   is always available so a vector your slice needs is never refused. Each required question has a
-  measured origin, not a taxonomy's symmetry: **CLOSURE** — two hand-written closure lenses returned 6
-  and 4, 5 and 4, 6 and 4 closures they judged NOT closed, out of rounds of 25, 23 and 21 findings — the
+  measured origin, not a taxonomy's symmetry: **CLOSURE** — two hand-written closure lenses returned 6 and 4
+  of 24, 5 of 25, and 6 and 4 of 23 CLOSURES they judged not closed, in rounds that themselves filed 25,
+  23 and 21 findings — round 4's second lens checked citations, not closures (4 unsupported of 70) — the
   most valuable half of those rounds,
   produced by prose over data git already held (`wf check closure` mechanised the reachable part, not
   this one); **FIX-INDUCED** — a fix is the largest single source of blockers, half the BLOCKERS of rounds 3+
@@ -633,20 +634,22 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   at all — the check says `NOT A PASS` there rather than printing a clean line. So it narrows the read
   of every paragraph the rule's CONCLUSION touches; it does not replace it, and it is cheaper than the
   round the class otherwise costs.
-- **Vacuity is a BLOCKER, at classification time.** A finding that makes an observation, a guard or a
-  tripwire *vacuous* — it passes whether or not the thing it checks exists — is a blocker, not a major.
-  Classified there, it loops the gate under the rule below and its fix is reviewed like any other; no
-  exception is needed and none should be made, because exempting a fix from review contradicts the one
-  measured rule this gate has (a fix is unreviewed code, and the largest single source of blockers).
+- **Vacuity STARTS at BLOCKER, at classification time.** A finding that makes an observation, a guard or
+  a tripwire *vacuous* — it passes whether or not the thing it checks exists — is classified BLOCKER,
+  and rides as a MAJOR only where the row can NAME the later gate actually assigned a non-vacuity vector
+  for it, which is the MAJOR test of the rule below and not a second rule. Classified there, its fix is reviewed
+  like any other; exempting a fix from review contradicts the one measured rule this gate has (a fix is
+  unreviewed code, and the largest single source of blockers).
   Do NOT reason from the defect's label: downstream gates are perfectly capable of catching vacuity when
   a section reviewer was given a non-vacuity vector ("which line of this diff, if reverted, makes this
   check fail? if none, that is a blocker"). **Classify by actual downstream coverage** — check whether
   some later gate was actually assigned that vector before letting anything ride.
 - **A finding's level is decided by what catches it downstream, never by how bad it reads [R2].** The
   scale is BLOCKER / MAJOR / MINOR / NOTE and `wf round record` refuses anything else — measured, the six
-  ledgers on disk hold 1065 findings under four vocabularies for one scale, 172 of them at a level no
-  other gate can be read against, while the same six phases' script schemas, whose `enum` is checked at
-  the tool-call layer, never drifted. BLOCKER is what no later gate catches, and it is where vacuity STARTS —
+  ledgers held 1065 findings under four vocabularies for one scale (p3a through round 5), 172 of them at
+  a level no other gate can be read against, and a script `enum` does not save the other side: it checks
+  the VALUE and never the LIST, and the scripts those six gates produced carry three lists plus a drifted
+  field NAME. BLOCKER is what no later gate catches, and it is where vacuity STARTS —
   a finding that makes an observation, a guard or a tripwire vacuous is classified BLOCKER and rides only
   where the row can name the later gate actually assigned a non-vacuity vector for it, which is the MAJOR
   test and not a second rule; MAJOR is a real defect whose row NAMES the later gate that catches it,
@@ -741,7 +744,7 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   correctly; only a canary shows whether it *reads* the way you think.
 
 Rules:
-- Collect findings, then ACT: a blocker from ANY reviewer means fix the script source and re-run the gate as a delta round (whatever vectors you ran — a fix in one can break another) before the `Workflow` call; advisory findings are recorded and surfaced.
+- Collect findings, then ACT: a blocker from ANY reviewer means fix the script source and re-run the gate as a delta round (whatever vectors you ran — a fix in one can break another) before the `Workflow` call; advisory findings — MAJOR, MINOR or NOTE on the closed scale — are recorded and surfaced.
 - **Proportionality.** The full 3-reviewer gate is required only when the script can actually blow up: a data-driven fan-out over a dynamic N, a `while` / `budget` loop, multiple opus agents (or an opus agent inside a loop/fan-out), or parallel file mutation. For a small script with none of those (e.g. a fixed 2-3 agent `pipeline()`/`parallel()`, all sonnet/haiku, no loops, no file writes), a single opus reviewer — or the authoring agent's own careful re-read — suffices.
 - Skip the gate entirely only for a trivial throwaway script (a single `agent()` call, or a pure read-only locate/extract that mutates nothing) — `log()` or state that it was skipped and why.
 

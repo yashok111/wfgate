@@ -30,7 +30,7 @@ Six facts worth knowing before reading the list:
   close in value, and none of it would have been findable in a prompt.
 - **A fix is unreviewed code, and it is the single largest source of blockers.** One phase: half the
   blockers of rounds 3+. The next: 5 of 11, with two consecutive rounds finding *nothing but* fix-induced
-  defects. The one after that: **9 of 9** in a single round — every finding existed only because the
+  defects. The one after that: **9 of 9** in a single round — every BLOCKER existed only because the
   previous round's fix created it. A round whose findings are all self-inflicted is the expected case,
   not a malfunctioning gate. Review the delta, not the original — and see section I.
 - **A guard, a tripwire and a criterion are what to attack hardest.** They are the parts that look
@@ -72,11 +72,15 @@ on 2026-08-25, 1065 findings under FOUR vocabularies for one scale: BLOCKER is u
 it is MAJOR on five gates and CONCERN on one, and the tier under that is MINOR on four, ADVISORY on one
 and NIT on one. 172 of the 1065 — 16% — carry a level no other gate can be read against, so no report
 could put a round of one gate beside a round of another. (One of those gates is still open, so the
-totals move; the shape does not.) A JSON Schema `enum` does not save the script side either: it
-validates the VALUE against a declared list and never the LIST, and the scripts these six gates PRODUCED
-carry four lists of their own — none at all, `['MAJOR','MINOR']`, `['BLOCKER','MAJOR','MINOR']`, and the
-`['blocker','advisory']` that `wf new-script` itself used to ship. The scale is closed here because this
-is the one place both paths meet.
+totals move; the shape does not.) A JSON Schema `enum` does not save the script side either: it validates the VALUE against a declared
+list and never the LIST, and the scripts these six gates PRODUCED carry three lists of their own —
+`['BLOCKER','MAJOR','MINOR']` (p2d, under the field name `level`, and p2f under `severity`),
+`['MAJOR','MINOR']` (p2e), and `['blocker','advisory']` (a1, a2, a3, out of `wf new-script`'s own
+template). The field NAME drifted too, which no value-level check can see. Six OTHER phases' scripts do
+agree on `['blocker','major','minor']`, and the agreement is one COPIED LINE: this repository has
+measured those same six as otherwise re-authored rather than copied, two of their gate functions
+implementing one algorithm at 0.05 textual similarity. So the scale is closed here because this is the
+one place both paths meet, not because either layer validates it.
 
 ---
 

@@ -862,14 +862,15 @@ it):
   BLOCKER universal; under it MAJOR on five gates and CONCERN on one; under that
   MINOR on four, ADVISORY on one, NIT on one. **172 of the 1065 — 16% — carry a
   level no other gate can be read against**, and they live in TWO workspaces, one
-  closed and pruned and one still OPEN. The review round REFUTED this wave's own
+  closed and pruned and one still OPEN (so the census is a snapshot: p3a through
+  round 5). The review round REFUTED this wave's own
   first argument: it said the script side does not drift because a JSON Schema
   `enum` validates it, measuring six OTHER phases' scripts that all descend from
   one ancestor. An enum validates the VALUE and never the LIST, and the scripts
-  these six gates PRODUCED carry four lists — none at all (p2d),
-  `['MAJOR','MINOR']` (p2e), `['BLOCKER','MAJOR','MINOR']` (p2f) and
-  `['blocker','advisory']` (a1, a2, a3, straight out of this repository's own
-  template). So the scale is closed not because one layer validates and the
+  these six gates PRODUCED carry three lists — `['BLOCKER','MAJOR','MINOR']`
+  (p2d under the field name `level`, p2f under `severity`), `['MAJOR','MINOR']`
+  (p2e), and `['blocker','advisory']` (a1, a2, a3, out of this repository's own
+  template). The field NAME drifted too, which no value-level check can see. So the scale is closed not because one layer validates and the
   other does not, but because this is the one place both meet: **BLOCKER / MAJOR / MINOR / NOTE**,
   refused by `wf round record` before a byte is written and read permissively
   everywhere, because three closed workspaces carry the old words and a report
@@ -889,20 +890,21 @@ it):
 - *The delta round's vectors were invented every time* — the manual prescribes
   three reviewers in full for round 1 and says `(round 1 only)`; the round
   discipline below it says what to HAND a delta reviewer (`wf delta`) and never
-  what to ASK. Measured 2026-08-25: the two gates that banked any roster produced 13 lens
-  RECORDS under TEN distinct names (17 FILES, four of them the copies `wf close`
-  makes), of which exactly one — `criterion` — appears as a VECTOR NAME in the
-  manual; the other four gates banked none, so their
+  what to ASK. Measured with p3a through round 5: the two gates that banked any roster produced
+  13 lens RECORDS under TEN distinct names (17 FILES, four of them the copies
+  `wf close` makes), of which exactly one — `criterion` — appears as a VECTOR
+  NAME in the manual; the other four gates banked none, so their
   prompts are gone. `wf round lens` now takes `-asks`, required, from a closed
   set, with `-name` left free as the round's own label: a hard refusal on NAMES
-  was considered and REJECTED, because nine of the ten banked names are
-  slice-specific and it would have fired on almost all of them, and `other` is always available so the refusal only ever means "you
+  was considered and REJECTED, because nine of the ten banked names appear
+  nowhere in the manual's vector vocabulary, so it would have fired on nine of
+  ten, and `other` is always available so the refusal only ever means "you
   typed something no report can compare". The standard is *a delta round asks
   CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those
   three* `[R3]`, each with a measured origin rather than a taxonomy's symmetry:
-  closure (two hand-written closure lenses returned 6 and 4, 5 and 4, 6 and 4
-  closures they judged NOT closed, out of rounds of 25, 23 and 21 findings — the
-  most valuable half of those rounds), fix-induced (a
+  closure (two hand-written closure lenses returned 6 and 4 of 24, 5 of 25, and 6
+  and 4 of 23 CLOSURES they judged not closed, in rounds that filed 25, 23 and 21
+  findings — round 4's second lens checked citations, not closures), fix-induced (a
   fix is the largest single source of blockers: half the BLOCKERS of rounds 3+, then 5 of 11,
   then 9 of 9), ripple (a fix that changes a RULE has consumers not in the diff;
   THREE of four such on one run contained none of the rule's keywords). Coverage is a
@@ -945,8 +947,46 @@ it):
   sentence 205 lines up in the file being edited), "17 lens files" (13 records;
   17 counts the copies `wf close` makes), and "measured and REJECTED ... half of
   correct practice" for a measurement that does not exist.
+- *And the review round was itself reviewed, and it refuted the REPLACEMENT
+  argument too* — three vectors again (closure+fix-induced with a 55-mutation
+  sweep, ripple+claims, one external model), **7 blockers, 8 majors**. The fix
+  round had INTRODUCED a blocker: choosing an enum member by substring plus a
+  positional fallback — which its own comment said it never did — inverted every
+  vocabulary tried, two of them real (`['complete','partial']` and
+  `['clean','advisory','blocked']` out of p2e's script). Before enums were
+  honoured those branches were merely unreachable; picking the wrong member made
+  them reachable and BACKWARDS, so a failure mode walked the happy path while the
+  runner printed OK. Members are matched as whole TOKENS now, a negator
+  (`not-ok`, `error-free`) belongs to neither vocabulary, and a vocabulary the
+  runner cannot read is RECORDED rather than guessed at — the boolean branch had
+  done that since the sixth wave. And an array of identical items is a poor
+  fixture: a failing mode now synthesises a MIXED pair, because with one item the
+  non-blocking bucket was empty in every mode and the line collecting it was
+  executed by none.
+  The RIPPLE vector — shipped by the wave it was reviewing — found what the
+  keyword sweep could not: the replacement argument's own evidence table was
+  wrong (p2d DOES declare `['BLOCKER','MAJOR','MINOR']`, under the field name
+  `level`, and the census had grepped `severity`), and its pivot, "all six
+  descend from one ancestor", contradicted a measurement 779 lines up in this
+  file — those same six scripts are RE-AUTHORED, not copied, at 0.05 textual
+  similarity. The supportable claim is narrower and stronger: the enum LINE is
+  byte-identical in six otherwise re-authored scripts, and the field NAME drifted
+  too, which no value-level check can see. "Replaced at all eight sites" was
+  false — seven sites existed, five were rewritten, and the two survivors were
+  README and the manual, the operator-facing pair. Three of eleven closure claims
+  were false: the legacy `-asks` exemption discarded the flag at exit 0 over the
+  entire population it exists for (all 13 records predate it), the third
+  coverage state folded back into "states nothing" inside the classifier, and the
+  `carried` bucket was fixed in one of three places. And the wave's own
+  `8/3/3/0` from `wf check rules` had EXCLUDED the marker the same commit added:
+  `[R2]` on a POINTER, the exact class the ninth wave banked a rule against — run
+  with the template in the corpus it reads `9 marker(s) … 1 conflict(s)`, exit 1.
+  Six more numbers were wrong, including closure denominators that are CLOSURES
+  (24, 25, 23) and not those rounds' finding counts, with one of the six figures
+  not a closure count at all.
 - *And the claim was checked by running the check* — the ninth wave's lesson,
-  applied: `[R2]` and `[R3]` were marked at two sites each, a scratch workspace
+  applied: `[R2]` and `[R3]` were marked at two sites each — a third `[R2]`,
+  added to the template by the fix round, was a POINTER and was dropped, a scratch workspace
   was built over the two references, and `wf check rules` was actually run
   (`8 marker(s), 3 id(s), 3 compared, 0 conflict(s)`). Every new guard was
   mutation-proven; one mutation first read as SURVIVED and was not — `sd` exits

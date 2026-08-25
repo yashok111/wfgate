@@ -54,19 +54,25 @@ type FindingRow struct {
 // A JSON Schema `enum` does NOT save the script side, and the first version of
 // this comment claimed it did. An enum validates the VALUE against a declared
 // list and never the LIST itself, and the list drifted exactly as the ledgers
-// did — the scripts these six gates PRODUCED carry four of them: none at all
-// (p2d), `['MAJOR','MINOR']` (p2e), `['BLOCKER','MAJOR','MINOR']` (p2f) and
-// `['blocker','advisory']` (a1, a2, a3, straight out of this repository's own
-// template). Six OTHER phases' scripts do agree on `['blocker','major','minor']`,
-// and they agree because all six descend from one ancestor — a fact about
-// copying, not about validation. So this is not "the layer that validates";
-// it is the one place both paths meet, which is why the scale is closed here.
+// did — the scripts these six gates PRODUCED carry three of them:
+// `['BLOCKER','MAJOR','MINOR']` (p2d, under the field name `level`, and p2f
+// under `severity`), `['MAJOR','MINOR']` (p2e), and `['blocker','advisory']`
+// (a1, a2, a3, straight out of this repository's own template). The field NAME
+// drifted too, which no value-level check can see — and the first census missed
+// p2d entirely by grepping `severity`.
+//
+// Six OTHER phases' scripts do agree on `['blocker','major','minor']`, and the
+// agreement is one COPIED LINE, not a shared ancestor: this repository has
+// measured those same six as otherwise RE-AUTHORED, two of their gate functions
+// implementing one algorithm at 0.05 textual similarity. So this is not "the
+// layer that validates"; it is the one place both paths meet, which is why the
+// scale is closed here.
 //
 // BLOCKER / MAJOR / MINOR is not an invention — it is what four of the six
-// ledgers already used, and what one gate's own script declared. NOTE is the
+// ledgers already used, and what TWO of their own scripts declared. NOTE is the
 // fourth because ONE gate reached for a non-defect row and had nowhere to file
-// it (a3's single NOTE row: "The script executed as written: 38 agents, 0
-// errors. No finding."). p3a's NIT is that gate's MINOR tier, not a non-defect
+// it (a3's single NOTE row, elided: "The script executed as written: 38 agents,
+// 0 errors, 0 dead, `green: true` … No finding."). p3a's NIT is that gate's MINOR tier, not a non-defect
 // level.
 var Levels = []string{"BLOCKER", "MAJOR", "MINOR", "NOTE"}
 

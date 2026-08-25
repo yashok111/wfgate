@@ -514,38 +514,125 @@ var failBools = regexp.MustCompile(`(?i)fail|broken|vacuous|missing|stale|dead|u
 // package calls the one that matters most walked the failure branch, and the
 // happy path was executed in no mode at all.
 // The two vocabularies that read an enum MEMBER, kept apart from failArrayRe
-// above, which reads an array's NAME — reusing that one picked `not-run` out of
+// below, which reads an array's NAME — reusing that one picked `not-run` out of
 // `['pass','fail','not-run']` for the CLEAN mode, because "not-run" names no
-// failure word while being exactly a failure. Clean prefers the first member
-// that reads as success; every other mode takes the first that reads as a
-// failure; neither falls through to a position.
-var enumPassRe = regexp.MustCompile(`(?i)pass|ok|green|clean|success|met|none|note|minor|advisory|info|yes`)
-var enumFailRe = regexp.MustCompile(`(?i)blocker|fail|error|reject|refus|violat|unfixed|not-?run|red|major`)
+// failure word while being exactly a failure.
+//
+// They are matched as WHOLE TOKENS, never as substrings, and a member carrying
+// a negator belongs to neither list. The first version matched substrings and
+// fell through to a POSITION, which its own comment claimed it never did, and
+// the result was measured wrong on every vocabulary tried — including two real
+// ones out of `~/gates/p2e/artifacts/p2e.workflow.mjs`:
+//
+//	['complete','partial']            clean=partial    failing=complete   INVERTED
+//	['clean','advisory','blocked']    clean=clean      failing=clean      no failure path
+//	['ready','degraded','down']       clean=down       failing=ready      INVERTED
+//	['broken','fixed']                clean=broken     failing=broken     "ok" inside br-OK-en
+//	['not-ok','ok']                   clean=not-ok     failing=not-ok
+//	['error-free','error']            clean=error      failing=error-free INVERTED
+//
+// Before enums were honoured at all those branches were merely unreachable;
+// picking the wrong member makes them reachable and BACKWARDS, so a failure mode
+// walks the happy path while the runner prints OK. Unreachable is a gap;-
+// inverted is a lie, and this file exists to refuse the second.
+var enumPassWords = []string{
+	"pass", "ok", "green", "clean", "success", "succeed", "met", "none", "note",
+	"minor", "advisory", "info", "yes", "true", "fixed", "done", "complete",
+	"ready", "up", "healthy", "closed", "resolved",
+}
+var enumFailWords = []string{
+	"blocker", "block", "blocked", "fail", "failure", "error", "reject", "refuse",
+	"refused", "violation", "unfixed", "notrun", "red", "major", "partial",
+	"broken", "missing", "stale", "dead", "defect", "skip", "vacuous",
+	"degraded", "down", "no", "false", "open",
+}
 
-// pickEnum chooses one member of a declared enum for the mode being walked.
-func pickEnum(members []string, mode string) string {
+// enumNegators flip a member out of BOTH vocabularies: "not-ok" is not a pass
+// word because it contains one, and "error-free" is not a failure word for the
+// same reason. Without this, substring matching read each of them as its own
+// opposite.
+var enumNegators = []string{"not", "non", "free", "less", "without", "never"}
+
+// enumTokens splits a member into comparable words: lower-case, and cut on
+// anything that is not a letter or a digit, so `not-run`, `not_run`, `notRun`
+// and `NOT RUN` are one shape. camelCase is not split — a member written that
+// way reads as one token and simply falls to the unrecognised path, which SAYS
+// so rather than guessing.
+func enumTokens(member string) []string {
+	var out []string
+	cur := strings.Builder{}
+	for _, r := range strings.ToLower(member) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			cur.WriteRune(r)
+			continue
+		}
+		if cur.Len() > 0 {
+			out = append(out, cur.String())
+			cur.Reset()
+		}
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
+}
+
+func hasWord(tokens, words []string) bool {
+	for _, t := range tokens {
+		for _, w := range words {
+			// Prefix, so a plural reads as its singular: `['pass','blockers']`
+			// must find "blockers" for a failing mode.
+			if strings.HasPrefix(t, w) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func enumReads(member string, words []string) bool {
+	tokens := enumTokens(member)
+	if hasWord(tokens, enumNegators) {
+		return false
+	}
+	return hasWord(tokens, words)
+}
+
+// pickEnum chooses one member of a declared enum for the mode being walked, and
+// reports through rec when it could not tell — the boolean branch below has
+// recorded its unrecognised names since the sixth wave, and an enum this runner
+// cannot read is the same claim: the mode that was supposed to walk a branch may
+// not have walked it.
+func pickEnum(name string, members []string, mode string, idx int, rec map[string]int) string {
+	words := enumFailWords
 	if mode == "clean" {
-		for _, m := range members {
-			if enumPassRe.MatchString(m) {
-				return m
-			}
+		words = enumPassWords
+	}
+	// Item 1 of a report array takes the opposite vocabulary, so one array
+	// carries a blocker AND a non-blocker and both sides of the script's own
+	// filter run. Item 0 keeps the mode's meaning, so every existing verdict
+	// still reads the way its mode intends.
+	if idx > 0 {
+		if mode == "clean" {
+			words = enumFailWords
+		} else {
+			words = enumPassWords
 		}
-		for i := len(members) - 1; i >= 0; i-- {
-			if !enumFailRe.MatchString(members[i]) {
-				return members[i]
-			}
-		}
-		return members[len(members)-1]
 	}
 	for _, m := range members {
-		if enumFailRe.MatchString(m) {
+		if enumReads(m, words) {
 			return m
 		}
+	}
+	// No guess dressed as a choice. The first member is a deterministic
+	// fallback, named as one.
+	if rec != nil {
+		rec[name+" (enum "+strings.Join(members, "|")+")"]++
 	}
 	return members[0]
 }
 
-var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|concern|dead|unverified|violation|gap|risk|defect|error|issue|problem`)
+var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|concern|dead|unverified|violation|gap|risk|defect|error|issue|problem|finding`)
 
 // `done` and its synonyms belong here for the same reason `ok` and `green` do:
 // they are the completion flag of a report, and a completion flag that reads
@@ -589,7 +676,8 @@ func synth(schema goja.Value, mode, label string, depth int, rec map[string]int)
 	sort.Strings(keys)
 	for _, k := range keys {
 		pv, _ := props[k].(map[string]any)
-		out[k] = value(k, pv, mode, label, depth, rec)
+		// The top-level schema is one object, never an array element.
+		out[k] = value(k, pv, mode, label, depth, 0, rec)
 	}
 	return out
 }
@@ -614,11 +702,21 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int, rec m
 			n = 1
 		}
 	}
+	// A failing mode's report array holds TWO items, not one: a real reviewer
+	// returns a mix, and an array whose every element is identical exercises
+	// only one side of every `filter(f => f.severity === 'blocker')` in the
+	// script under test. Measured on the emitted skeleton — with one item, the
+	// non-blocking bucket was empty in every failing mode, so the line that
+	// collects it was executed by NO mode at all and its deletion passed every
+	// bar. The clean mode keeps one benign item: a clean run must stay green.
+	if n == 1 && mode != "clean" && (failArrays[low] || failArrayRe.MatchString(low)) {
+		n = 2
+	}
 	items, _ := v["items"].(map[string]any)
 	out := make([]any, 0, n)
 	for i := 0; i < n; i++ {
 		if t, _ := items["type"].(string); t == "object" {
-			out = append(out, synthMap(items, mode, label, depth+1, rec))
+			out = append(out, synthMap(items, mode, label, depth+1, i, rec))
 		} else {
 			out = append(out, fmt.Sprintf("<%s from %s>", or(name, "item"), label))
 		}
@@ -626,7 +724,7 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int, rec m
 	return out
 }
 
-func synthMap(schema map[string]any, mode, label string, depth int, rec map[string]int) any {
+func synthMap(schema map[string]any, mode, label string, depth, idx int, rec map[string]int) any {
 	props, _ := schema["properties"].(map[string]any)
 	out := map[string]any{}
 	keys := make([]string, 0, len(props))
@@ -636,12 +734,12 @@ func synthMap(schema map[string]any, mode, label string, depth int, rec map[stri
 	sort.Strings(keys)
 	for _, k := range keys {
 		pv, _ := props[k].(map[string]any)
-		out[k] = value(k, pv, mode, label, depth, rec)
+		out[k] = value(k, pv, mode, label, depth, idx, rec)
 	}
 	return out
 }
 
-func value(name string, v map[string]any, mode, label string, depth int, rec map[string]int) any {
+func value(name string, v map[string]any, mode, label string, depth, idx int, rec map[string]int) any {
 	t, _ := v["type"].(string)
 	// A declared `enum` is the only place a script says which STRINGS its own
 	// branches compare against, and ignoring it meant no `x === 'literal'`
@@ -667,14 +765,14 @@ func value(name string, v map[string]any, mode, label string, depth int, rec map
 			}
 		}
 		if len(members) > 0 {
-			return pickEnum(members, mode)
+			return pickEnum(name, members, mode, idx, rec)
 		}
 	}
 	switch t {
 	case "array":
 		return arrayOf(name, v, mode, label, depth, rec)
 	case "object":
-		return synthMap(v, mode, label, depth+1, rec)
+		return synthMap(v, mode, label, depth+1, idx, rec)
 	case "integer", "number":
 		return 1
 	case "boolean":

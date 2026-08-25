@@ -43,10 +43,10 @@ const lensFence = "\n---\n"
 // ask. `-name` stays free text — it is the label the round's own findings use —
 // and this is the comparable half beside it.
 //
-// Measured 2026-08-25 over the two gates that banked any roster at all: 13 lens
-// RECORDS carrying TEN distinct names (17 FILES, four of them the copies
-// `wf close` makes under close/rounds/; one of the two gates is open, so the
-// figure moves) (external-hazards, run, repairs, final,
+// Measured over the two gates that banked any roster at all, p3a through round 5:
+// 13 lens RECORDS carrying TEN distinct names (17 FILES, four of them the copies
+// `wf close` makes under close/rounds/; that gate is OPEN, so the figure moves —
+// it is a snapshot, not a standing count) (external-hazards, run, repairs, final,
 // consistency, tree-truth, implementability, failure-modes, delta-write-path,
 // criterion), of which exactly ONE — criterion — appears as a VECTOR NAME
 // anywhere in the manual.
@@ -72,8 +72,10 @@ var lensQuestions = []string{
 // lensDeltaRequired is what a DELTA round must ask among them [R3].
 //
 //   - closure     — measured: two hand-written closure lenses returned 6 and 4,
-//     5 and 4, 6 and 4 closures they judged NOT closed, out of rounds of 25, 23
-//     and 21 findings — the most valuable half of those rounds, produced by prose over data git already held.
+//     6 and 4 of 24, 5 of 25, and 6 and 4 of 23 CLOSURES they judged not
+//     closed, in rounds that themselves filed 25, 23 and 21 findings (round 4's
+//     second lens checked citations, not closures) — the most valuable half of
+//     those rounds, produced by prose over data git already held.
 //     `wf check closure` mechanised the reachable part; the judgement half is
 //     this vector.
 //   - fix-induced — measured: a fix is the largest single source of blockers.
@@ -180,10 +182,11 @@ func (l lensRecord) asksLabel() string {
 // by a third. Two commands contradicting each other about one round is worse
 // than either answer.
 type askCoverage struct {
-	Applicable bool     // only a DELTA round is held to [R3]
-	Valid      int      // lenses that count as a record at all
-	Unstated   int      // of those, the ones whose questions are not on file
-	Missing    []string // required questions nothing asks — meaningful only when Unstated == 0
+	Applicable   bool     // only a DELTA round is held to [R3]
+	Valid        int      // lenses that count as a record at all
+	Unstated     int      // of those, the ones with no `Asks:` line at all
+	Uncomparable int      // of those, the ones whose `Asks:` line this build cannot read
+	Missing      []string // required questions nothing asks — meaningful only when the two above are 0
 }
 
 // classifyAsks answers it once. A single lens whose questions are not on file
@@ -200,7 +203,17 @@ func classifyAsks(kind string, ls []lensRecord) askCoverage {
 		}
 		c.Valid++
 		if len(l.Asks) == 0 {
-			c.Unstated++
+			// Two different claims, and the first version made both of them
+			// the first: a header that says nothing, and a header that says
+			// something this build cannot compare. Reporting the second as
+			// "banked before `-asks` existed" is a provenance the classifier
+			// cannot know, asserted about a file that states two questions on
+			// the line above it in the same output.
+			if l.AsksSeen {
+				c.Uncomparable++
+			} else {
+				c.Unstated++
+			}
 			continue
 		}
 		for _, q := range l.Asks {
@@ -222,9 +235,16 @@ func (c askCoverage) Note() string {
 	if !c.Applicable || c.Valid == 0 {
 		return ""
 	}
-	if c.Unstated > 0 {
+	switch {
+	case c.Unstated > 0 && c.Uncomparable > 0:
+		return fmt.Sprintf("coverage UNRECORDED — of %d banked lens(es), %d state no questions and %d state questions this build cannot compare, so what this DELTA round asked cannot be read [R3]",
+			c.Valid, c.Unstated, c.Uncomparable)
+	case c.Unstated > 0:
 		return fmt.Sprintf("coverage UNRECORDED — %d of %d banked lens(es) do not state their questions, so what this DELTA round asked cannot be read [R3]",
 			c.Unstated, c.Valid)
+	case c.Uncomparable > 0:
+		return fmt.Sprintf("coverage UNRECORDED — %d of %d banked lens(es) state questions this build cannot compare, so what this DELTA round asked cannot be read [R3]",
+			c.Uncomparable, c.Valid)
 	}
 	if len(c.Missing) == 0 {
 		return ""
@@ -377,9 +397,30 @@ func cmdRoundLens(args []string) error {
 		// hand `git commit` this command exists to remove.
 		modelDiffers := banked.Model != "" && !strings.EqualFold(banked.Model, strings.TrimSpace(*model))
 		asksDiffer := banked.AsksSeen && !sameAsks(banked.Asks, askList)
-		if lensPrompt(old) == lensPrompt([]byte(body)) && (modelDiffers || asksDiffer) {
+		// An UNCOMMITTED file is not a record, so it cannot be the banked claim
+		// this refusal protects — and refusing it strands exactly the case the
+		// recommit branch below was written for: a commit that failed mid-command.
+		if lensPrompt(old) == lensPrompt([]byte(body)) && (modelDiffers || asksDiffer) && tracked(w, wsRel) {
 			return fmt.Errorf("round %d already records lens %s with the same prompt but %s; a banked record is not rewritten — correct it by hand in %s, or record the changed vector under its own -name",
 				n, banked.Name, askDelta(banked, strings.TrimSpace(*model), askList), rel)
+		}
+		if lensPrompt(old) == lensPrompt([]byte(body)) && !banked.AsksSeen {
+			// The prompt is the same and the banked header states no questions,
+			// so this is the ADDITION the exemption above describes — and the
+			// first version merely SAID so: it took the "unchanged" branch,
+			// exited zero and discarded the flag, leaving the record reading
+			// `asks not stated`. Measured: all 13 lens records on disk predate
+			// `-asks`, which is the entire population the exemption is for.
+			if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+				return err
+			}
+			sha, err := w.Git.Commit(fmt.Sprintf("round %d: lens %s asks %s", n, banked.Name, strings.Join(askList, ", ")), []string{wsRel})
+			if err != nil {
+				return err
+			}
+			fmt.Printf("lens %s for round %d predates -asks; its questions are now on file (%s) — committed %s\n",
+				banked.Name, n, strings.Join(askList, ", "), short(sha))
+			return nil
 		}
 		if lensPrompt(old) == lensPrompt([]byte(body)) {
 			// Identical, but possibly never committed: a failed commit left the

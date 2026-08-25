@@ -717,7 +717,8 @@ func cmdRoundRecord(args []string) error {
 		// (MAJOR/CONCERN, MINOR/ADVISORY/NIT), because a markdown cell validates
 		// nothing — and neither does a script's `enum`, which validates the
 		// VALUE and never the LIST: the scripts these six gates produced carry
-		// four enums of their own. A level the gate cannot compare across rounds
+		// three enums of their own, and one of them under a different field
+		// NAME. A level the gate cannot compare across rounds
 		// is a level no report can read, and a rejected record announces itself
 		// where a landed one briefs the next round with a word only its author
 		// understood.
@@ -727,7 +728,9 @@ func cmdRoundRecord(args []string) error {
 		// version let `| 1 | CONCERN |  |  |` through as an unfilled form and
 		// the closed scale had a hole exactly the width of the scaffold's own
 		// row. An empty LEVEL on an empty row is still a form and stays legal.
-		if strings.TrimSpace(r.Level) != "" && !r.KnownLevel() {
+		// No TrimSpace: splitCells already trims every cell, and the same dead
+		// guard was deleted three times over in findings.go one commit ago.
+		if r.Level != "" && !r.KnownLevel() {
 			return fmt.Errorf("row %s (line %d): level %q is not one of %s; the scale is closed so a round of one gate can be compared with a round of another — nothing was recorded",
 				r.Num, r.Line, r.Level, strings.Join(ws.Levels, ", "))
 		}
@@ -2369,7 +2372,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// rows, and a round whose reviewer vectors nobody banked. Both print `0
 	// finding(s), 0 blocker(s)` and a bare round line today, which is what a
 	// measured zero prints — and a measured zero is a legal close.
-	var scaffoldRounds, noRoster, askShort, askUnstated []int
+	var scaffoldRounds, noRoster, askShort, askUnstated, askUncomparable []int
 	askMissing := map[int][]string{}
 	// The longest run of reviewer rounds carrying exactly ONE blocker, and their
 	// texts — see the note where it is printed.
@@ -2415,6 +2418,8 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			c := classifyAsks(kinds[n], lenses)
 			switch {
 			case !c.Applicable || c.Valid == 0:
+			case c.Uncomparable > 0 && c.Unstated == 0:
+				askUncomparable = append(askUncomparable, n)
 			case c.Unstated > 0:
 				askUnstated = append(askUnstated, n)
 			case len(c.Missing) > 0:
@@ -2701,6 +2706,10 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			_, _ = fmt.Fprintf(out, "  note: round %d banks a roster that does not ask %s — a delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3]\n",
 				n, strings.Join(askMissing[n], ", "))
 		}
+	}
+	if len(askUncomparable) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d DELTA round(s) bank a roster whose questions this build cannot compare (%s) — the header states something; what it states is not on the closed set, so the coverage is UNRECORDED rather than absent\n",
+			len(askUncomparable), roundList(askUncomparable))
 	}
 	if len(askUnstated) > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d DELTA round(s) bank a roster that states no questions (%s) — banked before `-asks` existed, so what they covered is UNRECORDED rather than uncovered\n",

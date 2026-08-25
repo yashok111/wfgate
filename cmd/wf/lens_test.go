@@ -388,11 +388,16 @@ func TestAnUncommittedLensIsNotARecord(t *testing.T) {
 
 	// And the command that owns the file commits what it finds uncommitted,
 	// rather than reporting it as already banked: a failed commit used to leave
-	// it on disk forever.
+	// it on disk forever. The banked header here states no questions, so this
+	// is also the ADDITION path — the same commit, under the message that says
+	// which half was missing.
 	prompt := promptFile(t, wsDir, "facts.md", "Check every citation.\n")
 	out, err = runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "FACTS", "-model", "opus", "-round", "1")
 	noErr(t, err, "re-record an uncommitted lens")
-	mustContain(t, out, "on disk and uncommitted — committed")
+	mustContain(t, out, "committed")
+	if !strings.Contains(out, "predates -asks") && !strings.Contains(out, "on disk and uncommitted") {
+		t.Fatalf("the commit does not say WHY it happened: %s", out)
+	}
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
 		t.Fatalf("a committed lens must clear the refusal: %v", err)
 	}

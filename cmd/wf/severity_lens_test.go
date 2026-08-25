@@ -7,9 +7,10 @@
 // under FOUR vocabularies for one scale (BLOCKER universal; MAJOR on five gates,
 // CONCERN on one; MINOR on four, ADVISORY on one, NIT on one), 172 of them —
 // 16% — at a level no other gate can be read against. The script side is no
-// better: an enum validates the VALUE and never the LIST, and the scripts these
-// six gates produced carry four enums of their own, one of them the
-// ['blocker','advisory'] this repository's own template shipped.
+// better: an enum validates the VALUE and never the LIST, so the scripts these
+// six gates produced carry three enums of their own plus a drifted field NAME,
+// one of the three being the ['blocker','advisory'] this repository's template
+// shipped into three gated scripts.
 package main
 
 import (
@@ -73,7 +74,7 @@ func TestRoundLens_refusesAnUncomparableQuestion(t *testing.T) {
 
 	_, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "REPAIRS", "-model", "opus", "-asks", "repairs")
 	if err == nil {
-		t.Fatal("an uncomparable -asks was banked; ten distinct vector names over 17 banked lenses is the drift this closes")
+		t.Fatal("an uncomparable -asks was banked; ten distinct vector names over 13 banked lens records is the drift this closes")
 	}
 	if !strings.Contains(err.Error(), "other") || !strings.Contains(err.Error(), "closure") {
 		t.Fatalf("the refusal does not offer the closed set or the `other` escape: %v", err)
@@ -208,8 +209,8 @@ func TestRoundLens_oneUnstatedLensMakesCoverageUnrecorded(t *testing.T) {
 }
 
 // Reading stays permissive while writing is closed, and that asymmetry is
-// load-bearing: three closed workspaces carry CONCERN, ADVISORY and NIT rows —
-// 172 findings of the 1065 in the corpus — and a report that refused to read
+// load-bearing: TWO workspaces — one closed and pruned, one still OPEN — carry
+// ADVISORY, CONCERN and NIT rows, 172 findings of the 1065 measured — and a report that refused to read
 // them would destroy the only evidence this project reasons from. What the
 // report must do instead is say the level cannot be compared.
 func TestStats_readsAnOffScaleLedgerAndNamesIt(t *testing.T) {
@@ -339,5 +340,136 @@ func TestRoundRecord_refusesAnOffScaleLevelOnAnEmptyRow(t *testing.T) {
 		"| 1 |  |  |  |\n")
 	if _, err := runWF(t, wsDir, "round", "record", blank); err != nil {
 		t.Fatalf("the untouched form was refused: %v", err)
+	}
+}
+
+// The refusal that closes the header-only change had NO test at all: the
+// mutation sweep killed 25 guards and left this one, the flagship of its own
+// claim. Correcting `-asks` on an unchanged prompt used to exit zero as
+// "unchanged" and leave the old claim standing as the round's coverage.
+func TestRoundLens_refusesAChangedHeaderOnAnUnchangedPrompt(t *testing.T) {
+	wsDir := newGate(t)
+	prompt := filepath.Join(t.TempDir(), "p.md")
+	write(t, prompt, "did the closures land\n")
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "V", "-model", "opus", "-asks", "closure"); err != nil {
+		t.Fatal(err)
+	}
+	// Same prompt, different questions.
+	_, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "V", "-model", "opus", "-asks", "ripple")
+	if err == nil {
+		t.Fatal("a changed -asks on an unchanged prompt was accepted; the banked claim stands and nothing says so")
+	}
+	if !strings.Contains(err.Error(), "closure") || !strings.Contains(err.Error(), "ripple") {
+		t.Fatalf("the refusal does not name both halves: %v", err)
+	}
+	// Same prompt, NARROWER questions. Membership alone is not equality: with
+	// only the "every given question is banked" half, dropping one from a
+	// banked pair reads as unchanged, and the record keeps claiming coverage
+	// the operator has just withdrawn. The widening direction is caught by the
+	// membership test itself; this one is caught only by the count.
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "W", "-model", "opus", "-asks", "closure,ripple"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "W", "-model", "opus", "-asks", "closure"); err == nil {
+		t.Fatal("a NARROWED -asks on an unchanged prompt was accepted; the record still claims a question nobody asked")
+	}
+	// Same prompt, different model.
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "V", "-model", "sonnet", "-asks", "closure"); err == nil {
+		t.Fatal("a changed -model on an unchanged prompt was accepted")
+	}
+	// Same prompt, same header: still the "unchanged" path, still exit 0.
+	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "V", "-model", "opus", "-asks", "closure"); err != nil {
+		t.Fatalf("an identical re-run was refused: %v", err)
+	}
+}
+
+// A lens banked before `-asks` existed takes the ADDITION path: the flag is
+// written into the record and committed, not discarded at exit 0. Measured, all
+// 13 lens records on disk predate the flag, so this is the whole population the
+// exemption exists for — and the first version merely SAID it recovered them.
+func TestRoundLens_completesALegacyHeaderInsteadOfDiscardingTheFlag(t *testing.T) {
+	wsDir := newGate(t)
+	write(t, filepath.Join(wsDir, "rounds", "r1", "lens-legacy.md"),
+		"# Lens LEGACY\n\nModel: opus\nRecorded: 2026-08-01T00:00:00Z\n\n---\n\nthe prompt as it was banked\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "round 1: lens LEGACY")
+
+	prompt := filepath.Join(t.TempDir(), "p.md")
+	write(t, prompt, "the prompt as it was banked\n")
+	out, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "LEGACY", "-model", "opus", "-asks", "closure,ripple")
+	if err != nil {
+		t.Fatalf("the addition path refused a legacy record: %v", err)
+	}
+	if !strings.Contains(out, "predates -asks") {
+		t.Fatalf("the flag was taken without saying what happened: %s", out)
+	}
+	roster, err := runWF(t, wsDir, "round", "lens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(roster, "closure+ripple") {
+		t.Fatalf("the questions did not reach the record — the flag was discarded at exit 0: %s", roster)
+	}
+}
+
+// "States nothing" and "states something this build cannot compare" are two
+// claims, and folding them made the coverage line assert a provenance the
+// classifier cannot know — about a header printed correctly two lines above it
+// in the same output.
+func TestRoundLens_uncomparableCoverageIsNotReportedAsPredatingTheFlag(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-kind", "delta", "-title", "the r1 fixes"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(wsDir, "rounds", "r2", "lens-odd.md"),
+		"# Lens ODD\n\nModel: opus\nAsks: repairs, tree-truth\nRecorded: 2026-08-01T00:00:00Z\n\n---\n\nthe prompt\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "round 2: lens ODD")
+
+	out, err := runWF(t, wsDir, "round", "lens")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "cannot compare") {
+		t.Fatalf("a stated-but-uncomparable header was not named as such: %s", out)
+	}
+	if strings.Contains(out, "do not state their questions") {
+		t.Fatalf("a header that states two questions was reported as stating none: %s", out)
+	}
+	stats, err := runWF(t, wsDir, "stats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stats, "states no questions") {
+		t.Fatalf("stats claims a provenance it cannot know: %s", stats)
+	}
+	if !strings.Contains(stats, "cannot compare") {
+		t.Fatalf("stats does not name the uncomparable roster: %s", stats)
+	}
+}
+
+// A level cell is already trimmed by the parser, so the `wf stats` report must
+// read a lower-case ledger — legal markdown, and three guards depend on it.
+func TestStats_readsALowerCaseLedger(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | blocker | one the stop rule must still read |  |\n"+
+		"| 2 | note | not a defect |  |\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "round 1: record findings")
+
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	if !strings.Contains(out, "2 finding(s), 1 blocker(s)") {
+		t.Fatalf("a lower-case BLOCKER stopped being read as one: %s", out)
+	}
+	if !strings.Contains(out, "1 of the findings above are NOTE rows") {
+		t.Fatalf("a lower-case NOTE stopped being read as one: %s", out)
+	}
+	if strings.Contains(out, "carry a level outside") {
+		t.Fatalf("a lower-case ledger was reported as off-scale: %s", out)
 	}
 }

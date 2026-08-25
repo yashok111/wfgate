@@ -70,6 +70,14 @@ check-tools: build
 		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \
 		&& rm -rf .check-skel \
 		&& echo "wf new-script skeleton: wfcheck clean and wfdry all modes"
+	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null; \
+		c=$$(./wfdry .check-skel/skeleton.mjs --mode blockers 2>/dev/null | awk '/"carried": \[/{f=1} f{print} f&&/^   \],?$$/{exit}'); \
+		rm -rf .check-skel; \
+		for src in review recheck accept; do \
+			echo "$$c" | grep -q "from $$src" || { \
+				echo "wf new-script skeleton: the $$src step's non-blocking findings reach NO bucket — a major is a real defect by this repo's own scale and it would survive the run as nothing"; exit 1; }; \
+		done; \
+		echo "wf new-script skeleton: review, recheck and accept all CARRY their non-blocking findings"
 	@./wfcheck -root . testdata/conforming.mjs >/dev/null && echo "wfcheck conforming fixture: no errors on a script written to the manual"
 	@d=$$(mktemp -d); printf '{"session_id":"mk","tool_name":"Write","tool_input":{"file_path":"/tmp/notes.md","content":"prose"}}' \
 		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \

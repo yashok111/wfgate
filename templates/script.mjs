@@ -73,7 +73,7 @@ const FINDINGS_SCHEMA = {
         additionalProperties: false,
         required: ['severity', 'file', 'summary', 'failure'],
         properties: {
-          severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'], description: 'the level is decided by what catches it downstream, never by how bad it reads: blocker = no later gate catches it, or it makes a guard vacuous; major = a real defect and you NAME the later gate that catches it; minor = a real defect cheaper to leave standing than to loop for; note = not a defect' },
+          severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'], description: 'the level is decided by what catches it downstream, never by how bad it reads: blocker = no later gate catches it, and vacuity STARTS here — a finding that makes a guard or a tripwire vacuous is classified blocker and rides only where you can name the gate that catches it; major = a real defect and you NAME the later gate that catches it; minor = a real defect cheaper to leave standing than to loop for; note = not a defect' },
           file: { type: 'string', description: 'repo-relative path, with :line when known' },
           summary: { type: 'string', description: 'one sentence stating the defect' },
           failure: { type: 'string', description: 'concrete inputs or state leading to the wrong outcome, not a restatement of the summary' },
@@ -178,7 +178,7 @@ async function runGate(cfg) {
 
   const all = reviews.filter(Boolean).flatMap((r) => r.findings || [])
   const blockers = all.filter((f) => f.severity === 'blocker')
-  const advisories = all.filter((f) => f.severity !== 'blocker')
+  let advisories = all.filter((f) => f.severity !== 'blocker')
   if (advisories.length) log(cfg.slug + ': ' + advisories.length + ' finding(s) recorded that do not loop this section (major/minor/note)')
   if (!blockers.length) {
     log(cfg.slug + ': gate clean')
@@ -227,6 +227,13 @@ async function runGate(cfg) {
     )
     if (!recheck) break
     open = (recheck.findings || []).filter((f) => f.severity === 'blocker')
+    // The re-review is the ONE vector aimed at "did the fix introduce a new
+    // one", which is this corpus's largest single source of blockers — so its
+    // non-blocking half has to reach the bucket as well. The first version of
+    // this fix widened the enum from two words to four and collected only the
+    // FIRST review's leftovers, so a `major` filed by the recheck was deleted
+    // in the same function the fix was written into.
+    advisories = advisories.concat((recheck.findings || []).filter((f) => f.severity !== 'blocker'))
     if (!open.length) {
       log(cfg.slug + ': blockers closed')
       return { open: [], advisories }
@@ -247,7 +254,7 @@ function bank(section, result) {
   // `advisory`, described in-schema as "worth knowing, does not stop the
   // slice"; the scale's `major` is "a real defect", and dropping the bucket
   // would let a real defect survive a green run as a number in one log line.
-  // It does not gate `green` — a major rides into the run by design [R2] — it
+  // It does not gate `green` — a major rides into the run by design — it
   // is REPORTED, the way barFailures and inconsistent are.
   for (const f of result.advisories || []) carried.push({ section, ...f })
 }
@@ -354,6 +361,14 @@ const accept = live('accept', await spawn(
 
 if (accept) bars('accept', accept.bars)
 const acceptBlockers = accept ? (accept.findings || []).filter((f) => f.severity === 'blocker') : []
+// The acceptance step files one finding per part of the goal that is NOT
+// satisfied. Only its blockers were kept, so a `major` there — a named
+// unsatisfied part of the slice goal — went nowhere at all: not into the
+// result, not into a log line. `goalMet` still gates green; what was lost is
+// what the finding SAID.
+for (const f of accept ? (accept.findings || []) : []) {
+  if (f.severity !== 'blocker') carried.push({ section: 'accept', ...f })
+}
 
 phase('Gate 2')
 bank('accept', await runGate({

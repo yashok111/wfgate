@@ -206,8 +206,14 @@ return { done: true, blockers: r.blockers.length }`
 	if get(clean) != 0 {
 		t.Fatalf("clean must yield an empty fail array, got %v", get(clean))
 	}
-	if get(blocked) != 1 {
-		t.Fatalf("the blockers mode must yield one, got %v", get(blocked))
+	// TWO, not one, and the pair is mixed. An array whose every element is
+	// identical exercises only one side of every
+	// `filter(f => f.severity === 'blocker')` in the script under test:
+	// measured on the emitted skeleton, the non-blocking bucket was empty in
+	// every failing mode, so the line collecting it was executed by NO mode and
+	// its deletion passed every bar. A real reviewer returns a mix.
+	if get(blocked) != 2 {
+		t.Fatalf("a failing mode must yield a MIXED pair, got %v", get(blocked))
 	}
 }
 
@@ -441,33 +447,63 @@ func TestPickEnum_choosesByMeaningNotPosition(t *testing.T) {
 		// Worst-LAST, as it writes verdicts. A positional rule walks one of
 		// these two backwards, whichever way it is written.
 		{"verdict", []string{"pass", "blockers"}, "pass", "blockers"},
-		// `not-run` names no failure word and IS a failure: reusing the
-		// array-name vocabulary picked it for the clean mode and turned every
-		// clean run red.
+		// `not-run` names no failure word and IS a failure.
 		{"bar result", []string{"pass", "fail", "not-run"}, "pass", "fail"},
+		// The six the substring version got wrong, two of them real: they are
+		// out of ~/gates/p2e/artifacts/p2e.workflow.mjs and are branched on.
+		{"p2e status", []string{"complete", "partial"}, "complete", "partial"},
+		{"p2e gate", []string{"clean", "advisory", "blocked"}, "clean", "blocked"},
+		{"health", []string{"ready", "degraded", "down"}, "ready", "degraded"},
+		{"repair", []string{"broken", "fixed"}, "fixed", "broken"},
+		// A negator makes a member its own opposite under substring matching.
+		{"negated ok", []string{"not-ok", "ok"}, "ok", "not-ok"},
+		{"negated error", []string{"error-free", "error"}, "error-free", "error"},
+		{"plain", []string{"yes", "no"}, "yes", "no"},
 	}
 	for _, c := range cases {
-		if got := pickEnum(c.members, "clean"); got != c.clean {
+		if got := pickEnum("f", c.members, "clean", 0, nil); got != c.clean {
 			t.Errorf("%s clean: pickEnum(%v) = %q, want %q", c.name, c.members, got, c.clean)
 		}
-		if got := pickEnum(c.members, "blockers"); got != c.failing {
+		if got := pickEnum("f", c.members, "blockers", 0, nil); got != c.failing {
 			t.Errorf("%s failing: pickEnum(%v) = %q, want %q", c.name, c.members, got, c.failing)
 		}
+	}
+}
+
+// A vocabulary this runner cannot read must be REPORTED, not guessed at behind
+// a deterministic-looking first member. The first version fell through to a
+// POSITION while its own comment said it never did, and nothing recorded the
+// miss — so a mode that never walked its branch looked exactly like one that
+// did. The boolean branch has recorded its unrecognised names since the sixth
+// wave; this is the same claim one type over.
+func TestPickEnum_recordsAVocabularyItCannotRead(t *testing.T) {
+	rec := map[string]int{}
+	got := pickEnum("stage", []string{"alpha", "beta"}, "clean", 0, rec)
+	if got != "alpha" {
+		t.Fatalf("the fallback is not the first member: %q", got)
+	}
+	if len(rec) == 0 {
+		t.Fatal("an unreadable enum was guessed at in silence; the mode may not have walked the branch it exists to walk")
+	}
+	// A vocabulary it CAN read records nothing.
+	clean := map[string]int{}
+	if pickEnum("severity", []string{"blocker", "minor"}, "clean", 0, clean); len(clean) != 0 {
+		t.Fatalf("a readable enum was recorded as unreadable: %v", clean)
 	}
 }
 
 // And the choice must reach the synthesised object, not merely exist.
 func TestValue_honoursADeclaredEnum(t *testing.T) {
 	schema := map[string]any{"type": "string", "enum": []any{"blocker", "major", "minor", "note"}}
-	if got := value("severity", schema, "blockers", "review:gate1", 0, nil); got != "blocker" {
+	if got := value("severity", schema, "blockers", "review:gate1", 0, 0, nil); got != "blocker" {
 		t.Fatalf("a failing mode synthesised %q, so no `severity === 'blocker'` branch is reachable", got)
 	}
-	if got := value("severity", schema, "clean", "review:gate1", 0, nil); got != "minor" {
+	if got := value("severity", schema, "clean", "review:gate1", 0, 0, nil); got != "minor" {
 		t.Fatalf("the clean mode synthesised %q, which walks the failure path of every gate", got)
 	}
 	// A string with no enum keeps the old, deliberately unmatchable placeholder.
 	plain := map[string]any{"type": "string"}
-	if got, _ := value("summary", plain, "clean", "review:gate1", 0, nil).(string); got == "" || got[0] != '<' {
+	if got, _ := value("summary", plain, "clean", "review:gate1", 0, 0, nil).(string); got == "" || got[0] != '<' {
 		t.Fatalf("a plain string stopped being the recorded placeholder: %q", got)
 	}
 }
