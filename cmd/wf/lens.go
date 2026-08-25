@@ -39,6 +39,107 @@ const lensPrefix = "lens-"
 // lensFence separates the record's own header from the prompt it banks.
 const lensFence = "\n---\n"
 
+// lensQuestions is the CLOSED set of questions a reviewer vector can be said to
+// ask. `-name` stays free text — it is the label the round's own findings use —
+// and this is the comparable half beside it.
+//
+// Measured 2026-08-25 over the two gates that banked any roster at all: 17 lens
+// files carrying TEN distinct names (external-hazards, run, repairs, final,
+// consistency, tree-truth, implementability, failure-modes, delta-write-path,
+// criterion), of which exactly ONE — criterion — appears anywhere in the manual.
+// The other nine were invented per round, and nothing could compare a round of
+// one gate with a round of another. The four remaining gates banked no roster,
+// so their prompts are simply gone.
+//
+// Splitting the label from the question is what makes the refusal safe: a hard
+// refusal on NAMES would have fired on half of correct practice, because a gate
+// legitimately runs a vector its own slice needs. `other` is therefore always
+// available and never counts toward required coverage — the refusal only ever
+// means "you typed something no report can compare", never "your vector is
+// illegitimate".
+var lensQuestions = []string{
+	// The round-1 set, from the manual's three reviewers and its measured re-cut.
+	"orchestration", "routing", "alignment",
+	"facts", "seams", "criterion",
+	// The delta set. Each has a measured origin, not a taxonomy's symmetry.
+	"closure", "fix-induced", "ripple",
+	"other",
+}
+
+// lensDeltaRequired is what a DELTA round must ask among them [R3].
+//
+//   - closure     — measured: two hand-written closure lenses returned 6 and 4,
+//     5 and 4, 6 and 4 findings of rounds of 25, 23 and 21, the most valuable
+//     half of those rounds, produced by prose over data git already held.
+//     `wf check closure` mechanised the reachable part; the judgement half is
+//     this vector.
+//   - fix-induced — measured: a fix is the largest single source of blockers.
+//     Half the blockers of rounds 3+ on one phase, 5 of 11 on the next, and on
+//     the one after that round 2 was 9 of 9 — every blocker existed only
+//     because round 1's fix created it.
+//   - ripple      — measured: a fix that changes a RULE has consumers that are
+//     not in the diff. Four such ripples on one run were sentences arguing from
+//     the retired rule while containing none of its keywords, so `grep`
+//     returned nothing. `wf check stale` narrows the read; it does not replace
+//     it, and says NOT A PASS where it swept nothing.
+var lensDeltaRequired = []string{"closure", "fix-induced", "ripple"}
+
+func knownLensQuestion(q string) bool {
+	for _, k := range lensQuestions {
+		if strings.EqualFold(q, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseAsks splits and validates the -asks list. It returns the canonical
+// lower-case spellings so a roster is comparable regardless of how it was typed.
+func parseAsks(raw string) ([]string, error) {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		q := strings.ToLower(strings.TrimSpace(part))
+		if q == "" {
+			continue
+		}
+		if !knownLensQuestion(q) {
+			return nil, fmt.Errorf("-asks %q is not one of %s; the set is closed so one gate's roster can be compared with another's, and `other` is always available for a vector this list does not name",
+				q, strings.Join(lensQuestions, ", "))
+		}
+		if !seen[q] {
+			seen[q] = true
+			out = append(out, q)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("-asks is required and was empty: a roster entry that does not say WHAT the vector asked records that a round had lenses and not which questions it put, which is the claim the gate cannot check")
+	}
+	return out, nil
+}
+
+// missingDeltaAsks reports which required questions a round's roster does not
+// cover. It is a NOTE everywhere it is printed, never a refusal: the coverage
+// rule is new and the corpus that would have to satisfy it is closed.
+func missingDeltaAsks(ls []lensRecord) []string {
+	asked := map[string]bool{}
+	for _, l := range ls {
+		if !l.Valid {
+			continue
+		}
+		for _, q := range l.Asks {
+			asked[q] = true
+		}
+	}
+	var miss []string
+	for _, q := range lensDeltaRequired {
+		if !asked[q] {
+			miss = append(miss, q)
+		}
+	}
+	return miss
+}
+
 // lensRecord is one banked vector: what it was called, what ran it, and the
 // file holding the prompt verbatim.
 //
@@ -55,6 +156,13 @@ type lensRecord struct {
 	File  string // relative to the round directory
 	Valid bool
 	Why   string // why it does not count, for a report that never skips in silence
+
+	// Asks is the canonical question set this vector claims to cover. It is
+	// required to WRITE a lens and absent from every lens banked before it
+	// existed — an old record is reported as not stating its questions, never
+	// invalidated by them: seventeen banked lenses live in two workspaces, and
+	// the freeze and close refusals are cleared by exactly this record.
+	Asks []string
 }
 
 func (l lensRecord) String() string {
@@ -64,7 +172,13 @@ func (l lensRecord) String() string {
 	case l.Model == "":
 		return l.Name
 	}
-	return l.Name + " (" + l.Model + ")"
+	// A roster banked before the question set existed says so rather than
+	// reading as a vector that asked nothing.
+	asks := "asks not stated"
+	if len(l.Asks) > 0 {
+		asks = "asks " + strings.Join(l.Asks, "+")
+	}
+	return l.Name + " (" + l.Model + ", " + asks + ")"
 }
 
 // cmdRoundLens banks one reviewer vector against a round, or prints the roster.
@@ -75,6 +189,9 @@ func cmdRoundLens(args []string) error {
 	// roster at all, and the model is the half of the record that measured
 	// 1.76x on the gate this command comes from.
 	model := fs.String("model", "", "what ran it — the model, and whether it was external (e.g. `external gpt-5.6-sol`)")
+	// The comparable half of the record. `-name` is the round's own label and
+	// stays free; this is what lets one gate's roster be read beside another's.
+	asks := fs.String("asks", "", "the canonical question(s) this vector asked, comma-separated: "+strings.Join(lensQuestions, ", "))
 	// The default is the OPEN round, so banking a vector after the next round
 	// has been opened lands it on the wrong one: pass -round N for the round
 	// whose reviewers produced it.
@@ -106,8 +223,8 @@ func cmdRoundLens(args []string) error {
 		// A missing prompt path with the flags set is a mistyped argument, not
 		// a request for the roster: a shell that globbed the path away would
 		// otherwise print somebody else's roster and exit 0.
-		if strings.TrimSpace(*name) != "" || strings.TrimSpace(*model) != "" {
-			return fmt.Errorf("no prompt file given, but -name/-model were: `wf round lens` with no file prints the roster and records nothing")
+		if strings.TrimSpace(*name) != "" || strings.TrimSpace(*model) != "" || strings.TrimSpace(*asks) != "" {
+			return fmt.Errorf("no prompt file given, but -name/-model/-asks were: `wf round lens` with no file prints the roster and records nothing")
 		}
 		return printLensRoster(w, n)
 	}
@@ -116,6 +233,10 @@ func cmdRoundLens(args []string) error {
 	}
 	if strings.TrimSpace(*name) == "" || strings.TrimSpace(*model) == "" {
 		return fmt.Errorf("-name and -model are both required: a roster entry that does not say WHAT ran the vector records that a round had lenses and not which, which is the claim the gate cannot check")
+	}
+	askList, err := parseAsks(*asks)
+	if err != nil {
+		return err
 	}
 	b, err := os.ReadFile(pos[0])
 	if err != nil {
@@ -134,8 +255,8 @@ func cmdRoundLens(args []string) error {
 	}
 	rel := lensPrefix + slug + ".md"
 	p := filepath.Join(dir, rel)
-	body := fmt.Sprintf("# Lens %s\n\nModel: %s\nRecorded: %s\n%s\n%s",
-		strings.TrimSpace(*name), strings.TrimSpace(*model),
+	body := fmt.Sprintf("# Lens %s\n\nModel: %s\nAsks: %s\nRecorded: %s\n%s\n%s",
+		strings.TrimSpace(*name), strings.TrimSpace(*model), strings.Join(askList, ", "),
 		time.Now().UTC().Format(time.RFC3339), lensFence, string(b))
 	wsRel, _ := filepath.Rel(w.Root, p)
 	if old, err := os.ReadFile(p); err == nil {
@@ -198,7 +319,18 @@ func printLensRoster(w *ws.Workspace, n int) error {
 			fmt.Printf("  %-24s NOT a record: %s (%s)\n", l.Name, l.Why, l.File)
 			continue
 		}
-		fmt.Printf("  %-24s %s\n", l.Name, l.Model)
+		asks := "asks NOT STATED — banked before the question set existed"
+		if len(l.Asks) > 0 {
+			asks = strings.Join(l.Asks, "+")
+		}
+		fmt.Printf("  %-24s %-28s %s\n", l.Name, l.Model, asks)
+	}
+	// Coverage, as a note. A delta round asks CLOSURE, FIX-INDUCED and RIPPLE,
+	// and may add vectors but never drop those three [R3]. It is not a refusal:
+	// the rule is new, every corpus that would have to satisfy it is closed,
+	// and a refusal fired on a closed gate is a refusal nobody can clear.
+	if miss := missingDeltaAsks(ls); len(miss) > 0 {
+		fmt.Printf("  note: no banked lens asks %s — required of a DELTA round [R3]\n", strings.Join(miss, ", "))
 	}
 	return nil
 }
@@ -251,6 +383,18 @@ func parseLens(b []byte, file string) lensRecord {
 		case strings.HasPrefix(line, "Model:"):
 			if l.Model == "" {
 				l.Model = strings.TrimSpace(strings.TrimPrefix(line, "Model:"))
+			}
+		case strings.HasPrefix(line, "Asks:"):
+			// Unknown spellings are dropped rather than rejected: this is the
+			// read path, and it must keep reading the rosters banked before the
+			// question set existed. What it must never do is let an
+			// uncomparable word count as coverage.
+			if len(l.Asks) == 0 {
+				for _, part := range strings.Split(strings.TrimPrefix(line, "Asks:"), ",") {
+					if q := strings.ToLower(strings.TrimSpace(part)); knownLensQuestion(q) {
+						l.Asks = append(l.Asks, q)
+					}
+				}
 			}
 		}
 	}

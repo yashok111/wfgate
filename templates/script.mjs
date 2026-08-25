@@ -73,7 +73,7 @@ const FINDINGS_SCHEMA = {
         additionalProperties: false,
         required: ['severity', 'file', 'summary', 'failure'],
         properties: {
-          severity: { type: 'string', enum: ['blocker', 'advisory'], description: 'blocker = ships a defect or breaks a bar; advisory = worth knowing, does not stop the slice' },
+          severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'], description: 'the level is decided by what catches it downstream, never by how bad it reads: blocker = no later gate catches it, or it makes a guard vacuous; major = a real defect and you NAME the later gate that catches it; minor = a real defect cheaper to leave standing than to loop for; note = not a defect' },
           file: { type: 'string', description: 'repo-relative path, with :line when known' },
           summary: { type: 'string', description: 'one sentence stating the defect' },
           failure: { type: 'string', description: 'concrete inputs or state leading to the wrong outcome, not a restatement of the summary' },
@@ -155,7 +155,10 @@ async function runGate(cfg) {
       'THE SLICE GOAL\n' + GOAL + '\n\n' +
       'REPORT\n' +
       'Report only defects: no praise, no summary of what the code does, no scope beyond the section goal.\n' +
-      'Set severity to blocker only when the finding ships a defect or breaks a bar; everything else is advisory.\n' +
+      'A finding\'s level is decided by what catches it downstream, never by how bad it reads.\n' +
+      'blocker = no later gate catches it, so it ships; ALWAYS blocker if it makes a guard or a criterion vacuous.\n' +
+      'major = a real defect, and your summary NAMES the later gate that catches it; cannot name one means blocker.\n' +
+      'minor = a real defect cheaper to leave standing. note = not a defect, asserts no failure.\n' +
       'For each finding give the file, a one-sentence summary, the concrete failure it produces, and a fix.\n' +
       'Set verdict to blockers when any finding is a blocker, otherwise pass. An empty findings array is a legitimate result.',
       { label: 'review:' + cfg.slug + ':' + rev.slug, phase: cfg.phase, schema: FINDINGS_SCHEMA, model: rev.model, effort: 'high' }
@@ -176,7 +179,7 @@ async function runGate(cfg) {
   const all = reviews.filter(Boolean).flatMap((r) => r.findings || [])
   const blockers = all.filter((f) => f.severity === 'blocker')
   const advisories = all.filter((f) => f.severity !== 'blocker')
-  if (advisories.length) log(cfg.slug + ': ' + advisories.length + ' advisory finding(s) recorded')
+  if (advisories.length) log(cfg.slug + ': ' + advisories.length + ' finding(s) recorded that do not loop this section (major/minor/note)')
   if (!blockers.length) {
     log(cfg.slug + ': gate clean')
     return { open: [], advisories }
@@ -324,7 +327,7 @@ const ACCEPT_SCHEMA = {
         additionalProperties: false,
         required: ['severity', 'summary'],
         properties: {
-          severity: { type: 'string', enum: ['blocker', 'advisory'] },
+          severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'] },
           summary: { type: 'string', description: 'one sentence stating what is not satisfied' },
         },
       },

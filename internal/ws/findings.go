@@ -31,10 +31,59 @@ type FindingRow struct {
 	Cells     int    // how many cells the splitter produced, for the refusal to state
 }
 
-// Blocker matches by word, not by list: levels beyond BLOCKER are free text,
-// and only BLOCKER carries the scaffold's "must be closed before freezing"
-// contract.
-func (r FindingRow) Blocker() bool { return strings.EqualFold(r.Level, "BLOCKER") }
+// Levels is the CLOSED severity scale, in descending order.
+//
+// It is closed because the open one drifted, measured 2026-08-25 with this same
+// parser over the six gate ledgers on disk — 1065 findings, every total
+// reconciled against that workspace's own `wf stats`:
+//
+//	p2d    98  BLOCKER  26  MAJOR 42  MINOR 30
+//	p2e   234  BLOCKER  79  MAJOR 95  MINOR 60
+//	p2f   111  BLOCKER  28  MAJOR 40  MINOR 43
+//	a-mcp 196  BLOCKER  58  MAJOR 57  ADVISORY 81
+//	a3    268  BLOCKER 114  MAJOR 90  MINOR 63  NOTE 1
+//	p3a   158  BLOCKER  67  CONCERN 70  NIT 21
+//
+// BLOCKER is universal. Under it, MAJOR on five gates and CONCERN on one; under
+// THAT, MINOR on four, ADVISORY on one, NIT on one. Four vocabularies for one
+// scale, and 172 of the 1065 findings — 16% — carry a level no other gate can
+// be read against. The same six phases' orchestration SCRIPTS, whose severity is
+// a JSON Schema `enum` validated at the tool-call layer, drift not at all: all
+// six declare exactly `['blocker','major','minor']`. The scale drifts precisely
+// where nothing validates it, and this is the validation.
+//
+// BLOCKER / MAJOR / MINOR is therefore not an invention — it is what four of the
+// six ledgers and all six scripts already used. NOTE is the fourth because two
+// gates reached for a non-defect row under their own names (NOTE, NIT) and had
+// nowhere to put it, so a finding asserting no failure was counted as one.
+var Levels = []string{"BLOCKER", "MAJOR", "MINOR", "NOTE"}
+
+// KnownLevel reports whether the row's level is on the closed scale. Reading
+// stays permissive on purpose: three closed workspaces carry CONCERN, NIT and
+// ADVISORY rows, and a report that refused to read them would destroy the only
+// corpus this project reasons from. The refusal lives on the WRITE path, which
+// is the one place a new spelling can still be prevented.
+func (r FindingRow) KnownLevel() bool {
+	for _, l := range Levels {
+		if strings.EqualFold(strings.TrimSpace(r.Level), l) {
+			return true
+		}
+	}
+	return false
+}
+
+// Blocker matches by word, not by list: only BLOCKER carries the scaffold's
+// "must be closed before freezing" contract, and the stop rule reads it alone.
+func (r FindingRow) Blocker() bool { return strings.EqualFold(strings.TrimSpace(r.Level), "BLOCKER") }
+
+// Note reports the one level that is NOT a defect claim.
+//
+// It is counted APART rather than subtracted: every finding total this project
+// has banked includes whatever non-defect rows its gate happened to file, so
+// removing them from the count would silently move five gates' numbers. The
+// report says how many of the findings asserted no failure and leaves the total
+// where the corpus can still be compared against it.
+func (r FindingRow) Note() bool { return strings.EqualFold(strings.TrimSpace(r.Level), "NOTE") }
 
 // Placeholder reports the scaffold's empty row, which is a form to fill, not a
 // claim to validate. A malformed row is never a placeholder: an unreadable

@@ -849,6 +849,65 @@ change what every future gate is told, which is a separate decision.
   checked against anything. Recording findings is the step that feels like the
   work.
 
+**The eleventh wave — the two things every agent was inventing for itself**
+(2026-08-25). Both were found by asking the same question twice — "is there a
+standard, or does each agent make one up?" — and both answers were measured
+before a line was written, with `ws.ParseFindings` over the six gate ledgers on
+disk rather than by hand (the first hand `awk` reported 101/29 on p2d against
+the true 98/26, which is the 99/27 scar committed by the person who knows about
+it):
+
+- *The severity scale was open, and it had drifted into FOUR vocabularies* —
+  1065 findings, every total reconciled against that workspace's own `wf stats`:
+  BLOCKER universal; under it MAJOR on five gates and CONCERN on one; under that
+  MINOR on four, ADVISORY on one, NIT on one. **172 of the 1065 — 16% — carry a
+  level no other gate can be read against.** The same six phases' orchestration
+  SCRIPTS, whose severity is a JSON Schema `enum` checked at the tool-call layer,
+  declare exactly `['blocker','major','minor']` all six times. The scale drifts
+  precisely where nothing validates it, so the validation is the fix and the
+  scale is what the corpus already used: **BLOCKER / MAJOR / MINOR / NOTE**,
+  refused by `wf round record` before a byte is written and read permissively
+  everywhere, because three closed workspaces carry the old words and a report
+  that refused to read them would destroy the only evidence this project has.
+  The DEFINITION is the operative half — *a finding's level is decided by what
+  catches it downstream, never by how bad it reads* `[R2]` — and its checkable
+  clause is that a MAJOR **names the later gate that catches it**; a row that
+  cannot name one is a BLOCKER. That turns "classify by actual downstream
+  coverage", which the manual already said, from a feeling into a claim the next
+  round can check. NOTE is counted, never subtracted: every banked total includes
+  whatever non-defect rows its gate filed, so `wf stats` names them apart and
+  leaves the total where the corpus can still be compared against it. The
+  template shipped a THIRD vocabulary of its own (`['blocker','advisory']`) —
+  the tool built to stop this committing it — and now ships the scale.
+- *The delta round's vectors were invented every time* — the manual prescribes
+  three reviewers in full for round 1 and says `(round 1 only)`; the round
+  discipline below it says what to HAND a delta reviewer (`wf delta`) and never
+  what to ASK. Measured: the two gates that banked any roster at all produced 17
+  lens files under TEN distinct names, of which exactly one — `criterion` —
+  appears anywhere in the manual; the other four gates banked none, so their
+  prompts are gone. `wf round lens` now takes `-asks`, required, from a closed
+  set, with `-name` left free as the round's own label: a hard refusal on NAMES
+  was measured and REJECTED, because it would have fired on half of correct
+  practice, and `other` is always available so the refusal only ever means "you
+  typed something no report can compare". The standard is *a delta round asks
+  CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those
+  three* `[R3]`, each with a measured origin rather than a taxonomy's symmetry:
+  closure (two hand-written closure lenses returned 6 and 4, 5 and 4, 6 and 4 of
+  rounds of 25, 23, 21 — the most valuable half of those rounds), fix-induced (a
+  fix is the largest single source of blockers: half of rounds 3+, then 5 of 11,
+  then 9 of 9), ripple (a fix that changes a RULE has consumers not in the diff;
+  four such on one run contained none of the rule's keywords). Coverage is a
+  NOTE and never a refusal — the rule is new and every corpus that would have to
+  satisfy it is closed.
+- *And the claim was checked by running the check* — the ninth wave's lesson,
+  applied: `[R2]` and `[R3]` were marked at two sites each, a scratch workspace
+  was built over the two references, and `wf check rules` was actually run
+  (`8 marker(s), 3 id(s), 3 compared, 0 conflict(s)`). Every new guard was
+  mutation-proven; one mutation first read as SURVIVED and was not — `sd` exits
+  ZERO when it replaces nothing, so a mutation harness built on it can report a
+  guard as unproven that was never mutated. Verify the replacement landed, not
+  the exit code.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file

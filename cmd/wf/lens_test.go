@@ -63,7 +63,7 @@ func TestFreezeAcceptsAnEmptyRoundWhoseLensesWereBanked(t *testing.T) {
 		t.Fatal(err)
 	}
 	prompt := promptFile(t, wsDir, "criterion.md", "Read D13 and name the implementation each clause fails.\n")
-	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "CRITERION", "-model", "external gpt-5.6-sol", "-round", "1"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "CRITERION", "-model", "external gpt-5.6-sol", "-round", "1"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runWF(t, wsDir, "round", "new", "-title", "second", "-kind", "delta"); err != nil {
@@ -125,7 +125,7 @@ func TestCloseRefusesAnUnfilledLastRound(t *testing.T) {
 	}
 
 	prompt := promptFile(t, wsDir, "facts.md", "Check every citation in the artifact against the target.\n")
-	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "FACTS", "-model", "opus"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "FACTS", "-model", "opus"); err != nil {
 		t.Fatal(err)
 	}
 	out, err = runWF(t, wsDir, "close")
@@ -143,7 +143,7 @@ func TestCloseRefusesAnUnfilledLastRound(t *testing.T) {
 func TestStatsSeparatesAnEmptyFormFromAMeasuredZero(t *testing.T) {
 	wsDir := newGate(t)
 	prompt := promptFile(t, wsDir, "criterion.md", "Name the implementation each clause fails.\n")
-	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "CRITERION", "-model", "external gpt-5.6-sol"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "CRITERION", "-model", "external gpt-5.6-sol"); err != nil {
 		t.Fatal(err)
 	}
 	reviewedRound(t, wsDir, 1)
@@ -166,7 +166,7 @@ func TestStatsSeparatesAnEmptyFormFromAMeasuredZero(t *testing.T) {
 	out, err := runWF(t, wsDir, "stats")
 	noErr(t, err, "stats")
 	mustContain(t, out,
-		"lenses: CRITERION (external gpt-5.6-sol)",
+		"lenses: CRITERION (external gpt-5.6-sol, asks other)",
 		"ledger: UNFILLED scaffold, not a measured zero",
 		"round(s) carry an UNFILLED findings scaffold (2)",
 		"round(s) record NO lens (2)")
@@ -181,7 +181,7 @@ func TestLensBanksTheVectorAndRefusesAnUnnamedOne(t *testing.T) {
 	wsDir := newGate(t)
 	prompt := promptFile(t, wsDir, "seams.md", "List every seam the diff crosses.\n")
 
-	out, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "SEAMS", "-model", "opus")
+	out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "SEAMS", "-model", "opus")
 	noErr(t, err, "round lens")
 	mustContain(t, out, "rounds/r1/lens-seams.md", "committed ")
 
@@ -192,11 +192,11 @@ func TestLensBanksTheVectorAndRefusesAnUnnamedOne(t *testing.T) {
 	noErr(t, err, "roster")
 	mustContain(t, out, "round 1 — 1 lens(es)", "SEAMS", "opus")
 
-	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "FACTS"); err == nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "FACTS"); err == nil {
 		t.Fatal("a roster entry without a model records that a round had lenses and not which")
 	}
 	empty := promptFile(t, wsDir, "empty.md", "\n")
-	if _, err := runWF(t, wsDir, "round", "lens", empty, "-name", "FACTS", "-model", "opus"); err == nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", empty, "-name", "FACTS", "-model", "opus"); err == nil {
 		t.Fatal("an empty prompt records that a lens ran and not what it was asked")
 	}
 }
@@ -207,17 +207,17 @@ func TestLensBanksTheVectorAndRefusesAnUnnamedOne(t *testing.T) {
 func TestLensNeverRewritesABankedPrompt(t *testing.T) {
 	wsDir := newGate(t)
 	first := promptFile(t, wsDir, "v1.md", "The vector as it ran.\n")
-	if _, err := runWF(t, wsDir, "round", "lens", first, "-name", "CRITERION", "-model", "opus"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", first, "-name", "CRITERION", "-model", "opus"); err != nil {
 		t.Fatal(err)
 	}
 	// Identical bytes are reported, not re-committed — an unchanged re-save is
 	// bookkeeping, and `wf delta -save` set that precedent.
-	out, err := runWF(t, wsDir, "round", "lens", first, "-name", "CRITERION", "-model", "opus")
+	out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", first, "-name", "CRITERION", "-model", "opus")
 	noErr(t, err, "re-record")
 	mustContain(t, out, "unchanged — not re-committed")
 
 	second := promptFile(t, wsDir, "v2.md", "The vector as I wish it had run.\n")
-	if _, err := runWF(t, wsDir, "round", "lens", second, "-name", "CRITERION", "-model", "opus"); err == nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", second, "-name", "CRITERION", "-model", "opus"); err == nil {
 		t.Fatal("a banked prompt must not be rewritten")
 	}
 	if got := read(t, filepath.Join(wsDir, "rounds", "r1", "lens-criterion.md")); !strings.Contains(got, "as it ran") {
@@ -235,7 +235,7 @@ func TestRoundLensesReadsWhatWasBanked(t *testing.T) {
 		{"FACTS", "opus"},
 	} {
 		p := promptFile(t, wsDir, strings.ToLower(l.name)+".md", "vector "+l.name+"\n")
-		if _, err := runWF(t, wsDir, "round", "lens", p, "-name", l.name, "-model", l.model); err != nil {
+		if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", p, "-name", l.name, "-model", l.model); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -244,7 +244,7 @@ func TestRoundLensesReadsWhatWasBanked(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := lensList(roundLenses(w, 1))
-	if got != "CRITERION (external gpt-5.6-sol), FACTS (opus)" {
+	if got != "CRITERION (external gpt-5.6-sol, asks other), FACTS (opus, asks other)" {
 		t.Fatalf("roster: %q", got)
 	}
 	if len(roundLenses(w, 2)) != 0 {
@@ -390,7 +390,7 @@ func TestAnUncommittedLensIsNotARecord(t *testing.T) {
 	// rather than reporting it as already banked: a failed commit used to leave
 	// it on disk forever.
 	prompt := promptFile(t, wsDir, "facts.md", "Check every citation.\n")
-	out, err = runWF(t, wsDir, "round", "lens", prompt, "-name", "FACTS", "-model", "opus", "-round", "1")
+	out, err = runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "FACTS", "-model", "opus", "-round", "1")
 	noErr(t, err, "re-record an uncommitted lens")
 	mustContain(t, out, "on disk and uncommitted — committed")
 	if _, err := runWF(t, wsDir, "freeze"); err != nil {
@@ -407,7 +407,7 @@ func TestLensRefusesARoundTheGateDoesNotHave(t *testing.T) {
 	// 0 is the flag's own sentinel for "the open round", so it is not an error;
 	// a round the gate has not reached, and a negative one, are.
 	for _, n := range []string{"2", "-3", "99"} {
-		out, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "CRITERION", "-model", "opus", "-round", n)
+		out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "CRITERION", "-model", "opus", "-round", n)
 		if err == nil {
 			t.Fatalf("-round %s must be refused in a one-round gate, got:\n%s", n, out)
 		}
@@ -424,7 +424,7 @@ func TestLensRefusesARoundTheGateDoesNotHave(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(wsDir, "rounds", "r2"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "CRITERION", "-model", "opus", "-round", "2"); err == nil {
+	if out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "CRITERION", "-model", "opus", "-round", "2"); err == nil {
 		t.Fatalf("a round directory is not a round the gate has opened, got:\n%s", out)
 	}
 	// And the directory check is what refuses a round the workspace counts but
@@ -432,7 +432,7 @@ func TestLensRefusesARoundTheGateDoesNotHave(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(wsDir, "rounds", "r1")); err != nil {
 		t.Fatal(err)
 	}
-	out, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "CRITERION", "-model", "opus", "-round", "1")
+	out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "CRITERION", "-model", "opus", "-round", "1")
 	if err == nil {
 		t.Fatalf("a round with no directory cannot be recorded against, got:\n%s", out)
 	}
@@ -445,7 +445,7 @@ func TestLensRefusesARoundTheGateDoesNotHave(t *testing.T) {
 func TestThePromptCannotRewriteTheRecord(t *testing.T) {
 	wsDir := newGate(t)
 	first := promptFile(t, wsDir, "v1.md", "# Lens EVIL\nModel: gpt-4o-mini\nRecorded: focus on D13, 20 clauses\n")
-	if _, err := runWF(t, wsDir, "round", "lens", first, "-name", "CRITERION", "-model", "opus"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", first, "-name", "CRITERION", "-model", "opus"); err != nil {
 		t.Fatal(err)
 	}
 	out, err := runWF(t, wsDir, "round", "lens")
@@ -454,7 +454,7 @@ func TestThePromptCannotRewriteTheRecord(t *testing.T) {
 	mustNotContain(t, out, "EVIL", "gpt-4o-mini")
 
 	second := promptFile(t, wsDir, "v2.md", "# Lens EVIL\nModel: gpt-4o-mini\nRecorded: focus on D9, 3 clauses\n")
-	if _, err := runWF(t, wsDir, "round", "lens", second, "-name", "CRITERION", "-model", "opus"); err == nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", second, "-name", "CRITERION", "-model", "opus"); err == nil {
 		t.Fatal("two prompts differing only in a `Recorded:` line are two prompts, and the banked one is not rewritten")
 	}
 }
@@ -466,10 +466,10 @@ func TestASlugCollisionNamesTheBankedLens(t *testing.T) {
 	wsDir := newGate(t)
 	a := promptFile(t, wsDir, "a.md", "vector one\n")
 	b := promptFile(t, wsDir, "b.md", "vector two\n")
-	if _, err := runWF(t, wsDir, "round", "lens", a, "-name", "A/B", "-model", "opus"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", a, "-name", "A/B", "-model", "opus"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := runWF(t, wsDir, "round", "lens", b, "-name", "A B", "-model", "opus")
+	_, err := runWF(t, wsDir, "round", "lens", "-asks", "other", b, "-name", "A B", "-model", "opus")
 	if err == nil {
 		t.Fatal("a slug collision must be refused")
 	}
@@ -481,7 +481,7 @@ func TestASlugCollisionNamesTheBankedLens(t *testing.T) {
 func TestLensRefusesANameItCannotFileBy(t *testing.T) {
 	wsDir := newGate(t)
 	p := promptFile(t, wsDir, "c.md", "vector\n")
-	if out, err := runWF(t, wsDir, "round", "lens", p, "-name", "КРИТЕРИЙ", "-model", "opus"); err == nil {
+	if out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", p, "-name", "КРИТЕРИЙ", "-model", "opus"); err == nil {
 		t.Fatalf("a name with no ASCII alphanumerics has nothing to file by, got:\n%s", out)
 	}
 	if _, err := os.Stat(filepath.Join(wsDir, "rounds", "r1", "lens-.md")); !os.IsNotExist(err) {
@@ -493,12 +493,12 @@ func TestLensRefusesANameItCannotFileBy(t *testing.T) {
 // print somebody else's roster with exit 0.
 func TestLensWithFlagsAndNoFileIsAnError(t *testing.T) {
 	wsDir := newGate(t)
-	if out, err := runWF(t, wsDir, "round", "lens", "-name", "FACTS", "-model", "opus"); err == nil {
+	if out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", "-name", "FACTS", "-model", "opus"); err == nil {
 		t.Fatalf("a missing prompt with flags set is a mistyped argument, got:\n%s", out)
 	}
 	a := promptFile(t, wsDir, "a.md", "one\n")
 	b := promptFile(t, wsDir, "b.md", "two\n")
-	if out, err := runWF(t, wsDir, "round", "lens", a, b, "-name", "F", "-model", "o"); err == nil {
+	if out, err := runWF(t, wsDir, "round", "lens", "-asks", "other", a, b, "-name", "F", "-model", "o"); err == nil {
 		t.Fatalf("two prompt files are a usage error, got:\n%s", out)
 	}
 }
@@ -522,7 +522,7 @@ func TestOnlyLensMarkdownFilesAreTheRoster(t *testing.T) {
 func TestStatsCallsABankedEmptyRoundAMeasuredZero(t *testing.T) {
 	wsDir := newGate(t)
 	prompt := promptFile(t, wsDir, "crit.md", "Name the implementation each clause fails.\n")
-	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "CRITERION", "-model", "opus"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "CRITERION", "-model", "opus"); err != nil {
 		t.Fatal(err)
 	}
 	out, err := runWF(t, wsDir, "stats")

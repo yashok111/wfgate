@@ -46,6 +46,53 @@ Six facts worth knowing before reading the list:
 
 ---
 
+## 0. The severity scale, which is closed
+
+Fill the `level` cell with one of **BLOCKER, MAJOR, MINOR, NOTE** and nothing else. `wf round record`
+refuses any other word before it writes a byte, and every read path stays permissive so the closed
+gates keep being readable.
+
+**A finding's level is decided by what catches it downstream, never by how bad it reads [R2].**
+
+- **BLOCKER** — no later gate catches it: if it rides, the run produces a wrong result that nothing
+  refuses. Always BLOCKER whatever it looks like: a finding that makes an observation, a guard or a
+  criterion *vacuous* — it passes whether or not the thing it checks exists. Only BLOCKER loops the
+  gate, and only BLOCKER is what the stop rule reads.
+- **MAJOR** — a real defect, and the row **NAMES the later gate that catches it**. Cannot name one?
+  Then it is a BLOCKER. That naming is what turns the classification from a feeling into a claim the
+  next round can check, and it is the operative half of "classify by actual downstream coverage".
+- **MINOR** — a real defect whose cost, standing forever, is below the round it would take to close.
+- **NOTE** — not a defect. An observation or a question with no failure attached. Counted in a round's
+  findings, never subtracted from them, and named apart by `wf stats`.
+
+**Measured, which is why the scale is closed rather than suggested.** The six gate ledgers on disk hold
+1065 findings under FOUR vocabularies for one scale: BLOCKER is universal, the tier under it is MAJOR on
+five gates and CONCERN on one, and the tier under that is MINOR on four, ADVISORY on one and NIT on one.
+172 of the 1065 — 16% — carry a level no other gate can be read against, so no report could put a round
+of one gate beside a round of another. The same six phases' orchestration SCRIPTS, whose severity is a
+JSON Schema `enum` checked at the tool-call layer, drift not at all: all six declare exactly
+`['blocker','major','minor']`. The scale drifts precisely where nothing validates it.
+
+---
+
+## 0b. What a delta round asks
+
+A delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3].
+
+- **CLOSURE** — for every `closed by` claim in the brief: did that commit reach what the finding names,
+  and is the finding actually gone? `wf check closure` answers the mechanical half (a FILE miss is a
+  verdict, a SECTION miss is a question); this vector answers the rest.
+- **FIX-INDUCED** — what did the previous round's own fix break that was not broken before? Mark each
+  one `[fix-induced]` in the ledger so the share can be read later.
+- **RIPPLE** — which untouched paragraphs still argue from what the fix changed? `wf check stale -since
+  <ref>` narrows the read to the sentences carrying retired vocabulary and prints NOT A PASS where the
+  range retired none.
+
+Anything else the slice needs is welcome beside them; `-asks other` records it so the roster stays
+comparable without pretending the vector was one of the named ones.
+
+---
+
 ## A. Facts and measurements in the prompt
 
 A number or a claim about the codebase that reaches an agent's prompt becomes an instruction; a wrong one

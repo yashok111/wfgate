@@ -634,6 +634,18 @@ Opened at %s.
 Every BLOCKER below must be closed by a commit in this workspace before the
 round is frozen, and the next round's first job is to check that claim.
 
+A finding's level is decided by what catches it downstream, never by how bad it
+reads [R2]. The scale is closed — wf round record refuses anything else:
+
+- **BLOCKER** — no later gate catches it: if it rides, the run produces a wrong
+  result nothing refuses. Always BLOCKER, whatever it looks like: a finding that
+  makes a guard, an observation or a criterion VACUOUS.
+- **MAJOR** — a real defect, and this row NAMES the later gate that catches it.
+  Cannot name one? Then it is a BLOCKER.
+- **MINOR** — a real defect whose cost, standing forever, is below the round it
+  would take to close.
+- **NOTE** — not a defect: an observation or a question with no failure attached.
+
 | # | level | finding | closed by |
 |---|-------|---------|-----------|
 | 1 | BLOCKER |  |  |
@@ -693,7 +705,7 @@ func cmdRoundRecord(args []string) error {
 	// recorded when filed, closures land later, and freeze is the gate that
 	// demands them closed.
 	rows := ws.ParseFindings(b)
-	byCommit, byProse, open, blockers := 0, 0, 0, 0
+	byCommit, byProse, open, blockers, notes := 0, 0, 0, 0, 0
 	for _, r := range rows {
 		if r.Malformed {
 			return fmt.Errorf("line %d is a table row of %d cell(s), not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
@@ -702,8 +714,23 @@ func cmdRoundRecord(args []string) error {
 		if r.Placeholder() {
 			continue
 		}
+		// The scale is closed on the write path and open on every read path.
+		// Measured over the six ledgers on disk: one scale, four vocabularies
+		// (MAJOR/CONCERN, MINOR/ADVISORY/NIT), because a markdown cell validates
+		// nothing while the same six phases' script schemas — one `enum`,
+		// checked at the tool-call layer — never drifted at all. A level the
+		// gate cannot compare across rounds is a level no report can read, and
+		// a rejected record announces itself where a landed one briefs the next
+		// round with a word only its author understood.
+		if !r.KnownLevel() {
+			return fmt.Errorf("row %s (line %d): level %q is not one of %s; the scale is closed so a round of one gate can be compared with a round of another — nothing was recorded",
+				r.Num, r.Line, strings.TrimSpace(r.Level), strings.Join(ws.Levels, ", "))
+		}
 		if r.Blocker() {
 			blockers++
+		}
+		if r.Note() {
+			notes++
 		}
 		shas := r.Shas()
 		for _, s := range shas {
@@ -739,8 +766,14 @@ func cmdRoundRecord(args []string) error {
 		// difference between "checked" and "looked green".
 		fmt.Printf("  findings: no table recognized — closures not validated\n")
 	} else {
-		fmt.Printf("  findings: %d row(s), %d blocker(s); closed by commit %d, by prose %d, open %d\n",
-			len(rows), blockers, byCommit, byProse, open)
+		// NOTE rows are named, never subtracted: the total stays comparable
+		// with a corpus that had nowhere to file a non-defect row.
+		note := ""
+		if notes > 0 {
+			note = fmt.Sprintf("; %d NOTE(s) — counted in the total, asserting no failure", notes)
+		}
+		fmt.Printf("  findings: %d row(s), %d blocker(s); closed by commit %d, by prose %d, open %d%s\n",
+			len(rows), blockers, byCommit, byProse, open, note)
 	}
 	// The roster, asked for where the round's work is recorded. Measured on
 	// mocker A3: ELEVEN of thirteen rounds bank no lens — the operator started
@@ -751,8 +784,14 @@ func cmdRoundRecord(args []string) error {
 	// against anything. Recording findings is the step that feels like the
 	// work; this is the other half of the same record, and a note is all it is
 	// — a refusal here would be a refusal to write down what was found.
-	if validLenses(roundLenses(w, n)) == 0 {
-		fmt.Printf("  lenses: NONE banked for round %d — the findings are recorded and the prompts that produced them are not. `wf round lens <prompt> -name N -model M -round %d`\n", n, n)
+	lenses := roundLenses(w, n)
+	if validLenses(lenses) == 0 {
+		fmt.Printf("  lenses: NONE banked for round %d — the findings are recorded and the prompts that produced them are not. `wf round lens <prompt> -name N -model M -asks Q -round %d`\n", n, n)
+	} else if miss := missingDeltaAsks(lenses); len(miss) > 0 {
+		// Which QUESTIONS the round put is the half a roster of names cannot
+		// answer: measured over the two gates that banked any roster, ten
+		// distinct vector names of which one appears in the manual.
+		fmt.Printf("  lenses: %d banked, and none asks %s — required of a DELTA round [R3]\n", validLenses(lenses), strings.Join(miss, ", "))
 	}
 	fmt.Printf("committed %s\n", short(sha))
 	return nil
@@ -2320,7 +2359,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// rows, and a round whose reviewer vectors nobody banked. Both print `0
 	// finding(s), 0 blocker(s)` and a bare round line today, which is what a
 	// measured zero prints — and a measured zero is a legal close.
-	var scaffoldRounds, noRoster []int
+	var scaffoldRounds, noRoster, askShort, askUnstated []int
 	// The longest run of reviewer rounds carrying exactly ONE blocker, and their
 	// texts — see the note where it is printed.
 	var oneBlockerRun []int
@@ -2328,7 +2367,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	var flatRuns [][]int
 	var flatTexts [][]string
 	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
-	unparsable := 0
+	unparsable, notes, offScale := 0, 0, 0
 	for n := 1; n <= w.M.Round; n++ {
 		findings, blockers, byCommit, byProse, open, fixInduced := 0, 0, 0, 0, 0, 0
 		soleBlocker := ""
@@ -2354,6 +2393,24 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		lenses := roundLenses(w, n)
 		if validLenses(lenses) == 0 && kinds[n] != "tool" {
 			noRoster = append(noRoster, n)
+		} else if kinds[n] == "delta" {
+			// Which QUESTIONS a delta round put, separated from whether it
+			// stated them at all: a roster banked before `-asks` existed asked
+			// something, and reporting it as uncovered would be the same
+			// absent-vs-measured-zero collapse this report refuses everywhere
+			// else.
+			stated := false
+			for _, l := range lenses {
+				if l.Valid && len(l.Asks) > 0 {
+					stated = true
+				}
+			}
+			switch {
+			case !stated:
+				askUnstated = append(askUnstated, n)
+			case len(missingDeltaAsks(lenses)) > 0:
+				askShort = append(askShort, n)
+			}
 		}
 		if ledgerErr == nil {
 			for _, r := range rows {
@@ -2372,6 +2429,16 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 				if r.Blocker() {
 					blockers++
 					soleBlocker = r.Text
+				}
+				// Counted, never subtracted. Every banked total in this corpus
+				// includes whatever non-defect rows its gate filed under its own
+				// name, so removing NOTE from `findings` would move five gates'
+				// numbers in silence — the defect this report exists to refuse.
+				if r.Note() {
+					notes++
+				}
+				if !r.KnownLevel() {
+					offScale++
 				}
 				if r.FixInduced() {
 					fixInduced++
@@ -2615,8 +2682,25 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "  note: %d round(s) record NO lens (%s) — what reviewed them is not in this workspace, so no claim about brief wording or model diversity made from these numbers can be checked against it; bank each vector with `wf round lens <prompt> -name N -model M`\n",
 			len(noRoster), roundList(noRoster))
 	}
+	if len(askShort) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d DELTA round(s) bank a roster that asks none of %s (%s) — a delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3]\n",
+			len(askShort), strings.Join(lensDeltaRequired, ", "), roundList(askShort))
+	}
+	if len(askUnstated) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d DELTA round(s) bank a roster that states no questions (%s) — banked before `-asks` existed, so what they covered is UNRECORDED rather than uncovered\n",
+			len(askUnstated), roundList(askUnstated))
+	}
 	if len(noLedger) > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d round(s) have no readable findings.md (%s) — their 0/0 above is an ABSENT measurement, not a measured zero, and the totals do not include them\n", len(noLedger), roundList(noLedger))
+	}
+	if notes > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d of the findings above are NOTE rows — not defect claims, counted in the totals so they stay comparable with a corpus that had nowhere else to file them\n", notes)
+	}
+	if offScale > 0 {
+		// The measurement that produced the closed scale, run against the
+		// workspace reading it: six ledgers, one scale, four vocabularies.
+		_, _ = fmt.Fprintf(out, "  note: %d finding(s) carry a level outside %s — recorded before the scale was closed, so a round of this gate cannot be compared level-for-level with a round of another\n",
+			offScale, strings.Join(ws.Levels, "/"))
 	}
 	if unparsable > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d ledger row(s) are not four cells and were counted as nothing — a hand-awk once closed a gate on 99/27 against a true 98/26, and a row the parser cannot read is the same error with a different sign\n", unparsable)

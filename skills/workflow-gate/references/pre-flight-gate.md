@@ -404,6 +404,21 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   were already closed. Nothing was lost that round because the other lens happened to read after the
   write, which is luck and not design. Dispatch every vector against ONE frozen snapshot and batch the
   fixes after the last one returns.
+- **A delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3].**
+  Bank each one with `wf round lens <prompt> -name N -model M -asks Q` — `-name` stays the label your
+  findings use, `-asks` is the closed set (`orchestration, routing, alignment, facts, seams, criterion,
+  closure, fix-induced, ripple, other`) that lets one gate's roster be read beside another's, and `other`
+  is always available so a vector your slice needs is never refused. Each required question has a
+  measured origin, not a taxonomy's symmetry: **CLOSURE** — two hand-written closure lenses returned 6
+  and 4, 5 and 4, 6 and 4 findings of rounds of 25, 23 and 21, the most valuable half of those rounds,
+  produced by prose over data git already held (`wf check closure` mechanised the reachable part, not
+  this one); **FIX-INDUCED** — a fix is the largest single source of blockers, half of rounds 3+ on one
+  phase, 5 of 11 on the next, and 9 of 9 on the one after; **RIPPLE** — a fix that changes a RULE has
+  consumers that are not in the diff, and four such ripples on one run argued from the retired rule
+  while containing none of its keywords, so `grep` returned nothing (`wf check stale` narrows that read
+  and says NOT A PASS where it swept nothing). Measured on the two gates that banked any roster at all:
+  17 lens files under TEN distinct names, of which exactly one — `criterion` — appears anywhere in this
+  manual, and the other four gates banked no roster, so their prompts are gone.
 - **Later rounds are DELTA rounds.** A fix is unreviewed code — in one phase, *half* the blockers of
   rounds 3+ were introduced by the previous round's own fix; in the next, 5 of 11; and in the one after
   that, round 2 was **9 out of 9**: every blocker that round existed only because round 1's fix created
@@ -625,6 +640,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   a section reviewer was given a non-vacuity vector ("which line of this diff, if reverted, makes this
   check fail? if none, that is a blocker"). **Classify by actual downstream coverage** — check whether
   some later gate was actually assigned that vector before letting anything ride.
+- **A finding's level is decided by what catches it downstream, never by how bad it reads [R2].** The
+  scale is BLOCKER / MAJOR / MINOR / NOTE and `wf round record` refuses anything else — measured, the six
+  ledgers on disk hold 1065 findings under four vocabularies for one scale, 172 of them at a level no
+  other gate can be read against, while the same six phases' script schemas, whose `enum` is checked at
+  the tool-call layer, never drifted. BLOCKER is what no later gate catches, and always what makes a
+  guard or a criterion vacuous; MAJOR is a real defect whose row NAMES the later gate that catches it,
+  and a row that cannot name one is a BLOCKER; MINOR is cheaper standing than looped for; NOTE asserts no
+  failure. The full statement of each is in `gate-checks.md`, which every gate reviewer already gets.
 - **Stop rule, decided in advance.** The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. Majors ride into the
   run — the per-section review gates exist to catch them, and another round costing 170k to fix one stale
   sentence is not a bargain. Read the trend off **`wf stats`**, not off your own awk: it prints each

@@ -599,7 +599,7 @@ func TestRecordAsksForTheRosterItDoesNotHave(t *testing.T) {
 	// And it stops asking once the roster exists.
 	prompt := filepath.Join(filepath.Dir(wsDir), "citations.md")
 	write(t, prompt, "Find every citation in the artifact that no longer resolves to the line it names.\n")
-	if _, err := runWF(t, wsDir, "round", "lens", prompt, "-name", "citations", "-model", "opus"); err != nil {
+	if _, err := runWF(t, wsDir, "round", "lens", "-asks", "other", prompt, "-name", "citations", "-model", "opus"); err != nil {
 		t.Fatal(err)
 	}
 	ledger(t, wsDir, 1, "| 1 | MAJOR | a wording this round filed |  |\n| 2 | MAJOR | and a second one |  |\n")
