@@ -994,6 +994,122 @@ it):
   guard as unproven that was never mutated. Verify the replacement landed, not
   the exit code.
 
+**The twelfth wave — P3a, the first workspace gated TWICE** (`FEEDBACK-p3a.md`;
+22 rounds, 441 findings, 142 blockers, 195 edits over 4921 changed lines, 9.5 h —
+sixteen rounds over a decision document, closed, then the orchestration script
+added to the SAME workspace and gated for five more plus a tooling round). It did
+not launch, so it adds no number for what a gate is worth on the other side. Four
+of its items were judgement and were landed by the docs commit that carried the
+feedback; what shipped here is the tool half, and two of the six were the tool
+reporting a population it had silently replaced with a different one:
+
+- *`wfdry --mode dead-reviews` matched a SUBSTRING of the label* — so a producer
+  called `preview` was killed as a reviewer, the run ended at section five, and
+  the mode reported OK over a seventh of the agents it exists to exercise without
+  ever killing a gate reviewer, which is its entire purpose. Reproduced on the
+  banked script: **7 agents and 6 phases against 24 and 15.** A label is read as
+  SEGMENTS now (split on non-alphanumerics and camelCase), and a stem matches a
+  segment's HEAD — `reviewer` and `reviews` are the reviewer, `preview` is not,
+  and `verif` covers the inflections English puts on the tail. The actionable
+  half is the REPORT: every mode PRINTS the labels it killed, because the defect
+  was invisible to an operator who suspected it, and a `--dead` label that never
+  spawns is named rather than passing as a clean run over nothing.
+- *`wfdry --prompt-diff <a>,<b>`* — two agents given the same job are two copies
+  of one briefing, and a rule stated to one and not the other is reachable by
+  nothing else in this toolchain: `dup` needs a rare token the two prompts share
+  and `stale` needs something retired. That gate's whole last round was that
+  class, and the sweep that closed it — a HAND diff — found a sixth copy of one
+  rule no reviewer lens had filed. It lives in the RUNNER and not in `wfcheck`,
+  and that was measured before a line was kept: **14 of 15 prompts on that script
+  are composed at run time**, so the version written against the parsed program
+  reported nothing on the very corpus that produced the class, and was deleted.
+  Validated end to end against the workspace's own history — over the revision
+  BEFORE the closing commit it prints the three sentences that commit added, and
+  over the revision after it, none. The PAIRING stays with the operator, and that
+  is a measurement rather than modesty: ranking every pair by shared sentences
+  surfaces SIBLING prompts — two lenses of one gate — at 0.33-0.86 while the pair
+  that motivated the feature ranks BELOW all of them at 0.07-0.12, under every
+  filter setting measured (and under the producers' shared preamble as well until
+  a document-frequency filter removes it — `stale`'s own `-max-df` lesson).
+  A ranking that misses the case it was derived from would be read as coverage;
+  it is on the do-not-build list with its numbers.
+- *`wf init` pins `gate-checks.md` and never said the pin had aged* — that
+  workspace's copy predated section 0 (the closed severity scale) and 0b (the
+  three questions a delta round may never drop), and every reviewer of rounds 17
+  and 18 was handed it as required reading. Nothing was misclassified, because
+  the operator had restated the scale by hand in the prompt, and that is the
+  trap: **a reviewer briefed from a stale reference agrees with the rules by
+  coincidence, and the operator cannot tell that from agreement.** It was found
+  by a human asking "are you using the new classification?", which is not a
+  check. The pin is RIGHT and stays; the silence was the defect. `wf round new`
+  and `wf freeze` name it now and list the SECTIONS the pin predates — the
+  actionable half, since a byte difference says only that it aged. The comparison
+  is over CONTENT, so the `wf init` stamp and a `wf docs checks >` regeneration
+  are not two different states.
+- *The JavaScript escapes were reaching the comparison undecoded* — `isn\'t`
+  arrived as a backslash and a trailing `\n` sat between a full stop and the end
+  of the literal, so the sentence never terminated and glued itself to the next
+  word (`... satisfied false nthe smoke check ...`). `wf check rules` reached ONE
+  comparison all gate and getting there took three iterations against the
+  normaliser. Decoded in `jstext`, which is where the one reader of JavaScript
+  lives, so `dup`, `rules` and `stale` all get it: on the live corpus `dup` goes
+  from 13 cross-file groups to **17**, and 10 divergent to 13 — four more
+  document-versus-prompt pairs than the escapes let it see. Every decoded line keeps
+  the SOURCE line it was written on. Writing the mutation for that found a second
+  defect one layer down: a sentence beginning exactly at a wrap started, in the
+  joined paragraph, at the space the join put in front of it, so blame read one
+  line early on every sentence that starts a line — and it cancelled the mutation
+  exactly, which is how it was noticed.
+- *`wf round record` counts the closures that will not be checkable* — `wf check
+  closure` asks whether a closing commit's diff reaches what the finding NAMES,
+  and a finding naming no artifact path cannot be reached at all: **0 of 350 on
+  the first record, 26 of 26 after the paths went in.** The requirement was in the
+  manual and in the tool's own output nowhere at the moment it could still be met,
+  which is while the operator is writing the file. Silent on a one-artifact
+  workspace, where the check reads the only document there is.
+- *`wf apply -rule` takes a free-text rule NAME* — a script gate's rules live in
+  prompts and are marked in no document, so `-rule "bar accounting"` was refused
+  outright and the flag was unusable for the whole gate whose most valuable sweep
+  it is. The phrase form lists every sentence of the artifact set carrying all of
+  its words, marking the files the batch wrote, and says out loud that it is the
+  weaker half: it names the sentences that use the words, not the sites of a
+  rule. Words are matched as whole TOKENS — `bar` is not `barrier`.
+- *And the wave earned its review round, for the seventh time running* — one
+  external model over the diff, four bars green: **15 findings, 13 of them
+  real, and two were false GREENS in the new code.** `--prompt-diff accept,accept`
+  diffed a text against itself and printed "nothing is stated to one and not the
+  other"; and a pair of prompts whose every sentence fell under the six-word
+  floor compared ZERO against ZERO and printed the same line — an absent
+  measurement in the register of a measured pass, committed inside the wave that
+  ships two guards against exactly that. The diff now names both populations,
+  prints `NOT A PASS` where one is empty, and refuses two spellings of one
+  prompt. Also found: sentences were keyed by the NORMALISED form alone, so
+  `retry_count == 3` and `retry_count != 3` read as shared — the fifth wave's
+  OPERATOR conflict, in a new place; a label spawned in a loop resolved to its
+  FIRST prompt, silently, which is the ambiguity class `check cite` reports; the
+  `fix` STEM matched `fixture`, trading one over-kill for a smaller one, so the
+  spellings are a closed set now; a digit reset the camelCase boundary, so
+  `gate1Review` was never killed; a line CONTINUATION decoded to a space where
+  the engine joins with nothing; the free-text rule sweep said "every sentence"
+  while applying a four-word floor and swallowed its collector's notes on the
+  zero-hit path; and one `Makefile` guard passed on any failure that printed
+  nothing rather than on the refusal it was written for. **The comment saying
+  "nothing is truncated" was wrong and the code was right** — this project's
+  most frequent defect, once more. One finding was REFUSED with its reason: a
+  `dead-reviews` mode that kills nobody stays a NOTE, because a producer-only
+  script has no reviewer label and is correct — the runner's own `clean.mjs` is
+  one. Its `--dead` half was taken, at the reviewer's own scope: a label the
+  OPERATOR named that spawned in no mode at all now FAILS, because there the
+  claim was typed by a person.
+- *And one number the corpus did not have* — the findings-per-100-changed-lines
+  RISES as a gate converges (2.5, 4.1, 8.0, 9.3) while its blockers FALL
+  (6, 3, 0, 0), because the fixes shrink faster than the findings do (785, 367,
+  125, 53 lines). The prediction's error changes SIGN mid-gate: round 18 predicted
+  from 10.6 against an actual 2.5, round 21 from 8.3 against an actual 9.3. The
+  manual already said to read the series rather than the pooled ratio; what this
+  adds is that the series INVERTS, and that the inversion is the convergence
+  signal rather than noise.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file
@@ -1102,9 +1218,18 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-24 — read before trusting
+## State as of 2026-08-25 — read before trusting
 
-- **Four real gates have now run entirely through `wf`.** P2d (10 rounds, 98
+- **Six real gates have now run entirely through `wf`,** and P3a
+  (`FEEDBACK-p3a.md`, `~/projects/gates/mocker-p3a-resources`) is the first
+  workspace gated TWICE — sixteen rounds over a decision document, closed, then
+  the orchestration script added as a SECOND artifact to the same workspace and
+  gated for five more rounds plus a tooling round: 22 rounds, 441 findings, 142
+  blockers, 9.5 h, median round 21.4 min. It did NOT launch, so A3 is still the
+  only gate in this corpus with a number for what one was worth on the other
+  side. Its workspace is on disk and unpruned, which is what let the prompt-diff
+  feature be validated against the revision before its own closing commit.
+- **Four real gates ran entirely through `wf` before those.** P2d (10 rounds, 98
   findings — `FEEDBACK-p2d.md`), P2e, the first over a workflow SCRIPT
   (17 rounds, 234 findings — `FEEDBACK-p2e.md` says 235, and its own `wf stats` says 234; the
   hand-count is the one that is wrong — 293 KB of artifacts), and P2f,

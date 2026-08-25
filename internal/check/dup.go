@@ -37,6 +37,12 @@ type Statement struct {
 	Ops  string   // the comparison operators Norm erases; see opsOf
 }
 
+// Normalise is normalise, exported for the one caller outside this package
+// that has to compare against a Statement's Norm on the SAME terms: `wf apply
+// -rule` takes a free-text rule name, and a phrase normalised by any other
+// spelling would match nothing the collector produced.
+func Normalise(s string) (string, []string) { return normalise(s) }
+
 // Site is one location of a duplicated statement, with the commit that last
 // touched THAT LINE.
 type Site struct {
@@ -194,7 +200,7 @@ func CollectStatements(root string, files []string, minWords int) ([]Statement, 
 				if !sp.Join {
 					flush()
 				}
-				feed(piecesOf(src[sp.From:sp.To], jstext.LineAt(src, sp.From)))
+				feed(piecesOfSpan(src[sp.From:sp.To], jstext.LineAt(src, sp.From), sp.Escaped))
 			}
 			flush()
 		} else {
@@ -211,6 +217,35 @@ func CollectStatements(root string, files []string, minWords int) ([]Statement, 
 	return out, notes, nil
 }
 
+// StatementsOfText splits one TEXT into the same sentences CollectStatements
+// makes of a file, and it exists so a second splitter never has to.
+//
+// Its caller is `wfcheck`'s prompt sweep: two agents given the same question
+// carry the same instruction set, and the sentences one prompt has and the
+// other does not are the class no similarity metric and no vocabulary sweep
+// reaches. Measured on P3a: five of nineteen script blockers were that class,
+// and the sixth copy of one rule was found by diffing two prompts BY HAND.
+func StatementsOfText(name, text string, minWords int) []Statement {
+	var out []Statement
+	var para []piece
+	flush := func() {
+		out = append(out, statementsOf(name, para, minWords)...)
+		para = para[:0]
+	}
+	for _, p := range piecesOf(text, 1) {
+		if p.text == "" {
+			flush()
+			continue
+		}
+		if startsBlock(p.raw) {
+			flush()
+		}
+		para = append(para, p)
+	}
+	flush()
+	return out
+}
+
 // piece is one line of prose, kept with the line it came from so blame reads
 // that line, and with its RAW text so the block rules see the decoration
 // trimMarkers strips.
@@ -218,6 +253,50 @@ type piece struct {
 	text string
 	raw  string
 	line int
+}
+
+// piecesOfSpan is piecesOf over one prose span of a PROGRAM. A string literal
+// is decoded first: measured on P3a, an apostrophe written `\'` reached the
+// comparison as a backslash and a trailing `\n` sat between a full stop and the
+// end of the literal, so the sentence never terminated. Every line the decoding
+// produces keeps the SOURCE line it was written on — a literal spelling three
+// newlines on one line of source is three sentences of one line, not three
+// lines, and blame must still read the line the author would edit.
+func piecesOfSpan(s string, firstLine int, escaped bool) []piece {
+	if !escaped {
+		return piecesOf(s, firstLine)
+	}
+	var out []piece
+	cont := false // the previous source line ended in a line continuation
+	for i, raw := range strings.Split(s, "\n") {
+		for j, sub := range strings.Split(jstext.Unescape(raw), "\n") {
+			// A `\` at the end of a source line joins the two with NOTHING at
+			// run time; emitted as two pieces they would be joined with the
+			// space statementsOf puts between lines, and the compared sentence
+			// would then differ from the text the agent is handed.
+			if cont && j == 0 && len(out) > 0 {
+				last := &out[len(out)-1]
+				last.raw += sub
+				last.text = trimMarkers(last.raw)
+				cont = false
+				continue
+			}
+			out = append(out, piece{text: trimMarkers(sub), raw: sub, line: firstLine + i})
+		}
+		cont = endsInContinuation(raw)
+	}
+	return out
+}
+
+// endsInContinuation reports a source line ending in an ODD number of
+// backslashes: the last one escapes the newline the caller split on, and an
+// even run is escaped backslashes with no continuation after them.
+func endsInContinuation(raw string) bool {
+	n := 0
+	for i := len(raw) - 1; i >= 0 && raw[i] == '\\'; i-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 func piecesOf(s string, firstLine int) []piece {
@@ -253,9 +332,15 @@ func statementsOf(rel string, para []piece, minWords int) []Statement {
 		if len(strings.Fields(norm)) < minWords {
 			continue
 		}
+		// The offset of the sentence's first WORD, not of the space the join
+		// put in front of it: a sentence beginning exactly at a wrap landed on
+		// the space that ended the line above, so `starts[i] <= off` chose the
+		// previous piece and blame read one line early on every sentence that
+		// starts a line.
+		at := s.off + len(s.text) - len(strings.TrimLeft(s.text, " \t"))
 		line := para[0].line
 		for i := len(para) - 1; i >= 0; i-- {
-			if starts[i] <= s.off {
+			if starts[i] <= at {
 				line = para[i].line
 				break
 			}
@@ -672,4 +757,96 @@ func jaccard(a, b []string) float64 {
 		return 0
 	}
 	return float64(inter) / float64(union)
+}
+
+// ------------------------------------------------------- the prompt diff --
+
+// NamedText is one text with the name it is reported under — an agent's label
+// and the prompt it was actually handed.
+type NamedText struct {
+	Name string
+	Text string
+}
+
+// PromptMinWords: a prompt's short lines are headings, field names and bullet
+// fragments, and a diff over those is noise in both directions. Exported so the
+// report can NAME the floor it applied — a narrowed population that does not
+// say what it narrowed reads as a population over everything.
+const PromptMinWords = 6
+
+const promptMinWords = PromptMinWords
+
+// PromptSentences is the population one prompt contributes to a diff. A caller
+// needs it to tell "these two agree" from "there was nothing to compare".
+func PromptSentences(t NamedText) int {
+	return len(normSet(StatementsOfText(t.Name, t.Text, promptMinWords)))
+}
+
+// PromptDiff returns the sentences each of two prompts carries and the other
+// does not, and how many both carry.
+//
+// It exists because that hand-diff is where a live gate's last round went.
+// Measured on P3a: round 21's findings were all one class — a sentence in the
+// acceptance prompt, absent from the verification prompt, although the same
+// batch had given the two agents the same job — and the sweep that closed the
+// round found a SIXTH copy of one rule that no reviewer lens had filed. `dup`
+// did not reach it (the two prompts share no rare token in those sentences) and
+// `stale` did not (nothing was retired). Five of that gate's nineteen script
+// blockers were this class.
+//
+// WHICH two agents were given the same question is the caller's to say, and
+// that is deliberate. Ranking every pair by shared sentences was built and
+// measured first: over seven tracked scripts it surfaces sibling prompts (two
+// lenses of one gate) at a similarity of 0.33 to 0.77, and the P3a pair that
+// motivated the whole thing ranks BELOW every one of them at 0.07 to 0.12 —
+// under the producers' shared preamble as well, until a document-frequency
+// filter removes it. A ranking that misses the case it was derived from would
+// be read as coverage, so the pairing stays where the gate had it: with the
+// operator, who knows which two agents were given one job.
+//
+// No frequency filter here, deliberately: a sentence in ten prompts and missing
+// from one of these two is exactly the defect, and a boilerplate filter would
+// drop it.
+func PromptDiff(a, b NamedText) (onlyA, onlyB []Statement, shared int) {
+	sa := StatementsOfText(a.Name, a.Text, promptMinWords)
+	sb := StatementsOfText(b.Name, b.Text, promptMinWords)
+	na, nb := normSet(sa), normSet(sb)
+	for n := range na {
+		if nb[n] {
+			shared++
+		}
+	}
+	return onlyIn(sa, nb), onlyIn(sb, na), shared
+}
+
+// promptKey is what makes two sentences the SAME sentence here. The normaliser
+// keeps only letters and digits, so `retry_count == 3` and `retry_count != 3`
+// normalise identically — the fifth wave's OPERATOR conflict, which reported a
+// contradiction as an exact match. A rule given to one agent with `==` and to
+// the other with `!=` is the whole subject of this diff, so the comparison
+// skeleton goes into the key.
+func promptKey(s Statement) string { return s.Norm + "\x00" + s.Ops }
+
+func normSet(sts []Statement) map[string]bool {
+	m := make(map[string]bool, len(sts))
+	for _, s := range sts {
+		m[promptKey(s)] = true
+	}
+	return m
+}
+
+// onlyIn returns the statements of one text whose normalised form the other
+// does not carry, deduplicated by that form.
+func onlyIn(sents []Statement, other map[string]bool) []Statement {
+	seen := map[string]bool{}
+	var out []Statement
+	for _, s := range sents {
+		k := promptKey(s)
+		if other[k] || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, s)
+	}
+	return out
 }

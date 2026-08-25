@@ -253,10 +253,7 @@ func cmdApply(args []string) error {
 	if *file == "" {
 		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [--dry-run]")
 	}
-	ruleID, err := normaliseRuleID(*rule)
-	if err != nil {
-		return err
-	}
+	ruleID, rulePhrase := parseRuleFlag(*rule)
 	w, err := open()
 	if err != nil {
 		return err
@@ -317,7 +314,7 @@ func cmdApply(args []string) error {
 		for rel := range bufs {
 			touched = append(touched, rel)
 		}
-		if err := printRuleSpread(w, ruleID, touched); err != nil {
+		if err := printRuleSpread(w, ruleID, rulePhrase, touched); err != nil {
 			return err
 		}
 		return nil
@@ -357,7 +354,7 @@ func cmdApply(args []string) error {
 	// of mocker A3 was whether the batch changed a RULE with consumers
 	// elsewhere, and the sentence saying so did more work all gate than the
 	// number it was attached to.
-	if err := printRuleSpread(w, ruleID, written); err != nil {
+	if err := printRuleSpread(w, ruleID, rulePhrase, written); err != nil {
 		return err
 	}
 	subject := *msg
@@ -388,17 +385,28 @@ func cmdApply(args []string) error {
 // normaliseRuleID accepts what an operator will actually type — `R6`, `r6` or
 // `6` — and rejects anything else by NAME rather than sweeping it into "no rule
 // declared", which would be a silent opt-out of the check the flag exists for.
-func normaliseRuleID(s string) (string, error) {
+// parseRuleFlag reads `-rule` as EITHER a marker id or a free-text rule name,
+// and it is the second form that is the correction. A script gate's rules are
+// not `[RN]`-marked in a document — measured on P3a, where `-rule "bar
+// accounting"` was refused outright and the flag was unusable for the whole
+// gate, while the sweep it triggers is the one that gate found worth the most.
+// The marker id reaches the sites `wf check rules` compares; the phrase reaches
+// the sentences that carry it, which is all an unmarked corpus has.
+//
+// A token that LOOKS like an id and is not one (`R6x`) reads as a phrase and
+// sweeps for it, finding nothing and saying so — an error in the direction that
+// announces itself.
+func parseRuleFlag(s string) (id, phrase string) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return "", nil
+		return "", ""
 	}
 	t := strings.TrimSuffix(strings.TrimPrefix(s, "["), "]")
 	t = strings.TrimPrefix(strings.TrimPrefix(t, "R"), "r")
-	if t == "" || strings.TrimLeft(t, "0123456789") != "" {
-		return "", fmt.Errorf("-rule %q: a rule id is RN — the marker `[R6]`, `R6` or `6`", s)
+	if t != "" && strings.TrimLeft(t, "0123456789") == "" {
+		return "R" + t, ""
 	}
-	return "R" + t, nil
+	return "", s
 }
 
 // printRuleSpread names the sites of the declared rule that this batch did NOT
@@ -411,21 +419,24 @@ func normaliseRuleID(s string) (string, error) {
 // A file the batch wrote is marked rather than dropped: a document holding
 // three sites of one rule is exactly where the copy gets left behind, and the
 // operator must see them together.
-func printRuleSpread(w *ws.Workspace, ruleID string, touched []string) error {
-	if ruleID == "" {
+func printRuleSpread(w *ws.Workspace, ruleID, rulePhrase string, touched []string) error {
+	if ruleID == "" && rulePhrase == "" {
 		return nil
 	}
 	arts, err := w.ArtifactList()
 	if err != nil {
 		return err
 	}
-	sites, _, notes, err := check.CollectRuleSites(w.Root, arts)
-	if err != nil {
-		return err
-	}
 	in := map[string]bool{}
 	for _, t := range touched {
 		in[filepath.ToSlash(t)] = true
+	}
+	if rulePhrase != "" {
+		return printRulePhrase(w, arts, rulePhrase, in)
+	}
+	sites, _, notes, err := check.CollectRuleSites(w.Root, arts)
+	if err != nil {
+		return err
 	}
 	ss := sites[ruleID]
 	// A declared rule that no artifact marks is the loudest outcome here, and
@@ -455,6 +466,88 @@ func printRuleSpread(w *ws.Workspace, ruleID string, touched []string) error {
 		fmt.Printf("  note: %s — %s\n", n.File, n.Text)
 	}
 	return nil
+}
+
+// printRulePhrase is the spread of an UNMARKED rule: the sentences of the
+// artifact set that carry every word of the declared phrase.
+//
+// It is the weaker half of the same sweep and says so. A marker names its sites
+// exactly; a phrase names the sentences that happen to use its words, so the
+// population is what a reader must judge rather than a verdict. It exists
+// because a script gate's rules live in prompts and are marked nowhere:
+// measured on P3a, `-rule "bar accounting"` was refused outright and the flag
+// was unusable for the whole gate.
+func printRulePhrase(w *ws.Workspace, arts []string, phrase string, in map[string]bool) error {
+	// minWords 4, not the dup default: a rule sentence can be short, and this
+	// is a search rather than a similarity pass with a noise floor to hold. The
+	// floor is NAMED in every report below — a narrowed population that does
+	// not say what it narrowed reads as a population over everything.
+	const minWords = 4
+	sts, notes, err := check.CollectStatements(w.Root, arts, minWords)
+	if err != nil {
+		return err
+	}
+	// Printed on EVERY outcome, including the zero-hit one: a script whose
+	// prompts are all built elsewhere contributes nothing to this sweep, and
+	// "no sentence carries it" over such an artifact is an absent measurement
+	// wearing a verdict.
+	printNotes := func() {
+		for _, n := range notes {
+			fmt.Printf("  note: %s — %s\n", n.File, n.Text)
+		}
+	}
+	_, want := check.Normalise(phrase)
+	if len(want) == 0 {
+		fmt.Printf("  rule: %q normalises to nothing — no word of it can be looked for\n", phrase)
+		return nil
+	}
+	var hits []check.Statement
+	for _, st := range sts {
+		has := true
+		for _, t := range want {
+			if !hasWord(st.Norm, t) {
+				has = false
+				break
+			}
+		}
+		if has {
+			hits = append(hits, st)
+		}
+	}
+	if len(hits) == 0 {
+		fmt.Printf("  rule: NO sentence of %d words or more in %d artifact(s) carries every word of %q — the sweep this batch declared reaches nothing, so either the rule is worded differently where it is restated or it is stated once\n", minWords, len(arts), phrase)
+		printNotes()
+		return nil
+	}
+	outside := 0
+	for _, h := range hits {
+		if !in[filepath.ToSlash(h.File)] {
+			outside++
+		}
+	}
+	fmt.Printf("  rule: %q appears in %d sentence(s) of %d words or more, %d of them outside this batch — an UNMARKED rule, so this is every such sentence using its words, not the sites of a rule\n", phrase, len(hits), minWords, outside)
+	for _, h := range hits {
+		mark := ""
+		if in[filepath.ToSlash(h.File)] {
+			mark = "  ← a file this batch wrote"
+		}
+		txt, _ := check.Cut(h.Text, 100)
+		fmt.Printf("    %s:%d  %s%s\n", h.File, h.Line, txt, mark)
+	}
+	printNotes()
+	return nil
+}
+
+// hasWord reports a whole token of a normalised string. Normalised text is
+// words separated by single spaces, so a substring test would make "bar" match
+// "barrier".
+func hasWord(norm, tok string) bool {
+	for _, f := range strings.Fields(norm) {
+		if f == tok {
+			return true
+		}
+	}
+	return false
 }
 
 // closedByError says which repository the sha was looked for in, and whether it
@@ -664,7 +757,93 @@ reads [R2]. The scale is closed — wf round record refuses anything else:
 		return err
 	}
 	fmt.Printf("round %d opened (%s), %s\ncommitted %s\n", n, *kind, rel, short(sha))
+	// The moment the round's reviewers are about to be briefed is the moment
+	// the age of the briefing matters. Measured on P3a: the workspace pin was
+	// written sixteen rounds earlier, the reference had since grown two whole
+	// sections — the closed severity scale and the three questions a delta
+	// round may never drop — and every reviewer of rounds 17 and 18 was handed
+	// the pin as required reading. Nothing was misclassified, because the
+	// operator had restated the scale by hand in the prompt; a reviewer briefed
+	// from a stale reference AGREES with the rules by coincidence, and the
+	// operator cannot tell that from agreement. The pin itself is right and
+	// stays: the silence was the defect.
+	notePinAge(w)
 	return nil
+}
+
+// notePinAge reports a workspace gate-checks.md that is no longer the reference
+// this binary carries. It is never a refusal: one gate reads ONE version of the
+// rules, and regenerating mid-gate is a decision with a cost — the rounds
+// before and after were briefed differently.
+func notePinAge(w *ws.Workspace) {
+	cur, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/gate-checks.md")
+	if err != nil {
+		return
+	}
+	pin, err := os.ReadFile(filepath.Join(w.Root, "gate-checks.md"))
+	if err != nil {
+		// NO pin is not a current pin, and silence here would be the class this
+		// whole note exists against: an absent measurement in the register of a
+		// measured pass. Two workspaces in the corpus predate `wf init` writing
+		// one, and their reviewers were briefed by whatever the operator pasted.
+		// A pin that EXISTS and cannot be read is a third state and says so —
+		// reporting it as absent would be a guess about somebody's disk.
+		if !os.IsNotExist(err) {
+			fmt.Printf("note: this workspace's gate-checks.md could not be read (%v), so whether the rules its reviewers were briefed with have aged is UNKNOWN, not current\n", err)
+			return
+		}
+		fmt.Printf("note: this workspace has no gate-checks.md, so nothing pins the rules its reviewers were briefed with. `wf docs checks > gate-checks.md` writes the reference this binary carries\n")
+		return
+	}
+	// The stamp `wf init` writes is a comment on the first line, and a pin
+	// regenerated with `wf docs checks` has none. The comparison is over the
+	// CONTENT, so neither spelling reads as drift on its own.
+	if bytes.Equal(stripStamp(pin), cur) {
+		return
+	}
+	fmt.Printf("note: gate-checks.md in this workspace is NOT the reference this binary carries (%d line(s) against %d)\n", countLines(stripStamp(pin)), countLines(cur))
+	if missing := headingsMissing(stripStamp(pin), cur); len(missing) > 0 {
+		fmt.Printf("      the pin predates: %s\n", strings.Join(missing, "; "))
+	}
+	fmt.Printf("      the pin is deliberate — every reviewer of this gate reads ONE version. Regenerate with `wf docs checks > gate-checks.md` only if the remaining rounds are meant to be briefed differently, and say so in the round title\n")
+}
+
+// stripStamp removes the provenance comment `wf init` writes above the pin.
+func stripStamp(b []byte) []byte {
+	if bytes.HasPrefix(b, []byte("<!--")) {
+		if i := bytes.IndexByte(b, '\n'); i >= 0 {
+			return b[i+1:]
+		}
+	}
+	return b
+}
+
+// headingsMissing names the sections the current reference has and the pin does
+// not. A byte difference says the pin aged; WHICH rules a reviewer never read
+// is the actionable half — on P3a it was the closed severity scale and the
+// three questions a delta round may never drop.
+func headingsMissing(pin, cur []byte) []string {
+	have := map[string]bool{}
+	for _, h := range headings(pin) {
+		have[h] = true
+	}
+	var out []string
+	for _, h := range headings(cur) {
+		if !have[h] {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+func headings(b []byte) []string {
+	var out []string
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "## ") {
+			out = append(out, strings.TrimSpace(line[3:]))
+		}
+	}
+	return out
 }
 
 // cmdRoundRecord fills the open round's findings file from an authored document.
@@ -785,6 +964,7 @@ func cmdRoundRecord(args []string) error {
 		}
 		fmt.Printf("  findings: %d row(s), %d blocker(s); closed by commit %d, by prose %d, open %d%s\n",
 			len(rows), blockers, byCommit, byProse, open, note)
+		noteUncheckableClosures(w, rows)
 	}
 	// The roster, asked for where the round's work is recorded. Measured on
 	// mocker A3: ELEVEN of thirteen rounds bank no lens — the operator started
@@ -808,6 +988,45 @@ func cmdRoundRecord(args []string) error {
 	}
 	fmt.Printf("committed %s\n", short(sha))
 	return nil
+}
+
+// noteUncheckableClosures names the closures `wf check closure` will not be
+// able to reach, while the operator is still writing the file.
+//
+// The requirement — a closure is checked against the artifact its finding NAMES
+// — is stated in the manual and was stated nowhere in the tool's own output at
+// the moment it could still be met. Measured on P3a: `wf check closure` reached
+// 0 of 350 claims on the first record and 26 of 26 after the finding text was
+// given an artifact path. A check that reaches nothing exits zero.
+//
+// Silent on a one-artifact workspace: there the check reads the only document
+// there is, and demanding the finding say so out loud would make this note fire
+// on every correct ledger.
+func noteUncheckableClosures(w *ws.Workspace, rows []ws.FindingRow) {
+	arts, err := w.ArtifactList()
+	if err != nil || len(arts) < 2 {
+		return
+	}
+	claims, unnamed, ambiguous := 0, 0, 0
+	for _, r := range rows {
+		if r.Malformed || r.Placeholder() || len(r.Shas()) == 0 {
+			continue
+		}
+		claims++
+		named, amb := check.PathsNamed(r.Text, arts)
+		switch {
+		case len(amb) > 0:
+			ambiguous++
+		case len(named) == 0:
+			unnamed++
+		}
+	}
+	if unnamed > 0 {
+		fmt.Printf("  closures: %d of %d name no artifact path in the finding text — `wf check closure` cannot reach them. Write the path (and the section id or line) into the finding while you are still writing it\n", unnamed, claims)
+	}
+	if ambiguous > 0 {
+		fmt.Printf("  closures: %d of %d name a path matching more than one artifact — write it from the workspace root\n", ambiguous, claims)
+	}
 }
 
 // freezeManifest is what replaces hand-copied `<sha8>-artifact` files: one
@@ -1108,6 +1327,11 @@ func cmdFreeze(args []string) error {
 		fmt.Printf("  note: anchored %d/%d, down from %d/%d (round %d) — the share this gate can really verify fell\n",
 			fm.CiteAnchored, fm.CiteTotal, prev.CiteAnchored, prev.CiteTotal, prev.Round)
 	}
+	// A freeze publishes what reviewers read, and the gate-checks pin is part of
+	// what they read. Printed here as well as at `round new` for the same reason
+	// the tool version is in the manifest: it is part of what this round was
+	// reviewed WITH.
+	notePinAge(w)
 	return nil
 }
 

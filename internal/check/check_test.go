@@ -936,3 +936,158 @@ func TestCollectStatements_scriptWithoutProseSaysSo(t *testing.T) {
 		t.Fatalf("want one note naming the file, got %+v", notes)
 	}
 }
+
+// P3a: `wf check rules` reached ONE comparison all gate, and getting there took
+// three iterations against the normaliser. Both shapes are here — an apostrophe
+// written `\'`, which reached the comparison as a backslash, and a trailing
+// `\n`, which sat between the full stop and the end of the literal so the
+// sentence never terminated and swallowed what followed.
+func TestCollectRuleSites_scriptLiteralEscapesAreDecoded(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"artifacts/d.md": "## D9\n\nA clause you believe is true but that no test holds isn't satisfied [R9].\n\nThe walker answers every clause it is handed.\n",
+		"artifacts/s.mjs": "const WALK = 'A clause you believe is true but that no test holds isn\\'t satisfied [R9].\\n' +\n" +
+			"  'The walker answers every clause it is handed.'\n" +
+			"await agent(WALK, { label: 'walk' })\n",
+	}
+	for rel, body := range files {
+		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sites, markers, _, err := CollectRuleSites(root, []string{"artifacts/d.md", "artifacts/s.mjs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if markers != 2 || len(sites["R9"]) != 2 {
+		t.Fatalf("want the rule marked once in each artifact, got %d marker(s) over %+v", markers, sites)
+	}
+	var script string
+	for _, s := range sites["R9"] {
+		if s.File == "artifacts/s.mjs" {
+			script = s.Text
+		}
+	}
+	// The escaped apostrophe: `isn\'t` reached the comparison as `isn\'t`, so
+	// the normalised forms could never match the document's.
+	if strings.Contains(script, `\`) {
+		t.Fatalf("the literal's escapes must be decoded, got %q", script)
+	}
+	// The trailing `\n`: the sentence has to END at the full stop, not run on
+	// into the concatenated line after it.
+	if strings.Contains(script, "walker answers") {
+		t.Fatalf("the trailing newline must terminate the sentence, got %q", script)
+	}
+	if c := RuleConflicts(sites); len(c) != 0 {
+		t.Fatalf("the two sites say the same thing once decoded; want no conflict, got %+v", c)
+	}
+}
+
+// Blame reads the line the AUTHOR would edit: a literal spelling three newlines
+// on one line of source is three sentences of one line, not three lines.
+func TestCollectStatements_decodedNewlinesKeepTheSourceLine(t *testing.T) {
+	root := t.TempDir()
+	body := "const A = 1\n" +
+		"const P = 'The override store keeps exactly one variant per operation.\\nThe smoke check reads that variant back after every single write.'\n"
+	if err := os.WriteFile(filepath.Join(root, "s.mjs"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sts, _, err := CollectStatements(root, []string{"s.mjs"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 2 {
+		t.Fatalf("want two sentences out of one literal, got %d: %+v", len(sts), sts)
+	}
+	for _, s := range sts {
+		if s.Line != 2 {
+			t.Fatalf("every sentence of that literal was written on line 2, got %d for %q", s.Line, s.Text)
+		}
+	}
+}
+
+// Blame reads the line the sentence STARTS on. A sentence beginning exactly at
+// a wrap began, in the joined paragraph, at the space the join put in front of
+// it — so the piece lookup chose the line above and every such sentence was
+// reported one line early. Found while proving the literal-decoding guard: the
+// off-by-one cancelled the mutation exactly.
+func TestCollectStatements_sentenceStartingAtAWrapBlamesItsOwnLine(t *testing.T) {
+	root := t.TempDir()
+	body := "The override store keeps exactly one variant per operation at a time.\n" +
+		"The smoke check reads that variant back after every single write it makes.\n"
+	if err := os.WriteFile(filepath.Join(root, "d.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sts, _, err := CollectStatements(root, []string{"d.md"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 2 {
+		t.Fatalf("want two sentences, got %d: %+v", len(sts), sts)
+	}
+	if sts[0].Line != 1 || sts[1].Line != 2 {
+		t.Fatalf("want lines 1 and 2, got %d and %d", sts[0].Line, sts[1].Line)
+	}
+}
+
+// The fifth wave's OPERATOR lesson, applied to the prompt diff: the normaliser
+// keeps only letters and digits, so `retry_count == 3` and `retry_count != 3`
+// normalise identically. A rule given to one agent with `==` and to the other
+// with `!=` is the whole subject of this diff.
+func TestPromptDiff_operatorsMakeTwoSentences(t *testing.T) {
+	a := NamedText{Name: "walk", Text: "The walker stops when retry_count == 3 and reports it."}
+	b := NamedText{Name: "verify", Text: "The walker stops when retry_count != 3 and reports it."}
+	onlyA, onlyB, shared := PromptDiff(a, b)
+	if shared != 0 {
+		t.Fatalf("the two sentences compare differently; want 0 shared, got %d", shared)
+	}
+	if len(onlyA) != 1 || len(onlyB) != 1 {
+		t.Fatalf("each prompt must carry its own form: onlyA=%v onlyB=%v", onlyA, onlyB)
+	}
+}
+
+// A `\` at the end of a source line joins the two with NOTHING at run time.
+// Split into two pieces they would be joined with the space statementsOf puts
+// between lines, and the compared sentence would differ from the text the agent
+// is actually handed.
+func TestCollectStatements_lineContinuationJoinsWithoutASpace(t *testing.T) {
+	root := t.TempDir()
+	body := "const P = 'The override store keeps exactly one vari\\\n" +
+		"ant per operation at a time.'\n"
+	if err := os.WriteFile(filepath.Join(root, "s.mjs"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sts, _, err := CollectStatements(root, []string{"s.mjs"}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 1 {
+		t.Fatalf("the continuation makes ONE sentence, got %d: %+v", len(sts), sts)
+	}
+	if !strings.Contains(sts[0].Text, "variant per operation") {
+		t.Fatalf("the two halves must join with nothing between them, got %q", sts[0].Text)
+	}
+}
+
+// An EVEN run of backslashes is escaped backslashes, not a continuation. The
+// fixture is a TEMPLATE literal because that is the only place the shape can
+// occur: a real newline inside a quoted literal is a syntax error unless the
+// backslash before it escapes it, which IS the continuation.
+func TestCollectStatements_escapedBackslashIsNotAContinuation(t *testing.T) {
+	root := t.TempDir()
+	body := "const P = `The path separator is written \\\\\\\\\n" +
+		"and the sentence below it stands on its own line.`\n"
+	if err := os.WriteFile(filepath.Join(root, "s.mjs"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sts, _, err := CollectStatements(root, []string{"s.mjs"}, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sts) != 1 || !strings.Contains(sts[0].Text, `\ and the sentence`) {
+		t.Fatalf("an escaped backslash keeps the line break, got %d: %+v", len(sts), sts)
+	}
+}

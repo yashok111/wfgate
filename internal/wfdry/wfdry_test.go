@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"git.sumka.site/yakov/wfgate/internal/check"
 )
 
 func script(t *testing.T, body string) string {
@@ -505,5 +507,206 @@ func TestValue_honoursADeclaredEnum(t *testing.T) {
 	plain := map[string]any{"type": "string"}
 	if got, _ := value("summary", plain, "clean", "review:gate1", 0, 0, nil).(string); got == "" || got[0] != '<' {
 		t.Fatalf("a plain string stopped being the recorded placeholder: %q", got)
+	}
+}
+
+// The P3a defect: `dead-reviews` matched a SUBSTRING of the label, so a
+// producer labelled `preview` was killed as a reviewer. The mode ended the run
+// at section five, killed no gate reviewer at all, and reported OK — over a
+// seventh of the agents it exists to exercise.
+func TestDeadReviewsMatchesLabelSegments(t *testing.T) {
+	body := preamble + `phase('P')
+const a = await spawn(` + "`one`" + `, { model: 'sonnet', effort: 'low', label: 'preview', schema: S, phase: 'P' })
+const b = await spawn(` + "`two`" + `, { model: 'sonnet', effort: 'low', label: 'review:store', schema: S, phase: 'P' })
+return { done: true, dead: [a, b].filter((x) => !x).length }`
+	r := run1(t, body, "dead-reviews")
+	m, _ := r.Return.(map[string]any)
+	if n, _ := m["dead"].(int64); n != 1 {
+		t.Fatalf("only the reviewer may come back null, got %v dead (killed %v)", n, r.Killed)
+	}
+	if len(r.Killed) != 1 || r.Killed[0] != "review:store" {
+		t.Fatalf("the mode must kill the reviewer and name it, killed %v", r.Killed)
+	}
+}
+
+// One label spawned many times — a reviewer inside a loop, which is the shape
+// every real script has — is ONE killed label. Listed once per spawn the line
+// reads as many reviewers, which is the report saying something it did not
+// measure.
+func TestKilledLabelsAreListedOncePerLabel(t *testing.T) {
+	body := preamble + `phase('P')
+for (const n of [1, 2, 3]) {
+  await spawn('go ' + n, { model: 'sonnet', effort: 'low', label: 'review:store', schema: S, phase: 'P' })
+}
+return { done: true }`
+	r := run1(t, body, "dead-reviews")
+	if len(r.Killed) != 1 || r.Killed[0] != "review:store" {
+		t.Fatalf("three spawns of one label are one killed label, got %v", r.Killed)
+	}
+	if r.Spawned != 3 {
+		t.Fatalf("the three spawns must still be counted, got %d", r.Spawned)
+	}
+}
+
+// The stems match a segment's HEAD, never its tail, and they inflect: the
+// reviewer is `reviewer` as often as `review`, and `verifier` is the verify
+// agent. Each row here fails under the whole-word matcher as well as under the
+// substring one it replaced.
+func TestReviewishSegments(t *testing.T) {
+	for _, c := range []struct {
+		label string
+		want  bool
+	}{
+		{"preview", false}, // the measured defect: `review` in the TAIL
+		{"postfix", false}, // same shape, other stem
+		{"fixture", false}, // and the prefix repair's own over-kill: `fix` HEADS it
+		{"reviewer", true}, // the inflection an exact `review` would drop
+		{"reviews", true},
+		{"review:store", true},
+		{"reviewStore", true},
+		{"storeReview", true}, // camelCase is a boundary: without it the stem sits mid-string
+		{"gate1Review", true}, // a digit is a lower for that boundary, or the segment never ends
+		{"gate-1-fix", true},
+		{"verifier", true},
+		{"acceptance:bars", true},
+		{"store", false},
+		{"taxonomy", false},
+	} {
+		if got := reviewish(c.label); got != c.want {
+			t.Errorf("reviewish(%q) = %v, want %v (segments %v)", c.label, got, c.want, labelSegments(c.label))
+		}
+	}
+}
+
+// A label the OPERATOR named that never spawns kills nobody, in silence: every
+// guard in the mode then runs over the empty set and the mode reports OK. Same
+// shape as the matcher choosing wrong, with the typo one layer up.
+func TestDeadLabelThatNeverSpawns(t *testing.T) {
+	body := preamble + `phase('P')
+await spawn(` + "`one`" + `, { model: 'sonnet', effort: 'low', label: 'worker', schema: S, phase: 'P' })
+return { done: true }`
+	rs, err := Run(script(t, body), []string{"clean"}, Options{Dead: []string{"wroker"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(rs[0].Notes, "\n"), "wroker") {
+		t.Fatalf("a --dead label that never spawned must be named: %+v", rs[0].Notes)
+	}
+	// And the correct spelling must NOT produce the note, or it is noise.
+	rs, err = Run(script(t, body), []string{"clean"}, Options{Dead: []string{"worker"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range rs[0].Notes {
+		if strings.Contains(n, "--dead named") {
+			t.Fatalf("a --dead label that DID spawn must not be reported as unused: %q", n)
+		}
+	}
+}
+
+// The P3a class, reproduced: two agents given the same job, one sentence given
+// to one of them and not to the other. That gate's last round was spent
+// entirely on it, and the sweep that closed the round — which found a sixth
+// copy of one rule no reviewer lens had filed — was a hand diff.
+//
+// Validated against the real script as well: run over the revision BEFORE the
+// closing commit, `--prompt-diff accept:reads,verify` prints the three
+// sentences that commit added, and over the revision after it prints none.
+func TestPromptDiffNamesWhatOnePromptSaysAndTheOtherDoesNot(t *testing.T) {
+	body := preamble + `phase('P')
+const RULE = 'A clause you believe is true but that no test holds is satisfied FALSE.'
+const COMMON = 'Answer every clause in the block you were handed, by its bare number.'
+await spawn(COMMON + ' ' + RULE, { model: 'sonnet', effort: 'low', label: 'accept:reads', schema: S, phase: 'P' })
+await spawn(COMMON + ' Report each bar under its own key with its verbatim output.', { model: 'sonnet', effort: 'low', label: 'verify', schema: S, phase: 'P' })
+return { done: true }`
+	rs, err := Run(script(t, body), []string{"clean"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, mode := Composed(rs)
+	if mode != "clean" || len(ps) != 2 {
+		t.Fatalf("want two composed prompts from the clean mode, got %d from %q", len(ps), mode)
+	}
+	a, err := FindPrompt(ps, "accept:reads")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := FindPrompt(ps, "verify")
+	if err != nil {
+		t.Fatal(err)
+	}
+	onlyA, onlyB, shared := check.PromptDiff(a, b)
+	if shared != 1 {
+		t.Fatalf("the two prompts share one sentence, got %d", shared)
+	}
+	if len(onlyA) != 1 || !strings.Contains(onlyA[0].Text, "no test holds") {
+		t.Fatalf("the rule given only to the walker must be named: %+v", onlyA)
+	}
+	if len(onlyB) != 1 || !strings.Contains(onlyB[0].Text, "verbatim output") {
+		t.Fatalf("the sentence given only to the verifier must be named: %+v", onlyB)
+	}
+}
+
+// The prompts EXIST only here: measured on the P3a script, 14 of 15 are
+// composed at run time, so a static reader sees one of them and a diff built
+// there would report nothing on the very corpus that produced the class.
+func TestComposedSeesAPromptBuiltAtRunTime(t *testing.T) {
+	body := preamble + `phase('P')
+const parts = ['The walker answers every clause it is handed,', 'by its bare number.']
+await spawn(parts.join(' '), { model: 'sonnet', effort: 'low', label: 'walk', schema: S, phase: 'P' })
+return { done: true }`
+	rs, err := Run(script(t, body), []string{"clean"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps, _ := Composed(rs)
+	if len(ps) != 1 || !strings.Contains(ps[0].Text, "by its bare number") {
+		t.Fatalf("the composed prompt must reach the diff whole: %+v", ps)
+	}
+}
+
+// A label the operator typed that means two things resolves to neither: the
+// class `wf check cite` reports on an ambiguous citation path.
+func TestFindPromptRefusesAnAmbiguousLabel(t *testing.T) {
+	ps := []check.NamedText{{Name: "review:gate1"}, {Name: "review:gate2"}, {Name: "verify"}}
+	if _, err := FindPrompt(ps, "review"); err == nil {
+		t.Fatal("an ambiguous label must be refused by name")
+	} else if !strings.Contains(err.Error(), "review:gate1") || !strings.Contains(err.Error(), "review:gate2") {
+		t.Fatalf("the refusal must name what it could have meant: %v", err)
+	}
+	// A unique substring is the spelling an operator actually types.
+	got, err := FindPrompt(ps, "gate2")
+	if err != nil || got.Name != "review:gate2" {
+		t.Fatalf("a unique substring must resolve, got %q %v", got.Name, err)
+	}
+	if _, err := FindPrompt(ps, "accept"); err == nil {
+		t.Fatal("a label nothing matches must be refused")
+	} else if !strings.Contains(err.Error(), "verify") {
+		t.Fatalf("the refusal must list what the run composed: %v", err)
+	}
+}
+
+// One label spawned many times is many PROMPTS — a per-item reviewer gets a
+// per-item briefing — and returning the first would diff a prompt the operator
+// did not choose. Resolving an ambiguity to the first match is the class
+// `wf check cite` reports on a citation path.
+func TestFindPromptRefusesALabelWithSeveralPrompts(t *testing.T) {
+	ps := []check.NamedText{
+		{Name: "review:store", Text: "Judge the store section against D5."},
+		{Name: "review:store", Text: "Judge the plane section against D7."},
+	}
+	if _, err := FindPrompt(ps, "review:store"); err == nil {
+		t.Fatal("a label spawned with two different prompts has no single prompt to diff")
+	} else if !strings.Contains(err.Error(), "DIFFERENT prompts") {
+		t.Fatalf("the refusal must say why: %v", err)
+	}
+	// The same label spawned twice with the SAME text is one prompt: refusing
+	// there would refuse a correct loop over identical briefings.
+	same := []check.NamedText{{Name: "gate", Text: "One briefing."}, {Name: "gate", Text: "One briefing."}}
+	if got, err := FindPrompt(same, "gate"); err != nil || got.Text != "One briefing." {
+		t.Fatalf("identical prompts under one label resolve, got %q %v", got.Text, err)
+	}
+	if _, err := FindPrompt(ps, "  "); err == nil {
+		t.Fatal("an empty label matches nothing and must be refused")
 	}
 }

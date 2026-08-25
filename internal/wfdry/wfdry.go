@@ -28,6 +28,8 @@ import (
 
 	"github.com/dop251/goja"
 
+	"git.sumka.site/yakov/wfgate/internal/check"
+
 	"git.sumka.site/yakov/wfgate/internal/wfscript"
 )
 
@@ -72,8 +74,37 @@ type Result struct {
 	ReturnOK   bool
 	Err        error
 
-	killed    int            // labels this mode actually stubbed dead
+	// The labels this mode actually stubbed dead, in spawn order and
+	// deduplicated. A count was not enough: `dead-reviews` reported OK over a
+	// producer it had killed by accident, and nothing in the output named the
+	// label, so the mode's claim about WHAT it exercised could not be read at
+	// all. `--dead` labels are recorded here too — a label the operator names
+	// that never spawns kills nobody, in silence.
+	Killed []string
+
+	// Every prompt this mode actually handed an agent, with its label. The
+	// runner is the ONLY place these exist as text: measured on the P3a script,
+	// 14 of 15 prompts are composed at run time, so a static reader sees one of
+	// them. The prompt sweep is built on this.
+	Prompts   []check.NamedText
 	defaulted map[string]int // report fields the fixture contract did not recognise
+}
+
+// killedLabel reports whether this mode stubbed the named label dead.
+func (r *Result) killedLabel(label string) bool {
+	for _, k := range r.Killed {
+		if k == label {
+			return true
+		}
+	}
+	return false
+}
+
+// kill records a stubbed death once per label.
+func (r *Result) kill(label string) {
+	if !r.killedLabel(label) {
+		r.Killed = append(r.Killed, label)
+	}
 }
 
 // OK reports a mode that completed with nothing to answer for.
@@ -238,6 +269,11 @@ func runMode(src, mode string, o Options) Result {
 		}
 		model, effort := get("model"), get("effort")
 		r.Calls = append(r.Calls, fmt.Sprintf("%s [%s/%s]", label, or(model, "NO MODEL"), or(effort, "NO EFFORT")))
+		if p := call.Argument(0); !goja.IsUndefined(p) && !goja.IsNull(p) {
+			if t := p.ExportType(); t != nil && t.Kind() == reflect.String {
+				r.Prompts = append(r.Prompts, check.NamedText{Name: label, Text: p.String()})
+			}
+		}
 
 		// A runtime restatement of the static checks — free once the harness
 		// runs, and it catches a prompt composed to `undefined` on one branch.
@@ -269,13 +305,14 @@ func runMode(src, mode string, o Options) Result {
 			bad(label, fmt.Sprintf("effort %q is not one of low, medium, high, xhigh, max", effort))
 		}
 		if dead[label] {
+			r.kill(label)
 			panic(vm.ToValue("stubbed death of " + label))
 		}
 		if mode == "throw-serial" && r.Spawned == 1 {
 			panic(vm.ToValue("stubbed throw at the first spawn"))
 		}
 		if mode == "dead-reviews" && reviewish(label) {
-			r.killed++
+			r.kill(label)
 			return promiseOf(vm, goja.Null())
 		}
 		return promiseOf(vm, vm.ToValue(synth(opts.Get("schema"), mode, label, 0, r.defaulted)))
@@ -411,11 +448,24 @@ func runMode(src, mode string, o Options) Result {
 	if r.Spawned == 0 {
 		r.Violations = append(r.Violations, "run: "+zeroSpawn)
 	}
-	if mode == "dead-reviews" && r.Spawned > 0 && r.killed == 0 {
+	if mode == "dead-reviews" && r.Spawned > 0 && len(r.Killed) == 0 {
 		// The mode is supposed to walk the unreviewed-gate accounting. If no
 		// label looked like a review, it walked nothing and said OK — a guard
 		// over an empty set wearing a green verdict.
-		r.Notes = append(r.Notes, "no label matched review/fix/closeout/verify/accept — this mode killed nobody and proved nothing")
+		r.Notes = append(r.Notes, "no label matched a review/fix/closeout/verify/accept segment — this mode killed nobody and proved nothing")
+	}
+	// A label the operator NAMED that never spawned. `--dead reviwer` is a
+	// clean run of every guard over the empty set, reported as OK: the same
+	// shape one line up, with the operator rather than the matcher choosing
+	// wrong.
+	var never []string
+	for _, d := range o.Dead {
+		if !r.killedLabel(d) {
+			never = append(never, d)
+		}
+	}
+	if len(never) > 0 && r.Spawned > 0 {
+		r.Notes = append(r.Notes, "--dead named "+strings.Join(never, ", ")+", which no spawn in this mode used as a label — nothing was stubbed dead for them")
 	}
 	// The consequence, not the observation. P2f: `done` is the completion flag of
 	// every BUILD_SCHEMA in that project, it matched neither boolean list, and
@@ -463,14 +513,82 @@ func or(a, b string) string {
 	return a
 }
 
+// reviewish decides whether `dead-reviews` kills a label. It reads the label's
+// SEGMENTS, not the label as one string, and that is a measured correction: the
+// first version asked `strings.Contains(label, "review")`, so a producer
+// labelled `preview` was killed as a reviewer. On P3a that ended the run at
+// section five over a seventh of the agents the mode exists to exercise, and
+// the mode reported OK — without ever killing a gate reviewer, which is its
+// entire purpose. A dry mode silently measuring something else is the same
+// shape as the vacuous guard this runner exists to catch.
+//
+// A segment MATCHES when it IS one of a closed set of spellings. Prefix
+// matching was the first repair and it traded one over-kill class for a smaller
+// one: `fix` is a prefix of `fixture`, so a fixture-building agent would be
+// killed as a fixer — the same defect the prefix was fixing, one word along. A
+// closed list is auditable, which the severity scale and `-asks` already are,
+// and a spelling nobody thought of is an agent NOT killed rather than the wrong
+// agent killed. The zero-kill note is what says so.
 func reviewish(label string) bool {
-	l := strings.ToLower(label)
-	for _, k := range []string{"review", "fix", "closeout", "verify", "accept"} {
-		if strings.Contains(l, k) {
+	for _, seg := range labelSegments(label) {
+		if reviewSegments[seg] {
 			return true
 		}
 	}
 	return false
+}
+
+var reviewSegments = func() map[string]bool {
+	m := map[string]bool{}
+	for _, w := range []string{
+		"review", "reviews", "reviewer", "reviewers", "reviewing", "rereview", "reread",
+		"fix", "fixes", "fixer", "fixers", "fixing", "repair", "repairs",
+		"closeout", "closeouts", "closing", "close",
+		"verify", "verifies", "verifier", "verifiers", "verifying", "verification", "verified",
+		"accept", "accepts", "acceptance", "accepting", "acceptor",
+	} {
+		m[w] = true
+	}
+	return m
+}()
+
+// labelSegments splits a label the way its author wrote it: on every
+// non-alphanumeric character and at every camelCase boundary. `review:store`,
+// `review-store` and `reviewStore` are one reviewer under three spellings.
+func labelSegments(label string) []string {
+	var out []string
+	cur := make([]rune, 0, len(label))
+	flush := func() {
+		if len(cur) > 0 {
+			out = append(out, strings.ToLower(string(cur)))
+			cur = cur[:0]
+		}
+	}
+	prevLower := false
+	for _, r := range label {
+		switch {
+		case r >= 'a' && r <= 'z':
+			cur = append(cur, r)
+			prevLower = true
+		case r >= '0' && r <= '9':
+			cur = append(cur, r)
+			// A digit is a lower for the camelCase boundary: with it resetting
+			// the state, `gate1Review` stayed one segment and the reviewer in
+			// it was never killed.
+			prevLower = true
+		case r >= 'A' && r <= 'Z':
+			if prevLower {
+				flush()
+			}
+			cur = append(cur, r)
+			prevLower = false
+		default:
+			flush()
+			prevLower = false
+		}
+	}
+	flush()
+	return out
 }
 
 func promiseOf(vm *goja.Runtime, v goja.Value) goja.Value {
@@ -793,4 +911,95 @@ func value(name string, v map[string]any, mode, label string, depth, idx int, re
 	default:
 		return fmt.Sprintf("<%s from %s>", name, label)
 	}
+}
+
+// Composed returns the prompts of the mode that composed the most of them, and
+// that mode's name.
+//
+// The prompt diff lives here and not in wfcheck because this is where the
+// prompts EXIST: measured on the P3a script, 14 of 15 are composed at run time,
+// so a static reader sees one, and a sweep built there would report nothing on
+// the very corpus that produced the class. The runner has the composed string
+// in hand at every spawn.
+//
+// The mode is named by every caller: a mode that died early composed fewer
+// prompts, and a diff over a partial set is a partial diff.
+func Composed(rs []Result) ([]check.NamedText, string) {
+	var best Result
+	for _, r := range rs {
+		if len(r.Prompts) > len(best.Prompts) || (len(r.Prompts) == len(best.Prompts) && r.Mode == "clean") {
+			best = r
+		}
+	}
+	return best.Prompts, best.Mode
+}
+
+// FindPrompt resolves one label the operator typed against the composed
+// prompts: an exact label first, then a unique substring. An ambiguous spelling
+// is an error naming what it could have meant — resolving it to the first match
+// is the class `wf check cite` reports on a citation.
+func FindPrompt(ps []check.NamedText, want string) (check.NamedText, error) {
+	if strings.TrimSpace(want) == "" {
+		return check.NamedText{}, fmt.Errorf("an empty label matches nothing; this run composed %s", labelList(ps))
+	}
+	var exact []check.NamedText
+	for _, p := range ps {
+		if p.Name == want {
+			exact = append(exact, p)
+		}
+	}
+	if len(exact) > 0 {
+		return oneOf(want, exact, "spawn")
+	}
+	var hits []check.NamedText
+	for _, p := range ps {
+		if strings.Contains(p.Name, want) {
+			hits = append(hits, p)
+		}
+	}
+	switch len(hits) {
+	case 0:
+		return check.NamedText{}, fmt.Errorf("no agent labelled %q; this run composed %s", want, labelList(ps))
+	default:
+		return oneOf(want, hits, "label")
+	}
+}
+
+// oneOf resolves several matches to one prompt, and refuses when they are not
+// the same TEXT. One label spawned in a loop is many prompts — a per-item
+// reviewer gets a per-item briefing — and returning the first would diff a
+// prompt the operator did not choose. Resolving an ambiguous spelling to the
+// first match is the class `wf check cite` reports on a citation path.
+func oneOf(want string, hits []check.NamedText, kind string) (check.NamedText, error) {
+	distinct := map[string]bool{}
+	names := map[string]bool{}
+	for _, h := range hits {
+		distinct[h.Text] = true
+		names[h.Name] = true
+	}
+	// The LABEL question first. Two agents whose prompts happen to be identical
+	// are still two agents, and picking one of them because the texts matched
+	// would answer a question the operator did not ask — its own test caught
+	// this ordering the first time it was written the other way round.
+	if len(names) > 1 {
+		return check.NamedText{}, fmt.Errorf("%q matches %d labels — say which: %s", want, len(names), labelList(hits))
+	}
+	if len(distinct) == 1 {
+		return hits[0], nil
+	}
+	return check.NamedText{}, fmt.Errorf("%q was spawned %d times with %d DIFFERENT prompts (one %s per item), so there is no single prompt to diff; give the pair a label that spawns once",
+		want, len(hits), len(distinct), kind)
+}
+
+// labelList names the labels a run composed, deduplicated and in spawn order.
+func labelList(ps []check.NamedText) string {
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range ps {
+		if !seen[p.Name] {
+			seen[p.Name] = true
+			out = append(out, p.Name)
+		}
+	}
+	return strings.Join(out, ", ")
 }

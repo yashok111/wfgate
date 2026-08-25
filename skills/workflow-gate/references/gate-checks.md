@@ -249,7 +249,11 @@ compiles, passes every test, and does nothing.
       prompt carried and the second lacked — the field definitions, the carve-out for the one item the
       question does not fit, the discipline sentence, the severity that item earns. `dup` cannot reach
       them (the two prompts share no rare tokens there) and `stale` cannot (nothing was retired); it
-      is found by printing the sentences one prompt has and the other does not.
+      is found by printing the sentences one prompt has and the other does not, which is
+      `wfdry <script> --prompt-diff <label>,<label>`. Naming the two is yours: ranking every pair by
+      shared sentences was built and measured, and over seven tracked scripts it surfaces SIBLING
+      prompts — two lenses of one gate, at 0.33 to 0.86 — while the pair that produced this rule
+      ranks below every one of them, at 0.07 to 0.12.
 
 ## C. Ownership and definition of done
 

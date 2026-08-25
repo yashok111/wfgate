@@ -113,3 +113,45 @@ func TestProseSpans_offsetsMapToLines(t *testing.T) {
 		t.Fatalf("the chunk starts on line 2 (just past the backtick), got %d", l)
 	}
 }
+
+// The two shapes that cost a live gate three iterations against the normaliser:
+// an apostrophe reaching the comparison as a backslash, and a trailing `\n`
+// sitting between a full stop and the end of the literal so the sentence never
+// terminated.
+func TestUnescape(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{`a clause you believe is true isn\'t satisfied`, "a clause you believe is true isn't satisfied"},
+		{`the clause is satisfied FALSE.\n`, "the clause is satisfied FALSE.\n"},
+		{`one.\ntwo.`, "one.\ntwo."},
+		{`a\tb`, "a\tb"},
+		{`a\\b`, `a\b`},
+		{`say \"hi\"`, `say "hi"`},
+		{`caf\u00e9`, "café"},
+		{`\u{1F600}`, "\U0001F600"},
+		{`\x41B`, "AB"},
+		{`nothing to do`, "nothing to do"},
+		{`trailing continuation \`, "trailing continuation "},
+		{`\q unknown drops the backslash`, "q unknown drops the backslash"},
+		{`bad \uZZZZ`, "bad uZZZZ"},
+	} {
+		if got := Unescape(c.in); got != c.want {
+			t.Errorf("Unescape(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// A comment is not a literal and must not be decoded: a Windows path in one
+// would lose its separators.
+func TestProseSpansMarkOnlyLiteralsEscaped(t *testing.T) {
+	src := "// see C:\\new\\table\nconst p = 'a\\nb'\n"
+	spans := ProseSpans(src)
+	if len(spans) != 2 {
+		t.Fatalf("want a comment span and a literal span, got %d: %+v", len(spans), spans)
+	}
+	if spans[0].Escaped {
+		t.Errorf("a comment span must not be marked escaped: %q", src[spans[0].From:spans[0].To])
+	}
+	if !spans[1].Escaped {
+		t.Errorf("a string literal span must be marked escaped: %q", src[spans[1].From:spans[1].To])
+	}
+}

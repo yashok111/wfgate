@@ -79,6 +79,25 @@ check-tools: build
 		done; \
 		echo "wf new-script skeleton: review, recheck and accept all CARRY their non-blocking findings"
 	@./wfcheck -root . testdata/conforming.mjs >/dev/null && echo "wfcheck conforming fixture: no errors on a script written to the manual"
+	@./wfdry testdata/prompt-drift.mjs --quiet --prompt-diff accept:reads,verify 2>/dev/null \
+		| grep -q "only .accept:reads.: A clause you believe is true" \
+		&& echo "wfdry prompt-drift fixture: names the rule stated to one prompt and not the other" \
+		|| { echo "wfdry prompt-drift fixture: the diff MISSED a governing sentence given to one of two agents doing one job"; exit 1; }
+	@out=$$(./wfdry testdata/prompt-drift.mjs --quiet --prompt-diff accept:reads 2>&1); rc=$$?; \
+		[ $$rc = 2 ] && echo "$$out" | grep -q "takes exactly two labels" \
+		&& echo "wfdry prompt-drift fixture: --prompt-diff refuses anything but two labels" \
+		|| { echo "wfdry prompt-drift fixture: ONE label must exit 2 with the usage error, got rc=$$rc: $$out"; exit 1; }
+	@out=$$(./wfdry testdata/clean.mjs --quiet --dead wroker 2>&1); rc=$$?; \
+		[ $$rc = 1 ] && echo "$$out" | grep -q "matched NO spawn in any mode" \
+		&& echo "wfdry --dead: a label that spawns in NO mode fails the run" \
+		|| { echo "wfdry --dead: a mistyped label ran every guard over the empty set and exited $$rc"; exit 1; }
+	@./wfdry testdata/clean.mjs --quiet --dead worker >/dev/null 2>&1 \
+		&& echo "wfdry --dead: a label that DOES spawn is silent" \
+		|| { echo "wfdry --dead: a correct label failed the run"; exit 1; }
+	@out=$$(./wfdry testdata/prompt-drift.mjs --quiet --prompt-diff accept:reads,accept:reads 2>&1); rc=$$?; \
+		[ $$rc = 2 ] && echo "$$out" | grep -q "same prompt" \
+		&& echo "wfdry prompt-drift fixture: two spellings of ONE prompt are refused, not reported as agreement" \
+		|| { echo "wfdry prompt-drift fixture: a text diffed against ITSELF reported agreement, got rc=$$rc: $$out"; exit 1; }
 	@d=$$(mktemp -d); printf '{"session_id":"mk","tool_name":"Write","tool_input":{"file_path":"/tmp/notes.md","content":"prose"}}' \
 		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \
 		&& { echo "authoring hook: fired on an ordinary file — a reminder on every write is a reminder nobody reads"; rm -rf $$d; exit 1; } \

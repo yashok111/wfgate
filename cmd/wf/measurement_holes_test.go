@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"git.sumka.site/yakov/wfgate/internal/gitx"
 )
 
 // The gate ships its own work mid-run and the target moves under a document
@@ -608,4 +610,180 @@ func TestRecordAsksForTheRosterItDoesNotHave(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustNotContain(t, out, "lenses: NONE banked")
+}
+
+// P3a: the workspace pin was written sixteen rounds before it was read, the
+// reference had grown two whole sections since — the closed severity scale and
+// the three questions a delta round may never drop — and every reviewer of the
+// next two rounds was handed the pin as required reading. Nothing was
+// misclassified, because the operator had restated the scale by hand; a
+// reviewer briefed from a stale reference AGREES with the rules by coincidence,
+// and the operator cannot tell that from agreement. It was found by a human
+// asking "are you using the new classification?", which is not a check.
+func TestRoundNewNamesAnAgedGateChecksPin(t *testing.T) {
+	wsDir := newGate(t)
+	pin := filepath.Join(wsDir, "gate-checks.md")
+	body, err := os.ReadFile(pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The pin as it stood before two sections were added to the reference.
+	var kept []string
+	skip := false
+	for _, line := range strings.Split(string(body), "\n") {
+		if strings.HasPrefix(line, "## 0. ") {
+			skip = true
+		}
+		if strings.HasPrefix(line, "## A. ") {
+			skip = false
+		}
+		if !skip {
+			kept = append(kept, line)
+		}
+	}
+	write(t, pin, strings.Join(kept, "\n"))
+	gitIn(t, wsDir, "commit", "-qam", "an older pin")
+
+	out, err := runWF(t, wsDir, "round", "new", "-title", "the next round")
+	noErr(t, err, "round new")
+	mustContain(t, out,
+		"is NOT the reference this binary carries",
+		"the pin predates:",
+		"0. The severity scale, which is closed",
+		"0b. What a delta round asks")
+	// The pin is RIGHT and stays: one gate reads one version of the rules.
+	mustContain(t, out, "the pin is deliberate")
+
+	// And again at the freeze, which PUBLISHES what reviewers read: the pin is
+	// part of what this round was reviewed with, the way the tool version in
+	// the manifest is part of what it was verified with.
+	reviewedRound(t, wsDir, 1)
+	reviewedRound(t, wsDir, 2)
+	out, err = runWF(t, wsDir, "freeze")
+	noErr(t, err, "freeze")
+	mustContain(t, out, "is NOT the reference this binary carries")
+}
+
+// A pin that is the reference says nothing. A note that fires on correct work
+// is a note the operator stops reading — the `dup` lesson, 161 groups of 176.
+func TestRoundNewIsSilentWhenThePinIsCurrent(t *testing.T) {
+	wsDir := newGate(t)
+	out, err := runWF(t, wsDir, "round", "new", "-title", "the next round")
+	noErr(t, err, "round new")
+	mustNotContain(t, out, "NOT the reference this binary carries")
+}
+
+// The stamp `wf init` writes above the pin is provenance, not content: a pin
+// regenerated with `wf docs checks` has none, and neither spelling is drift.
+func TestPinAgeIgnoresTheProvenanceStamp(t *testing.T) {
+	wsDir := newGate(t)
+	pin := filepath.Join(wsDir, "gate-checks.md")
+	body, err := os.ReadFile(pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(body), "<!--") {
+		t.Fatalf("wf init must stamp the pin, got %.40q", body)
+	}
+	// The `wf docs checks > gate-checks.md` spelling: same rules, no stamp.
+	write(t, pin, strings.SplitN(string(body), "\n", 2)[1])
+	gitIn(t, wsDir, "commit", "-qam", "regenerated without the stamp")
+	out, err := runWF(t, wsDir, "freeze")
+	noErr(t, err, "freeze")
+	mustNotContain(t, out, "NOT the reference this binary carries")
+}
+
+// P3a: `wf check closure` reached 0 of 350 claims on the first record and 26 of
+// 26 after the finding text was given an artifact path. The requirement is in
+// the manual and was in the tool's own output nowhere at the moment it could
+// still be met — the operator is WRITING the file at record time.
+func TestRoundRecordNamesClosuresThatCannotBeChecked(t *testing.T) {
+	wsDir := newGate(t)
+	// Two artifacts: on a one-artifact workspace the check reads the only
+	// document there is, and the note would fire on every correct ledger.
+	second := filepath.Join(filepath.Dir(wsDir), "notes.md")
+	write(t, second, "# Notes\n\nA second artifact, so a closure has to say which one it landed in.\n")
+	_, err := runWF(t, wsDir, "add", second)
+	noErr(t, err, "add")
+	head, err := gitx.Repo{Dir: wsDir}.Head()
+	noErr(t, err, "head")
+
+	ledger(t, wsDir, 1, ""+
+		"| 1 | BLOCKER | the envelope is retyped in place |  "+head+" |\n"+
+		"| 2 | MAJOR | `artifacts/notes.md:3` says the opposite |  "+head+" |\n")
+	out, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+	mustContain(t, out, "closures: 1 of 2 name no artifact path", "cannot reach them")
+}
+
+// A one-artifact workspace: `wf check closure` reads the only document there
+// is, so requiring the finding to say so out loud would make this note fire on
+// every correct ledger — and a note that fires on correct work stops being
+// read. The `dup` lesson, 161 groups of 176.
+func TestRoundRecordIsSilentOnAOneArtifactWorkspace(t *testing.T) {
+	wsDir := newGate(t)
+	head, err := gitx.Repo{Dir: wsDir}.Head()
+	noErr(t, err, "head")
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | the envelope is retyped in place |  "+head+" |\n")
+	out, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+	mustNotContain(t, out, "name no artifact path")
+}
+
+// A ledger whose closures all name their artifact says nothing about them.
+func TestRoundRecordIsSilentWhenEveryClosureNamesItsArtifact(t *testing.T) {
+	wsDir := newGate(t)
+	second := filepath.Join(filepath.Dir(wsDir), "notes.md")
+	write(t, second, "# Notes\n\nA second artifact, so a closure has to say which one it landed in.\n")
+	_, err := runWF(t, wsDir, "add", second)
+	noErr(t, err, "add")
+	head, err := gitx.Repo{Dir: wsDir}.Head()
+	noErr(t, err, "head")
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | `artifacts/notes.md:3` says the opposite |  "+head+" |\n")
+	out, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+	mustNotContain(t, out, "name no artifact path")
+}
+
+// The pin's section list is the H2 headings and nothing else. A looser prefix
+// slices the document TITLE at three characters and reports the garbage as a
+// section the pin predates, and it drags every H3 subsection in beside it.
+func TestPinHeadingsAreTheSectionsOnly(t *testing.T) {
+	doc := "# Workflow gate: known failure modes\n\nprose\n\n## A. Facts\n\n### A subsection\n\n## B. Seams\n"
+	got := headings([]byte(doc))
+	want := []string{"A. Facts", "B. Seams"}
+	if len(got) != len(want) {
+		t.Fatalf("want %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("want %v, got %v", want, got)
+		}
+	}
+	// And the comparison is over those: a pin missing one names it, a pin
+	// missing none names nothing.
+	pin := "# Workflow gate: known failure modes\n\n## B. Seams\n"
+	if m := headingsMissing([]byte(pin), []byte(doc)); len(m) != 1 || m[0] != "A. Facts" {
+		t.Fatalf("want the one missing section, got %v", m)
+	}
+	if m := headingsMissing([]byte(doc), []byte(doc)); len(m) != 0 {
+		t.Fatalf("a pin that has every section predates nothing, got %v", m)
+	}
+}
+
+// NO pin is not a current pin. Two workspaces in this project's own corpus
+// predate `wf init` writing one, and silence over them would be the class this
+// note exists against: an absent measurement in the register of a measured pass.
+func TestPinAgeNamesAWorkspaceWithNoPinAtAll(t *testing.T) {
+	wsDir := newGate(t)
+	if err := os.Remove(filepath.Join(wsDir, "gate-checks.md")); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, wsDir, "commit", "-qam", "a workspace from before the pin existed")
+	out, err := runWF(t, wsDir, "round", "new", "-title", "the next round")
+	noErr(t, err, "round new")
+	mustContain(t, out, "no gate-checks.md", "nothing pins the rules")
+	// It is the OTHER note's negative: an absent pin has no sections to predate.
+	mustNotContain(t, out, "the pin predates:")
 }

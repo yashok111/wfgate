@@ -334,21 +334,81 @@ func TestApplyRuleSaysWhenNothingCarriesTheMarker(t *testing.T) {
 	mustContain(t, out, "rule: NO site carries [R9]")
 }
 
-// The id is normalised where an operator will actually type it, and refused by
-// NAME otherwise — swept into "no rule declared" it would be a silent opt-out
-// of the check the flag exists for.
-func TestNormaliseRuleID(t *testing.T) {
-	for _, c := range []struct{ in, want string }{
-		{"", ""}, {"R6", "R6"}, {"r6", "R6"}, {"6", "R6"}, {"[R6]", "R6"}, {" R12 ", "R12"},
+// The id is normalised where an operator will actually type it. Anything that
+// is NOT an id is a free-text rule NAME rather than an error: measured on P3a,
+// `-rule "bar accounting"` was refused outright and the flag was unusable for a
+// whole script gate, whose rules are marked in no document.
+func TestParseRuleFlag(t *testing.T) {
+	for _, c := range []struct{ in, id, phrase string }{
+		{"", "", ""},
+		{"R6", "R6", ""}, {"r6", "R6", ""}, {"6", "R6", ""}, {"[R6]", "R6", ""}, {" R12 ", "R12", ""},
+		{"bar accounting", "", "bar accounting"},
+		{"six", "", "six"},
+		// Looks like an id and is not one: it sweeps for the phrase and finds
+		// nothing, which announces itself. Refusing it would refuse the form
+		// the flag now exists to accept.
+		{"R6a", "", "R6a"},
+		{"R", "", "R"},
 	} {
-		got, err := normaliseRuleID(c.in)
-		if err != nil || got != c.want {
-			t.Errorf("%q: got %q, %v; want %q", c.in, got, err, c.want)
+		id, phrase := parseRuleFlag(c.in)
+		if id != c.id || phrase != c.phrase {
+			t.Errorf("%q: got id %q phrase %q; want id %q phrase %q", c.in, id, phrase, c.id, c.phrase)
 		}
 	}
-	for _, bad := range []string{"six", "R", "R6a", "-1", "[]"} {
-		if _, err := normaliseRuleID(bad); err == nil {
-			t.Errorf("%q must be refused by name", bad)
+}
+
+// A script gate's rules live in prompts and are marked in no document, so the
+// id form of `-rule` reaches nothing there. Measured on P3a: `-rule "bar
+// accounting"` was refused outright, the flag was unusable for the whole gate,
+// and the sweep it triggers is the one that gate found worth the most.
+func TestApplyRuleSweepsAFreeTextRuleName(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	script := filepath.Join(tmp, "gate.mjs")
+	write(t, script, "const ACCEPT = `\nEvery bar the section ran is reported in the bar accounting object.\n`\n"+
+		"const VERIFY = `\nThe bar accounting is re-derived after the last mutation of the tree.\n`\n")
+	if _, err := runWF(t, wsDir, "add", script); err != nil {
+		t.Fatal(err)
+	}
+	notes := filepath.Join(tmp, "notes.md")
+	// The second sentence is the substring trap: `bar` is inside `barrier`, and
+	// a phrase matched by substring rather than by whole token would count it.
+	write(t, notes, "# Notes\n\nThe bar accounting is a term of green and accumulates over the run.\n\n"+
+		"The barrier accounting of a parallel stage is a different subject entirely.\n")
+	if _, err := runWF(t, wsDir, "add", notes); err != nil {
+		t.Fatal(err)
+	}
+
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/notes.md  count=1  note=bar accounting\n"+
+		"<<<<\naccumulates over the run.\n====\nis re-derived after the last mutation.\n>>>>\n")
+	out, err := runWF(t, wsDir, "apply", "-f", edits, "-rule", "bar accounting", "-m", "notes: bar accounting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out,
+		`rule: "bar accounting" appears in 3 sentence(s) of 4 words or more, 2 of them outside this batch`,
+		"an UNMARKED rule",
+		"artifacts/gate.mjs:")
+	// The file the batch wrote is marked, and the two prompts are not.
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "artifacts/gate.mjs:") && strings.Contains(l, "this batch wrote") {
+			t.Fatalf("the script was not in this batch: %s", l)
 		}
 	}
+}
+
+// A phrase nothing carries is the loudest outcome of the free-text form, and it
+// is not an error — the same shape as a marker no artifact carries.
+func TestApplyRuleSaysWhenNoSentenceCarriesThePhrase(t *testing.T) {
+	wsDir := newGate(t)
+	edits := filepath.Join(filepath.Dir(wsDir), "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1  note=reword\n"+
+		"<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	out, err := runWF(t, wsDir, "apply", "-f", edits, "-rule", "clause regression channel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out, `NO sentence of 4 words or more in 1 artifact(s) carries every word of "clause regression channel"`)
 }

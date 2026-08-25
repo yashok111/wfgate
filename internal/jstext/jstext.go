@@ -25,6 +25,8 @@
 // it.
 package jstext
 
+import "strings"
+
 // StripNonCode blanks the text of comments and string literals, preserving
 // length and line structure so an offset still maps to its line. Template
 // literals keep their `${...}` interpolations — those ARE code, and a spawn
@@ -57,6 +59,11 @@ func StripNonCode(src string) string {
 type Span struct {
 	From, To int
 	Join     bool
+	// Escaped says the span is a string LITERAL, so its bytes are the source
+	// spelling and not the text the engine produces: `\'` is one apostrophe and
+	// `\n` is a line break. A comment carries no escapes and a Windows path in
+	// one must not be decoded.
+	Escaped bool
 }
 
 // ProseSpans returns every prose span of a JavaScript source, in order.
@@ -78,7 +85,7 @@ func ProseSpans(src string) []Span {
 			// exists for. Only whitespace and the next opener may sit between.
 			join = onlyCommentGap(src[out[len(out)-1].To:i])
 		}
-		out = append(out, Span{From: i, To: j, Join: join})
+		out = append(out, Span{From: i, To: j, Join: join, Escaped: kind != spanLineComment && kind != spanBlockComment})
 		kinds = append(kinds, kind)
 	}, 0, false)
 	return out
@@ -301,4 +308,103 @@ func LineAt(s string, off int) int {
 		}
 	}
 	return line
+}
+
+// Unescape decodes the escape sequences of a JavaScript string literal into the
+// text the engine produces. It exists because the prose reader hands its spans
+// to a SENTENCE splitter and a normaliser, and both read the source spelling:
+// measured on P3a, `wf check rules` reached ONE comparison all gate, and
+// getting there took three iterations against exactly two shapes — an
+// apostrophe written `\'` survived into the compared text as a backslash, and a
+// trailing `\n` sat between a full stop and the end of the literal, so the
+// sentence never terminated and the terminator's own guard (the sixth wave's
+// closing-markup fix) could not see why.
+//
+// A lone trailing backslash is a line continuation whose newline was cut by the
+// caller's line split, and it decodes to nothing. An unrecognised escape drops
+// its backslash, which is what the language does.
+func Unescape(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' {
+			b.WriteByte(s[i])
+			continue
+		}
+		if i+1 >= len(s) {
+			break // the line continuation: its newline is the caller's boundary
+		}
+		i++
+		switch s[i] {
+		case 'n', 'r':
+			b.WriteByte('\n')
+		case 't':
+			b.WriteByte('\t')
+		case 'b', 'f', 'v':
+			b.WriteByte(' ')
+		case '0':
+			// A NUL is not a character anyone wrote as prose, but it IS a word
+			// boundary once the normaliser has run over the real string —
+			// dropping it glued the words on either side into one that appears
+			// in neither text.
+			b.WriteByte(' ')
+		case 'x':
+			if r, n := hexRune(s[i+1:], 2); n > 0 {
+				b.WriteRune(r)
+				i += n
+			} else {
+				b.WriteByte('x')
+			}
+		case 'u':
+			if r, n := unicodeEscape(s[i+1:]); n > 0 {
+				b.WriteRune(r)
+				i += n
+			} else {
+				b.WriteByte('u')
+			}
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+// unicodeEscape reads the body of a `\u` escape: four hex digits, or `{...}`.
+func unicodeEscape(s string) (rune, int) {
+	if len(s) > 0 && s[0] == '{' {
+		end := strings.IndexByte(s, '}')
+		if end < 1 {
+			return 0, 0
+		}
+		if r, n := hexRune(s[1:end], end-1); n == end-1 {
+			return r, end + 1
+		}
+		return 0, 0
+	}
+	return hexRune(s, 4)
+}
+
+// hexRune reads exactly n hex digits and returns the rune they spell.
+func hexRune(s string, n int) (rune, int) {
+	if n <= 0 || len(s) < n {
+		return 0, 0
+	}
+	var v rune
+	for i := 0; i < n; i++ {
+		d := s[i]
+		switch {
+		case d >= '0' && d <= '9':
+			v = v*16 + rune(d-'0')
+		case d >= 'a' && d <= 'f':
+			v = v*16 + rune(d-'a'+10)
+		case d >= 'A' && d <= 'F':
+			v = v*16 + rune(d-'A'+10)
+		default:
+			return 0, 0
+		}
+	}
+	return v, n
 }

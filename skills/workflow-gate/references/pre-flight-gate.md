@@ -125,6 +125,11 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    closure ("deferred, see decision D-7") passes the freeze with a counted "verify by hand" note — a
    deliberate escape, not a verified commit. A hex-looking English word is not read as a sha: a commit
    claim needs at least one digit. A comma-separated list of shas is fine, and case does not matter.
+   **Write the artifact path into the finding text while you are writing it.** `wf check closure` asks
+   whether a closing commit's diff reaches what the finding NAMES, and a finding naming no artifact
+   path cannot be reached at all: `wf round record` counts those and says so at the moment they are
+   still cheap to fix. Measured on one gate — 0 of 350 claims checkable on the first record, 26 of 26
+   after the paths went in.
 
 0. **`wfcheck -root <the repository the script will run in> <script>`** (`~/.local/bin/wfcheck`) — a
    static checker for these scripts. `-root` is load-bearing: with the wrong one, the ownership check
@@ -210,6 +215,15 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    budget in the prompt itself rather than only in the shell. Launch it BEFORE the in-process
    reviewers: it is the one step of a round whose wall clock does not have to be serialized against
    them, and a lens that returns nothing has still spent the round.
+
+   **Ask an external lens to RUN what the artifact claims, not to read it — that is where its edge
+   is.** Measured over one script gate's nineteen blockers: the two lenses agreed on three and neither
+   dominated, and every one the external lens found alone came from executing rather than reading — it
+   ran the extracted quoting line against the real filename and found a `$` the shell ate, it read the
+   Makefile instead of the prompt's description of the Makefile, and it raced `git add -N .` across
+   concurrent agents in its head because it had run the command. The one disagreement went its way
+   too: a clause assigned to two sections read as deliberate from the inside and was a blocker, because
+   one walker answers it once and whichever proof exists satisfies it, leaving the other unobservable.
 
    **This gate has ROUNDS, and they run the same discipline as the script gate below** — barrier per
    round, delta rounds (hand the reviewer the document's diff plus the findings it was meant to close,
@@ -310,10 +324,21 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    throw true. It must complete every mode before the gate runs. The seven modes are `clean`, `blockers`
    (every gate returns one), `acceptfail`, `unfixed` (a fix round that leaves blockers open),
    `throw-serial`, `dead-reviews` and `no-args` (the script runs with no `args`; every other mode hands
-   it a representative object). Killing a named agent is not a mode: `--dead <label>[,<label>…]`
-   kills those labels in every one of the seven; `--args <json>` replaces what the six args-carrying
+   it a representative object). `dead-reviews` decides what a reviewer is from the label's SEGMENTS —
+   `review`, `fix`, `closeout`, `verif`, `accept` at the head of one — never from a substring, and the
+   mode PRINTS the labels it killed. Measured: it once matched `review` inside `preview`, killed a
+   producer, ended the run at section five and still reported OK over a seventh of the agents it
+   exists to exercise, without killing a single gate reviewer. Read the `killed:` line; a mode
+   silently exercising something else is the vacuous guard this runner is against. Killing a named
+   agent is not a mode: `--dead <label>[,<label>…]`
+   kills those labels in every one of the seven, and a label that spawned in NO mode FAILS the run —
+   every guard behind it ran over the empty set, and the operator typed that label; `--args <json>` replaces what the six args-carrying
    modes pass, `--budget N` sets what the script sees as `budget.total`, and `--quiet` prints
-   verdicts only. A mode that completes having spawned NO agent FAILS: every stub check is
+   verdicts only. **`--prompt-diff <a>,<b>` prints the sentences one agent's prompt carries and the
+   other's does not** — see the sweep in the round discipline below. It refuses two spellings of ONE
+   prompt (a text does not differ from itself), refuses a label spawned with several DIFFERENT prompts
+   (a per-item reviewer has a per-item briefing, so there is no single prompt to diff), and prints
+   `NOT A PASS` rather than "the same sentences" where a prompt contributed no sentence at all. A mode that completes having spawned NO agent FAILS: every stub check is
    then a guard over the empty set, and that is indistinguishable from a clean run — the one exception
    is `no-args` on a script that gates its body on `args`, which is correct behaviour and is noted
    instead. **A `clean` run that returns a not-green verdict FAILS the mode**, and so does one that
@@ -340,7 +365,16 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    and fails the mode on its own record. If you write a second harness, do the same.
 
 3. **Every reviewer gets the workspace copy of the gate-checks reference** (`<workspace>/gate-checks.md`, written by `wf init` — the version that briefed a gate is pinned with it) as required reading — the standing list of
-   failure modes from previous runs. Without it each new run's reviewers start from zero and re-discover
+   failure modes from previous runs. The pin AGES, and `wf round new` and `wf freeze` now say so,
+   naming the sections it predates: measured on a gate whose pin was sixteen rounds old, the reference
+   had grown two whole sections since — the closed severity scale and the three questions a delta round
+   may never drop — and every reviewer of the next two rounds was handed it as required reading.
+   Nothing was misclassified, because the operator had restated the scale by hand in the prompt, and
+   that is the trap: **a reviewer briefed from a stale reference agrees with the rules by coincidence,
+   and you cannot tell that from agreement.** Keep the pin — one gate reads ONE version — and
+   regenerate it (`wf docs checks > gate-checks.md`) only where the remaining rounds are meant to be
+   briefed differently, saying so in the round title. A workspace with NO pin is named too: no pin is
+   not a current pin, and silence over it would be the same absent measurement wearing a pass. Without it each new run's reviewers start from zero and re-discover
    `git add -N`. **Every round that finds a novel blocker appends one line to it.**
 
 Default = **3 reviewers, each a different vector** (round 1 only — see round discipline below):
@@ -575,7 +609,9 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   naming a commit that does not exist is rejected before it writes; read the block around each edit
   after making it; sweep with
   `wf check dup` for copies that DRIFTED and `wf check stale` for the consumers the fix's OWN old text
-  names, then hand-check for copies that CONTRADICT, which no similarity metric reaches;
+  names, then hand-check for copies that CONTRADICT, which no similarity metric reaches; on a SCRIPT,
+  add `wfdry <script> --prompt-diff <a>,<b>` for each pair of agents the batch gave the same job — the
+  rule and its measurement are in `gate-checks.md` section B, "Two agents asked the SAME question";
   run `wf check closure` before recording the closures, because it asks of every `closed by` sha the
   question `wf round record` does not — whether that commit's diff reaches the SECTION the finding
   cites (`D9`, `R12`: the form a ledger uses, and the only one that reaches a finding citing no line);
@@ -589,7 +625,12 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   measured, the two readings of one gate differ by 2.8% overall and 5.3% on a round — and
   `wf apply -rule RN` declares the rule a batch changes and NAMES the other sites carrying that
   marker, marking the ones in files the batch wrote — the sweep the note beside the number has been
-  pointing at since the meter existed, done at the moment the fix lands;
+  pointing at since the meter existed, done at the moment the fix lands. **`-rule` also takes a
+  free-text rule NAME** (`-rule "bar accounting"`), which sweeps every sentence of the artifact set
+  carrying all of its words: a script gate's rules live in prompts and are marked in no document, so
+  the id form reaches nothing there — measured, the flag was refused outright and unusable for a whole
+  gate whose most valuable sweep it is. The phrase form says out loud that it is the weaker half: it
+  names the sentences that use the words, not the sites of a rule;
   `wf apply` notes when a batch's CHANGED LINES predict a costly next round — measured, the case that
   matters is few edits over many lines: one gate's two-edit window changed 933 lines, 931 of them in
   a single commit, and the per-edit meter — which had seen only the other, one-line edit — called the
@@ -616,7 +657,13 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   21-25, while a script gate measured the same ratio flat across a 12x range of batch sizes. The two
   do not disagree: batch size predicts cost while what is left to fix is PROSE, and once the work
   reaches the tightly-coupled core every changed line is a rule-changing line, the denominator shrinks
-  faster than the numerator, and the prediction is a floor. An edit is not a unit and never was: one
+  faster than the numerator, and the prediction is a floor. **A RISING findings-per-100 under FALLING
+  blockers is a gate converging, not a gate degrading** — and the direction of the prediction's error
+  flips mid-gate, so a series read for its level rather than its shape reads convergence as collapse.
+  Measured on a script gate: 2.5, 4.1, 8.0, 9.3 per 100 while its blockers ran 6, 3, 0, 0 and its
+  fixes shrank 785, 367, 125, 53 lines; at round 18 `wf apply` predicted from 10.6 against an actual
+  2.5, at round 21 from 8.3 against an actual 9.3. The blocker count is what the stop rule reads; the
+  ratio says how much re-reading the next fix buys. An edit is not a unit and never was: one
   two-edit window of another gate changed 933 lines, 931 of them in one commit, and the per-edit
   ratio printed the window as `38.00 finding(s)/edit`. Read the per-100-lines figure and read your own workspace's, not this paragraph's. **A fix that changes a rule re-opens every consumer of that
   rule, and the consumers are not in the diff.** Round 5 of that gate was the only round in which the
