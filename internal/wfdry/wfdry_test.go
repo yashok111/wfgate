@@ -794,7 +794,9 @@ func TestCollapseBaselineIsTheHappyPathNotTheWidest(t *testing.T) {
 // anchors it: the widest stands in, and the run SAYS the baseline is not the
 // happy path.
 func TestCollapseNamesTheBaselineItActuallyUsed(t *testing.T) {
-	rs := []Result{{Mode: "unfixed", Spawned: 2}, {Mode: "blockers", Spawned: 8}}
+	// Phases on both, so only the absent-baseline note is under test here: a
+	// phaseless baseline raises a second, different absence.
+	rs := []Result{{Mode: "unfixed", Spawned: 2, Phases: []string{"P"}}, {Mode: "blockers", Spawned: 8, Phases: []string{"P"}}}
 	noteCollapse(rs)
 	if len(rs[0].Violations) != 1 || !strings.Contains(rs[0].Violations[0], "in `blockers`") {
 		t.Fatalf("want the stand-in baseline named: %v", rs[0].Violations)
@@ -811,13 +813,49 @@ func TestCollapseNamesTheBaselineItActuallyUsed(t *testing.T) {
 // motivated it (`--mode blockers` on the banked fixture printed `OK — 1 agents,
 // 1 phases` and `1/1 modes completed`).
 func TestCollapseSaysItComparedAgainstNothing(t *testing.T) {
-	rs := []Result{{Mode: "blockers", Spawned: 1}}
+	// One phase, as the motivating report had: without it the separate
+	// empty-baseline note fires too, which is a different absence.
+	rs := []Result{{Mode: "blockers", Spawned: 1, Phases: []string{"P"}}}
 	noteCollapse(rs)
 	if len(rs[0].Violations) != 0 {
 		t.Fatalf("one mode cannot collapse against itself: %v", rs[0].Violations)
 	}
 	if len(rs[0].Notes) != 1 || !strings.Contains(rs[0].Notes[0], "compared against NOTHING") {
 		t.Fatalf("an absent comparison must not read as a clean one: %v", rs[0].Notes)
+	}
+	// And it must name BOTH populations: the phase check was added beside the
+	// ratio and the note went on speaking only of the agent count.
+	if !strings.Contains(rs[0].Notes[0], "phase set") {
+		t.Fatalf("the note must say what else went uncompared: %q", rs[0].Notes[0])
+	}
+}
+
+// The stand-in baseline path carries the phase set as well, and nulling it
+// survived a mutation sweep — the whole branch had no case.
+func TestTheStandInBaselineCarriesThePhaseSet(t *testing.T) {
+	rs := []Result{
+		{Mode: "blockers", Spawned: 4, Phases: []string{"A", "B"}},
+		{Mode: "unfixed", Spawned: 4, Phases: []string{"A"}},
+	}
+	noteCollapse(rs)
+	got := strings.Join(rs[1].Violations, " ")
+	if !strings.Contains(got, "never reached") || !strings.Contains(got, "`B`") {
+		t.Fatalf("with no `clean` mode the widest one stands in for the PHASE set too: %v", rs[1].Violations)
+	}
+	if !strings.Contains(strings.Join(rs[1].Notes, " "), "stands in as the baseline for both") {
+		t.Fatalf("and it must say the baseline is not the happy path: %v", rs[1].Notes)
+	}
+}
+
+// A baseline that spawned and reached no phase compares every mode against an
+// empty set — the population-of-zero class, in the check added to close one.
+func TestAPhaselessBaselineIsNotAPass(t *testing.T) {
+	rs := []Result{{Mode: "clean", Spawned: 2}, {Mode: "blockers", Spawned: 2}}
+	noteCollapse(rs)
+	for _, r := range rs {
+		if !strings.Contains(strings.Join(r.Notes, " "), "reached NO phase") {
+			t.Fatalf("%s: an empty baseline must say so: %v", r.Mode, r.Notes)
+		}
 	}
 }
 
@@ -954,6 +992,35 @@ return { failed: false, dead: r ? [] : ['review:x'] }
 	}
 	if !strings.Contains(strings.Join(rs[0].Violations, " "), "`failed: false`") {
 		t.Fatalf("a not-failed verdict over dead agents must be a violation, got %v", rs[0].Violations)
+	}
+}
+
+// The verdict is read AS A WHOLE. Firing on each success-looking field alone
+// rejected `{done: true, green: false}` — a correct script whose `done` is a
+// step flag and whose `green` is the verdict, reporting failure exactly as the
+// other half of this guard demands.
+func TestDeadReviewsReadsTheWholeVerdictNotOneField(t *testing.T) {
+	body := preamble + `phase('P')
+const w = await spawn('work', { model: 'sonnet', effort: 'low', label: 'worker', phase: 'P', schema: S })
+const r = await spawn('review', { model: 'sonnet', effort: 'high', label: 'review:x', phase: 'P', schema: S })
+const dead = r ? [] : ['review:x']
+return { done: true, green: dead.length === 0, dead }
+`
+	rs, err := Run(script(t, body), []string{"dead-reviews"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs[0].Killed) == 0 {
+		t.Fatal("the mode killed nobody, so this asserts nothing")
+	}
+	m, _ := rs[0].Return.(map[string]any)
+	if m["done"] != true || m["green"] != false {
+		t.Fatalf("the fixture must state one field each way: %v", m)
+	}
+	for _, v := range rs[0].Violations {
+		if strings.Contains(v, "dead-reviews:") {
+			t.Fatalf("a run that says failure anywhere has noticed the deaths: %s", v)
+		}
 	}
 }
 
@@ -1100,6 +1167,39 @@ func TestTheCollapseFixtureIsCaughtByTheRatioAndNotByPhases(t *testing.T) {
 		for _, v := range r.Violations {
 			if strings.Contains(v, "never reached") {
 				t.Fatalf("%s: the phase check cannot see a one-phase script, so it must stay silent: %s", r.Mode, v)
+			}
+		}
+	}
+}
+
+// The new messages count agents, and the singular branch was reachable and
+// untested: forcing the plural yields "1 agents" with every bar green.
+func TestPluralAgreesWithItsCount(t *testing.T) {
+	if got := plural(1, "agent"); got != "1 agent" {
+		t.Errorf("one agent is singular, got %q", got)
+	}
+	if got := plural(2, "agent"); got != "2 agents" {
+		t.Errorf("two agents are plural, got %q", got)
+	}
+	if got := plural(0, "phase"); got != "0 phases" {
+		t.Errorf("zero is plural, got %q", got)
+	}
+}
+
+// verdictKeys' own comment claims "a stable order, so two guards reading the
+// same verdict cannot disagree", and map iteration would make the violation
+// order random across runs. Ten identical runs, one order.
+func TestVerdictKeysAreOrderedSoTwoGuardsCannotDisagree(t *testing.T) {
+	ret := map[string]any{"zeta": true, "alpha": false, "mid": true, "beta": false, "text": "not a bool"}
+	want := []string{"alpha", "beta", "mid", "zeta"}
+	for i := 0; i < 10; i++ {
+		got := verdictKeys(ret)
+		if len(got) != len(want) {
+			t.Fatalf("only the boolean fields are verdict keys, got %v", got)
+		}
+		for j := range want {
+			if got[j] != want[j] {
+				t.Fatalf("run %d: got %v, want %v", i, got, want)
 			}
 		}
 	}

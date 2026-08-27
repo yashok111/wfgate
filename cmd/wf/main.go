@@ -356,8 +356,8 @@ func cmdApply(args []string) error {
 	// against comes from --numstat, and a ratio whose two halves count different
 	// things is worse than no ratio. Measured: a P2e window of two edits changed
 	// 933 lines, 931 of them in one commit the subject-only meter never saw.
-	hist, authoringSkipped, _ := batchHistory(w)
-	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), hist, authoringSkipped); warn {
+	hist, authoringSkipped, republishedSkipped := batchHistory(w)
+	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), hist, authoringSkipped, republishedSkipped); warn {
 		fmt.Println(note)
 	}
 	// Named, not merely remembered. The prediction beside it prices CHANGED
@@ -1423,10 +1423,18 @@ func cmdFreeze(args []string) error {
 		// document half stood against a true prior-round denominator of ZERO.
 		// A note and not a refusal — re-freezing to republish corrected bytes
 		// is legitimate, and only the operator knows which kind this is.
-		if moved := republishedLines(w, w.M.Round); moved > 0 {
-			fmt.Printf("  note: %d changed line(s) were applied since this round's FIRST publication, and the tag now covers them — `wf stats` prices them as round %d's own fix and excludes the round from the prediction basis\n",
-				moved, w.M.Round)
-		}
+	}
+	// OUTSIDE the `-refreeze` branch, and that is the whole point: `fm.Refreezes`
+	// is written only by the sanctioned path, and the shape this was built for is
+	// a hand `git tag -d` (or `git tag -f`) followed by a plain `wf freeze` —
+	// twelve times over five rounds on the gate that stopped instead of closing,
+	// with `refreezes` absent from every one of those manifests. Arming the note
+	// on that field put it back on the field the commit condemns, which is this
+	// project's own named class committed inside the fix for it. It is silent on
+	// a genuine first freeze, where the derivation returns zero.
+	if moved := republishedLines(w, w.M.Round); moved > 0 {
+		fmt.Printf("  note: %d changed line(s) were applied since this round's FIRST publication, and the tag now covers them — `wf stats` prices them as round %d's own fix and excludes the round from the prediction basis\n",
+			moved, w.M.Round)
 	}
 	fmt.Printf("  cites  %d anchored / %d citation(s)\n", fm.CiteAnchored, fm.CiteTotal)
 	size := fmt.Sprintf("  size   %d line(s) across %d artifact(s)", fm.ArtifactLines, len(arts))
@@ -3012,6 +3020,21 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 					// ratio is said in the headline above; this says only that
 					// there is none, where the number would have stood.
 					ed += " (no ratio)"
+				} else if rw.Republished {
+					// The same reasoning as the authoring window, and it was
+					// left out of this branch while the exclusion was written
+					// into the basis line twenty lines below. On the gate that
+					// motivated the whole change, rounds 16 and 17 went on
+					// printing 22.4 and 21.4 per 100 — the two highest figures
+					// of its document half — on the line the descent is read
+					// from, with a footnote saying they price the round's own
+					// repairs. The tenth wave moved the authoring caveat ONTO
+					// the round line for exactly this reason.
+					if rw.Swallowed == 0 {
+						ed += " (no ratio — the tag moved over a batch of this round's OWN repairs whose size could not be read)"
+					} else {
+						ed += fmt.Sprintf(" (no ratio — the tag moved over %d line(s) of this round's OWN repairs)", rw.Swallowed)
+					}
 				} else {
 					ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
 						100*float64(findings)/float64(lines))
@@ -3423,7 +3446,8 @@ type republication struct {
 	// the same bytes. Measured — p2e round 11 is exactly that, and it is the
 	// only such round in the six-workspace corpus.
 	TagMoved       bool
-	SwallowedLines int // apply lines landing between the FIRST publication and the tag
+	SwallowedLines int  // apply lines landing between the FIRST publication and the tag
+	Unreadable     bool // a batch in that range whose size could not be read
 }
 
 // republications walks the freeze commits once. Every window in `wf stats` is
@@ -3453,14 +3477,20 @@ func republications(w *ws.Workspace) map[int]republication {
 		}
 	}
 	for n, r := range out {
-		if r.Publications < 2 {
+		// The test is the TAG, and only the tag. Counting freeze COMMITS was a
+		// second blind spot of the same shape as the one this function exists to
+		// remove: `git tag -f gate-rN` moves the tag without writing a freeze
+		// commit at all, and the whole check went blind — no note, the round
+		// still in the prediction basis, its ratio halved. Deleting the count
+		// filter leaves `wf stats` BYTE-IDENTICAL on all six workspaces on disk,
+		// so it bought nothing and hid that.
+		//
+		// `rev-list` on a missing tag errors, which the same branch catches, so
+		// there is no TagExists pre-check either.
+		if len(first[n]) == 0 {
 			continue
 		}
-		tag := ws.RoundTag(n)
-		if !w.Git.TagExists(tag) {
-			continue
-		}
-		at, err := w.Git.Run("rev-list", "-n1", tag)
+		at, err := w.Git.Run("rev-list", "-n1", ws.RoundTag(n))
 		if err != nil || strings.TrimSpace(at) == first[n] {
 			continue
 		}
@@ -3469,10 +3499,17 @@ func republications(w *ws.Workspace) map[int]republication {
 		// What the moved tag swallowed: the round's own repairs, priced into
 		// its own cost window. Bounded by the FIRST publication, because that
 		// is the revision its reviewers were dispatched against.
-		for _, b := range applyBatches(w, first[n]+".."+tag) {
-			if b.Known {
-				r.SwallowedLines += b.Lines
+		for _, b := range applyBatches(w, first[n]+".."+ws.RoundTag(n)) {
+			// An unreadable batch is an unknown amount, never zero. Dropping it
+			// silently let the two halves of this feature disagree about one
+			// fact: the note fires on the moved tag, the exclusion on the line
+			// count, so a round whose swallowed batch could not be read was
+			// NAMED as republished and left in the prediction basis anyway.
+			if !b.Known {
+				r.Unreadable = true
+				continue
 			}
+			r.SwallowedLines += b.Lines
 		}
 		out[n] = r
 	}
@@ -4024,7 +4061,7 @@ func roundWindows(w *ws.Workspace) []roundWindow {
 		// SwallowedLines is populated only where the tag actually moved, so the
 		// count IS the condition; testing TagMoved beside it was a second
 		// spelling of one fact that no mutation could make fail.
-		if r := reps[n]; r.SwallowedLines > 0 {
+		if r := reps[n]; r.SwallowedLines > 0 || r.Unreadable {
 			rw.Republished, rw.Swallowed = true, r.SwallowedLines
 		}
 		if n > 1 {
@@ -4119,7 +4156,7 @@ func batchHistory(w *ws.Workspace) (hist []histRound, authoringSkipped, republis
 // the ratio FLAT across a 12x range of batch sizes. The two do not disagree —
 // they measure different regimes, and the pooled number cannot say which one it
 // came from. The series can, and the operator reads it in one glance.
-func batchNote(edits, lines int, hist []histRound, authoringSkipped []int) (string, bool) {
+func batchNote(edits, lines int, hist []histRound, authoringSkipped, republishedSkipped []int) (string, bool) {
 	if len(hist) == 0 {
 		return "", false
 	}
@@ -4168,6 +4205,13 @@ func batchNote(edits, lines int, hist []histRound, authoringSkipped []int) (stri
 	note += fmt.Sprintf("\n  trend: %s per 100 changed line(s)%s", strings.Join(series, ", "), dir)
 	if len(authoringSkipped) > 0 {
 		note += fmt.Sprintf("\n  note: round(s) %s are NOT in that history — their window ADDS an artifact, so their findings were filed against a corpus those batches did not write. One such round put the prediction at ~355 against an actual 24", roundList(authoringSkipped))
+	}
+	// The other exclusion, named by the same command that reads the basis.
+	// `wf stats` named it and this note did not, so the trend series above had a
+	// gap the operator could not account for — two commands and one number, with
+	// the silent one being the command that acts on it.
+	if len(republishedSkipped) > 0 {
+		note += fmt.Sprintf("\n  note: round(s) %s are NOT in that history either — their `gate-rN` moved over their OWN repairs, so the window prices edits that are not the fix it measures", roundList(republishedSkipped))
 	}
 	return note, true
 }

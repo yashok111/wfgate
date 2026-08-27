@@ -286,8 +286,8 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `wf stats` excludes such a round from the prediction basis BY NUMBER — there is no ratio there to
    correct, the same reasoning an authoring window already gets. The detection reads GIT, not the
    manifest's `refreezes` counter, because that counter is written only by this flag: measured on the
-   gate that stopped instead of closing, twelve extra freeze commits over five rounds left it at ZERO
-   in all five manifests, the note built to say so fired not once, and 611 of 8388 changed lines
+   gate that stopped instead of closing, twelve extra freeze commits over five rounds left it ABSENT
+   from all five manifests, the note built to say so fired not once, and 611 of 8388 changed lines
    (7.3%) were priced against the round that produced them. The claim is that the TAG moved, never
    that two freeze commits exist — a refused re-freeze used to commit its manifest before refusing, so
    a workspace predating that fix carries a second freeze commit for a round whose reviewers all read

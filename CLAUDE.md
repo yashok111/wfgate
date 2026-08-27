@@ -1312,8 +1312,10 @@ entirely to what the reports SAY. Items landed so far:
   manual that ships the check. `make check-docs` is that corpus as a bar. The
   rules half FAILS the build; the `dup` half is a printed population that never
   does, because a reference quoting a rule verbatim is not drift and a bar
-  failing on that is `dup`'s own 161-of-176 lesson repeated (measured: 1466
-  statements, 27 cross-file groups, 0 divergent). Two assertions guard the rig
+  failing on that is `dup`'s own 161-of-176 lesson repeated (the population is
+  printed on every run rather than quoted here — it moved from 1457 to 1483
+  statements inside this wave, and a number banked in prose goes stale the next
+  time a document grows). Two assertions guard the rig
   itself, because an artifact set carrying no markers exits ZERO under a header
   reading "NOT A PASS, nothing was compared" — a copy step that silently
   narrowed the corpus would read as a green bar — and the staged file count is
@@ -1362,13 +1364,14 @@ entirely to what the reports SAY. Items landed so far:
   the case it lacked rather than shipped unproven.
 - *The collapse check measured AGENTS against the narrowest mode, and the phase
   counts it printed beside them were compared against nothing* — on every
-  correct script `clean` is the narrowest mode, so the half-the-happy-path
+  correct script `clean` is the narrowest of the modes the check does NOT
+  exempt, so the half-the-happy-path
   threshold sits far below where a failing mode lives: a failing mode on p3b may
   lose 21 of its 30 agents and pass. The shape that gets through is a branch
   skipping a whole SECTION while staying inside the ratio — measured, 13 agents
   against 15 and 4 phases against 5, `wfdry` 7/7 at exit 0, with the fifth
   section and the gate over it exercised by no mode at all. The signal was
-  already being collected: across the six correct scripts every mode but
+  already being collected: across the five correct scripts every mode but
   `throw-serial` reaches its baseline's phase set EXACTLY, so the threshold is
   exact rather than a tolerance — a tolerance would be calibrated on a
   population with no variance in it. The comparison is over distinct TITLES and
@@ -1389,8 +1392,8 @@ entirely to what the reports SAY. Items landed so far:
   freeze -refreeze` moves that tag; the note built to say so read
   `freeze.json`'s `refreezes` counter, which a hand `git tag -d` plus `wf
   freeze` never touches. Measured on the gate that stopped instead of closing:
-  twelve extra freeze commits over five rounds, `refreezes` ZERO in all five
-  manifests, the note fired not once, and **611 of 8388 changed lines (7.3%)**
+  twelve extra freeze commits over five rounds, `refreezes` ABSENT from all five
+  manifests (they predate the flag, which is a stronger statement than zero), the note fired not once, and **611 of 8388 changed lines (7.3%)**
   were priced against the round that produced them rather than the round they
   repaired — putting the two highest ratios of its document half, 22.4 and 21.4
   per 100, against a TRUE prior-round denominator of zero, all four inside the
@@ -1415,6 +1418,44 @@ entirely to what the reports SAY. Items landed so far:
   which the new line still satisfies. And one condition was DELETED rather than
   given a test it could not earn: `TagMoved && SwallowedLines > 0` is one fact
   spelled twice, because the count is populated only where the tag moved.
+- *And the wave earned its review round, for the ninth time running, and this
+  one found the wave committing its own named class in three places* — two Opus
+  vectors (Go correctness with a 30-mutation sweep, and claims/specification)
+  plus one external model over the diff, against five green bars: **four
+  BLOCKERS, and two of them were found by two vectors independently.** The
+  flagship exclusion **had no test**: dropping the `continue` in `batchHistory`
+  left every bar green and printed a round as excluded AND inside the basis, in
+  one line, because the test asserted the ANNOUNCEMENT and never that the round
+  left `hist`. The git derivation was armed on `Publications < 2`, so `git tag
+  -f` — one command, no second freeze commit — blinded the whole feature: no
+  note, the round still in the basis, its ratio halved; deleting that filter is
+  BYTE-IDENTICAL on all six workspaces, so it bought nothing and hid that. The
+  freeze-time note was gated on `fm.Refreezes > 0` — the very field the commit
+  removes from `wf stats` — so it printed on none of the twelve hand tag moves
+  that motivated it. And a `clean` baseline reaching NO phase compared every
+  mode against an empty set, the population-of-zero class inside the check added
+  to close one. The per-round ratio went on printing 22.4 and 21.4 for the two
+  rounds the same report excluded, with the caveat twenty lines below; `wf
+  apply`, which reads that basis, dropped the exclusions on the floor; and
+  `make check-docs`'s anti-narrowing guard derived `want` from the glob it
+  constrains, so renaming a reference to `.mdx` passed the bar with the marked
+  sites down from 9 to 5. Two FALSE POSITIVES in the new code: the phase check
+  refused a script that HALTS over a dead reviewer — which is what the sibling
+  guard demands, so `dead-reviews` is exempt from it and the other failure modes
+  keep it — and the verdict guard fired on each success-looking field alone,
+  rejecting `{done: true, green: false}`, so the verdict is read as a whole and
+  only a report that says success in every field it states is the defect. The
+  reviewers also found the reach of `dead-reviews` under the passing fixture:
+  `*:fix` labels cannot spawn on the happy path, so p2f went from six killed
+  labels to ONE while the "proved nothing" note stayed silent on the unrelated
+  `accept` — the kill line carries the ratio now (1 of 18 against p3b's 13 of
+  18). Three numbers were wrong: "six correct scripts" is FIVE and the wave's own
+  58-phase sum proves it, the banked `dup` population had gone stale inside the
+  wave itself, and `refreezes` is ABSENT from those manifests rather than zero.
+  Eight mutations survived the sweep; five got the test they lacked, two were
+  the blockers above and one condition was deleted. **Two mutations read as
+  SURVIVED and had not been** — both broke the build, which is the trap this
+  file already records, met twice more in one session.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own

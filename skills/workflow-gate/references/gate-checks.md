@@ -505,7 +505,7 @@ compiles, passes every test, and does nothing.
       5, so the ratio passed while neither the fifth section nor its gate ran in any mode. The
       comparison is over distinct phase TITLES, never their count, because a mode running one phase
       twice reaches the same count having covered less; the threshold is exact rather than a
-      tolerance, because across the six correct scripts on disk every mode but `throw-serial` reaches
+      tolerance, because across the five correct scripts on disk every mode but `throw-serial` reaches
       its baseline's phase set exactly and a tolerance would be calibrated on a population with no
       variance in it. Seconds of cost, and it evaluates every
       template literal on every path, catching the class above plus any unreachable binding a linter

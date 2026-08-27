@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -214,10 +215,20 @@ func noteCollapse(rs []Result) {
 		// comparison says so; it does not read as a clean one.
 		for i := range rs {
 			if len(rs) == 1 {
-				rs[i].Notes = append(rs[i].Notes, "no `clean` mode in this run, so this mode's agent count was compared against NOTHING — the happy path is the baseline, and `wfdry <script>` runs every mode")
+				rs[i].Notes = append(rs[i].Notes, "no `clean` mode in this run, so this mode's agent count and phase set were compared against NOTHING — the happy path is the baseline, and `wfdry <script>` runs every mode")
 			} else {
-				rs[i].Notes = append(rs[i].Notes, "no `clean` mode in this run — the widest mode (`"+baseMode+"`) stands in as the baseline, which is not the happy path")
+				rs[i].Notes = append(rs[i].Notes, "no `clean` mode in this run — the widest mode (`"+baseMode+"`) stands in as the baseline for both the agent count and the phase set, which is not the happy path")
 			}
+		}
+	}
+	// A baseline that spawned agents and reached NO phase compares every other
+	// mode against an empty set, so the phase check passes over a population of
+	// zero — the class this runner exists against, in the check that was added
+	// to close another instance of it. `wfcheck` is where a missing `phase()`
+	// is an error; here it is said as what it is.
+	if base > 0 && len(basePhases) == 0 {
+		for i := range rs {
+			rs[i].Notes = append(rs[i].Notes, "`"+baseMode+"` reached NO phase, so the phase-coverage check compared every mode against an empty set — NOT A PASS, and `wfcheck` is where a script with no `phase()` call is an error")
 		}
 	}
 	for i := range rs {
@@ -252,14 +263,21 @@ func noteCollapse(rs []Result) {
 		// that runs one phase twice reaches the same count having covered less,
 		// and it is the titles a reader is being told were exercised. The
 		// threshold is EXACT rather than a ratio, and that is a measurement, not
-		// a preference — across the six correct scripts on disk every mode but
+		// a preference — across the five correct scripts on disk every mode but
 		// `throw-serial` reaches its baseline's phase set exactly, so a
 		// tolerance would be calibrated on a population with no variance in it.
 		// The missing titles are NAMED, because "fewer phases" sends an operator
 		// to diff two runs by hand.
-		if missing := missingPhases(basePhases, r.Phases); len(missing) > 0 {
-			r.Violations = append(r.Violations, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here, so every section behind them, and every gate over those sections, is exercised by no mode at all",
-				r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
+		// `dead-reviews` is exempt, and the reason is the guard one screen up:
+		// that mode's shortfall is INJECTED by the runner, and the sibling check
+		// demands the verdict depend on the reviewers having run — so a script
+		// that reacts by HALTING is doing what it is told and was then refused
+		// for it. The other failure modes keep the check: there the narrowing is
+		// the script's own, and a red-bar abort that empties them is the defect
+		// the thirteenth wave banked, not a style.
+		if missing := missingPhases(basePhases, r.Phases); len(missing) > 0 && r.Mode != "dead-reviews" {
+			r.Violations = append(r.Violations, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here, so every section behind them, and every gate over those sections, ran ONLY in `%s` and no failure mode covers it",
+				r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode, baseMode))
 		}
 		if r.Spawned*2 >= base {
 			continue
@@ -549,6 +567,13 @@ func runMode(src, mode string, o Options) Result {
 	// nothing failed — is false the moment `--dead` names a label that spawned.
 	// Without this, `--mode clean --dead <a reviewer>` reported the correct
 	// verdict as a violation on every one of the five correct scripts on disk.
+	if mode == "clean" && r.ReturnOK && len(r.Killed) > 0 {
+		// Standing down in SILENCE is an absent measurement in the register of
+		// a pass: `--dead build` over the banked false-green fixture took it
+		// from 6/7 exit 1 to 7/7 exit 0, and nothing in the report said the
+		// verdict had gone unchecked.
+		r.Notes = append(r.Notes, "`--dead` killed "+strings.Join(r.Killed, ", ")+", so the clean-mode verdict guard stood down — a killed agent IS something failing, and this mode's OK does not cover the verdict")
+	}
 	if mode == "clean" && r.ReturnOK && len(r.Killed) == 0 {
 		for _, k := range verdictKeys(r.Return) {
 			b, _ := r.Return.(map[string]any)[k].(bool)
@@ -576,14 +601,37 @@ func runMode(src, mode string, o Options) Result {
 	// label, kills nobody, and is correct to come back green — the note below
 	// already says that run proved nothing.
 	if mode == "dead-reviews" && r.ReturnOK && len(r.Killed) > 0 {
-		for _, k := range verdictKeys(r.Return) {
-			b, _ := r.Return.(map[string]any)[k].(bool)
+		// A verdict this guard cannot READ is not a verdict it checked. Three
+		// one-line variants of the banked fixture — the verdict nested in an
+		// object, under an unrecognised key, or as the string 'yes' — all came
+		// back 7/7 at exit 0 with the loop passing over an empty set. The
+		// runner has recorded unreadable SCHEMA booleans since the sixth wave;
+		// the return value got nothing.
+		if len(verdictKeys(r.Return)) == 0 {
+			r.Notes = append(r.Notes, "this mode killed "+plural(len(r.Killed), "agent")+" and the run's verdict carries no boolean field this check can read — whether the deaths reached the verdict is UNMEASURED, not clean")
+		}
+		// The verdict is read AS A WHOLE, and that is a correction: firing on
+		// each success-looking field alone rejected `{done: true, green: false}`
+		// — a correct script whose `done` is a step flag and whose `green` is
+		// the verdict, reporting failure exactly as the other half of this
+		// guard demands. A run that says failure ANYWHERE has noticed the
+		// deaths; only a report that reads as success in every field it states
+		// is the defect.
+		m, _ := r.Return.(map[string]any)
+		keys := verdictKeys(r.Return)
+		var pass []string
+		saidFail := false
+		for _, k := range keys {
+			b, _ := m[k].(bool)
 			switch {
-			case passBools.MatchString(k) && b:
-				r.Violations = append(r.Violations, "dead-reviews: the run returned `"+k+": true` while "+plural(len(r.Killed), "agent")+" it spawned returned NOTHING ("+strings.Join(r.Killed, ", ")+") — every other agent reported success, so this verdict does not depend on those agents having run")
-			case failVerdicts.MatchString(k) && !b:
-				r.Violations = append(r.Violations, "dead-reviews: the run returned `"+k+": false` while "+plural(len(r.Killed), "agent")+" it spawned returned NOTHING ("+strings.Join(r.Killed, ", ")+") — every other agent reported success, so this verdict does not depend on those agents having run")
+			case passBools.MatchString(k) && b, failVerdicts.MatchString(k) && !b:
+				pass = append(pass, "`"+k+": "+strconv.FormatBool(b)+"`")
+			case passBools.MatchString(k) && !b, failVerdicts.MatchString(k) && b:
+				saidFail = true
 			}
+		}
+		if len(pass) > 0 && !saidFail {
+			r.Violations = append(r.Violations, "dead-reviews: the run returned "+strings.Join(pass, ", ")+" and nothing to the contrary, while "+plural(len(r.Killed), "agent")+" it spawned returned NOTHING ("+strings.Join(r.Killed, ", ")+") — every other agent reported success, so this verdict does not depend on those agents having run")
 		}
 	}
 	// A mode that completes having spawned NOTHING is indistinguishable from a

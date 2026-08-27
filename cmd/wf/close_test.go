@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -421,5 +423,61 @@ func TestTheBankedTableDeclaresEveryManifestField(t *testing.T) {
 		if !want[c] {
 			t.Errorf("freezes.tsv column %q matches no freezeManifest field — the table promises something the manifest does not hold", c)
 		}
+	}
+
+	// Header NAMES alone are decoration: the row still passes with the named
+	// reader reverted to a hand-typed struct, or with a formatter writing the
+	// zero value into a column that has a name. So each cell is checked against
+	// the manifest it was projected from.
+	// Trim the NEWLINE only: a trailing empty cell (an unset `supersedes`) is a
+	// real column, and TrimSpace eats the tab in front of it.
+	rows := strings.Split(strings.TrimRight(string(fz), "\n"), "\n")
+	if len(rows) != 2 {
+		t.Fatalf("want a header and one row: %q", fz)
+	}
+	cells := strings.Split(rows[1], "\t")
+	if len(cells) != len(header) {
+		t.Fatalf("the row has %d cell(s) against %d column(s): %q", len(cells), len(header), rows[1])
+	}
+	mb, err := os.ReadFile(filepath.Join(wsDir, "rounds", "r1", "freeze.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fm freezeManifest
+	if err := json.Unmarshal(mb, &fm); err != nil {
+		t.Fatal(err)
+	}
+	src := map[string]string{
+		"round":         strconv.Itoa(fm.Round),
+		"frozen":        fm.Frozen,
+		"commit":        fm.Commit,
+		"targetRef":     fm.TargetRef,
+		"tool":          fm.Tool,
+		"citeAnchored":  strconv.Itoa(fm.CiteAnchored),
+		"citeTotal":     strconv.Itoa(fm.CiteTotal),
+		"artifactLines": strconv.Itoa(fm.ArtifactLines),
+		"refreezes":     strconv.Itoa(fm.Refreezes),
+		"supersedes":    strings.Join(fm.Supersedes, " "),
+	}
+	for i, c := range header {
+		v, known := src[c]
+		if !known {
+			t.Errorf("column %q is not projected from any manifest field this test knows", c)
+			continue
+		}
+		if cells[i] != v {
+			t.Errorf("column %q carries %q, the manifest says %q — a named column is not a written one", c, cells[i], v)
+		}
+	}
+	// And the values must not be uniformly empty: a projection writing the zero
+	// value everywhere would satisfy a comparison against a zeroed manifest.
+	nonEmpty := 0
+	for _, c := range cells {
+		if c != "" && c != "0" {
+			nonEmpty++
+		}
+	}
+	if nonEmpty < 4 {
+		t.Fatalf("only %d cell(s) carry a value; the row proves nothing: %q", nonEmpty, rows[1])
 	}
 }

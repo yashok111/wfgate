@@ -1,9 +1,15 @@
 export const meta = { name: 'fixture-dead-reviews', description: 'wfdry fixture: a verdict that does not depend on its reviewers having run', phases: [{ title: 'P' }] }
-// The two edits a live operator plausibly makes, and both survived seven green
-// modes. The reviewer is relabelled off the segment `dead-reviews` matches, and
+// ONE edit a live operator plausibly makes, and it survived seven green modes:
 // a comment justifies filtering dead REVIEWERS out of the green computation on
 // the argument that only a dead PRODUCER stops a run. The result is a script
 // whose green is true on a run where nothing reviewed anything.
+//
+// The label stays `review:correctness` on purpose. Relabelling it off the
+// segment the mode matches would DISARM this guard rather than exercise it —
+// the mode then kills nobody, the arming condition is empty and the existing
+// "proved nothing" note is what fires. That the two edits compose into a script
+// no check reaches is a hole in `reviewish`, not in this fixture, and a fixture
+// must not describe the blind spot as if it were the covered case.
 //
 // `green` is a CONJUNCTION, which is why this passed: under the failing fixture
 // the surviving reviewer returned blockers, so the second conjunct carried the

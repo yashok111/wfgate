@@ -27,6 +27,18 @@ import (
 
 var version = "devel"
 
+// distinctLabels counts the labels behind `r.Calls`, whose entries are
+// "label [model/effort]" — the same label spawned twice is one label, because
+// the question is how much of the script's briefing the mode reached.
+func distinctLabels(calls []string) int {
+	seen := map[string]bool{}
+	for _, c := range calls {
+		l, _, _ := strings.Cut(c, " [")
+		seen[l] = true
+	}
+	return len(seen)
+}
+
 func main() {
 	mode := flag.String("mode", "", "run one mode instead of all of them")
 	deadCSV := flag.String("dead", "", "comma-separated labels whose spawn returns null")
@@ -89,9 +101,20 @@ modes: %s
 		// not be read even by an operator who suspected it. It prints on a
 		// THREW too: killing the wrong agent is how a run ends early.
 		killed := func() {
-			if len(r.Killed) > 0 {
-				fmt.Println("  killed:", strings.Join(r.Killed, ", "))
+			if len(r.Killed) == 0 {
+				return
 			}
+			// The REACH beside the list, as a population and never a verdict.
+			// `dead-reviews` reports OK over a script whose gate reviewers it
+			// never matched, and one unrelated kill silences the zero-kill note:
+			// measured, p2f kills 1 of 18 spawned labels while p3b kills 13 of
+			// 18 and both print the same word. Naming the survivors on every
+			// run would paint every correct script; the ratio does not.
+			reach := ""
+			if n := distinctLabels(r.Calls); n > 0 {
+				reach = fmt.Sprintf(" (%d of %d spawned label(s))", len(r.Killed), n)
+			}
+			fmt.Println("  killed:", strings.Join(r.Killed, ", ")+reach)
 		}
 		switch {
 		case r.Err != nil:

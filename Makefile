@@ -137,15 +137,19 @@ check-tools: build
 # a rule verbatim is not drift, and a bar that fails on that is `dup`'s own
 # 161-groups-of-176 lesson repeated.
 #
-# Two assertions guard the rig itself. An empty artifact set makes `wf check
+# Three assertions guard the rig itself. An empty artifact set makes `wf check
 # rules` refuse, but an artifact set that carries no markers exits ZERO under a
 # header reading "NOT A PASS, nothing was compared" — so a copy step that
-# silently narrowed the corpus would read as a green bar. The file count is
-# compared against the source list for the same reason: a reference renamed out
-# of the glob takes its rules with it and nothing else would say so.
+# silently narrowed the corpus would read as a green bar. The file count and the
+# marked-site floor cover the rest, and both are pinned to LITERALS rather than
+# derived from the list they constrain: `want=$(echo $src | wc -w)` reads the
+# glob's own expansion, so it only ever proved that `cp` copied what it was
+# handed. Measured — renaming one reference to `.mdx` passed that bar with the
+# marked sites down from 9 to 5 and the compared ids from 3 to 2. The floor is
+# the second half, because a corpus can narrow without losing a whole file.
 check-docs: build
 	@src="README.md skills/workflow-gate/SKILL.md $$(ls skills/workflow-gate/references/*.md)"; \
-	want=$$(echo $$src | wc -w); \
+	want=8; floor=9; \
 	d=$$(mktemp -d); \
 	( cd $$d && $(CURDIR)/wf init docs -target $(CURDIR) >/dev/null ) || { echo "check-docs: could not build the scratch workspace"; rm -rf $$d; exit 1; }; \
 	cp $$src $$d/docs/artifacts/ || { echo "check-docs: could not stage the manual"; rm -rf $$d; exit 1; }; \
@@ -155,9 +159,12 @@ check-docs: build
 	out=$$(cd $$d/docs && $(CURDIR)/wf check rules 2>&1); rc=$$?; \
 	echo "$$out" | head -1; \
 	case "$$out" in *"NOT A PASS"*) echo "check-docs: the rules check compared NOTHING — an absent measurement, not a pass"; rm -rf $$d; exit 1;; esac; \
+	marks=$$(echo "$$out" | head -1 | sed -n 's/.*— \([0-9]*\) marker(s).*/\1/p'); \
+	[ "$$marks" -ge "$$floor" ] 2>/dev/null || { echo "check-docs: $$marks marked site(s) against a floor of $$floor — the corpus narrowed and the checks went quieter, which is not the same as the manual agreeing"; rm -rf $$d; exit 1; }; \
 	[ $$rc = 0 ] || { echo "$$out"; echo "check-docs: the shipped manual disagrees with itself — see the sites above"; rm -rf $$d; exit 1; }; \
-	( cd $$d/docs && $(CURDIR)/wf check dup 2>&1 | head -1 ); \
-	echo "check-docs: the manual agrees with itself across $$want document(s)"; \
+	dup=$$(cd $$d/docs && $(CURDIR)/wf check dup 2>&1 | head -1); \
+	case "$$dup" in *"statement(s)"*) echo "$$dup";; *) echo "check-docs: `wf check dup` printed no population ($$dup) — a crashed check is not a clean one"; rm -rf $$d; exit 1;; esac; \
+	echo "check-docs: $$want document(s), $$marks marked site(s), every id compared agrees"; \
 	rm -rf $$d
 
 clean:
