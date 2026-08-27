@@ -8,13 +8,7 @@
   "plugins": [
     {
       "name": "wfgate",
-      "source": ".",
-      "description": "Workflow gate harness: the workflow-gate skill and the Workflow pre-flight hook",
-      "version": "1.16.0",
-      "author": {
-        "name": "Yakov Kurbatov"
-      },
-      "homepage": "https://git.sumka.site/yakov/wfgate"
+      "source": "."
     }
   ]
 }
