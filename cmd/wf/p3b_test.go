@@ -131,14 +131,15 @@ func TestApplyIsSilentOnATargetedEdit(t *testing.T) {
 
 // The three questions a delta round may never drop are a SET, and every way of
 // writing a set down means the same thing. Measured: the natural spelling was
-// refused and the working path became a hand edit of the lens file, twenty-two
-// times in one workspace.
+// refused and the working path became a hand edit of the lens file, nineteen times over
+// ten rounds in one workspace.
 func TestAsksAcceptsEverySpellingOfOneSet(t *testing.T) {
 	want := []string{"closure", "fix-induced", "ripple"}
 	for _, raw := range []string{
 		"closure,fix-induced,ripple",
 		"closure+fix-induced+ripple",
 		"closure fix-induced ripple",
+		"closure\tfix-induced\nripple",
 		"closure, fix-induced,ripple",
 	} {
 		got, err := parseAsks(raw)
@@ -212,10 +213,11 @@ func TestRoundRecordRefusesAnEmptyInput(t *testing.T) {
 	}
 }
 
-// Freeze's own citation check is what surfaces a mis-aimed anchor, and fixing
-// one means freezing again: the check is the reason to re-freeze and the tool
-// treated re-freezing as an error, so every round of one gate deleted the tag
-// by hand.
+// `wf check cite` surfaces a mis-aimed anchor without a freeze; what only
+// freeze does is REPUBLISH the corrected bytes under the tag reviewers were
+// handed, and fixing an anchor means freezing again: the tool
+// treated re-freezing as an error, so five of one gate's twenty-two rounds
+// deleted the tag by hand — twelve times in all, round 13 six times.
 func TestFreezeRefreezesOnlyWhenSomethingChanged(t *testing.T) {
 	wsDir := newGate(t)
 	reviewedRound(t, wsDir, 1)
@@ -313,5 +315,301 @@ func TestSameArtifactsIsAboutTheSetAsWellAsTheHashes(t *testing.T) {
 	}
 	if sameArtifacts(one, map[string]string{"a.md": "h2"}) {
 		t.Fatal("a changed hash is a changed artifact")
+	}
+}
+
+// A tool round dispatched no reviewer by declaration, so its blockers are not
+// what the stop rule reads and it is not named as a round that re-fixed itself.
+func TestStatsKeepsAToolRoundOutOfTheSelfInflictedNote(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "tooling", "-kind", "tool"); err != nil {
+		t.Fatal(err)
+	}
+	ledger(t, wsDir, 2, ""+
+		"| 1 | BLOCKER | [fix-induced] a tooling defect |  |\n"+
+		"| 2 | BLOCKER | [fix-induced] and another |  |\n")
+
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustNotContain(t, out, "MAJORITY fix-induced")
+	// The reviewer figure is printed beside the gate total rather than the
+	// population being narrowed in silence.
+	mustContain(t, out, "over REVIEWER rounds, which is what the stop rule reads")
+}
+
+// A majority is MORE than half: two of four is not a round that mostly re-fixed
+// the previous round's fix.
+func TestStatsMajorityIsStrictlyMoreThanHalf(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, ""+
+		"| 1 | BLOCKER | [fix-induced] one |  |\n"+
+		"| 2 | BLOCKER | [fix-induced] two |  |\n"+
+		"| 3 | BLOCKER | a defect the artifact always had |  |\n"+
+		"| 4 | BLOCKER | and another |  |\n")
+
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "fix-induced 2 (2 of 4 blocker(s))")
+	mustNotContain(t, out, "MAJORITY fix-induced")
+}
+
+// The rounds named on a denominator of one or two are counted apart: "the fix
+// rate matched the introduction rate" is a claim about a RATE and it printed
+// identically over 1/1 and over 20/21. Measured: five of one gate's seven named
+// rounds and five of another's are at two blockers or fewer.
+func TestStatsSaysHowManySelfInflictedRoundsAreTiny(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | [fix-induced] the only blocker |  |\n")
+
+	out, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, out, "(r1 1/1)", "1 of them are a round with two blockers or fewer")
+}
+
+// A second re-freeze accumulates rather than restarting, and the manifest it
+// reads is the one under the TAG — not the worktree copy this command rewrites.
+// A failed tag move otherwise left a committed manifest describing the current
+// tree, and the retry compared it against itself and refused.
+func TestFreezeRefreezeAccumulatesFromTheTag(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	first := tagCommit(t, wsDir, "gate-r1")
+
+	edit := func(from, to string) {
+		p := filepath.Join(t.TempDir(), "edits.txt")
+		write(t, p, "=== artifacts/decisions.md  count=1  note=re-aim\n<<<<\n"+from+"\n====\n"+to+"\n>>>>\n")
+		if _, err := runWF(t, wsDir, "apply", "-f", p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	edit("Entry point:", "The entry point is:")
+	if _, err := runWF(t, wsDir, "freeze", "-refreeze"); err != nil {
+		t.Fatal(err)
+	}
+	second := tagCommit(t, wsDir, "gate-r1")
+
+	edit("The entry point is:", "The entry point:")
+	out, err := runWF(t, wsDir, "freeze", "-refreeze")
+	noErr(t, err, "third freeze")
+	mustContain(t, out, "this is freeze 3 of round 1")
+
+	var fm freezeManifest
+	b, err := os.ReadFile(filepath.Join(wsDir, "rounds", "r1", "freeze.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &fm); err != nil {
+		t.Fatal(err)
+	}
+	if fm.Refreezes != 2 {
+		t.Fatalf("the count must accumulate, got %d", fm.Refreezes)
+	}
+	if len(fm.Supersedes) != 2 || fm.Supersedes[0] != first || fm.Supersedes[1] != second {
+		t.Fatalf("every superseded publication must survive: %v (want %s, %s)", fm.Supersedes, first, second)
+	}
+	// And `wf stats` says the round was published more than once, because a
+	// moved tag re-attributes every apply batch the window covers.
+	st, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustContain(t, st, "1 round(s) were published more than once (1)")
+}
+
+// The target moving is its own reason to republish: the freeze pins the
+// revision the citations name, so identical artifacts against a NEW target
+// revision are different bytes to verify against.
+func TestFreezeRefreezesWhenOnlyTheTargetMoved(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(filepath.Dir(wsDir), "target")
+	write(t, filepath.Join(target, "src", "extra.go"), "package main\n")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-qm", "the target moved under the frozen citations")
+
+	out, err := runWF(t, wsDir, "freeze", "-refreeze")
+	noErr(t, err, "refreeze after the target moved")
+	mustContain(t, out, "RE-FROZEN")
+}
+
+// `-asks ""` is not the flag being absent. The joined form of a one-element
+// list holding the empty string is "", so the roster printed instead of the
+// refusal.
+func TestRoundLensRefusesAnEmptyAsksWithNoFile(t *testing.T) {
+	wsDir := newGate(t)
+	_, err := runWF(t, wsDir, "round", "lens", "-round", "1", "-asks", "")
+	if err == nil || !strings.Contains(err.Error(), "no prompt file given") {
+		t.Fatalf("want the mistyped-argument refusal, got %v", err)
+	}
+}
+
+// `count` > 1 means ReplaceAll changes every occurrence, so what the batch
+// replaces is the span TIMES the matches: three edits of a fifth of a file each
+// are three fifths of it, and pricing one occurrence hid that.
+func TestApplySpanCountsEveryOccurrence(t *testing.T) {
+	wsDir := newGate(t)
+	block := strings.Repeat("q", 60) + "\n"
+	write(t, filepath.Join(wsDir, "artifacts", "twice.md"), block+"middle\n"+block)
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-qm", "twice")
+
+	edits := filepath.Join(t.TempDir(), "edits.json")
+	b, err := json.Marshal([]map[string]any{{"file": "artifacts/twice.md", "old": block, "new": "z\n", "count": 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, edits, string(b))
+
+	out, err := runWF(t, wsDir, "apply", "-f", edits)
+	noErr(t, err, "apply")
+	// 61 bytes twice against 129: one occurrence is 47%, both are 94%.
+	mustContain(t, out, "of artifacts/twice.md in ONE replacement", "rewriting 2 line(s)")
+}
+
+// The share is priced against the file as it was READ, never the evolving
+// buffer: a batch that restructures a document and then touches it again
+// reported the second, tiny edit as half the artifact and told the operator its
+// verification was vacuous.
+func TestApplyPricesAgainstTheFileAsRead(t *testing.T) {
+	wsDir := newGate(t)
+	big := strings.Repeat("filler line\n", 100)
+	write(t, filepath.Join(wsDir, "artifacts", "doc.md"), big+"TAIL\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-qm", "doc")
+
+	edits := filepath.Join(t.TempDir(), "edits.json")
+	b, err := json.Marshal([]map[string]any{
+		{"file": "artifacts/doc.md", "old": big + "TAIL\n", "new": "HEAD\nTAIL\n"},
+		{"file": "artifacts/doc.md", "old": "TAIL\n", "new": "TAIL!\n"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, edits, string(b))
+
+	out, err := runWF(t, wsDir, "apply", "-f", edits)
+	noErr(t, err, "apply")
+	mustContain(t, out, "edit [0] replaces 100% of artifacts/doc.md")
+	// Five bytes of a 1305-byte file. Against the buffer edit [0] left behind
+	// it is half of what remains.
+	mustNotContain(t, out, "edit [1] replaces")
+}
+
+// The banked table `wf prune` leaves behind must carry the re-freeze, or a
+// round published three times reads as frozen once and the reviewers of the
+// earlier publications read bytes nothing records.
+func TestCloseBanksTheRefreezeCount(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "edits.txt")
+	write(t, p, "=== artifacts/decisions.md  count=1  note=re-aim\n<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze", "-refreeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "close"); err != nil {
+		t.Fatal(err)
+	}
+	fz, err := os.ReadFile(filepath.Join(wsDir, "close", "freezes.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := strings.Split(strings.TrimSpace(string(fz)), "\n")
+	if len(rows) != 2 {
+		t.Fatalf("want a header and one row: %q", fz)
+	}
+	cells := strings.Split(rows[1], "\t")
+	if len(cells) != 10 || cells[8] != "1" || len(cells[9]) < 40 {
+		t.Fatalf("the row must carry the refreeze count and what it superseded: %q", rows[1])
+	}
+}
+
+// The recovery from a tag move that failed. The manifest is committed before
+// the tag moves, so that state leaves a NEW manifest under an OLD tag — and
+// reading the worktree copy then compared it against itself, refused "nothing
+// has changed", and stranded the round in the one state `wf verify` reads as
+// clean.
+func TestFreezeRefreezeRecoversFromAMovedManifestAndAnOldTag(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	published := tagCommit(t, wsDir, "gate-r1")
+
+	p := filepath.Join(t.TempDir(), "edits.txt")
+	write(t, p, "=== artifacts/decisions.md  count=1  note=re-aim\n<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", p); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exactly what a failed `RetagTo` leaves: the manifest of the CURRENT tree,
+	// committed, with the tag still on the previous publication.
+	man := filepath.Join(wsDir, "rounds", "r1", "freeze.json")
+	b, err := os.ReadFile(man)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fm freezeManifest
+	if err := json.Unmarshal(b, &fm); err != nil {
+		t.Fatal(err)
+	}
+	fm.Refreezes = 1
+	fm.Supersedes = []string{published}
+	for a := range fm.Artifacts {
+		fm.Artifacts[a] = strings.Repeat("f", 64)
+	}
+	out, err := json.MarshalIndent(fm, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, man, string(out)+"\n")
+	gitIn(t, wsDir, "commit", "-qam", "a re-freeze whose tag move failed")
+
+	got, err := runWF(t, wsDir, "freeze", "-refreeze")
+	noErr(t, err, "the retry must not be stranded by the manifest it wrote")
+	mustContain(t, got, "RE-FROZEN — this is freeze 2 of round 1")
+	if tagCommit(t, wsDir, "gate-r1") == published {
+		t.Fatal("the tag must move on the retry, or the round stays published at the old bytes")
+	}
+}
+
+// A manifest that does not PARSE is not a manifest with no supersessions in it.
+// Discarding the error reset the count and dropped every earlier superseded
+// commit — the one thing that field exists to hold, and nothing downstream
+// reads it, so nothing would have caught it.
+func TestFreezeRefreezeRefusesAnUnreadableManifest(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(wsDir, "rounds", "r1", "freeze.json"), "{ this is not json\n")
+	gitIn(t, wsDir, "commit", "-qam", "a manifest nothing can read")
+	// The tag is what this command reads, so the damage has to reach it.
+	gitIn(t, wsDir, "tag", "-f", "-a", "gate-r1", "-m", "re-pointed at the unreadable manifest")
+
+	p := filepath.Join(t.TempDir(), "edits.txt")
+	write(t, p, "=== artifacts/decisions.md  count=1  note=re-aim\n<<<<\nEntry point:\n====\nThe entry point is:\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", p); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runWF(t, wsDir, "freeze", "-refreeze")
+	if err == nil || !strings.Contains(err.Error(), "does not parse") {
+		t.Fatalf("want a refusal naming the unreadable manifest, got %v", err)
 	}
 }

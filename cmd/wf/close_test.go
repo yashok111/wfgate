@@ -71,7 +71,7 @@ func TestCloseBanksWhatTheRepositoryAloneHolds(t *testing.T) {
 		t.Fatalf("the history must carry the subjects: %s", hist)
 	}
 	fz := read(t, filepath.Join(wsDir, closeDir, "freezes.tsv"))
-	if !strings.HasPrefix(fz, "round\tfrozen\tcommit\ttargetRef\ttool\tciteAnchored\tciteTotal\tartifactLines\n") {
+	if !strings.HasPrefix(fz, "round\tfrozen\tcommit\ttargetRef\ttool\tciteAnchored\tciteTotal\tartifactLines\trefreezes\tsupersedes\n") {
 		t.Fatalf("freezes.tsv header: %q", fz)
 	}
 	// wf delta -save commits the round's brief into rounds/rN/, and prune

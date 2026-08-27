@@ -76,7 +76,8 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
 -1b. **Open the round: `wf round new -title "<what this round must find or close>" [-kind full|delta|tool|run]`.**
    It scaffolds `rounds/rN/findings.md`. This is not optional bookkeeping: `wf freeze` refuses while no
    round is open, so a gate that skips it cannot reach step 2. Each later round opens its own before
-   re-freezing — a frozen round is never re-frozen. The KIND is recorded in the scaffold because the
+   re-freezing — a frozen round is re-frozen only through `wf freeze -refreeze`,
+   which moves the tag and records the supersession. The KIND is recorded in the scaffold because the
    audit needs what a round did NOT look at: on the first live gate seven of ten rounds were delta
    rounds whose scope lived only in prose titles, and twice a round reviewed less than a reader of its
    findings would assume, with no record of it anywhere. A delta round's findings state what was not
@@ -122,9 +123,9 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `wf round lens` with no file prints the roster. It is also how a round whose vectors ran and found
    NOTHING says so: see the stop rule below, and the refusals in `wf freeze` and `wf close`.
    `-asks` takes the SET however you write it — `closure,fix-induced,ripple`,
-   `closure+fix-induced+ripple`, or the flag repeated — because a delta round is required to ask all
+   `closure+fix-induced+ripple`, a space-separated list, or the flag repeated — because a delta round is required to ask all
    three and one gate banked one vector per round and then hand-edited `Asks:` in the file,
-   twenty-two times, having been refused the natural spelling.
+   nineteen times over ten rounds, having been refused the natural spelling.
    `wf round record` prints a note when the round it just recorded banks no lens, because recording
    the findings is the step that feels like the work: measured on mocker A3, eleven of thirteen rounds
    banked none, and for rounds 1-10 the findings are in the ledger while the prompts that produced
@@ -272,8 +273,8 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    Freezing stays one-way by default, for a measured reason: the manifest is read from the WORKTREE by
    `wf verify`, so a freeze that silently rewrote it turned a MISMATCH into "clean". But the citation
    resolution below runs nowhere else, so the command that surfaces a mis-aimed anchor is the command
-   an operator must run again after fixing one — every round of one gate deleted the tag by hand to do
-   it. With the flag the tag MOVES to the new commit and the manifest records how many freezes this
+   an operator must run again after fixing one — five of one gate's twenty-two rounds deleted the tag
+   by hand to do it, twelve times in all. With the flag the tag MOVES to the new commit and the manifest records how many freezes this
    round has had and which commits they published, because somebody may have been handed the old tag
    and read different bytes. It refuses when every artifact hashes the same against the same target
    revision: a re-freeze republishes CHANGED bytes, and there is nothing to record otherwise.
@@ -375,12 +376,17 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    then a guard over the empty set, and that is indistinguishable from a clean run — the one exception
    is `no-args` on a script that gates its body on `args`, which is correct behaviour and is noted
    instead. **ONE is not zero, so the counts are also read as a RATIO**: every mode's line carries the
-   `clean` mode's agent count beside its own, and a mode reaching fewer than half of it gets a WARN
-   naming both. Measured: a red-bar abort added to the first producer took six of seven modes from
-   18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the acceptance step and the
-   final verdict exercised by nothing — and every mode still printed OK, so a reviewer banked "wfdry 7
-   of 7" over a layer covering a single agent. `throw-serial` is exempt because it aborts AT the first
-   spawn by construction. **A `clean` run that returns a not-green verdict FAILS the mode**, and so does one that
+   `clean` mode's agent count beside its own, and a mode reaching fewer than half of it FAILS,
+   naming both. Measured: a red-bar abort added to the first producer took five of seven modes from
+   15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1 — six modes then at one agent, `throw-serial` included,
+   which is one by construction — with the fix round, the recheck, the acceptance step and the
+   final verdict exercised by nothing, and every mode still printing OK, so a reviewer banking "wfdry 7
+   of 7" WOULD have credited a layer covering a single agent. Failing rather than warning was measured
+   too: across the three correct gated scripts on disk the failure modes run WIDER than the happy path
+   (36 against 44, 18 against 30, 15 against 25), so none of them trips it. `throw-serial` is exempt
+   because it aborts AT the first spawn by construction, and so is `no-args`, which the runner narrows
+   on purpose. A run with no `clean` mode SAYS its baseline is a stand-in, and a single `--mode` run
+   says nothing was compared at all — the case where the check used to disappear in silence. **A `clean` run that returns a not-green verdict FAILS the mode**, and so does one that
    returns a failure flag set: no fixture in that mode can produce either, so the script is deriving the
    verdict from something it should not. Measured — the shape it caught: a repair agent spawned only
    when acceptance FAILS, counted in the liveness ledger, so the one run everyone wants logged

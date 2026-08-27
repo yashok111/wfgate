@@ -713,51 +713,111 @@ func TestFindPromptRefusesALabelWithSeveralPrompts(t *testing.T) {
 
 // A mode that reaches a fraction of the agents the happy path reaches proved a
 // fraction of what its OK claims. Measured on the gate that stopped instead of
-// closing: a red-bar abort added to the first producer took six of seven modes
-// from 18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the
-// acceptance step and the final verdict exercised by nothing — and every mode
-// still exited OK, because section E's rule says a mode that spawns NOTHING
-// fails and one is not zero.
+// closing: a red-bar abort added to the first producer took five of seven modes
+// from 15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1 — the fix round, the
+// recheck, the acceptance step and the final verdict exercised by nothing —
+// and every mode still exited OK, because section E's rule says a mode that
+// spawns NOTHING fails and one is not zero.
+//
+// A VIOLATION rather than a note, and that was measured: over the three correct
+// gated scripts on disk the failure modes run WIDER than the happy path (36
+// against 44, 18 against 30, 15 against 25), so none of them trips it.
 func TestCollapseAgainstTheHappyPath(t *testing.T) {
 	rs := []Result{
 		{Mode: "clean", Spawned: 6},
 		{Mode: "blockers", Spawned: 1},
 		{Mode: "acceptfail", Spawned: 4},
+		{Mode: "unfixed", Spawned: 3},
 		{Mode: "throw-serial", Spawned: 1},
-		{Mode: "no-args", Spawned: 0},
+		{Mode: "no-args", Spawned: 1},
+		{Mode: "dead-reviews", Spawned: 0},
 	}
 	noteCollapse(rs)
 
-	if len(rs[0].Notes) != 0 {
-		t.Fatalf("the baseline cannot collapse against itself: %v", rs[0].Notes)
+	if len(rs[0].Violations) != 0 {
+		t.Fatalf("the baseline cannot collapse against itself: %v", rs[0].Violations)
 	}
-	if len(rs[1].Notes) != 1 || !strings.Contains(rs[1].Notes[0], "1 agent(s) against 6 in `clean`") {
-		t.Fatalf("want the ratio named with both counts and the baseline mode: %v", rs[1].Notes)
+	// The MODE's name is in the text: the tail of a run deduplicates notes by
+	// their string, so five collapsed modes printed as one anonymous line.
+	if len(rs[1].Violations) != 1 || !strings.Contains(rs[1].Violations[0], "blockers: reached 1 agent(s) against 6 in `clean`") {
+		t.Fatalf("want the mode named with both counts and the baseline: %v", rs[1].Violations)
 	}
-	// Four of six is not a collapse: the note names a mode that exercised a
-	// fraction, and a mode that gets one every time is a mode nobody reads.
-	if len(rs[2].Notes) != 0 {
-		t.Fatalf("a mode above half the baseline must pass silently: %v", rs[2].Notes)
+	// Four of six is not a collapse: a check that fires every time is a check
+	// nobody reads.
+	if len(rs[2].Violations) != 0 {
+		t.Fatalf("a mode above half the baseline must pass silently: %v", rs[2].Violations)
+	}
+	// Exactly half passes; the guard is "fewer than half".
+	if len(rs[3].Violations) != 0 {
+		t.Fatalf("exactly half the baseline is not a collapse: %v", rs[3].Violations)
 	}
 	// `throw-serial` aborts AT the first spawn by construction, so its count is
 	// one by design and a ratio over it measures the runner.
-	if len(rs[3].Notes) != 0 {
-		t.Fatalf("throw-serial is one agent by construction: %v", rs[3].Notes)
+	if len(rs[4].Violations) != 0 {
+		t.Fatalf("throw-serial is one agent by construction: %v", rs[4].Violations)
+	}
+	// `no-args` is the other mode the RUNNER narrows on purpose: a script that
+	// gates its body on `args` is correct there, and warning at one agent while
+	// forgiving zero is that reasoning applied backwards.
+	if len(rs[5].Violations) != 0 {
+		t.Fatalf("no-args is narrowed by the runner, not by the script: %v", rs[5].Violations)
 	}
 	// A mode that spawned nothing is judged by the zero-spawn rule and by the
-	// args forgiveness; a second note here would report one fact twice.
-	if len(rs[4].Notes) != 0 {
-		t.Fatalf("a zero-spawn mode is already judged: %v", rs[4].Notes)
+	// args forgiveness; a second report here would state one fact twice.
+	if len(rs[6].Violations) != 0 {
+		t.Fatalf("a zero-spawn mode is already judged: %v", rs[6].Violations)
+	}
+}
+
+// The baseline is `clean` BY NAME, never the widest mode — and on every real
+// script the widest is not clean, because a fix round spawns more than the
+// happy path. Picking the widest would demand a far deeper collapse before
+// anything fired.
+func TestCollapseBaselineIsTheHappyPathNotTheWidest(t *testing.T) {
+	rs := []Result{
+		{Mode: "blockers", Spawned: 10},
+		{Mode: "clean", Spawned: 6},
+		{Mode: "unfixed", Spawned: 4},
+	}
+	noteCollapse(rs)
+	// 4 against a `clean` of 6 is above half and silent; against a widest of 10
+	// it would have fired.
+	if len(rs[2].Violations) != 0 {
+		t.Fatalf("the baseline must be `clean`, not the widest mode: %v", rs[2].Violations)
+	}
+	if len(rs[0].Violations) != 0 || len(rs[1].Violations) != 0 {
+		t.Fatalf("nothing else may fire here: %v %v", rs[0].Violations, rs[1].Violations)
 	}
 }
 
 // Without `clean` in the run the check does not disappear with the mode that
-// anchors it: the widest mode stands in, and the note SAYS which.
+// anchors it: the widest stands in, and the run SAYS the baseline is not the
+// happy path.
 func TestCollapseNamesTheBaselineItActuallyUsed(t *testing.T) {
 	rs := []Result{{Mode: "unfixed", Spawned: 2}, {Mode: "blockers", Spawned: 8}}
 	noteCollapse(rs)
-	if len(rs[0].Notes) != 1 || !strings.Contains(rs[0].Notes[0], "in `blockers`") {
-		t.Fatalf("want the stand-in baseline named: %v", rs[0].Notes)
+	if len(rs[0].Violations) != 1 || !strings.Contains(rs[0].Violations[0], "in `blockers`") {
+		t.Fatalf("want the stand-in baseline named: %v", rs[0].Violations)
+	}
+	for i := range rs {
+		if len(rs[i].Notes) != 1 || !strings.Contains(rs[i].Notes[0], "no `clean` mode in this run") {
+			t.Fatalf("%s: the absent baseline must be said out loud: %v", rs[i].Mode, rs[i].Notes)
+		}
+	}
+}
+
+// `--mode X` builds a run of ONE, so the stand-in baseline IS that mode and it
+// is then skipped — the check vanished in silence over exactly the report that
+// motivated it (`--mode blockers` on the banked fixture printed `OK — 1 agents,
+// 1 phases` and `1/1 modes completed`).
+func TestCollapseSaysItComparedAgainstNothing(t *testing.T) {
+	rs := []Result{{Mode: "blockers", Spawned: 1}}
+	noteCollapse(rs)
+	if len(rs[0].Violations) != 0 {
+		t.Fatalf("one mode cannot collapse against itself: %v", rs[0].Violations)
+	}
+	if len(rs[0].Notes) != 1 || !strings.Contains(rs[0].Notes[0], "compared against NOTHING") {
+		t.Fatalf("an absent comparison must not read as a clean one: %v", rs[0].Notes)
 	}
 }
 
@@ -769,34 +829,45 @@ func TestCollapseIsSilentWhenNothingSpawnedAnywhere(t *testing.T) {
 	rs := []Result{{Mode: "clean"}, {Mode: "blockers"}}
 	noteCollapse(rs)
 	for _, r := range rs {
-		if len(r.Notes) != 0 {
-			t.Fatalf("%s: %v", r.Mode, r.Notes)
+		if len(r.Violations) != 0 {
+			t.Fatalf("%s: %v", r.Mode, r.Violations)
 		}
 	}
 }
 
 // End to end over the banked fixture, which is the P3b shape itself: a guard on
-// the first producer that aborts the run when its bars come back red.
+// the first producer that aborts the run when its bars come back red. The COUNT
+// is asserted, not merely that something warned — reporting only the first
+// collapsed mode passed an assertion on "any".
 func TestCollapseFixtureEmptiesTheFailureModes(t *testing.T) {
 	rs, err := Run(filepath.Join("..", "..", "testdata", "collapse.mjs"), Modes, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	clean, warned := 0, 0
+	clean, collapsed := 0, 0
 	for _, r := range rs {
 		if r.Mode == "clean" {
 			clean = r.Spawned
 		}
-		for _, n := range r.Notes {
-			if strings.Contains(n, "exercised a fraction of the script") {
-				warned++
+		for _, v := range r.Violations {
+			if strings.Contains(v, "exercised a fraction of the script") {
+				collapsed++
 			}
 		}
 	}
 	if clean != 6 {
 		t.Fatalf("the happy path must reach every producer, got %d", clean)
 	}
-	if warned == 0 {
-		t.Fatal("every failure mode aborts at the first producer and none of them said so")
+	// blockers, acceptfail, unfixed and dead-reviews. `throw-serial` and
+	// `no-args` are exempt, and `clean` is the baseline.
+	if collapsed != 4 {
+		t.Fatalf("want every failure mode named, got %d", collapsed)
+	}
+	// And the run must FAIL: a WARN leaves `7/7 modes completed` and exit 0
+	// standing, which is the claim a reviewer banks from it.
+	for _, r := range rs {
+		if r.Mode == "blockers" && r.OK() {
+			t.Fatal("a mode that exercised a sixth of the script must not report OK")
+		}
 	}
 }

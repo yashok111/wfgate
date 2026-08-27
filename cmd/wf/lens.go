@@ -106,11 +106,13 @@ func knownLensQuestion(q string) bool {
 func parseAsks(raw string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
-	// Comma, plus or whitespace. The list form has been accepted since the flag
-	// existed and its own help text says `comma-separated`; measured on the
+	// Comma, plus or WHITESPACE — all three, and the help text says so, because
+	// an accepted spelling no report mentions is this wave's own named defect.
+	// The list form has been accepted since the flag
+	// existed and its own help text said `comma-separated`; measured on the
 	// gate that stopped instead of closing, the operator banked a vector with
 	// ONE question and then hand-edited `Asks:` in the file and committed it —
-	// twenty-two times, over four rounds, having reached for
+	// nineteen times, over ten rounds, having reached for
 	// `-asks closure+fix-induced+ripple` and been refused. A separator nobody
 	// can guess wrong is worth more than a spelling rule nobody reads: the
 	// three questions a delta round may never drop are a SET, and every way of
@@ -336,7 +338,7 @@ func cmdRoundLens(args []string) error {
 	// spellings of one: `-asks closure -asks ripple` and `-asks closure,ripple`
 	// are the same claim, and the first was an error message.
 	var asks askList
-	fs.Var(&asks, "asks", "the canonical question(s) this vector asked; repeat the flag or separate with , or +: "+strings.Join(lensQuestions, ", "))
+	fs.Var(&asks, "asks", "the canonical question(s) this vector asked; repeat the flag or separate with , + or a space: "+strings.Join(lensQuestions, ", "))
 	// The default is the OPEN round, so banking a vector after the next round
 	// has been opened lands it on the wrong one: pass -round N for the round
 	// whose reviewers produced it.
@@ -368,7 +370,10 @@ func cmdRoundLens(args []string) error {
 		// A missing prompt path with the flags set is a mistyped argument, not
 		// a request for the roster: a shell that globbed the path away would
 		// otherwise print somebody else's roster and exit 0.
-		if strings.TrimSpace(*name) != "" || strings.TrimSpace(*model) != "" || asks.String() != "" {
+		// len, not String(): the joined form of a one-element list holding the
+		// empty string is "", so `-asks ""` was indistinguishable from the flag
+		// being absent and silently printed somebody's roster.
+		if strings.TrimSpace(*name) != "" || strings.TrimSpace(*model) != "" || len(asks) > 0 {
 			return fmt.Errorf("no prompt file given, but -name/-model/-asks were: `wf round lens` with no file prints the roster and records nothing")
 		}
 		return printLensRoster(w, n)

@@ -62,12 +62,19 @@ type Result struct {
 	// way round after round: one lens found 15 of a round's 30 recorded
 	// closures byte-identical to their pre-fix text, a second confirmed 11, and
 	// two of them were the FOURTH claimed closure on one unedited line.
-	Span      int // bytes of Old
-	FileBytes int // bytes of the buffer this edit matched against
-	// Lines of Old that do not appear in New, as a multiset. NOT a hunk count
-	// and it does not claim to be one: it is how many lines this single
-	// replacement rewrites, which is the number of separate fixes it can be
-	// hiding.
+	// Span is what this edit replaces IN TOTAL — one occurrence times the
+	// occurrences it matched, because ReplaceAll changes every one of them and
+	// three edits of a fifth of a file each are three fifths of it.
+	Span int
+	// FileBytes is the file as it was READ, never the evolving buffer. Priced
+	// against the buffer, a five-byte edit following a whole-file restructure in
+	// the same batch reported as half the artifact — a false positive of the
+	// note, manufactured by any batch that restructures a document and then
+	// touches it again.
+	FileBytes int
+	// How many lines this replacement changes, across every occurrence it
+	// matched. NOT a hunk count and it does not claim to be one: it is the
+	// number of separate fixes one replacement can be hiding.
 	Rewritten int
 }
 
@@ -83,6 +90,11 @@ var ErrRejected = errors.New("batch rejected: no file was written")
 // count of a state that will never exist on disk.
 func Plan(root string, edits []Edit) ([]Result, map[string][]byte, error) {
 	bufs := map[string][]byte{}
+	// The size of each file as it was READ. Every edit after the first is
+	// applied against a buffer earlier edits have already changed, and pricing a
+	// replacement against that reports a later small edit as a large share of a
+	// file that no longer exists.
+	pristine := map[string]int{}
 	results := make([]Result, 0, len(edits))
 	ok := true
 
@@ -112,11 +124,13 @@ func Plan(root string, edits []Edit) ([]Result, map[string][]byte, error) {
 				continue
 			}
 			bufs[key] = b
+			pristine[key] = len(b)
 		}
 		body := string(bufs[key])
 		got := strings.Count(body, e.Old)
 		r.Got = got
-		r.Span, r.FileBytes, r.Rewritten = len(e.Old), len(body), rewrittenLines(e.Old, e.New)
+		r.Span, r.FileBytes = len(e.Old)*got, pristine[key]
+		r.Rewritten = rewrittenLines(e.Old, e.New) * got
 		switch {
 		case got == 0:
 			r.Reason = "no match"
@@ -259,24 +273,41 @@ func SafeJoin(root, rel string) (abs, key string, err error) {
 	return abs, key, nil
 }
 
-// rewrittenLines counts the lines of old that do not appear in new, comparing
-// them as MULTISETS rather than by position: a replacement that moves a
-// paragraph and rewrites two sentences inside it rewrites two lines, not the
-// whole paragraph. It is deliberately not a diff — the number is used to say
-// how many separate changes ONE replacement can be carrying, and for that a
-// count of lines that stopped existing is both cheap and exact.
+// rewrittenLines counts how many lines a replacement changes, comparing old and
+// new as MULTISETS rather than by position: a replacement that moves a paragraph
+// and rewrites two sentences inside it changes two lines, not the whole
+// paragraph. It is deliberately not a diff — the number says how many separate
+// changes ONE replacement can be carrying, and for that a count of lines that
+// stopped existing or started existing is cheap and close enough.
+//
+// BOTH directions, and a floor of one. Counting only the lines that stopped
+// existing returned ZERO for a replacement that only INSERTS, so the note beside
+// it read "rewriting 0 line(s)" over a real change — a number in the register of
+// a measurement, saying the opposite of the truth, inside the note written
+// against exactly that. The floor is safe because Plan rejects `old == new`
+// before this is reached, so a replacement always changes something.
 func rewrittenLines(old, new string) int {
-	have := map[string]int{}
-	for _, l := range strings.Split(new, "\n") {
-		have[l]++
-	}
-	n := 0
-	for _, l := range strings.Split(old, "\n") {
-		if have[l] > 0 {
-			have[l]--
-			continue
+	count := func(a, b string) int {
+		have := map[string]int{}
+		for _, l := range strings.Split(b, "\n") {
+			have[l]++
 		}
-		n++
+		n := 0
+		for _, l := range strings.Split(a, "\n") {
+			if have[l] > 0 {
+				have[l]--
+				continue
+			}
+			n++
+		}
+		return n
 	}
-	return n
+	removed, added := count(old, new), count(new, old)
+	if removed < added {
+		removed = added
+	}
+	if removed < 1 {
+		return 1
+	}
+	return removed
 }

@@ -74,8 +74,8 @@ judged converging throughout by the same reviewers.
 **The two checkers pull opposite ways, and that is the mechanism.** `wfcheck` reads the parsed
 program, so it rewards a schema it can see STATICALLY — a literal, not a call that builds one.
 `wfdry` executes, so it rewards a run that goes DEEP. Tune for one and you can lose the other
-without noticing: a red-bar abort added to satisfy a rigour argument about producers took six of
-seven `wfdry` modes from 18/25/25/25/15/25 agents to 18/1/1/1/1/1, and the schema literals added the
+without noticing: a red-bar abort added to satisfy a rigour argument about producers took five of
+seven `wfdry` modes from 15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1, and the schema literals added the
 next round to satisfy `wfcheck` shipped three unverified duplicates of one builder that had already
 diverged in every `command.description`. Neither round re-measured the other tool, and nothing in
 the workspace recorded which trade had been settled on what measurement, so the round after

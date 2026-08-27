@@ -114,7 +114,7 @@ A delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but neve
 Anything else the slice needs is welcome beside them; `-asks other` records it so the roster stays
 comparable without pretending the vector was one of the named ones. The three are a SET and every
 spelling of a set is accepted: `-asks closure,fix-induced,ripple`, `-asks
-closure+fix-induced+ripple`, or the flag repeated.
+closure+fix-induced+ripple`, a space-separated list, or the flag repeated.
 
 **A banked verification is a claim like any other, and a delta round SAMPLES the previous round's
 rather than inheriting them.** The habit is worth keeping — a NOTE row saying "verified, recorded so
@@ -486,12 +486,18 @@ compiles, passes every test, and does nothing.
       `--dead <label>[,<label>…]`, applied inside every mode, not a mode of its own. A mode that
       completes having spawned NO agent FAILS: every check in the runner is then a guard over the
       empty set — **and ONE is not zero.** A mode that reaches a small fraction of the agents the
-      `clean` mode reaches proved that fraction and printed OK over the rest; the runner now names
-      it (`this mode reached 1 agent(s) against 6 in clean`) and prints the happy path's count
-      beside every mode. Measured: a red-bar abort added to the FIRST producer took six of seven
-      modes from 18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the acceptance
-      step and the final verdict exercised by nothing — and a reviewer banked "wfdry 7 of 7" over a
-      layer that covered a single agent. The RATIO is the signal, not the absolute. Seconds of cost, and it evaluates every
+      `clean` mode reaches proved that fraction and printed OK over the rest, so a mode under HALF
+      the happy path's agent count now FAILS, naming both counts, and every mode that COMPLETES
+      prints the happy path's count beside its own — a mode that threw or
+      reported violations prints its own detail instead. Measured: a red-bar abort added to the FIRST
+      producer took five of seven modes from 15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1 — six modes
+      then at one agent, `throw-serial` included, which is one by construction — with the fix round,
+      the recheck, the acceptance step and the final verdict exercised by nothing, and a reviewer
+      banking "wfdry 7 of 7" WOULD have credited a layer that covered a single agent. Failing rather
+      than warning was measured too: across the three correct gated scripts on disk the failure modes
+      run WIDER than the happy path (36 against 44, 18 against 30, 15 against 25), so none of them
+      trips it. `throw-serial` is exempt, and so is `no-args`, which the runner narrows on purpose.
+      The RATIO is the signal, not the absolute. Seconds of cost, and it evaluates every
       template literal on every path, catching the class above plus any unreachable binding a linter
       cannot type-check. A parse is not an execution. The clean path is the one that matters most:
       reviewers read the failure branches, because that is where the risk looks like it lives.

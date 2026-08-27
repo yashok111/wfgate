@@ -180,27 +180,34 @@ func cmdClose(args []string) error {
 	// DIRECTION is the ratchet — an author who
 	// stopped anchoring writes citations the gate cannot really check.
 	var fz strings.Builder
-	fz.WriteString("round\tfrozen\tcommit\ttargetRef\ttool\tciteAnchored\tciteTotal\tartifactLines\n")
+	// `refreezes` and `supersedes` are here because this table is what survives
+	// `wf prune` as the readable summary of the manifests: a round published
+	// four times under one tag read as frozen once, and the reviewers of the
+	// earlier publications read different bytes.
+	fz.WriteString("round\tfrozen\tcommit\ttargetRef\ttool\tciteAnchored\tciteTotal\tartifactLines\trefreezes\tsupersedes\n")
 	for n := 1; n <= last; n++ {
 		b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
 		if err != nil {
 			continue
 		}
 		var m struct {
-			Round         int    `json:"round"`
-			Commit        string `json:"commit"`
-			TargetRef     string `json:"targetRef"`
-			Tool          string `json:"tool"`
-			Frozen        string `json:"frozen"`
-			CiteAnchored  int    `json:"citeAnchored"`
-			CiteTotal     int    `json:"citeTotal"`
-			ArtifactLines int    `json:"artifactLines"`
+			Round         int      `json:"round"`
+			Commit        string   `json:"commit"`
+			TargetRef     string   `json:"targetRef"`
+			Tool          string   `json:"tool"`
+			Frozen        string   `json:"frozen"`
+			CiteAnchored  int      `json:"citeAnchored"`
+			CiteTotal     int      `json:"citeTotal"`
+			ArtifactLines int      `json:"artifactLines"`
+			Refreezes     int      `json:"refreezes"`
+			Supersedes    []string `json:"supersedes"`
 		}
 		if json.Unmarshal(b, &m) != nil {
 			continue
 		}
-		fmt.Fprintf(&fz, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%d\n",
-			m.Round, m.Frozen, m.Commit, m.TargetRef, m.Tool, m.CiteAnchored, m.CiteTotal, m.ArtifactLines)
+		fmt.Fprintf(&fz, "%d\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%s\n",
+			m.Round, m.Frozen, m.Commit, m.TargetRef, m.Tool, m.CiteAnchored, m.CiteTotal, m.ArtifactLines,
+			m.Refreezes, strings.Join(m.Supersedes, " "))
 	}
 	if err := put("freezes.tsv", []byte(fz.String())); err != nil {
 		return err

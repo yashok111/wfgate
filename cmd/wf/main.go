@@ -307,7 +307,17 @@ func cmdApply(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nbatch REJECTED — nothing was written. Fix every FAIL above and re-run.\n")
 		return errFindings
 	}
-	noteWholeArtifact(results)
+	// The PRE-batch revision, resolved before anything is written. The note
+	// below tells the operator to byte-verify each change against the artifact
+	// as it stood; naming `HEAD` was correct when the note printed and wrong by
+	// the time it was read, because `wf apply` commits — so it named the
+	// POST-fix text, which is the vacuous comparison the note exists against.
+	// A sha means the same thing whenever it is read.
+	before, headErr := w.Git.Head()
+	if headErr != nil {
+		before = ""
+	}
+	noteWholeArtifact(results, before)
 	if *dry {
 		fmt.Printf("\ndry run: %d file(s) would change\n", len(bufs))
 		fmt.Printf("  note: the cost estimate is not printed on a dry run — it counts the lines git sees changed, which needs the write\n")
@@ -403,16 +413,24 @@ func cmdApply(args []string) error {
 // restructure legitimately rewrites the whole document, and generating one
 // minimal block per change failed twice on uniqueness on that same gate. What
 // it must not do is look like a batch the tool verified.
-func noteWholeArtifact(results []apply.Result) {
+func noteWholeArtifact(results []apply.Result, before string) {
 	for _, r := range results {
 		// Half the file. The shape this names is the whole-artifact rewrite,
 		// where the share runs near 1.0; half is where a replacement stops
 		// being an edit to a place in the document and becomes the document.
-		if r.FileBytes == 0 || r.Span*2 < r.FileBytes {
+		//
+		// No zero-denominator clause: Plan rejects an empty `old`, so a
+		// zero-length file yields no match and the batch never reaches here.
+		// The guard that used to stand for it survived every mutation.
+		if r.Span*2 < r.FileBytes {
 			continue
 		}
-		fmt.Printf("  note: edit [%d] replaces %.0f%% of %s in ONE replacement, rewriting %d line(s) — `count` and all-or-nothing are per REPLACEMENT, so every change inside this one is verified by NOTHING: a fix that silently did nothing is indistinguishable here from a fix that landed. Split it, or byte-verify each change against `git show HEAD:%s` before recording a closure for it\n",
-			r.Index, 100*float64(r.Span)/float64(r.FileBytes), r.Edit.File, r.Rewritten, r.Edit.File)
+		src := "the artifact as it stood before this batch"
+		if before != "" {
+			src = fmt.Sprintf("`git show %s:%s`", short(before), r.Edit.File)
+		}
+		fmt.Printf("  note: edit [%d] replaces %.0f%% of %s in ONE replacement, rewriting %d line(s) — `count` and all-or-nothing are per REPLACEMENT, so every change inside this one is verified by NOTHING: a fix that silently did nothing is indistinguishable here from a fix that landed. Split it, or byte-verify each change against %s before recording a closure for it\n",
+			r.Index, 100*float64(r.Span)/float64(r.FileBytes), r.Edit.File, r.Rewritten, src)
 	}
 }
 
@@ -1117,11 +1135,12 @@ type freezeManifest struct {
 func cmdFreeze(args []string) error {
 	fs := flag.NewFlagSet("freeze", flag.ExitOnError)
 	// Re-freezing is one-way's escape hatch, made a RECORD instead of a hand
-	// `git tag -d`. Measured on the gate that stopped instead of closing: every
-	// one of its rounds needed it, because freeze's OWN citation check is what
-	// surfaces the mis-aimed anchors, and fixing them means freezing again —
-	// the check is the reason to re-freeze and the tool treated re-freezing as
-	// an error. The refusal stays the default, because what it protects is
+	// `git tag -d`. Measured on the gate that stopped instead of closing: five
+	// of its twenty-two rounds needed it, twelve times in all — round 13 six
+	// times and round 15 five. `wf check cite` surfaces a mis-aimed anchor
+	// without a freeze; what only freeze does is REPUBLISH the corrected bytes
+	// under the tag reviewers were handed, and the tool treated that as an
+	// error. The refusal stays the default, because what it protects is
 	// real: the manifest is read from the WORKTREE by `wf verify`, so a freeze
 	// that rewrites it silently turns a MISMATCH into "clean".
 	refreeze := fs.Bool("refreeze", false, "re-freeze a round already tagged: the artifacts changed since, and the tag moves to the new commit; the manifest records that it superseded one")
@@ -1328,12 +1347,26 @@ func cmdFreeze(args []string) error {
 		if !*refreeze {
 			return fmt.Errorf("tag %s already exists; a frozen round is not re-frozen, open a new one — or pass -refreeze if the artifacts changed since and this round's reviewers must read the new bytes", tag)
 		}
-		// The existing manifest is the record this one supersedes. Read before
-		// anything is written, so a refusal below leaves the round exactly as
-		// the previous freeze left it.
+		// The existing manifest is read from the TAG, not from the worktree.
+		// Two reasons, and the second is the trap: the worktree copy is
+		// rewritten by this command, so a re-freeze whose TAG MOVE failed left a
+		// committed manifest describing the current tree — and the retry then
+		// compared that manifest against itself, refused "nothing has changed",
+		// and stranded the round with a new manifest under an old tag, which is
+		// exactly the state `wf verify` reads as clean. The tag is what
+		// reviewers were handed and it is the only copy this command does not
+		// touch.
 		var cur freezeManifest
-		if cb, err := os.ReadFile(filepath.Join(w.RoundDir(w.M.Round), "freeze.json")); err == nil {
-			_ = json.Unmarshal(cb, &cur)
+		rel, _ := filepath.Rel(w.Root, filepath.Join(w.RoundDir(w.M.Round), "freeze.json"))
+		if cb, err := w.Git.Run("show", tag+":"+rel); err == nil {
+			// A manifest that does not PARSE is not a manifest with no
+			// supersessions in it. Discarding the error silently reset the
+			// count and dropped every earlier superseded commit — the one
+			// thing the field's own comment says the record must not lose,
+			// and nothing downstream reads it, so nothing would catch it.
+			if err := json.Unmarshal([]byte(cb), &cur); err != nil {
+				return fmt.Errorf("%s carries a %s that does not parse (%v); a re-freeze that cannot read what it supersedes would record a first freeze over a round already published", tag, rel, err)
+			}
 		}
 		// What a re-freeze exists to publish is different BYTES, and the
 		// commit is the wrong thing to compare: freezing itself makes a commit,
@@ -2707,7 +2740,8 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// Blockers by ORIGIN. `fix-induced` has always been counted over FINDINGS,
 	// and a round's findings are mostly not blockers: measured on the gate this
 	// comes from, four rounds ran 35/9, 37/3, 30/5, 35/5 with fix-induced at 16,
-	// 14, 16 — a flat blocker count that read as a gate still finding defects,
+	// 14, 16 — a descent that stopped, the last two rounds at five, reading as a
+	// gate still finding defects,
 	// while FOUR of the last round's five blockers had been introduced by the
 	// round before it. The fix rate had matched the introduction rate, and a flat
 	// count is what that looks like from outside.
@@ -2729,6 +2763,12 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// finding(s), 0 blocker(s)` and a bare round line today, which is what a
 	// measured zero prints — and a measured zero is a legal close.
 	var scaffoldRounds, noRoster, askShort, askUnstated, askUncomparable []int
+	// Rounds published more than once. A re-freeze MOVES `gate-rN`, and every
+	// window in this report is bounded by those tags — so a batch applied after
+	// the first freeze is re-attributed into the round when the tag moves over
+	// it, changing this round's edit figures and the prediction basis `wf apply`
+	// reads. Legitimate, and it must not happen in silence.
+	var refrozen []int
 	askMissing := map[int][]string{}
 	// The longest run of reviewer rounds carrying exactly ONE blocker, and their
 	// texts — see the note where it is printed.
@@ -2737,6 +2777,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	var flatRuns [][]int
 	var flatTexts [][]string
 	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
+	revFIB := 0
 	unparsable, notes, offScale := 0, 0, 0
 	for n := 1; n <= w.M.Round; n++ {
 		findings, blockers, byCommit, byProse, open, fixInduced := 0, 0, 0, 0, 0, 0
@@ -2838,7 +2879,11 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		// manufactured by the last one" and not a tuned threshold: the measured
 		// collapse was 4 of 5. A tool round is left out — it dispatched no
 		// reviewer, so its blockers are not what the stop rule reads.
-		if kinds[n] != "tool" && blockers > 0 && fixInducedBlockers*2 > blockers {
+		// No `blockers > 0` clause: fixInducedBlockers is only incremented
+		// inside the blocker branch, so zero blockers means zero numerator and
+		// `0*2 > 0` is already false. The clause that used to stand here
+		// survived every mutation.
+		if kinds[n] != "tool" && fixInducedBlockers*2 > blockers {
 			selfInflicted = append(selfInflicted, n)
 			selfShare[n] = [2]int{fixInducedBlockers, blockers}
 		}
@@ -2849,6 +2894,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		} else {
 			revF += findings
 			revB += blockers
+			revFIB += fixInducedBlockers
 		}
 		state := ws.RoundTag(n)
 		if !w.Git.TagExists(state) {
@@ -2856,6 +2902,9 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		}
 		if k := kinds[n]; k != "" {
 			state += ", " + k
+		}
+		if r := frozenRefreezes(w, n); r > 0 {
+			refrozen = append(refrozen, n)
 		}
 		// The window is chronology, not attribution: a batch closing round N's
 		// findings lands after gate-rN and is counted where it happened. But it
@@ -3094,6 +3143,10 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "  note: %d DELTA round(s) bank a roster that states no questions (%s) — banked before `-asks` existed, so what they covered is UNRECORDED rather than uncovered\n",
 			len(askUnstated), roundList(askUnstated))
 	}
+	if len(refrozen) > 0 {
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) were published more than once (%s) — `wf freeze -refreeze` moves `gate-rN`, and every window above is bounded by those tags, so a batch applied after the first freeze is counted inside the round the moved tag now covers\n",
+			len(refrozen), roundList(refrozen))
+	}
 	if len(noLedger) > 0 {
 		_, _ = fmt.Fprintf(out, "  note: %d round(s) have no readable findings.md (%s) — their 0/0 above is an ABSENT measurement, not a measured zero, and the totals do not include them\n", len(noLedger), roundList(noLedger))
 	}
@@ -3127,7 +3180,17 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		// reverse is a gate rewriting its own last fix, and the two print the
 		// same digits.
 		if totalB > 0 {
-			_, _ = fmt.Fprintf(out, "  fix-induced blockers — %d of %d blocker(s); the stop rule reads the BLOCKER count, and this is the share of it the previous round's own fix produced\n", totalFIB, totalB)
+			// The population is EVERY round, so it is comparable with the
+			// `total —` line above it. It is NOT what the stop rule reads —
+			// that is the reviewer rounds — and the first version of this line
+			// said it was. Where a tool round exists the reviewer figure is
+			// printed beside it rather than the population being narrowed in
+			// silence, which is the defect one report up.
+			line := fmt.Sprintf("  fix-induced blockers — %d of %d blocker(s), the share the previous round's own fix produced", totalFIB, totalB)
+			if toolRounds > 0 {
+				line += fmt.Sprintf("; %d of %d over REVIEWER rounds, which is what the stop rule reads", revFIB, revB)
+			}
+			_, _ = fmt.Fprintln(out, line)
 		}
 		if len(selfInflicted) > 0 {
 			// ONE line carrying every round and its own ratio, not one
@@ -3140,8 +3203,25 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			for _, n := range selfInflicted {
 				each = append(each, fmt.Sprintf("r%d %d/%d", n, selfShare[n][0], selfShare[n][1]))
 			}
-			_, _ = fmt.Fprintf(out, "  note: %d round(s) produced blockers that are MAJORITY fix-induced (%s) — those counts are not evidence the ARTIFACT still has defects, they are the fix rate matching the introduction rate, which from outside is what a flat descent looks like\n",
+			// How much of the named population is a one- or two-blocker round,
+			// because "the fix rate matched the introduction rate" is a claim
+			// about a RATE and it prints identically over 1/1 and over 20/21.
+			// Measured: five of p2e's seven named rounds and five of p2f's are
+			// at a denominator of two or less. The rounds are not filtered out
+			// — narrowing a population in silence is this report's own named
+			// defect — the shape is printed instead.
+			small := 0
+			for _, n := range selfInflicted {
+				if selfShare[n][1] <= 2 {
+					small++
+				}
+			}
+			line := fmt.Sprintf("  note: %d round(s) produced blockers that are MAJORITY fix-induced (%s) — those counts are not evidence the ARTIFACT still has defects, they are the fix rate matching the introduction rate, which from outside is what a flat descent looks like",
 				len(selfInflicted), strings.Join(each, ", "))
+			if small > 0 {
+				line += fmt.Sprintf("; %d of them are a round with two blockers or fewer, where a majority is one finding", small)
+			}
+			_, _ = fmt.Fprintln(out, line)
 		}
 		// A share computed over rounds where nobody marked is a LOWER BOUND, and
 		// its error has a direction: on mocker slice A eight of a script gate's
@@ -3293,6 +3373,23 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 // carry no such field, and a missing one is ABSENT, never zero: a workspace
 // frozen by an earlier binary must not report its corpus as having shrunk to
 // nothing.
+// frozenRefreezes reads how many times a round was published before its current
+// freeze. Zero for an older manifest that has no such field, which is correct:
+// the flag did not exist, so the round was published once.
+func frozenRefreezes(w *ws.Workspace, n int) int {
+	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
+	if err != nil {
+		return 0
+	}
+	var m struct {
+		Refreezes int `json:"refreezes"`
+	}
+	if json.Unmarshal(b, &m) != nil {
+		return 0
+	}
+	return m.Refreezes
+}
+
 func frozenLines(w *ws.Workspace, n int) (int, bool) {
 	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
 	if err != nil {

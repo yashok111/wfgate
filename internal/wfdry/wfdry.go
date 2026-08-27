@@ -156,16 +156,21 @@ func Run(path string, modes []string, o Options) ([]Result, error) {
 //
 // `gate-checks.md` section E already says a mode that spawns NOTHING fails, and
 // one is not zero, so nothing fired on the case that cost a gate a round: a
-// red-bar abort added to a producer guard took six of seven modes from
-// 18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the
+// red-bar abort added to a producer guard took five of seven modes from
+// 15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1 — the fix round, the recheck, the
 // acceptance step and the final verdict exercised by nothing — and every mode
-// still exited `OK`. A reviewer banking "wfdry 7 of 7" credited a layer that
+// still exited `OK`. A reviewer banking "wfdry 7 of 7" WOULD have credited a
+// layer that
 // covered a single agent. The ratio is the signal, not the absolute.
 //
-// A NOTE rather than a violation, for the reason the `dead-reviews` zero-kill
-// note gives: a mode legitimately reaching fewer agents than the happy path is
-// a real script shape, and failing it would fail correct scripts. What it must
-// not do is print OK with nothing beside it.
+// A VIOLATION, not a note, and that was measured rather than argued. Over the
+// gated orchestration scripts on disk the failure modes run WIDER than the happy
+// path, because a fix round spawns more: p3a 36 clean against 44, p3b 18 against
+// 30, and p3b one round earlier 15 against 25 — zero collapses across three
+// correct scripts. The one revision carrying the red-bar abort reports 18 and
+// then 1 in every other mode. A WARN would have left that run printing
+// `7/7 modes completed` and exiting 0, which is the banked claim
+// ("wfdry 7 of 7") a reviewer would make from it.
 func noteCollapse(rs []Result) {
 	// A baseline of ZERO needs no guard of its own and was given one that no
 	// mutation could make fail: every mode is then either a zero-spawn mode,
@@ -189,13 +194,30 @@ func noteCollapse(rs []Result) {
 				base, baseMode = r.Spawned, r.Mode
 			}
 		}
+		// A run with ONE mode is every `--mode X` invocation, and there the
+		// stand-in baseline IS that mode, which is then skipped — so the check
+		// vanished in silence over exactly the reports that motivated it
+		// (`--mode blockers` on the banked collapse fixture printed
+		// `OK — 1 agents, 1 phases` and `1/1 modes completed`). An absent
+		// comparison says so; it does not read as a clean one.
+		for i := range rs {
+			if len(rs) == 1 {
+				rs[i].Notes = append(rs[i].Notes, "no `clean` mode in this run, so this mode's agent count was compared against NOTHING — the happy path is the baseline, and `wfdry <script>` runs every mode")
+			} else {
+				rs[i].Notes = append(rs[i].Notes, "no `clean` mode in this run — the widest mode (`"+baseMode+"`) stands in as the baseline, which is not the happy path")
+			}
+		}
 	}
 	for i := range rs {
 		r := &rs[i]
 		// `throw-serial` aborts AT the first spawn by construction, so its
 		// count is one by design and a ratio over it measures the runner, not
-		// the script.
-		if r.Mode == baseMode || r.Mode == "throw-serial" {
+		// the script. `no-args` is the other mode the RUNNER narrows on
+		// purpose: a script that gates its body on `args` is correct there, and
+		// forgiveArgsGate already says so at zero — warning at one is that same
+		// reasoning applied backwards, and it fired on every correct script that
+		// does any work before the gate.
+		if r.Mode == baseMode || r.Mode == "throw-serial" || r.Mode == "no-args" {
 			continue
 		}
 		// A mode that spawned NOTHING has already been judged — by the
@@ -209,8 +231,12 @@ func noteCollapse(rs []Result) {
 		if r.Spawned*2 >= base {
 			continue
 		}
-		r.Notes = append(r.Notes, fmt.Sprintf("this mode reached %d agent(s) against %d in `%s` — it exercised a fraction of the script, and every check in this runner passed over that fraction; a failure branch that spawns nothing is a branch no mode covers",
-			r.Spawned, base, baseMode))
+		// The MODE's name is in the text, because the tail of the run
+		// deduplicates notes by their string: five collapsed modes printed as
+		// one anonymous "this mode reached 1 agent(s)", on the line the output
+		// says is the one an operator acts on.
+		r.Violations = append(r.Violations, fmt.Sprintf("%s: reached %d agent(s) against %d in `%s` — it exercised a fraction of the script, and every check in this runner passed over that fraction; a failure branch that spawns nothing is a branch no mode covers",
+			r.Mode, r.Spawned, base, baseMode))
 	}
 }
 

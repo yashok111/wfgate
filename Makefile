@@ -65,9 +65,12 @@ check-tools: build
 	@if ./wfcheck -root . testdata/own-forbid.mjs >/dev/null 2>&1; then \
 		echo "wfcheck own-forbid fixture: LOST a dual-ownership ERROR beside a forbidding phrase"; exit 1; \
 	else echo "wfcheck own-forbid fixture: reports the collision as it must"; fi
-	@if ./wfdry testdata/collapse.mjs --quiet 2>&1 | grep -q "exercised a fraction of the script"; then \
-		echo "wfdry collapse fixture: names the modes that emptied"; \
-	else echo "wfdry collapse fixture: SILENT — six modes abort at the first agent and every one printed OK"; exit 1; fi
+	@if ./wfdry testdata/collapse.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry collapse fixture: EXIT 0 over modes that reached a sixth of the script"; exit 1; \
+	else echo "wfdry collapse fixture: fails as it must"; fi
+	@if ./wfdry testdata/collapse.mjs --quiet 2>&1 | grep -q "(clean: 6 agents)"; then \
+		echo "wfdry collapse fixture: prints the happy path's count beside each mode"; \
+	else echo "wfdry collapse fixture: no baseline printed — the operator has nothing to compare a mode against"; exit 1; fi
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfcheck -root . .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \

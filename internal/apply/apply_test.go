@@ -267,9 +267,17 @@ func TestRewrittenLines(t *testing.T) {
 	}{
 		{"one line changed", "a\nb\nc\n", "a\nB\nc\n", 1},
 		{"three scattered", "a\nb\nc\nd\n", "A\nb\nC\nD\n", 3},
-		{"moved, not rewritten", "a\nb\nc\n", "c\nb\na\n", 0},
 		{"pure deletion", "a\nb\nc\n", "a\nc\n", 1},
-		{"identical", "a\nb\n", "a\nb\n", 0},
+		// The case that made the note lie: counting only the lines that
+		// stopped existing returned ZERO for a replacement that only INSERTS,
+		// so `wf apply` printed "rewriting 0 line(s)" over a real change.
+		{"pure insertion", "a\nb\n", "a\nX\nb\n", 1},
+		{"insertion of three", "a\nb\n", "a\nX\nY\nZ\nb\n", 3},
+		// A reordering changes no line by this measure, and the floor of one
+		// is what keeps the report honest: `Plan` rejects `old == new`, so a
+		// replacement that reaches this function always changes something.
+		{"moved, not rewritten", "a\nb\nc\n", "c\nb\na\n", 1},
+		{"identical — unreachable through Plan, and never reported as zero", "a\nb\n", "a\nb\n", 1},
 	}
 	for _, c := range cases {
 		if got := rewrittenLines(c.old, c.new); got != c.want {
