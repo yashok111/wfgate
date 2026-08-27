@@ -243,9 +243,14 @@ func TestStats_authoringWindowPrintsNoRatio(t *testing.T) {
 	if strings.Contains(out, "finding(s) per 100 changed line(s))") {
 		t.Fatalf("no per-round ratio may be printed for that window:\n%s", out)
 	}
-	// And nothing predicts from it either.
-	if strings.Contains(out, "prediction basis") {
-		t.Fatalf("the only round is an authoring window, so there is no basis:\n%s", out)
+	// And nothing predicts from it either. This used to assert that the basis
+	// line was ABSENT, which defended the claim through the only implementation
+	// there was; the claim is that no RATIO is derived, and a line that vanishes
+	// cannot say whether a gate has no basis or had its every priceable round
+	// excluded. So the absence is named, and it still carries no number.
+	mustContain(t, out, "prediction basis — NOT A PASS, no round is priceable")
+	if strings.Contains(out, "per 100; `wf apply` predicts from THIS") {
+		t.Fatalf("the only round is an authoring window, so nothing may be predicted from it:\n%s", out)
 	}
 }
 

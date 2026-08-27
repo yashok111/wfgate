@@ -279,6 +279,20 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    and read different bytes. It refuses when every artifact hashes the same against the same target
    revision: a re-freeze republishes CHANGED bytes, and there is nothing to record otherwise.
 
+   **A moved tag re-attributes cost, and both commands now say so.** Every window in `wf stats` is
+   bounded by `gate-rN`, so a batch applied after the round's FIRST publication is priced as the fix
+   that produced that round's findings rather than the fix it actually is. `-refreeze` prints how many
+   changed lines the tag just moved over, at the moment the operator can still act on it, and
+   `wf stats` excludes such a round from the prediction basis BY NUMBER — there is no ratio there to
+   correct, the same reasoning an authoring window already gets. The detection reads GIT, not the
+   manifest's `refreezes` counter, because that counter is written only by this flag: measured on the
+   gate that stopped instead of closing, twelve extra freeze commits over five rounds left it at ZERO
+   in all five manifests, the note built to say so fired not once, and 611 of 8388 changed lines
+   (7.3%) were priced against the round that produced them. The claim is that the TAG moved, never
+   that two freeze commits exist — a refused re-freeze used to commit its manifest before refusing, so
+   a workspace predating that fix carries a second freeze commit for a round whose reviewers all read
+   the same bytes.
+
    **It also records the corpus SIZE, in lines, with the delta against the previous freeze.** One
    number per round, and it answers a question no other number in the workspace does: a gate whose
    document went 332 to ~1050 lines over five rounds while its blockers ran 13, 17, 10, 16, 11 is a

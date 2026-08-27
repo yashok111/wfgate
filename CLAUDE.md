@@ -1384,6 +1384,37 @@ entirely to what the reports SAY. Items landed so far:
   exempts them. One mutation read as SURVIVED and had not been: dropping the
   dedupe left `seen` unused, so the package did not compile and the sweep
   scored a build break as a surviving guard — the memory's own rule, met again.
+- *The guard against a moved freeze tag was armed on a field only the sanctioned
+  path writes* — every window in `wf stats` is bounded by `gate-rN`, and `wf
+  freeze -refreeze` moves that tag; the note built to say so read
+  `freeze.json`'s `refreezes` counter, which a hand `git tag -d` plus `wf
+  freeze` never touches. Measured on the gate that stopped instead of closing:
+  twelve extra freeze commits over five rounds, `refreezes` ZERO in all five
+  manifests, the note fired not once, and **611 of 8388 changed lines (7.3%)**
+  were priced against the round that produced them rather than the round they
+  repaired — putting the two highest ratios of its document half, 22.4 and 21.4
+  per 100, against a TRUE prior-round denominator of zero, all four inside the
+  published prediction basis, while the round whose fixes the moved tag
+  displaced printed `0 apply batch(es)` and was named by the operator-drift note
+  for a hole the tag had made. It is derived from GIT now — the tag's commit
+  against the round's first freeze commit — and a round whose window prices its
+  own repairs leaves the prediction basis BY NUMBER, the reasoning an authoring
+  window already gets: there is no ratio there to correct. `-refreeze` prints
+  what the tag just moved over at the moment the operator can still act on it.
+  The claim is that the TAG moved and never that two freeze commits exist: a
+  refused re-freeze used to commit its manifest before refusing (the fifth
+  wave's own blocker), so p2e round 11 carries a second freeze commit for a
+  round whose reviewers all read the same bytes — counting commits would have
+  called it a republication, and it is the only such round in the corpus. Run
+  over all six workspaces, five are BYTE-IDENTICAL and only the gate with the
+  defect moves. Two things fell out: excluding the last priceable round used to
+  take the whole `prediction basis` line with it, so a gate whose every
+  candidate was excluded printed no basis at all and read like a gate that
+  simply has none — it prints `NOT A PASS` with the exclusions now, and the
+  older test asserting the line's ABSENCE was defending "no ratio is derived",
+  which the new line still satisfies. And one condition was DELETED rather than
+  given a test it could not earn: `TagMoved && SwallowedLines > 0` is one fact
+  spelled twice, because the count is populated only where the tag moved.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
