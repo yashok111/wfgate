@@ -82,6 +82,20 @@ measured those same six as otherwise re-authored rather than copied, two of thei
 implementing one algorithm at 0.05 textual similarity. So the scale is closed here because this is the
 one place both paths meet, not because either layer validates it.
 
+**And what ENDS a gate is a question about a finding's SUBJECT, not its level.** The stop rule is
+stated in section I and is unchanged by this; what follows is the question to ask beside it, from the
+round where the count stops descending: **would a fleet BUILD the wrong thing, or would it merely be
+told something slightly stale about a file it is about to read anyway?** Measured on the gate that
+stopped instead of closing: not one finding after its round 19 was a defect in the SPECIFICATION —
+they were defects in the harness and in the reporting, every one of them correctly classified
+BLOCKER because no later gate catches it. The fleet would have built the right slice; the run would
+have misreported it, aborted, or destroyed itself. The last blocker of the other kind was round 19's
+— the one file where any tool is registered, owned by no section and named nowhere — and the gate
+ran three more rounds after it. `wf stats` prints the mechanical half of the same reading: the share
+of each round's blockers carrying `[fix-induced]`, and it names the rounds where that share is a
+majority. A round that mostly re-fixes the previous round's fix is not evidence the artifact still
+has defects.
+
 ---
 
 ## 0b. What a delta round asks
@@ -98,7 +112,17 @@ A delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but neve
   range retired none.
 
 Anything else the slice needs is welcome beside them; `-asks other` records it so the roster stays
-comparable without pretending the vector was one of the named ones.
+comparable without pretending the vector was one of the named ones. The three are a SET and every
+spelling of a set is accepted: `-asks closure,fix-induced,ripple`, `-asks
+closure+fix-induced+ripple`, or the flag repeated.
+
+**A banked verification is a claim like any other, and a delta round SAMPLES the previous round's
+rather than inheriting them.** The habit is worth keeping — a NOTE row saying "verified, recorded so
+a later round does not re-derive it" saves real work — and it failed checkably: one round banked
+"ownership union exact at 33 files, and gate 6 lists all 33" while a thirty-fourth file joined in
+the same commit that banked the claim. It was found because the next round's lens was instructed to
+spot-check three banked verifications rather than trust them; three of four held, which is the right
+ratio to keep the habit and the wrong one to trust it blind.
 
 ---
 
@@ -451,15 +475,23 @@ compiles, passes every test, and does nothing.
       ReferenceError at launch with zero agents spawned. Escape it — and note that no static
       checker can catch this, because the reference is syntactically valid.
 - [ ] **Dry-run the script with stubbed hooks BEFORE the freeze (and again before launching):
-      `wfdry <script>`.** A dry-run defect found after freezing invalidates a freeze that correctly
-      refuses to re-freeze — a whole round for a defect no reviewer ever saw. It must
+      `wfdry <script>`.** A dry-run defect found after freezing invalidates a freeze, and the repair
+      is `wf freeze -refreeze`, which republishes the round under a MOVED tag and records that it did
+      — reviewers handed the old tag read different bytes. Running the dry-run first costs nothing and
+      leaves nothing to republish; the round it once cost was a defect no reviewer ever saw. It must
       complete EVERY one of the seven modes — `clean`, `blockers`, `acceptfail`, `unfixed`,
       `throw-serial`, `dead-reviews`, `no-args` — not the three an earlier version of this entry
       prescribed by hand. The last one runs the script with no `args`; the other six hand it a
       representative object, which `--args <json>` replaces. Killing named agents is a flag,
       `--dead <label>[,<label>…]`, applied inside every mode, not a mode of its own. A mode that
       completes having spawned NO agent FAILS: every check in the runner is then a guard over the
-      empty set. Seconds of cost, and it evaluates every
+      empty set — **and ONE is not zero.** A mode that reaches a small fraction of the agents the
+      `clean` mode reaches proved that fraction and printed OK over the rest; the runner now names
+      it (`this mode reached 1 agent(s) against 6 in clean`) and prints the happy path's count
+      beside every mode. Measured: a red-bar abort added to the FIRST producer took six of seven
+      modes from 18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the acceptance
+      step and the final verdict exercised by nothing — and a reviewer banked "wfdry 7 of 7" over a
+      layer that covered a single agent. The RATIO is the signal, not the absolute. Seconds of cost, and it evaluates every
       template literal on every path, catching the class above plus any unreachable binding a linter
       cannot type-check. A parse is not an execution. The clean path is the one that matters most:
       reviewers read the failure branches, because that is where the risk looks like it lives.
@@ -824,8 +856,9 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       M -round N`, which is also the record that makes the round's reviewers part of the corpus, and
       which counts only where it says which vector, what ran it and what it was asked. A `-kind tool`
       round is exempt: its opening subject already records that no reviewer was dispatched. Then `wf round new`, then `wf freeze` — which
-      refuses while any ARTIFACT is uncommitted and refuses to re-freeze a round that is already
-      tagged, and records one manifest over the whole artifact set plus the reviewed repository's HEAD
+      refuses while any ARTIFACT is uncommitted and refuses, by default, to re-freeze a round that is
+      already tagged (`-refreeze` republishes it, moves the tag and records the supersession; it is
+      what the citation notes below are for), and records one manifest over the whole artifact set plus the reviewed repository's HEAD
       and the `wf` version that wrote it. `wfdry` runs BEFORE that freeze — a dry-run defect found
       after it forces a round no reviewer saw — then `wf verify` before launching, so that all three
       copies of this loop name the same steps.

@@ -1110,6 +1110,120 @@ reporting a population it had silently replaced with a different one:
   adds is that the series INVERTS, and that the inversion is the convergence
   signal rather than noise.
 
+**The thirteenth wave — P3b, the first gate that STOPPED instead of closing**
+(`FEEDBACK-p3b.md`; by its own `wf stats`, 22 rounds, 588 findings, 177
+blockers, 451 edits over 8388 changed lines, 25.7 h, median round 29.4 min —
+seventeen rounds over a decision document, closed on the stop rule at 19 -> 0,
+then the orchestration script added to the same workspace and gated for four
+more, which ran 35/9 -> 37/3 -> 30/5 -> 35/5 and were halted by the operator
+rather than by the rule). It did not launch. The wave's own headline is that
+its STRONGEST queue entry did not survive being measured, and the class it was
+aimed at turned out to live one layer down, in a shape the tool had been
+printing without a word about it:
+
+- *`wf stats` splits BLOCKERS by origin, not only findings* — `[fix-induced]`
+  has always been counted over FINDINGS, and a round's findings are mostly not
+  blockers. Four script rounds sat flat at five blockers while roughly half of
+  every round was produced by the round before it; the count goes flat exactly
+  when the fix rate starts matching the introduction rate, and from outside that
+  is indistinguishable from a gate holding steady against the artifact. Each
+  round now prints `fix-induced 16 (4 of 5 blocker(s))`, the gate prints its
+  total, and one line names every round whose blockers are a MAJORITY
+  self-inflicted. Run over the five workspaces on disk: **100 of 177 blockers on
+  P3b, 11 of its 22 rounds a majority** — including the DOCUMENT half the
+  feedback calls unremarkable, whose round 6 was 20 of 21 and round 8 was 6 of 6
+  — 22 of 79 on p2e, 12 of 28 on p2f, 8 of 143 on p3a where nineteen rounds
+  marked nothing, and p2d, which marked nothing at all and prints as unmeasured.
+  The first draft printed one PARAGRAPH per named round and painted eleven of
+  twenty-two, which is `dup`'s 161-of-176 with the numbers rearranged; the lesson
+  was applied before shipping rather than after, and it is one line carrying every
+  round's own ratio.
+- *The queue's strongest entry was REFUSED on measurement, and the answer was one
+  layer down* — "refuse a closure row whose CITED TEXT is unchanged" was
+  prototyped against the workspace that asked for it before a line of Go was
+  written. Of 587 closure claims, 105 quote a span of four words or more that
+  exists in the pre-fix artifact and **38 of those 105 have no closing commit
+  touching a line carrying the quote** — a third of the checkable corpus, and
+  hand-read the majority are correct closures, because a finding quotes text to
+  IDENTIFY a site and the fix lands in another clause. It is also blind to the
+  round it was derived from: that round's batch touched the artifact in many
+  places, so every one of its thirty rows passes. **The root cause is
+  mechanical**: that round applied thirty fixes as ONE `wf apply` replacement
+  covering the whole artifact, and all-or-nothing and the declared `count` are
+  both per REPLACEMENT — so the batch was "verified" and the thirty changes
+  inside it were verified by nothing, which is why a pipeline whose non-matching
+  `str.replace()` is a silent no-op could report fifteen of them closed. (Fifteen
+  is one lens's count and a second confirmed eleven; that round's own commit
+  message says thirteen after dedupe. The three numbers are all in the workspace
+  and none of them changes the reading.) Eighteen
+  of that gate's sixty-eight batches were single-replacement. `wf apply` now NOTES
+  a replacement covering half a file or more and says how many lines that one
+  replacement rewrites; a note and not a refusal, because generating one minimal
+  block per change failed twice on uniqueness on the same gate. The feedback asked
+  for the opposite — that the whole-artifact shape be documented as reliable — and
+  the manual says instead that it forfeits both guarantees and what to do when you
+  use it anyway.
+- *`wfdry` reads the agent counts as a RATIO, because ONE is not zero* —
+  `gate-checks.md` §E has said since P2e that a mode spawning NOTHING fails, and
+  a red-bar abort added to the first producer took six of seven modes from
+  18/25/25/25/15/25 agents to 18/1/1/1/1/1, with the fix round, the recheck, the
+  acceptance step and the final verdict exercised by nothing and every mode still
+  exiting OK. Every mode's line now carries the `clean` count beside its own and a
+  mode reaching under half of it WARNs. `throw-serial` is exempt — it aborts AT
+  the first spawn by construction — and so is a mode that spawned nothing, which
+  the zero-spawn rule already judges. `testdata/collapse.mjs` is that script,
+  banked, and `make check-tools` fails if the runner goes quiet over it.
+- *`-asks` was already half-shipped and the tool never said so* — the queue asked
+  for a list form; the comma list had worked since the flag existed and the
+  flag's own help text said `comma-separated`. What was refused was `+` and the
+  repeated flag, so twenty-two hand edits of `Asks:` were paid against a
+  capability the tool already had. Both spellings go through ONE reader now, and
+  the manual states the set form where the three required questions are stated.
+  This is the tenth wave's lesson for the second time: a shipped capability the
+  report never mentions is a capability nobody has.
+- *`wf freeze -refreeze` — the escape becomes a RECORD* — freezing stays one-way
+  by default and the reason is real (the manifest is read from the WORKTREE by
+  `wf verify`, so a freeze that silently rewrote it turned a MISMATCH into
+  "clean"), but freeze's citation resolution runs NOWHERE else, so the command
+  that surfaces a mis-aimed anchor is the command an operator must run again after
+  fixing one — every round of that gate deleted the tag by hand. The tag moves and
+  the manifest records how many freezes the round has had and which commits they
+  published, because somebody may have been handed the old tag and read different
+  bytes. **The first predicate was wrong and the test caught it**: it compared the
+  manifest's `commit` against HEAD, and freezing itself makes a commit, so it
+  could never fire. It compares the artifact hashes and the target revision now —
+  what a reviewer actually reads — and `Supersedes` records the commit the TAG
+  named rather than the HEAD it was taken from, which is a different revision and
+  the one nobody was ever pointed at.
+- *`wf round record` takes `-` for stdin, and refuses an empty input* — the file
+  stays POSITIONAL and there is deliberately no `-file`: an alias would be a
+  second way to say one thing. The usage line says which it is, because the
+  previous one ruled neither in nor out and both were tried on a live gate.
+- *One guard was DELETED rather than shipped unproven* — `noteCollapse` opened
+  with a zero-baseline guard that no mutation could make fail, because a zero
+  baseline is either a zero-spawn mode (skipped) or wider than the baseline (the
+  ratio passes). The reasoning moved into the comment above the loop and the
+  behaviour test stayed. Same discipline, fourth wave running.
+- *Four rules changed the MANUAL and not the tool* — **the emitted harness is
+  FROZEN from round 1** and an edit to it is admitted only by a demonstrated wrong
+  RESULT under stubbed execution, never by a tool's note count (three of four
+  script rounds spent their weight there and two edits made a full round trip, one
+  of them returning byte-identical to its form two rounds earlier with the
+  argument for the reverted version still standing as a comment indicting the line
+  below it); **the two checkers pull opposite ways** — `wfcheck` rewards a schema
+  it can read STATICALLY, `wfdry` rewards a run that goes DEEP — so a round that
+  edits the harness runs both plus a stub BEFORE and AFTER its own fix and records
+  both deltas, in the script, beside the trade they settle; **a banked
+  verification is a claim like any other and a delta round SAMPLES the previous
+  round's rather than inheriting them** (one round banked "ownership union exact
+  at 33 files" while a thirty-fourth joined in the same commit that banked it;
+  three of four held on spot-check, which is the right ratio to keep the habit and
+  the wrong one to trust it blind); and **what ends a gate is a question about a
+  finding's SUBJECT, not its level** — not one finding after that gate's round 19
+  was a defect in the SPECIFICATION, every one correctly classified BLOCKER, and
+  the question to ask beside the stop rule is whether a fleet would BUILD the wrong
+  thing or merely be told something stale about a file it is about to read anyway.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file
@@ -1218,9 +1332,17 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-25 — read before trusting
+## State as of 2026-08-27 — read before trusting
 
-- **Six real gates have now run entirely through `wf`,** and P3a
+- **SEVEN real gates have now run entirely through `wf`,** and P3b
+  (`FEEDBACK-p3b.md`, `~/projects/gates/mocker-p3b-resources`) is the first that
+  **stopped instead of closing**: 22 rounds by its own `wf stats`, 588 findings,
+  177 blockers, 451 edits over 8388 changed lines, 25.7 h, median round 29.4 min.
+  Its document half closed on the rule at 19 -> 0 over seventeen rounds; its
+  script half ran four and was halted by the operator. It did NOT launch. The
+  workspace is on disk and unpruned, and it is now the calibration corpus for the
+  blocker-origin split and for the closure check that was REFUSED on it.
+- **Six real gates ran entirely through `wf` before it,** and P3a
   (`FEEDBACK-p3a.md`, `~/projects/gates/mocker-p3a-resources`) is the first
   workspace gated TWICE — sixteen rounds over a decision document, closed, then
   the orchestration script added as a SECOND artifact to the same workspace and

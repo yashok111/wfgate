@@ -147,7 +147,71 @@ func Run(path string, modes []string, o Options) ([]Result, error) {
 		out = append(out, runMode(src, m, o))
 	}
 	forgiveArgsGate(out)
+	noteCollapse(out)
 	return out, nil
+}
+
+// noteCollapse names a mode that reached a small fraction of the agents the
+// happy path reached.
+//
+// `gate-checks.md` section E already says a mode that spawns NOTHING fails, and
+// one is not zero, so nothing fired on the case that cost a gate a round: a
+// red-bar abort added to a producer guard took six of seven modes from
+// 18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the
+// acceptance step and the final verdict exercised by nothing — and every mode
+// still exited `OK`. A reviewer banking "wfdry 7 of 7" credited a layer that
+// covered a single agent. The ratio is the signal, not the absolute.
+//
+// A NOTE rather than a violation, for the reason the `dead-reviews` zero-kill
+// note gives: a mode legitimately reaching fewer agents than the happy path is
+// a real script shape, and failing it would fail correct scripts. What it must
+// not do is print OK with nothing beside it.
+func noteCollapse(rs []Result) {
+	// A baseline of ZERO needs no guard of its own and was given one that no
+	// mutation could make fail: every mode is then either a zero-spawn mode,
+	// skipped below, or wider than the baseline, which the ratio passes. The
+	// zero-spawn violation already refuses that run by name.
+	//
+	// The happy path is the baseline BY NAME, because that is the run every
+	// other mode is a deviation from. Where it was not run — `--mode` selects a
+	// subset — the widest mode stands in for it and the note says so, rather
+	// than the check disappearing with the mode that anchors it.
+	base, baseMode := 0, ""
+	for _, r := range rs {
+		if r.Mode == "clean" {
+			base, baseMode = r.Spawned, r.Mode
+			break
+		}
+	}
+	if baseMode == "" {
+		for _, r := range rs {
+			if r.Spawned > base {
+				base, baseMode = r.Spawned, r.Mode
+			}
+		}
+	}
+	for i := range rs {
+		r := &rs[i]
+		// `throw-serial` aborts AT the first spawn by construction, so its
+		// count is one by design and a ratio over it measures the runner, not
+		// the script.
+		if r.Mode == baseMode || r.Mode == "throw-serial" {
+			continue
+		}
+		// A mode that spawned NOTHING has already been judged — by the
+		// zero-spawn violation, or by the args forgiveness that lifts it for a
+		// script legitimately gating its body. A ratio note on top would be a
+		// second report of one fact, in the one place the runner has decided
+		// the fact is not a defect.
+		if r.Spawned == 0 {
+			continue
+		}
+		if r.Spawned*2 >= base {
+			continue
+		}
+		r.Notes = append(r.Notes, fmt.Sprintf("this mode reached %d agent(s) against %d in `%s` — it exercised a fraction of the script, and every check in this runner passed over that fraction; a failure branch that spawns nothing is a branch no mode covers",
+			r.Spawned, base, baseMode))
+	}
 }
 
 const zeroSpawn = "the mode completed without spawning a single agent — every check in this runner passed over an empty set"

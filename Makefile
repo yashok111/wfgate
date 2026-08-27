@@ -65,6 +65,9 @@ check-tools: build
 	@if ./wfcheck -root . testdata/own-forbid.mjs >/dev/null 2>&1; then \
 		echo "wfcheck own-forbid fixture: LOST a dual-ownership ERROR beside a forbidding phrase"; exit 1; \
 	else echo "wfcheck own-forbid fixture: reports the collision as it must"; fi
+	@if ./wfdry testdata/collapse.mjs --quiet 2>&1 | grep -q "exercised a fraction of the script"; then \
+		echo "wfdry collapse fixture: names the modes that emptied"; \
+	else echo "wfdry collapse fixture: SILENT — six modes abort at the first agent and every one printed OK"; exit 1; fi
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfcheck -root . .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \

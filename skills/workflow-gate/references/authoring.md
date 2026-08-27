@@ -59,6 +59,31 @@ What it does not do is make the script good: two real gates' first drafts were a
 `wfcheck`-clean and each still cost a round. What it carries is the forms no check reaches — and of
 its TODO markers only the ones inside `YOU OWN` are visible to a tool. A TODO left in a prompt ships.
 
+**And the harness it emits is FROZEN from round 1.** The skeleton is `wfcheck`-clean and `wfdry` 7/7
+as it stands; what a gate is for is the PROMPTS, which decide what a fleet builds. An edit to the
+harness is admitted only by a **demonstrated wrong RESULT under stubbed execution** — a mode that
+returns a verdict the script cannot justify, a branch no mode reaches, an agent counted in the wrong
+ledger — and never by a tool's note count. Measured on the gate that stopped instead of closing:
+three of its four script rounds spent their weight in the harness and two edits made a full round
+trip. The producer schema went literal, then a call, then three hand-expanded 14 KB literals, then
+the call again (settled at `wfcheck` 18 notes against 23), and `abortIfDead` came back
+byte-identical to the form it had two rounds earlier — with the argument for the version being
+reverted still standing in the file as a comment indicting the line below it. The prompts were
+judged converging throughout by the same reviewers.
+
+**The two checkers pull opposite ways, and that is the mechanism.** `wfcheck` reads the parsed
+program, so it rewards a schema it can see STATICALLY — a literal, not a call that builds one.
+`wfdry` executes, so it rewards a run that goes DEEP. Tune for one and you can lose the other
+without noticing: a red-bar abort added to satisfy a rigour argument about producers took six of
+seven `wfdry` modes from 18/25/25/25/15/25 agents to 18/1/1/1/1/1, and the schema literals added the
+next round to satisfy `wfcheck` shipped three unverified duplicates of one builder that had already
+diverged in every `command.description`. Neither round re-measured the other tool, and nothing in
+the workspace recorded which trade had been settled on what measurement, so the round after
+re-argued it from zero. So: **a round that edits the harness runs `wfcheck`, `wfdry` and a stub
+BEFORE and AFTER its own fix and records both deltas** — in the script, as a comment beside the
+settled trade, with the numbers that settled it. A later round re-opening one then has to refute a
+measurement rather than a preference.
+
 **Name the spawn wrapper `spawn`.** A script must wrap the spawn call — an unhandled throw at a serial
 step aborts the run (see the gate-checks' failure-handling section) — and `wfcheck` reads every later
 check off its inventory of call sites. The name is a CONVENTION the checker reports, not the mechanism

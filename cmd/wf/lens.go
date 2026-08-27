@@ -106,7 +106,18 @@ func knownLensQuestion(q string) bool {
 func parseAsks(raw string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
-	for _, part := range strings.Split(raw, ",") {
+	// Comma, plus or whitespace. The list form has been accepted since the flag
+	// existed and its own help text says `comma-separated`; measured on the
+	// gate that stopped instead of closing, the operator banked a vector with
+	// ONE question and then hand-edited `Asks:` in the file and committed it —
+	// twenty-two times, over four rounds, having reached for
+	// `-asks closure+fix-induced+ripple` and been refused. A separator nobody
+	// can guess wrong is worth more than a spelling rule nobody reads: the
+	// three questions a delta round may never drop are a SET, and every way of
+	// writing a set down means the same thing.
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '+' || r == ' ' || r == '\t' || r == '\n'
+	}) {
 		q := strings.ToLower(strings.TrimSpace(part))
 		if q == "" {
 			continue
@@ -124,6 +135,18 @@ func parseAsks(raw string) ([]string, error) {
 		return nil, fmt.Errorf("-asks is required and was empty: a roster entry that does not say WHAT the vector asked records that a round had lenses and not which questions it put, which is the claim the gate cannot check")
 	}
 	return out, nil
+}
+
+// askList collects a flag that may be repeated. flag.Value's Set is called once
+// per occurrence, so joining the occurrences and parsing the join keeps ONE
+// reader of the syntax rather than two that can disagree.
+type askList []string
+
+func (a *askList) String() string { return strings.Join(*a, ",") }
+
+func (a *askList) Set(v string) error {
+	*a = append(*a, v)
+	return nil
 }
 
 // sameAsks compares two canonical question lists as SETS: parseAsks already
@@ -309,7 +332,11 @@ func cmdRoundLens(args []string) error {
 	model := fs.String("model", "", "what ran it — the model, and whether it was external (e.g. `external gpt-5.6-sol`)")
 	// The comparable half of the record. `-name` is the round's own label and
 	// stays free; this is what lets one gate's roster be read beside another's.
-	asks := fs.String("asks", "", "the canonical question(s) this vector asked, comma-separated: "+strings.Join(lensQuestions, ", "))
+	// Repeatable AND a list, because a flag that takes a set must accept both
+	// spellings of one: `-asks closure -asks ripple` and `-asks closure,ripple`
+	// are the same claim, and the first was an error message.
+	var asks askList
+	fs.Var(&asks, "asks", "the canonical question(s) this vector asked; repeat the flag or separate with , or +: "+strings.Join(lensQuestions, ", "))
 	// The default is the OPEN round, so banking a vector after the next round
 	// has been opened lands it on the wrong one: pass -round N for the round
 	// whose reviewers produced it.
@@ -341,7 +368,7 @@ func cmdRoundLens(args []string) error {
 		// A missing prompt path with the flags set is a mistyped argument, not
 		// a request for the roster: a shell that globbed the path away would
 		// otherwise print somebody else's roster and exit 0.
-		if strings.TrimSpace(*name) != "" || strings.TrimSpace(*model) != "" || strings.TrimSpace(*asks) != "" {
+		if strings.TrimSpace(*name) != "" || strings.TrimSpace(*model) != "" || asks.String() != "" {
 			return fmt.Errorf("no prompt file given, but -name/-model/-asks were: `wf round lens` with no file prints the roster and records nothing")
 		}
 		return printLensRoster(w, n)
@@ -352,7 +379,7 @@ func cmdRoundLens(args []string) error {
 	if strings.TrimSpace(*name) == "" || strings.TrimSpace(*model) == "" {
 		return fmt.Errorf("-name and -model are both required: a roster entry that does not say WHAT ran the vector records that a round had lenses and not which, which is the claim the gate cannot check")
 	}
-	askList, err := parseAsks(*asks)
+	askedList, err := parseAsks(asks.String())
 	if err != nil {
 		return err
 	}
@@ -374,7 +401,7 @@ func cmdRoundLens(args []string) error {
 	rel := lensPrefix + slug + ".md"
 	p := filepath.Join(dir, rel)
 	body := fmt.Sprintf("# Lens %s\n\nModel: %s\nAsks: %s\nRecorded: %s\n%s\n%s",
-		strings.TrimSpace(*name), strings.TrimSpace(*model), strings.Join(askList, ", "),
+		strings.TrimSpace(*name), strings.TrimSpace(*model), strings.Join(askedList, ", "),
 		time.Now().UTC().Format(time.RFC3339), lensFence, string(b))
 	wsRel, _ := filepath.Rel(w.Root, p)
 	if old, err := os.ReadFile(p); err == nil {
@@ -396,13 +423,13 @@ func cmdRoundLens(args []string) error {
 		// uncommitted lens with no way forward but a hand edit, which is the
 		// hand `git commit` this command exists to remove.
 		modelDiffers := banked.Model != "" && !strings.EqualFold(banked.Model, strings.TrimSpace(*model))
-		asksDiffer := banked.AsksSeen && !sameAsks(banked.Asks, askList)
+		asksDiffer := banked.AsksSeen && !sameAsks(banked.Asks, askedList)
 		// An UNCOMMITTED file is not a record, so it cannot be the banked claim
 		// this refusal protects — and refusing it strands exactly the case the
 		// recommit branch below was written for: a commit that failed mid-command.
 		if lensPrompt(old) == lensPrompt([]byte(body)) && (modelDiffers || asksDiffer) && tracked(w, wsRel) {
 			return fmt.Errorf("round %d already records lens %s with the same prompt but %s; a banked record is not rewritten — correct it by hand in %s, or record the changed vector under its own -name",
-				n, banked.Name, askDelta(banked, strings.TrimSpace(*model), askList), rel)
+				n, banked.Name, askDelta(banked, strings.TrimSpace(*model), askedList), rel)
 		}
 		if lensPrompt(old) == lensPrompt([]byte(body)) && !banked.AsksSeen {
 			// The prompt is the same and the banked header states no questions,
@@ -414,12 +441,12 @@ func cmdRoundLens(args []string) error {
 			if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 				return err
 			}
-			sha, err := w.Git.Commit(fmt.Sprintf("round %d: lens %s asks %s", n, banked.Name, strings.Join(askList, ", ")), []string{wsRel})
+			sha, err := w.Git.Commit(fmt.Sprintf("round %d: lens %s asks %s", n, banked.Name, strings.Join(askedList, ", ")), []string{wsRel})
 			if err != nil {
 				return err
 			}
 			fmt.Printf("lens %s for round %d predates -asks; its questions are now on file (%s) — committed %s\n",
-				banked.Name, n, strings.Join(askList, ", "), short(sha))
+				banked.Name, n, strings.Join(askedList, ", "), short(sha))
 			return nil
 		}
 		if lensPrompt(old) == lensPrompt([]byte(body)) {

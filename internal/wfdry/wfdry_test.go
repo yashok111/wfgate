@@ -710,3 +710,93 @@ func TestFindPromptRefusesALabelWithSeveralPrompts(t *testing.T) {
 		t.Fatal("an empty label matches nothing and must be refused")
 	}
 }
+
+// A mode that reaches a fraction of the agents the happy path reaches proved a
+// fraction of what its OK claims. Measured on the gate that stopped instead of
+// closing: a red-bar abort added to the first producer took six of seven modes
+// from 18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the
+// acceptance step and the final verdict exercised by nothing — and every mode
+// still exited OK, because section E's rule says a mode that spawns NOTHING
+// fails and one is not zero.
+func TestCollapseAgainstTheHappyPath(t *testing.T) {
+	rs := []Result{
+		{Mode: "clean", Spawned: 6},
+		{Mode: "blockers", Spawned: 1},
+		{Mode: "acceptfail", Spawned: 4},
+		{Mode: "throw-serial", Spawned: 1},
+		{Mode: "no-args", Spawned: 0},
+	}
+	noteCollapse(rs)
+
+	if len(rs[0].Notes) != 0 {
+		t.Fatalf("the baseline cannot collapse against itself: %v", rs[0].Notes)
+	}
+	if len(rs[1].Notes) != 1 || !strings.Contains(rs[1].Notes[0], "1 agent(s) against 6 in `clean`") {
+		t.Fatalf("want the ratio named with both counts and the baseline mode: %v", rs[1].Notes)
+	}
+	// Four of six is not a collapse: the note names a mode that exercised a
+	// fraction, and a mode that gets one every time is a mode nobody reads.
+	if len(rs[2].Notes) != 0 {
+		t.Fatalf("a mode above half the baseline must pass silently: %v", rs[2].Notes)
+	}
+	// `throw-serial` aborts AT the first spawn by construction, so its count is
+	// one by design and a ratio over it measures the runner.
+	if len(rs[3].Notes) != 0 {
+		t.Fatalf("throw-serial is one agent by construction: %v", rs[3].Notes)
+	}
+	// A mode that spawned nothing is judged by the zero-spawn rule and by the
+	// args forgiveness; a second note here would report one fact twice.
+	if len(rs[4].Notes) != 0 {
+		t.Fatalf("a zero-spawn mode is already judged: %v", rs[4].Notes)
+	}
+}
+
+// Without `clean` in the run the check does not disappear with the mode that
+// anchors it: the widest mode stands in, and the note SAYS which.
+func TestCollapseNamesTheBaselineItActuallyUsed(t *testing.T) {
+	rs := []Result{{Mode: "unfixed", Spawned: 2}, {Mode: "blockers", Spawned: 8}}
+	noteCollapse(rs)
+	if len(rs[0].Notes) != 1 || !strings.Contains(rs[0].Notes[0], "in `blockers`") {
+		t.Fatalf("want the stand-in baseline named: %v", rs[0].Notes)
+	}
+}
+
+// Every mode spawning nothing is the zero-spawn violation's own case, and a
+// ratio against zero would be a second, weaker report of it. There is no guard
+// here to delete: the behaviour falls out of the two skips above, and the guard
+// that used to state it survived every mutation.
+func TestCollapseIsSilentWhenNothingSpawnedAnywhere(t *testing.T) {
+	rs := []Result{{Mode: "clean"}, {Mode: "blockers"}}
+	noteCollapse(rs)
+	for _, r := range rs {
+		if len(r.Notes) != 0 {
+			t.Fatalf("%s: %v", r.Mode, r.Notes)
+		}
+	}
+}
+
+// End to end over the banked fixture, which is the P3b shape itself: a guard on
+// the first producer that aborts the run when its bars come back red.
+func TestCollapseFixtureEmptiesTheFailureModes(t *testing.T) {
+	rs, err := Run(filepath.Join("..", "..", "testdata", "collapse.mjs"), Modes, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean, warned := 0, 0
+	for _, r := range rs {
+		if r.Mode == "clean" {
+			clean = r.Spawned
+		}
+		for _, n := range r.Notes {
+			if strings.Contains(n, "exercised a fraction of the script") {
+				warned++
+			}
+		}
+	}
+	if clean != 6 {
+		t.Fatalf("the happy path must reach every producer, got %d", clean)
+	}
+	if warned == 0 {
+		t.Fatal("every failure mode aborts at the first producer and none of them said so")
+	}
+}

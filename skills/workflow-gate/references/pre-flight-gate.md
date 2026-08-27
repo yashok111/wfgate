@@ -8,8 +8,9 @@ Reviewers are **`model: 'opus'` — all three.** This is a deliberate policy cho
 paragraphs were written in — it is: open the WORKSPACE (-1) → open the ROUND (-1b) → gate the
 DECISIONS (1) → author the script → static check (0) → **dry-run the artifact set (2b)** → freeze the
 whole set (2) → hand reviewers the frozen paths (3) → and when the gate is done, BANK it (4). The dry-run comes BEFORE the freeze, reversed
-2026-08-22: a dry-run defect found after freezing invalidates a freeze that correctly refuses to
-re-freeze, which forced a whole round for a defect no reviewer ever saw (measured, P2e r12) — the
+2026-08-22: a dry-run defect found after freezing invalidates a freeze, and republishing it
+(`wf freeze -refreeze`) means reviewers handed the old tag read different bytes; before the flag
+existed it forced a whole round for a defect no reviewer ever saw (measured, P2e r12) — the
 dry-run reads the working copy, and the freeze exists to pin what REVIEWERS read, so it comes after
 the set executes clean. Each delta round repeats: collect the
 round's findings and record them with `wf round record` → bank the vectors that produced them with
@@ -47,6 +48,21 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    three layers of quoting — JSON in a heredoc in a shell — crashed on escaping more often than on
    substance). A marker collision (text containing an exact `====` line) mis-splits and then FAILS
    the plan loudly, because the mis-split old matches nothing.
+
+   **One replacement carrying the whole artifact is a legitimate shape for a RESTRUCTURE and it
+   forfeits every guarantee this command has.** All-or-nothing and the declared `count` are per
+   REPLACEMENT: a replacement whose `old` is the document has a count of one that always matches, so
+   the batch is "verified" and the many changes inside it are verified by nothing. Measured on the
+   gate that stopped instead of closing — eighteen of its sixty-eight batches were a single
+   replacement, the changes inside them were produced by a pipeline whose non-matching
+   `str.replace()` is a silent no-op, and a later round found 15 of one round's 30 recorded
+   closures byte-identical to their pre-fix text (a second lens confirmed 11), two of them the FOURTH claimed closure on one
+   unedited line. It cost three rounds. `wf apply` NOTES a replacement covering half a file or more
+   and says how many lines it rewrites; the note is not a refusal, because generating one minimal
+   block per change failed twice on uniqueness on that same gate. When you use the shape, byte-verify
+   each change against `git show HEAD:<artifact>` before recording a closure for it — an assertion
+   that a replacement MATCHED covers only the replacements somebody wrote, and a fix nobody wrote is
+   silent in exactly the same way.
 
    Each replacement also declares how many occurrences it expects, and **that `count` is scoped to ONE
    file**: it catches a rule you believed appeared once in an artifact and that appears there twice. It
@@ -105,11 +121,18 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    it dispatched no reviewer by declaration); a banked prompt is never rewritten, and
    `wf round lens` with no file prints the roster. It is also how a round whose vectors ran and found
    NOTHING says so: see the stop rule below, and the refusals in `wf freeze` and `wf close`.
+   `-asks` takes the SET however you write it — `closure,fix-induced,ripple`,
+   `closure+fix-induced+ripple`, or the flag repeated — because a delta round is required to ask all
+   three and one gate banked one vector per round and then hand-edited `Asks:` in the file,
+   twenty-two times, having been refused the natural spelling.
    `wf round record` prints a note when the round it just recorded banks no lens, because recording
    the findings is the step that feels like the work: measured on mocker A3, eleven of thirteen rounds
    banked none, and for rounds 1-10 the findings are in the ledger while the prompts that produced
    them are gone — so the claim that gate most wanted to make from its own numbers could not be
    checked against anything.
+
+   **The findings file is POSITIONAL** — `wf round record <file> [-round N]`, with `-` for stdin; there
+   is no `-file`, and an empty input is refused rather than recorded over a filled ledger.
 
    **The findings table is a validated ledger, not free text.** `wf round record` parses the scaffold's
    table before writing a byte: a `closed by` cell naming a commit that does not exist in the workspace
@@ -245,6 +268,16 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    when the anchored share falls against the previous freeze the note says so, because an author who
    stopped anchoring is writing citations the gate cannot really verify.
 
+   **Re-freezing is `wf freeze -refreeze`, and it is a RECORD rather than a hand `git tag -d`.**
+   Freezing stays one-way by default, for a measured reason: the manifest is read from the WORKTREE by
+   `wf verify`, so a freeze that silently rewrote it turned a MISMATCH into "clean". But the citation
+   resolution below runs nowhere else, so the command that surfaces a mis-aimed anchor is the command
+   an operator must run again after fixing one — every round of one gate deleted the tag by hand to do
+   it. With the flag the tag MOVES to the new commit and the manifest records how many freezes this
+   round has had and which commits they published, because somebody may have been handed the old tag
+   and read different bytes. It refuses when every artifact hashes the same against the same target
+   revision: a re-freeze republishes CHANGED bytes, and there is nothing to record otherwise.
+
    **It also records the corpus SIZE, in lines, with the delta against the previous freeze.** One
    number per round, and it answers a question no other number in the workspace does: a gate whose
    document went 332 to ~1050 lines over five rounds while its blockers ran 13, 17, 10, 16, 11 is a
@@ -341,7 +374,13 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `NOT A PASS` rather than "the same sentences" where a prompt contributed no sentence at all. A mode that completes having spawned NO agent FAILS: every stub check is
    then a guard over the empty set, and that is indistinguishable from a clean run — the one exception
    is `no-args` on a script that gates its body on `args`, which is correct behaviour and is noted
-   instead. **A `clean` run that returns a not-green verdict FAILS the mode**, and so does one that
+   instead. **ONE is not zero, so the counts are also read as a RATIO**: every mode's line carries the
+   `clean` mode's agent count beside its own, and a mode reaching fewer than half of it gets a WARN
+   naming both. Measured: a red-bar abort added to the first producer took six of seven modes from
+   18/25/25/25/15/25 agents to 18/1/1/1/1/1 — the fix round, the recheck, the acceptance step and the
+   final verdict exercised by nothing — and every mode still printed OK, so a reviewer banked "wfdry 7
+   of 7" over a layer covering a single agent. `throw-serial` is exempt because it aborts AT the first
+   spawn by construction. **A `clean` run that returns a not-green verdict FAILS the mode**, and so does one that
    returns a failure flag set: no fixture in that mode can produce either, so the script is deriving the
    verdict from something it should not. Measured — the shape it caught: a repair agent spawned only
    when acceptance FAILS, counted in the liveness ledger, so the one run everyone wants logged
@@ -735,7 +774,18 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   and its lenses are banked — a measured zero`. A `-kind tool` round is exempt, because its opening
   subject already records that no reviewer was dispatched; the OPEN round is exempt because its
   scaffold is blank by construction.
-  Mark such findings with
+  **And the number that decides whether to keep going is the share of a round's BLOCKERS that are
+  fix-induced, not the share of its findings.** `wf stats` prints it per round beside the marker
+  count (`fix-induced 16 (4 of 5 blocker(s))`), gives the gate total on its own line, and names
+  every round whose blockers are a MAJORITY self-inflicted. A descent of 9, 3, 5, 5 whose last round
+  is 4-of-5 its own predecessor's fix is a different object from the same digits arrived at
+  honestly, and the stop rule reads the digits: the count goes flat exactly when the fix rate starts
+  matching the introduction rate, which from outside looks like a gate holding steady against the
+  artifact. Measured across the corpus — 100 of 177 blockers on the gate that stopped instead of
+  closing (11 of its 22 rounds a majority), 22 of 79 and 12 of 28 on two others, and one gate with no
+  markers at all, which prints as unmeasured rather than as zero. Read it beside the SUBJECT question
+  in `gate-checks.md` section 0: would a fleet build the wrong thing, or merely be told something
+  stale about a file it is about to read anyway. Mark such findings with
   a literal `[fix-induced]` in the finding text — `wf stats` counts the marker per round and in total,
   and prints "not measured" when nobody marked, because an unmarked corpus is a different claim from
   "no self-inflicted findings". It also names, BY ROUND NUMBER, the rounds it could not measure: the

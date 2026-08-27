@@ -153,6 +153,19 @@ func (r Repo) Tag(name, msg string) error {
 	return err
 }
 
+// RetagTo moves an existing annotated tag. It is the ONE place a tag stops
+// meaning what it meant, so it is a named operation rather than a `-f` flag
+// somewhere: `wf freeze -refreeze` is the only caller, and what it publishes is
+// recorded in the freeze manifest it writes in the same breath.
+func (r Repo) RetagTo(name, msg string) error {
+	// `-f`, not delete-then-create: one ref update. Deleting first leaves the
+	// round UNTAGGED if the create then fails, and the freeze manifest — which
+	// records the supersession — has already been committed by that point, so
+	// the recovery run would take the first-freeze path and lose the record.
+	_, err := r.Run("tag", "-f", "-a", name, "-m", msg)
+	return err
+}
+
 func (r Repo) TagExists(name string) bool {
 	_, err := r.Run("rev-parse", "--verify", "-q", "refs/tags/"+name)
 	return err == nil

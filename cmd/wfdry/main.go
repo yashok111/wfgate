@@ -74,6 +74,13 @@ modes: %s
 		os.Exit(2)
 	}
 	failed := 0
+	// The happy path's agent count, or -1 when this run did not include it.
+	clean := -1
+	for _, r := range results {
+		if r.Mode == "clean" {
+			clean = r.Spawned
+		}
+	}
 	for _, r := range results {
 		// WHICH labels the mode stubbed dead, always and next to the header —
 		// this is the mode's own claim about what it exercised, not detail.
@@ -105,7 +112,15 @@ modes: %s
 				fmt.Println("  " + v)
 			}
 		default:
-			fmt.Printf("\n=== %s: OK — %d agents, %d phases ===\n", r.Mode, r.Spawned, len(r.Phases))
+			// The happy path's count beside every other mode's, in the line the
+			// operator reads. A mode that reached one agent of twenty-five
+			// printed `OK — 1 agents, 1 phases` and nothing to compare it
+			// with, seven times over, for a whole gate round.
+			against := ""
+			if clean >= 0 && r.Mode != "clean" {
+				against = fmt.Sprintf(" (clean: %d agents)", clean)
+			}
+			fmt.Printf("\n=== %s: OK — %d agents, %d phases%s ===\n", r.Mode, r.Spawned, len(r.Phases), against)
 			killed()
 			if !*quiet {
 				fmt.Println("  phases:", orNone(strings.Join(r.Phases, " | ")))

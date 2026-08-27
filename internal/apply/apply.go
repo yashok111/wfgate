@@ -52,6 +52,23 @@ type Result struct {
 	Got    int
 	OK     bool
 	Reason string
+
+	// What the edit was measured against, so the caller can say how much of
+	// the file ONE replacement covers. Both guarantees this command exists for
+	// — all-or-nothing and the declared `count` — are per REPLACEMENT, so a
+	// replacement carrying the whole artifact makes both of them vacuous: its
+	// count is 1 and always matches, and the many changes inside it are
+	// verified by nothing. Measured on a gate that rewrote its artifact this
+	// way round after round: one lens found 15 of a round's 30 recorded
+	// closures byte-identical to their pre-fix text, a second confirmed 11, and
+	// two of them were the FOURTH claimed closure on one unedited line.
+	Span      int // bytes of Old
+	FileBytes int // bytes of the buffer this edit matched against
+	// Lines of Old that do not appear in New, as a multiset. NOT a hunk count
+	// and it does not claim to be one: it is how many lines this single
+	// replacement rewrites, which is the number of separate fixes it can be
+	// hiding.
+	Rewritten int
 }
 
 var ErrRejected = errors.New("batch rejected: no file was written")
@@ -99,6 +116,7 @@ func Plan(root string, edits []Edit) ([]Result, map[string][]byte, error) {
 		body := string(bufs[key])
 		got := strings.Count(body, e.Old)
 		r.Got = got
+		r.Span, r.FileBytes, r.Rewritten = len(e.Old), len(body), rewrittenLines(e.Old, e.New)
 		switch {
 		case got == 0:
 			r.Reason = "no match"
@@ -239,4 +257,26 @@ func SafeJoin(root, rel string) (abs, key string, err error) {
 		return "", "", fmt.Errorf("%s: escapes the workspace", rel)
 	}
 	return abs, key, nil
+}
+
+// rewrittenLines counts the lines of old that do not appear in new, comparing
+// them as MULTISETS rather than by position: a replacement that moves a
+// paragraph and rewrites two sentences inside it rewrites two lines, not the
+// whole paragraph. It is deliberately not a diff — the number is used to say
+// how many separate changes ONE replacement can be carrying, and for that a
+// count of lines that stopped existing is both cheap and exact.
+func rewrittenLines(old, new string) int {
+	have := map[string]int{}
+	for _, l := range strings.Split(new, "\n") {
+		have[l]++
+	}
+	n := 0
+	for _, l := range strings.Split(old, "\n") {
+		if have[l] > 0 {
+			have[l]--
+			continue
+		}
+		n++
+	}
+	return n
 }

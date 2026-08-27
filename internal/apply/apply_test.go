@@ -254,3 +254,26 @@ func TestSafeJoin_absoluteRefused(t *testing.T) {
 		t.Fatal("an escaping path must be refused")
 	}
 }
+
+// How many lines ONE replacement rewrites is what says how many separate fixes
+// it can be hiding — the number beside the whole-artifact note. Lines are
+// compared as MULTISETS: a replacement that moves a paragraph and rewrites two
+// sentences inside it rewrites two lines, not the paragraph.
+func TestRewrittenLines(t *testing.T) {
+	cases := []struct {
+		name     string
+		old, new string
+		want     int
+	}{
+		{"one line changed", "a\nb\nc\n", "a\nB\nc\n", 1},
+		{"three scattered", "a\nb\nc\nd\n", "A\nb\nC\nD\n", 3},
+		{"moved, not rewritten", "a\nb\nc\n", "c\nb\na\n", 0},
+		{"pure deletion", "a\nb\nc\n", "a\nc\n", 1},
+		{"identical", "a\nb\n", "a\nb\n", 0},
+	}
+	for _, c := range cases {
+		if got := rewrittenLines(c.old, c.new); got != c.want {
+			t.Errorf("%s: rewrittenLines = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
