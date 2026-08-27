@@ -5,7 +5,7 @@ PKGS := ./cmd/... ./internal/...
 # like a run against the new one; freeze.json records this value.
 VERSION := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 
-.PHONY: build test lint fmt install clean check-tools
+.PHONY: build test lint fmt install clean check-tools check-docs
 
 build:
 	@for b in $(BINS); do \
@@ -116,6 +116,40 @@ check-tools: build
 		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \
 		&& { echo "authoring hook: fired TWICE in one session — repeated, it stops being read"; rm -rf $$d; exit 1; } \
 		|| { echo "authoring hook: once per session"; rm -rf $$d; }
+
+# The repository's own manual is a gate corpus like any other, and the two
+# checks that read prose had never been run over it. Measured 2026-08-27 over
+# the shipped set (README + SKILL + the six references): `wf check rules`
+# reported 2 conflict(s) — [R2] and [R3] marked on POINTERS inside one README
+# command cell, which is the class the ninth wave banked a rule against,
+# standing in the manual that ships the check. The rules half is a BAR because
+# its population is small and every conflict it has ever printed here was real.
+# The dup half is printed as a POPULATION and never fails: a reference quoting
+# a rule verbatim is not drift, and a bar that fails on that is `dup`'s own
+# 161-groups-of-176 lesson repeated.
+#
+# Two assertions guard the rig itself. An empty artifact set makes `wf check
+# rules` refuse, but an artifact set that carries no markers exits ZERO under a
+# header reading "NOT A PASS, nothing was compared" — so a copy step that
+# silently narrowed the corpus would read as a green bar. The file count is
+# compared against the source list for the same reason: a reference renamed out
+# of the glob takes its rules with it and nothing else would say so.
+check-docs: build
+	@src="README.md skills/workflow-gate/SKILL.md $$(ls skills/workflow-gate/references/*.md)"; \
+	want=$$(echo $$src | wc -w); \
+	d=$$(mktemp -d); \
+	( cd $$d && $(CURDIR)/wf init docs -target $(CURDIR) >/dev/null ) || { echo "check-docs: could not build the scratch workspace"; rm -rf $$d; exit 1; }; \
+	cp $$src $$d/docs/artifacts/ || { echo "check-docs: could not stage the manual"; rm -rf $$d; exit 1; }; \
+	got=$$(ls -1 $$d/docs/artifacts/*.md 2>/dev/null | wc -l); \
+	[ "$$got" = "$$want" ] || { echo "check-docs: staged $$got of $$want document(s) — the corpus is not the manual"; rm -rf $$d; exit 1; }; \
+	( cd $$d/docs && $(CURDIR)/wf add artifacts/*.md >/dev/null ) || { echo "check-docs: could not commit the corpus"; rm -rf $$d; exit 1; }; \
+	out=$$(cd $$d/docs && $(CURDIR)/wf check rules 2>&1); rc=$$?; \
+	echo "$$out" | head -1; \
+	case "$$out" in *"NOT A PASS"*) echo "check-docs: the rules check compared NOTHING — an absent measurement, not a pass"; rm -rf $$d; exit 1;; esac; \
+	[ $$rc = 0 ] || { echo "$$out"; echo "check-docs: the shipped manual disagrees with itself — see the sites above"; rm -rf $$d; exit 1; }; \
+	( cd $$d/docs && $(CURDIR)/wf check dup 2>&1 | head -1 ); \
+	echo "check-docs: the manual agrees with itself across $$want document(s)"; \
+	rm -rf $$d
 
 clean:
 	rm -f $(BINS)

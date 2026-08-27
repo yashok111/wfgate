@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -368,5 +369,57 @@ func TestCloseRefusesAnUnreadableRound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "prune would delete the original") {
 		t.Fatalf("the refusal must name the consequence: %v", err)
+	}
+}
+
+// A field added to freezeManifest and not to the banked table is invisible:
+// the reading is now the manifest's own type, so the compiler covers THAT half,
+// but the TSV projection is written by hand and is meant to be — `artifacts`
+// and `target` are dropped on purpose. That is exactly how the re-freeze count
+// was lost for a release. So the projection is a DECLARED one: every manifest
+// field is either a column or named here as dropped, and adding a field without
+// deciding which fails this test rather than the next gate's pruned record.
+func TestTheBankedTableDeclaresEveryManifestField(t *testing.T) {
+	// Dropped deliberately: per-artifact hashes stop meaning anything once
+	// `wf prune` removes the artifacts, and the target path is the one thing
+	// a record about THIS workspace does not need to restate.
+	dropped := map[string]bool{"artifacts": true, "target": true}
+
+	rt := reflect.TypeOf(freezeManifest{})
+	want := map[string]bool{}
+	for i := 0; i < rt.NumField(); i++ {
+		name, _, _ := strings.Cut(rt.Field(i).Tag.Get("json"), ",")
+		if name == "" || dropped[name] {
+			continue
+		}
+		want[name] = true
+	}
+
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "close"); err != nil {
+		t.Fatal(err)
+	}
+	fz, err := os.ReadFile(filepath.Join(wsDir, closeDir, "freezes.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := strings.Split(strings.SplitN(strings.TrimSpace(string(fz)), "\n", 2)[0], "\t")
+	got := map[string]bool{}
+	for _, c := range header {
+		got[c] = true
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("freezeManifest.%s reaches no column of freezes.tsv and is not declared dropped — the pruned record would lose it silently", name)
+		}
+	}
+	for _, c := range header {
+		if !want[c] {
+			t.Errorf("freezes.tsv column %q matches no freezeManifest field — the table promises something the manifest does not hold", c)
+		}
 	}
 }

@@ -190,18 +190,14 @@ func cmdClose(args []string) error {
 		if err != nil {
 			continue
 		}
-		var m struct {
-			Round         int      `json:"round"`
-			Commit        string   `json:"commit"`
-			TargetRef     string   `json:"targetRef"`
-			Tool          string   `json:"tool"`
-			Frozen        string   `json:"frozen"`
-			CiteAnchored  int      `json:"citeAnchored"`
-			CiteTotal     int      `json:"citeTotal"`
-			ArtifactLines int      `json:"artifactLines"`
-			Refreezes     int      `json:"refreezes"`
-			Supersedes    []string `json:"supersedes"`
-		}
+		// The manifest is read through its OWN type, never a hand copy of it.
+		// This block used to retype ten of its fields inline, and the wave that
+		// added `refreezes`/`supersedes` to freezeManifest did not touch it: an
+		// anonymous struct compiles fine with a field missing, so the record
+		// that SURVIVES `wf prune` lost the count for a release. What the TSV
+		// drops stays an explicit projection below — `artifacts` and `target`
+		// are left out on purpose — but the reading is one decision.
+		var m freezeManifest
 		if json.Unmarshal(b, &m) != nil {
 			continue
 		}

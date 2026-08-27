@@ -1367,10 +1367,26 @@ make test        # go test ./cmd/... ./internal/... -race -count=1
 make lint        # go vet + gofmt (+ golangci-lint when installed)
 make build       # ./wf ./wfcheck ./wfdry with the version stamp (-ldflags)
 make check-tools # the BUILT binaries against the banked fixtures (meta-guard must FAIL)
+make check-docs  # `wf check rules` over the shipped manual — it is a gate corpus too
 ```
 
 `make test` counting `ok` lines is not a green bar — one package can fail while
 the count looks right. Read the FAIL lines.
+
+`make check-docs` stages README, SKILL.md and the six references into a scratch
+workspace and runs the two checks that read prose over them. It exists because
+the checks that gate other people's artifacts had never been run over this
+repository's own, and on their first run they were RED: `wf check rules`
+reported 2 conflicts — `[R2]` and `[R3]` marked on POINTERS inside one README
+command cell, which is the class the ninth wave banked a rule against, standing
+in the manual that ships the check. The rules half is a bar; the `dup` half is
+printed as a population and never fails, because a reference quoting a rule
+verbatim is not drift and a bar that failed on that would be `dup`'s own
+161-groups-of-176 lesson repeated. Two assertions guard the rig: an artifact set
+carrying no markers exits ZERO under a header reading "NOT A PASS, nothing was
+compared", so a copy step that silently narrowed the corpus would read as green,
+and the staged file count is compared against the source list because a
+reference renamed out of the glob takes its rules with it.
 
 After any code change — `make install` (`~/.local/bin/wf`): the documents
 prescribe `wf ...` commands, and a run against the stale binary looks exactly

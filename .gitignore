@@ -4,3 +4,7 @@
 /wfdry
 
 .check-skel/
+
+# `wfcheck --freeze` copies the script under .wf/gate/ in the CURRENT directory;
+# a run from this repo would otherwise leave the copy in `git status`.
+.wf/
