@@ -46,6 +46,18 @@ var Modes = []string{
 	"no-args",      // the script runs with no `args` — see Options.Args
 }
 
+// passFixture says whether a mode's stubbed agents report SUCCESS. It is not a
+// synonym for `clean`: `dead-reviews` must isolate ONE variable — the reviewers
+// returned nothing — and the failing fixture destroyed it, because every
+// surviving agent then reported failure too and the run came back not-green
+// whatever the script did with the deaths. Measured 2026-08-27 over the five
+// correct scripts on disk (the emitted template, p2f, p3a, p3b, a3): the
+// shipped mode returned `green: false` on all five AND on a script that filters
+// its dead reviewers out of the verdict, so it separated nothing. Under the
+// passing fixture the same five still return `green: false` — the deaths alone
+// carry it — and the defective one returns `green: true`.
+func passFixture(mode string) bool { return mode == "clean" || mode == "dead-reviews" }
+
 // Options configure one run.
 type Options struct {
 	Dead    []string      // labels whose spawn returns null
@@ -511,23 +523,45 @@ func runMode(src, mode string, o Options) Result {
 	// acceptance failed in all seven and repair was therefore always spawned;
 	// the defect was found by an opus reviewer hand-executing the script's tail
 	// with green values. That is the technique this check makes unnecessary.
-	if mode == "clean" && r.ReturnOK {
-		m, _ := r.Return.(map[string]any)
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			b, isBool := m[k].(bool)
-			if !isBool {
-				continue
-			}
+	//
+	// A kill is a failure the fixture DID produce, so the guard's premise —
+	// nothing failed — is false the moment `--dead` names a label that spawned.
+	// Without this, `--mode clean --dead <a reviewer>` reported the correct
+	// verdict as a violation on every one of the five correct scripts on disk.
+	if mode == "clean" && r.ReturnOK && len(r.Killed) == 0 {
+		for _, k := range verdictKeys(r.Return) {
+			b, _ := r.Return.(map[string]any)[k].(bool)
 			switch {
 			case passBools.MatchString(k) && !b:
 				r.Violations = append(r.Violations, "clean: the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
 			case failVerdicts.MatchString(k) && b:
 				r.Violations = append(r.Violations, "clean: the run returned `"+k+": true` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
+			}
+		}
+	}
+	// The same statement from the other side, and the whole point of the mode.
+	// Every agent that survived reported SUCCESS — that is what the passing
+	// fixture buys — so the ONLY thing wrong with this run is that the reviewers
+	// returned nothing. A verdict that still reads as success is a script whose
+	// green does not depend on its gates having run, which is the one defect a
+	// fan-out cannot survive: the run reports OK and nobody reviewed anything.
+	// Measured before it was written: the shipped mode returned `green: false`
+	// on five correct scripts AND on a script filtering its dead reviewers out
+	// of the verdict, so it discriminated nothing; under this fixture the five
+	// still return false and the defective one returns true.
+	//
+	// `len(r.Killed) > 0` is the arming condition, and it is a DIFFERENT field
+	// from the verdict this constrains: a producer-only script has no reviewer
+	// label, kills nobody, and is correct to come back green — the note below
+	// already says that run proved nothing.
+	if mode == "dead-reviews" && r.ReturnOK && len(r.Killed) > 0 {
+		for _, k := range verdictKeys(r.Return) {
+			b, _ := r.Return.(map[string]any)[k].(bool)
+			switch {
+			case passBools.MatchString(k) && b:
+				r.Violations = append(r.Violations, "dead-reviews: the run returned `"+k+": true` while "+plural(len(r.Killed), "agent")+" it spawned returned NOTHING ("+strings.Join(r.Killed, ", ")+") — every other agent reported success, so this verdict does not depend on those agents having run")
+			case failVerdicts.MatchString(k) && !b:
+				r.Violations = append(r.Violations, "dead-reviews: the run returned `"+k+": false` while "+plural(len(r.Killed), "agent")+" it spawned returned NOTHING ("+strings.Join(r.Killed, ", ")+") — every other agent reported success, so this verdict does not depend on those agents having run")
 			}
 		}
 	}
@@ -601,6 +635,27 @@ func or(a, b string) string {
 		return b
 	}
 	return a
+}
+
+// verdictKeys is the run's boolean report fields in a stable order, so two
+// guards reading the same verdict cannot disagree about which fields they saw.
+func verdictKeys(ret any) []string {
+	m, _ := ret.(map[string]any)
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		if _, isBool := m[k].(bool); isBool {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, word)
+	}
+	return fmt.Sprintf("%d %ss", n, word)
 }
 
 // reviewish decides whether `dead-reviews` kills a label. It reads the label's
@@ -813,7 +868,7 @@ func enumReads(member string, words []string) bool {
 // not have walked it.
 func pickEnum(name string, members []string, mode string, idx int, rec map[string]int) string {
 	words := enumFailWords
-	if mode == "clean" {
+	if passFixture(mode) {
 		words = enumPassWords
 	}
 	// Item 1 of a report array takes the opposite vocabulary, so one array
@@ -821,7 +876,7 @@ func pickEnum(name string, members []string, mode string, idx int, rec map[strin
 	// filter run. Item 0 keeps the mode's meaning, so every existing verdict
 	// still reads the way its mode intends.
 	if idx > 0 {
-		if mode == "clean" {
+		if passFixture(mode) {
 			words = enumFailWords
 		} else {
 			words = enumPassWords
@@ -894,7 +949,7 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int, rec m
 	low := strings.ToLower(name)
 	n := 1
 	if failArrays[low] || failArrayRe.MatchString(low) {
-		if mode == "clean" {
+		if passFixture(mode) {
 			n = 0
 		}
 	}
@@ -917,7 +972,7 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int, rec m
 	// non-blocking bucket was empty in every failing mode, so the line that
 	// collects it was executed by NO mode at all and its deletion passed every
 	// bar. The clean mode keeps one benign item: a clean run must stay green.
-	if n == 1 && mode != "clean" && (failArrays[low] || failArrayRe.MatchString(low)) {
+	if n == 1 && !passFixture(mode) && (failArrays[low] || failArrayRe.MatchString(low)) {
 		n = 2
 	}
 	items, _ := v["items"].(map[string]any)
@@ -988,7 +1043,7 @@ func value(name string, v map[string]any, mode, label string, depth, idx int, re
 			return mode != "acceptfail"
 		}
 		if failBools.MatchString(name) {
-			return mode != "clean"
+			return !passFixture(mode)
 		}
 		// An unrecognised boolean defaults to FALSE in every mode, not to "true
 		// in clean": a script branching on `if (r.blocking)` was pushed onto its

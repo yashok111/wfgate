@@ -65,6 +65,9 @@ check-tools: build
 	@if ./wfcheck -root . testdata/own-forbid.mjs >/dev/null 2>&1; then \
 		echo "wfcheck own-forbid fixture: LOST a dual-ownership ERROR beside a forbidding phrase"; exit 1; \
 	else echo "wfcheck own-forbid fixture: reports the collision as it must"; fi
+	@if ./wfdry testdata/dead-reviews-green.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry dead-reviews fixture: EXIT 0 over a run that reviewed NOTHING and called itself green"; exit 1; \
+	else echo "wfdry dead-reviews fixture: fails as it must"; fi
 	@if ./wfdry testdata/collapse.mjs --quiet >/dev/null 2>&1; then \
 		echo "wfdry collapse fixture: EXIT 0 over modes that reached a sixth of the script"; exit 1; \
 	else echo "wfdry collapse fixture: fails as it must"; fi

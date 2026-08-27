@@ -1290,6 +1290,77 @@ printing without a word about it:
   were correct closures") and caught before it landed; the sample is stated as
   what it is.
 
+**The fourteenth wave — the five-vector brainstorm, and the mode that
+discriminated nothing** (2026-08-27; five Opus vectors over the whole repository
+— runtime performance, the round-count cost function, the two script-gate tools,
+the delivery layer, and the architecture — with every proposal measured on the
+six gate workspaces on disk before a line was written). The most useful result
+of the whole sweep is a negative one and it closes a standing hypothesis:
+**nothing in this tool is slow anywhere that matters.** The slowest command over
+the largest corpus is `wf stats` at 2.1 s, the whole per-round sequence is 5.3 s
+against a median round of 29.4 min (0.30%), the seven-mode `wfdry` run is
+0.04-0.5 s on scripts of 769-2658 lines, and `check dup` is NOT quadratic —
+12.5x the bytes cost 13.8x the collect time, so the inverted index does its job.
+Nobody skips a check here because it is slow, and the attention budget belongs
+entirely to what the reports SAY. Items landed so far:
+
+- *The repository's own manual had never been run through the checks it ships,
+  and on the first run it was RED* — `wf check rules` over README, SKILL.md and
+  the six references reported `11 marker(s), 3 id(s), 3 compared, 2
+  conflict(s)`: `[R2]` and `[R3]` marked on POINTERS inside one README command
+  cell, which is the class the ninth wave banked a rule against, standing in the
+  manual that ships the check. `make check-docs` is that corpus as a bar. The
+  rules half FAILS the build; the `dup` half is a printed population that never
+  does, because a reference quoting a rule verbatim is not drift and a bar
+  failing on that is `dup`'s own 161-of-176 lesson repeated (measured: 1466
+  statements, 27 cross-file groups, 0 divergent). Two assertions guard the rig
+  itself, because an artifact set carrying no markers exits ZERO under a header
+  reading "NOT A PASS, nothing was compared" — a copy step that silently
+  narrowed the corpus would read as a green bar — and the staged file count is
+  compared against the source list, since a reference renamed out of the glob
+  takes its rules with it.
+- *`freezeManifest` was declared TWICE in one package* — the named type, and an
+  anonymous struct in `close.go` retyping ten of its fields by hand. The wave
+  that added `refreezes`/`supersedes` did not touch that file, and an anonymous
+  struct compiles fine with a field missing, so the record that SURVIVES `wf
+  prune` lost the count until the review round one commit later; a pruned
+  workspace on disk still carries a seven-column `freezes.tsv` and has no `.git`
+  to re-derive it from. The reading is the manifest's own type now. What the
+  compiler still cannot see is a NEW field reaching no column, so the projection
+  is DECLARED: every field is either a column or named as dropped (`artifacts`
+  and `target` are dropped on purpose), and a test fails in both directions.
+- *`wfdry --mode dead-reviews` discriminated NOTHING, because its fixture
+  destroyed the variable it exists to isolate* — the mode kills the reviewers,
+  and it also ran the FAILING fixture, so every SURVIVING agent reported failure
+  too and the run came back not-green whatever the script did with the deaths.
+  Measured over the five correct scripts on disk (the emitted template, p2f,
+  p3a, p3b, a3) and one carrying the defect: `green: false` on all six. Under
+  the PASSING fixture the five still return false — the deaths alone carry it —
+  and the defective one returns true. So the mode runs the passing fixture and a
+  verdict that still reads as success over an agent that returned nothing is a
+  VIOLATION, not a note: a WARN would leave `7/7 modes completed` and exit 0
+  standing over a run where nothing reviewed anything, which is the one defect a
+  fan-out cannot survive. The arming condition is the KILL LIST, a different
+  field from the verdict it constrains — the rule a gate banked after four
+  instances of the opposite in one script — so a producer-only script that kills
+  nobody keeps its existing note and is not accused of ignoring deaths it never
+  had. Three things fell out of the change, all measured rather than reasoned:
+  the `clean` mode's verdict guard reads "no fixture in this mode can produce
+  that verdict" and a `--dead` label that spawned IS such a fixture, so it stood
+  down where one was killed — without that, `--mode clean --dead <a reviewer>`
+  reported the CORRECT verdict as a violation on all five correct scripts;
+  `collapse.mjs` no longer collapses under `dead-reviews`, correctly, because
+  the mode is not a failure mode any more, and the three that are still catch it;
+  and `testdata/clean.mjs`, the model of a conforming script, returned `done:
+  true` unconditionally, so the new guard caught the canonical fixture first —
+  `done` is derived from the dead list now. The banked shape is
+  `testdata/dead-reviews-green.mjs`, whose verdict is a CONJUNCTION, which is
+  why the class survived: the failing fixture falsified a DIFFERENT conjunct and
+  the mode looked like it was working. It passed the pre-fix runner 7/7 at exit
+  0. One mutation survived the first sweep — the guard's fail-verdict half, `{
+  failed: false }` being the same claim as `{ green: true }` — and it was given
+  the case it lacked rather than shipped unproven.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file

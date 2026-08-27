@@ -460,6 +460,24 @@ FAILS the run: every guard behind it ran over the empty set, and unlike the
 mode's own matcher, the operator typed that label. The mode's zero-kill stays a
 note — a producer-only script has no reviewer label and is correct.
 
+**`dead-reviews` runs the PASSING fixture, and a verdict that still reads as
+success over an agent that returned nothing is a VIOLATION.** The mode exists to
+isolate one variable — the reviewers reported nothing — and the failing fixture
+destroyed it: every SURVIVING agent then reported failure too, so the run came
+back not-green whatever the script did with the deaths. Measured 2026-08-27 over
+the five correct scripts on disk and one carrying the defect: the mode returned
+`green: false` on all six and separated nothing. Under the passing fixture the
+five still return false — the deaths alone carry it — and the defective one
+returns true and is refused by name. The arming condition is the KILL LIST, a
+different field from the verdict it constrains, so a producer-only script that
+kills nobody is not accused of ignoring deaths it never had. The banked shape is
+`testdata/dead-reviews-green.mjs`: the emitted harness with two edits a live
+operator plausibly makes — the reviewer relabelled off the segment the mode
+matches, and a comment-justified filter dropping dead REVIEWERS from the green
+computation. It passed seven modes. Where a label was killed, the `clean` mode's
+own verdict guard stands down: it reads "no fixture in this mode can produce
+that verdict", and a killed agent is exactly such a fixture.
+
 **Every mode's line carries the `clean` mode's agent count beside its own, and a
 mode reaching fewer than half of it FAILS.** `gate-checks.md` §E already
 said a mode that spawns NOTHING fails, and one is not zero: measured on the gate

@@ -363,7 +363,11 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    mode PRINTS the labels it killed. Measured: it once matched `review` inside `preview`, killed a
    producer, ended the run at section five and still reported OK over a seventh of the agents it
    exists to exercise, without killing a single gate reviewer. Read the `killed:` line; a mode
-   silently exercising something else is the vacuous guard this runner is against. Killing a named
+   silently exercising something else is the vacuous guard this runner is against. The mode runs the
+   PASSING fixture, so the ONLY thing wrong with its run is that those agents returned nothing: a
+   verdict that still reads as success is refused by name. Measured over five correct scripts and one
+   carrying the defect, the failing fixture returned `green: false` on all six and separated nothing,
+   because every surviving agent reported failure too. Killing a named
    agent is not a mode: `--dead <label>[,<label>…]`
    kills those labels in every one of the seven, and a label that spawned in NO mode FAILS the run —
    every guard behind it ran over the empty set, and the operator typed that label; `--args <json>` replaces what the six args-carrying

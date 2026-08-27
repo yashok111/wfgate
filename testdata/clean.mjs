@@ -5,4 +5,8 @@ export const meta = { name: 'fixture-clean', description: 'wfdry fixture: a mini
 const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
 phase('P')
 const r = await spawn('do the thing', { model: 'sonnet', effort: 'low', label: 'worker', schema: { type: 'object', properties: { blockers: { type: 'array' } } } })
-return { done: true, dead: r ? [] : ['worker'] }
+const dead = r ? [] : ['worker']
+// `done` is DERIVED from the dead list. It used to be the literal `true`, which
+// made the model of a conforming script report success over a run whose only
+// agent returned nothing.
+return { done: dead.length === 0, dead }

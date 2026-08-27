@@ -858,9 +858,13 @@ func TestCollapseFixtureEmptiesTheFailureModes(t *testing.T) {
 	if clean != 6 {
 		t.Fatalf("the happy path must reach every producer, got %d", clean)
 	}
-	// blockers, acceptfail, unfixed and dead-reviews. `throw-serial` and
-	// `no-args` are exempt, and `clean` is the baseline.
-	if collapsed != 4 {
+	// blockers, acceptfail and unfixed — the three modes whose stubbed agents
+	// report FAILURE, which is what this fixture collapses on. `dead-reviews`
+	// is not among them any more: it runs the PASSING fixture so that the only
+	// thing wrong with the run is the reviewers returning nothing, and it
+	// therefore reaches the happy path's width here, correctly. `throw-serial`
+	// and `no-args` are exempt, and `clean` is the baseline.
+	if collapsed != 3 {
 		t.Fatalf("want every failure mode named, got %d", collapsed)
 	}
 	// And the run must FAIL: a WARN leaves `7/7 modes completed` and exit 0
@@ -870,4 +874,151 @@ func TestCollapseFixtureEmptiesTheFailureModes(t *testing.T) {
 			t.Fatal("a mode that exercised a sixth of the script must not report OK")
 		}
 	}
+}
+
+// `dead-reviews` isolates ONE variable: the reviewers returned nothing. The
+// failing fixture destroyed it — every SURVIVING agent then reported failure
+// too, so the run came back not-green whatever the script did with the deaths.
+// Measured over the five correct scripts on disk plus a script that filters its
+// dead reviewers out of the verdict: the shipped mode returned `green: false`
+// on all six and separated nothing.
+func TestDeadReviewsRunsThePassingFixture(t *testing.T) {
+	// One field per fixture axis the runner has: a declared enum, a failure
+	// boolean, and a failure array. `ok` is deliberately absent — it is a PASS
+	// boolean, which only `acceptfail` moves, so it would assert nothing here.
+	body := preamble + `phase('P')
+const V = { type: 'object', properties: { verdict: { type: 'string', enum: ['pass', 'blockers'] }, blocked: { type: 'boolean' }, defects: { type: 'array' } } }
+const w = await spawn('work', { model: 'sonnet', effort: 'low', label: 'worker', phase: 'P', schema: V })
+return { seen: w.verdict, blocked: w.blocked, defects: w.defects.length, green: false }
+`
+	rs, err := Run(script(t, body), []string{"clean", "dead-reviews", "blockers"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]map[string]any{}
+	for _, r := range rs {
+		m, _ := r.Return.(map[string]any)
+		got[r.Mode] = m
+	}
+	// The surviving agent must report exactly what it reports on the happy path.
+	for _, k := range []string{"seen", "blocked", "defects"} {
+		if got["dead-reviews"][k] != got["clean"][k] {
+			t.Errorf("%s: dead-reviews saw %v, clean saw %v — the mode is not isolating the deaths", k, got["dead-reviews"][k], got["clean"][k])
+		}
+		if got["blockers"][k] == got["clean"][k] {
+			t.Errorf("%s: the failing fixture must still differ from the passing one, both %v", k, got["clean"][k])
+		}
+	}
+}
+
+// The mode's whole point. A verdict that still reads as success while the agents
+// it spawned returned nothing is a script whose green does not depend on its
+// gates having run.
+func TestDeadReviewsRefusesAGreenVerdictOverDeadAgents(t *testing.T) {
+	body := preamble + `phase('P')
+const w = await spawn('work', { model: 'sonnet', effort: 'low', label: 'worker', phase: 'P', schema: S })
+const r = await spawn('review', { model: 'sonnet', effort: 'high', label: 'review:x', phase: 'P', schema: S })
+return { green: true, dead: r ? [] : ['review:x'] }
+`
+	rs, err := Run(script(t, body), []string{"dead-reviews"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs[0].Killed) == 0 {
+		t.Fatal("the mode killed nobody, so this asserts nothing")
+	}
+	if !strings.Contains(strings.Join(rs[0].Violations, " "), "does not depend on those agents having run") {
+		t.Fatalf("a green verdict over dead agents must be a violation, got %v", rs[0].Violations)
+	}
+	if rs[0].OK() {
+		t.Fatal("and the mode must FAIL — a WARN leaves 7/7 and exit 0 standing")
+	}
+}
+
+// The same claim in the other vocabulary. A script whose verdict field is named
+// for the failure rather than the success says exactly as much by returning
+// `failed: false` over dead agents, and the two halves of this guard are
+// separately deletable — this one survived the sweep until it had its own case.
+func TestDeadReviewsRefusesAFailedFalseOverDeadAgents(t *testing.T) {
+	body := preamble + `phase('P')
+const w = await spawn('work', { model: 'sonnet', effort: 'low', label: 'worker', phase: 'P', schema: S })
+const r = await spawn('review', { model: 'sonnet', effort: 'high', label: 'review:x', phase: 'P', schema: S })
+return { failed: false, dead: r ? [] : ['review:x'] }
+`
+	rs, err := Run(script(t, body), []string{"dead-reviews"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs[0].Killed) == 0 {
+		t.Fatal("the mode killed nobody, so this asserts nothing")
+	}
+	if !strings.Contains(strings.Join(rs[0].Violations, " "), "`failed: false`") {
+		t.Fatalf("a not-failed verdict over dead agents must be a violation, got %v", rs[0].Violations)
+	}
+}
+
+// A producer-only script kills nobody and is CORRECT to come back green. The
+// arming condition is a different field from the verdict it constrains, which
+// is the rule a gate banked after four instances of the opposite in one script.
+func TestDeadReviewsIsSilentWhenItKilledNobody(t *testing.T) {
+	body := preamble + `phase('P')
+const w = await spawn('work', { model: 'sonnet', effort: 'low', label: 'producer', phase: 'P', schema: S })
+return { green: true, dead: w ? [] : ['producer'] }
+`
+	rs, err := Run(script(t, body), []string{"dead-reviews"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs[0].Killed) != 0 {
+		t.Fatalf("this script has no reviewer label, got %v", rs[0].Killed)
+	}
+	for _, v := range rs[0].Violations {
+		if strings.Contains(v, "dead-reviews:") {
+			t.Fatalf("a script with nothing to kill must not be accused of ignoring the deaths: %s", v)
+		}
+	}
+}
+
+// The `clean` verdict guard reads "no fixture in this mode can produce that
+// verdict". A `--dead` label that spawned IS such a fixture, so the premise is
+// false the moment one is named — and without this the correct verdict was
+// reported as a violation on every correct script tried.
+func TestCleanVerdictGuardStandsDownWhenALabelWasKilled(t *testing.T) {
+	body := preamble + `phase('P')
+const w = await spawn('work', { model: 'sonnet', effort: 'low', label: 'worker', phase: 'P', schema: S })
+return { green: !!w }
+`
+	rs, err := Run(script(t, body), []string{"clean"}, Options{Dead: []string{"worker"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs[0].Killed) == 0 {
+		t.Fatal("nothing was killed, so this asserts nothing")
+	}
+	for _, v := range rs[0].Violations {
+		if strings.Contains(v, "on the path where nothing failed") {
+			t.Fatalf("a killed agent IS something failing: %s", v)
+		}
+	}
+}
+
+// End to end over the banked fixture: the emitted harness with the two edits a
+// live operator plausibly makes — the reviewer relabelled off the segment the
+// mode matches, and a comment-justified filter dropping dead REVIEWERS from the
+// green computation. Seven modes were green over it.
+func TestDeadReviewsFixtureFails(t *testing.T) {
+	rs, err := Run(filepath.Join("..", "..", "testdata", "dead-reviews-green.mjs"), Modes, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rs {
+		if r.Mode != "dead-reviews" {
+			continue
+		}
+		if r.OK() {
+			t.Fatal("the banked false green must fail its mode")
+		}
+		return
+	}
+	t.Fatal("dead-reviews did not run")
 }
