@@ -193,17 +193,17 @@ func noteCollapse(rs []Result) {
 	// other mode is a deviation from. Where it was not run — `--mode` selects a
 	// subset — the widest mode stands in for it and the note says so, rather
 	// than the check disappearing with the mode that anchors it.
-	base, baseMode := 0, ""
+	base, baseMode, basePhases := 0, "", []string(nil)
 	for _, r := range rs {
 		if r.Mode == "clean" {
-			base, baseMode = r.Spawned, r.Mode
+			base, baseMode, basePhases = r.Spawned, r.Mode, r.Phases
 			break
 		}
 	}
 	if baseMode == "" {
 		for _, r := range rs {
 			if r.Spawned > base {
-				base, baseMode = r.Spawned, r.Mode
+				base, baseMode, basePhases = r.Spawned, r.Mode, r.Phases
 			}
 		}
 		// A run with ONE mode is every `--mode X` invocation, and there the
@@ -239,6 +239,27 @@ func noteCollapse(rs []Result) {
 		// the fact is not a defect.
 		if r.Spawned == 0 {
 			continue
+		}
+		// The second half of the same question, and the two are ADDITIVE because
+		// they miss opposite shapes. The banked `collapse.mjs` narrows to one
+		// agent inside ONE phase, so phases alone would not see it; the shape
+		// that motivated this narrows by a whole SECTION while keeping its agent
+		// count within the ratio — measured, 13 agents against 15 and 4 phases
+		// against 5, which passes `Spawned*2 >= base` and reaches neither the
+		// fifth section nor its gate.
+		//
+		// The comparison is over DISTINCT TITLES, never `len(r.Phases)`: a mode
+		// that runs one phase twice reaches the same count having covered less,
+		// and it is the titles a reader is being told were exercised. The
+		// threshold is EXACT rather than a ratio, and that is a measurement, not
+		// a preference — across the six correct scripts on disk every mode but
+		// `throw-serial` reaches its baseline's phase set exactly, so a
+		// tolerance would be calibrated on a population with no variance in it.
+		// The missing titles are NAMED, because "fewer phases" sends an operator
+		// to diff two runs by hand.
+		if missing := missingPhases(basePhases, r.Phases); len(missing) > 0 {
+			r.Violations = append(r.Violations, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here, so every section behind them, and every gate over those sections, is exercised by no mode at all",
+				r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
 		}
 		if r.Spawned*2 >= base {
 			continue
@@ -635,6 +656,24 @@ func or(a, b string) string {
 		return b
 	}
 	return a
+}
+
+// missingPhases is the baseline's phase titles that this mode never reached, in
+// the baseline's own order. Titles, not counts — see the caller.
+func missingPhases(base, got []string) []string {
+	reached := make(map[string]bool, len(got))
+	for _, t := range got {
+		reached[t] = true
+	}
+	var missing []string
+	seen := map[string]bool{}
+	for _, t := range base {
+		if !reached[t] && !seen[t] {
+			seen[t] = true
+			missing = append(missing, t)
+		}
+	}
+	return missing
 }
 
 // verdictKeys is the run's boolean report fields in a stable order, so two

@@ -71,6 +71,12 @@ check-tools: build
 	@if ./wfdry testdata/collapse.mjs --quiet >/dev/null 2>&1; then \
 		echo "wfdry collapse fixture: EXIT 0 over modes that reached a sixth of the script"; exit 1; \
 	else echo "wfdry collapse fixture: fails as it must"; fi
+	@if ./wfdry testdata/section-collapse.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry section-collapse fixture: EXIT 0 over modes that never reached a whole section"; exit 1; \
+	else echo "wfdry section-collapse fixture: fails as it must"; fi
+	@./wfdry testdata/section-collapse.mjs --quiet 2>&1 | grep -q 'the phase(s) `S2`' \
+		&& echo "wfdry section-collapse fixture: NAMES the phase no failure mode reached" \
+		|| { echo "wfdry section-collapse fixture: said a phase was missed and did not say WHICH — the operator diffs two runs by hand"; exit 1; }
 	@if ./wfdry testdata/collapse.mjs --quiet 2>&1 | grep -q "(clean: 6 agents)"; then \
 		echo "wfdry collapse fixture: prints the happy path's count beside each mode"; \
 	else echo "wfdry collapse fixture: no baseline printed — the operator has nothing to compare a mode against"; exit 1; fi

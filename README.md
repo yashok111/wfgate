@@ -486,6 +486,24 @@ five of seven modes from 15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1 — the fi
 recheck, the acceptance step and the final verdict exercised by nothing — and
 every mode still exited OK, so a reviewer banking "wfdry 7 of 7" WOULD have credited a layer
 that covered a single agent. The RATIO is the signal, not the absolute.
+
+**A mode that never reached one of the happy path's PHASES fails too, and the
+phase is NAMED.** The two checks are additive because they miss opposite shapes:
+the banked `collapse.mjs` narrows to one agent inside ONE phase, which a phase
+check cannot see, and a branch that skips a whole section while keeping its
+agent count within half the happy path's is invisible to the ratio — measured on
+such a shape, 13 agents against 15 and 4 phases against 5, so the ratio passed
+while neither the fifth section nor its gate ran in any mode, and `wfdry`
+reported 7/7 at exit 0. The banked shape is `testdata/section-collapse.mjs`. The
+comparison is over distinct phase TITLES and never their count, because a mode
+running one phase twice reaches the same count having covered less. The
+threshold is EXACT rather than a tolerance, and that is a measurement: across
+the six correct scripts on disk every mode but `throw-serial` reaches its
+baseline's phase set exactly (58 phase calls, 58 distinct titles), so a
+tolerance would be calibrated on a population with no variance in it.
+`throw-serial` and `no-args` are exempt for the same reasons the ratio exempts
+them, and naming the missing title is the actionable half — "fewer phases" sends
+an operator to diff two runs by hand.
 Failing rather than warning was measured: across the three correct gated scripts
 on disk the failure modes run WIDER than the happy path (36 against 44, 18
 against 30, 15 against 25), so none of them trips it, while the one revision

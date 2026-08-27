@@ -1360,6 +1360,30 @@ entirely to what the reports SAY. Items landed so far:
   0. One mutation survived the first sweep — the guard's fail-verdict half, `{
   failed: false }` being the same claim as `{ green: true }` — and it was given
   the case it lacked rather than shipped unproven.
+- *The collapse check measured AGENTS against the narrowest mode, and the phase
+  counts it printed beside them were compared against nothing* — on every
+  correct script `clean` is the narrowest mode, so the half-the-happy-path
+  threshold sits far below where a failing mode lives: a failing mode on p3b may
+  lose 21 of its 30 agents and pass. The shape that gets through is a branch
+  skipping a whole SECTION while staying inside the ratio — measured, 13 agents
+  against 15 and 4 phases against 5, `wfdry` 7/7 at exit 0, with the fifth
+  section and the gate over it exercised by no mode at all. The signal was
+  already being collected: across the six correct scripts every mode but
+  `throw-serial` reaches its baseline's phase set EXACTLY, so the threshold is
+  exact rather than a tolerance — a tolerance would be calibrated on a
+  population with no variance in it. The comparison is over distinct TITLES and
+  never `len(r.Phases)`, because a mode running one phase twice reaches the same
+  count having covered less, and the missing title is NAMED, because "fewer
+  phases" sends an operator to diff two runs by hand. It is ADDITIVE to the
+  ratio and the two fixtures say why: the banked `collapse.mjs` narrows to one
+  agent inside ONE phase, which phases cannot see, and the new
+  `testdata/section-collapse.mjs` passes the ratio at 3 agents of 5. A test
+  asserts that each fixture is caught by its own check and NOT by the other,
+  because a fixture caught by the older check proves nothing about the newer
+  one. `throw-serial` and `no-args` stay exempt for the reasons the ratio
+  exempts them. One mutation read as SURVIVED and had not been: dropping the
+  dedupe left `seen` unused, so the package did not compile and the sweep
+  scored a build break as a surviving guard — the memory's own rule, met again.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own

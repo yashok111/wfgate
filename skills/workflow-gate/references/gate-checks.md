@@ -497,7 +497,17 @@ compiles, passes every test, and does nothing.
       than warning was measured too: across the three correct gated scripts on disk the failure modes
       run WIDER than the happy path (36 against 44, 18 against 30, 15 against 25), so none of them
       trips it. `throw-serial` is exempt, and so is `no-args`, which the runner narrows on purpose.
-      The RATIO is the signal, not the absolute. Seconds of cost, and it evaluates every
+      The RATIO is the signal, not the absolute. **And a mode that never reached one of the happy
+      path's PHASES fails too, naming the phase.** The two are additive because they miss opposite
+      shapes: an abort that narrows to one agent inside ONE phase is invisible to a phase check, and
+      a branch that skips a whole section while keeping its agent count within half the happy path's
+      is invisible to the ratio — measured on such a shape, 13 agents against 15 and 4 phases against
+      5, so the ratio passed while neither the fifth section nor its gate ran in any mode. The
+      comparison is over distinct phase TITLES, never their count, because a mode running one phase
+      twice reaches the same count having covered less; the threshold is exact rather than a
+      tolerance, because across the six correct scripts on disk every mode but `throw-serial` reaches
+      its baseline's phase set exactly and a tolerance would be calibrated on a population with no
+      variance in it. Seconds of cost, and it evaluates every
       template literal on every path, catching the class above plus any unreachable binding a linter
       cannot type-check. A parse is not an execution. The clean path is the one that matters most:
       reviewers read the failure branches, because that is where the risk looks like it lives.

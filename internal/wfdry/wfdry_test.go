@@ -1022,3 +1022,85 @@ func TestDeadReviewsFixtureFails(t *testing.T) {
 	}
 	t.Fatal("dead-reviews did not run")
 }
+
+// The half the agent ratio cannot see: a failure branch that skips a whole
+// SECTION while keeping its agent count within half the happy path's. Measured
+// on the shape that motivated it, 13 agents against 15 and 4 phases against 5 —
+// the ratio passes and neither the fifth section nor its gate runs in any mode.
+func TestAModeThatSkipsAPhaseFailsEvenInsideTheAgentRatio(t *testing.T) {
+	rs, err := Run(filepath.Join("..", "..", "testdata", "section-collapse.mjs"), Modes, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skipped := 0
+	for _, r := range rs {
+		if r.Mode == "clean" && len(r.Phases) != 2 {
+			t.Fatalf("the happy path must reach both sections, got %v", r.Phases)
+		}
+		for _, v := range r.Violations {
+			if !strings.Contains(v, "never reached") {
+				continue
+			}
+			skipped++
+			if !strings.Contains(v, "`S2`") {
+				t.Errorf("the missing phase must be NAMED, got %q", v)
+			}
+			// The ratio must NOT be what caught it, or this fixture proves
+			// nothing the previous check did not already cover.
+			for _, o := range r.Violations {
+				if strings.Contains(o, "exercised a fraction of the script") {
+					t.Errorf("%s: the agent ratio fired too, so the phase check is untested here", r.Mode)
+				}
+			}
+		}
+		if r.Mode == "blockers" && r.OK() {
+			t.Fatal("a mode that never reached a section must not report OK")
+		}
+	}
+	// blockers, acceptfail and unfixed. `throw-serial` and `no-args` are exempt
+	// for the same reason the ratio exempts them, and `dead-reviews` runs the
+	// passing fixture, so it reaches both sections.
+	if skipped != 3 {
+		t.Fatalf("want every failure mode named, got %d", skipped)
+	}
+}
+
+// Distinct TITLES, never `len(r.Phases)`: a mode that runs one phase twice
+// reaches the same count having covered less, and the titles are what a reader
+// is being told were exercised.
+func TestPhaseCoverageReadsTitlesNotCounts(t *testing.T) {
+	if m := missingPhases([]string{"A", "B"}, []string{"A", "A"}); len(m) != 1 || m[0] != "B" {
+		t.Fatalf("a repeated phase must not stand in for a missing one, got %v", m)
+	}
+	if m := missingPhases([]string{"A", "B", "A"}, []string{"B", "A"}); len(m) != 0 {
+		t.Fatalf("order and repetition in the baseline must not matter, got %v", m)
+	}
+	if m := missingPhases([]string{"A", "B", "C"}, []string{"B"}); len(m) != 2 || m[0] != "A" || m[1] != "C" {
+		t.Fatalf("the missing titles come back in the baseline's own order, got %v", m)
+	}
+	// A baseline calling one title twice must not name it twice in the message.
+	// Zero of the five real scripts on disk repeat a title (58 calls, 58
+	// distinct), so this defends a shape the corpus does not have — it is here
+	// because the alternative to a test is deleting the dedupe, and a message
+	// naming one phase twice is the report noise this runner is against.
+	if m := missingPhases([]string{"A", "B", "A"}, []string{"B"}); len(m) != 1 || m[0] != "A" {
+		t.Fatalf("a title missing twice is one missing title, got %v", m)
+	}
+}
+
+// The banked `collapse.mjs` narrows to one agent inside ONE phase. The two
+// checks are additive because they miss opposite shapes, and this is the half
+// that says the older one still carries its own fixture alone.
+func TestTheCollapseFixtureIsCaughtByTheRatioAndNotByPhases(t *testing.T) {
+	rs, err := Run(filepath.Join("..", "..", "testdata", "collapse.mjs"), Modes, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rs {
+		for _, v := range r.Violations {
+			if strings.Contains(v, "never reached") {
+				t.Fatalf("%s: the phase check cannot see a one-phase script, so it must stay silent: %s", r.Mode, v)
+			}
+		}
+	}
+}
