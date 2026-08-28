@@ -733,7 +733,14 @@ func serializedWidth(vm *goja.Runtime, v goja.Value) int {
 		return -1
 	}
 	s, err := fn(goja.Undefined(), v)
-	if err != nil || s == nil || goja.IsUndefined(s) || goja.IsNull(s) {
+	// A THROW comes back as an error with a nil value, so `s == nil` was the same
+	// condition spelled twice and neither spelling could be killed on its own.
+	// UNDEFINED is a different case and a real one: `JSON.stringify` of a
+	// function returns undefined, and a schema built by a factory that was passed
+	// rather than called is exactly that. A null return is not a case at all —
+	// stringify of null is the STRING "null" — so the branch for it was deleted
+	// rather than shipped unprovable.
+	if err != nil || goja.IsUndefined(s) {
 		return -1
 	}
 	return len(s.String())

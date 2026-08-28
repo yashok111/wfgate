@@ -242,15 +242,16 @@ func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall, 
 	// this half knows which BLOCK declares a path and not which agent is handed
 	// it, which is exactly why the WARN below says the block rather than the
 	// agent.
+	// No `seenPath` filter here, and that is a decision rather than an omission:
+	// `checkOwnershipText` returns only the paths NO resolved prompt carries, so
+	// the two sets are disjoint by construction and a second filter is one fact
+	// checked twice — a condition no mutation could make fail.
 	var textPaths []string
 	for p := range textOwned {
-		if !seenPath[p] {
-			textPaths = append(textPaths, p)
-		}
+		textPaths = append(textPaths, p)
 	}
 	sort.Strings(textPaths)
 	for _, p := range textPaths {
-		seenPath[p] = true
 		declared++
 		fromText++
 		if len(gates) == 0 {

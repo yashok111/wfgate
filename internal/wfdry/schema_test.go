@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/dop251/goja"
 )
 
 // padded returns a schema literal whose serialization is at least n bytes, by
@@ -376,4 +378,65 @@ return { done: true }`
 			t.Fatalf("a synthetic label must say which mode it came from: %+v", ws)
 		}
 	}
+}
+
+// The two guards in front of the serializer, each with the input that reaches
+// it. Both were unprovable when written — a mutation could delete either with
+// every bar green — and a guard with no failing case is not a guard.
+func TestSerializedWidth_guardsAreReachable(t *testing.T) {
+	t.Run("a runtime with no JSON", func(t *testing.T) {
+		vm := goja.New()
+		if err := vm.Set("JSON", goja.Undefined()); err != nil {
+			t.Fatal(err)
+		}
+		if got := serializedWidth(vm, vm.ToValue(map[string]any{"a": 1})); got != -1 {
+			t.Fatalf("without a serializer there is no width: %d", got)
+		}
+	})
+	t.Run("a JSON whose stringify is not callable", func(t *testing.T) {
+		vm := goja.New()
+		o := vm.NewObject()
+		if err := o.Set("stringify", "not a function"); err != nil {
+			t.Fatal(err)
+		}
+		if err := vm.Set("JSON", o); err != nil {
+			t.Fatal(err)
+		}
+		if got := serializedWidth(vm, vm.ToValue(map[string]any{"a": 1})); got != -1 {
+			t.Fatalf("without a callable stringify there is no width: %d", got)
+		}
+	})
+	t.Run("a value whose toJSON throws", func(t *testing.T) {
+		vm := goja.New()
+		v, err := vm.RunString(`({ toJSON() { throw new Error('nope') } })`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := serializedWidth(vm, v); got != -1 {
+			t.Fatalf("a throwing serializer has no width: %d", got)
+		}
+	})
+	t.Run("a value that serializes to undefined", func(t *testing.T) {
+		vm := goja.New()
+		v, err := vm.RunString(`(function schemaFactory() { return {} })`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := serializedWidth(vm, v); got != -1 {
+			t.Fatalf("JSON.stringify of a function is undefined, which is not a width: %d", got)
+		}
+	})
+}
+
+// And the same case end to end: a schema that is the FACTORY rather than what it
+// builds passes the "no schema" guard, serializes to undefined, and must fail
+// the mode — there is nothing for the launch to send.
+func TestSchemaWidth_aFunctionSchemaFailsTheMode(t *testing.T) {
+	r := run1(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = () => ({ type: 'object', properties: { done: { type: 'boolean' } } })
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`, "clean")
+	wantViolation(t, r, "does not serialize")
 }
