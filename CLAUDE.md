@@ -1547,7 +1547,9 @@ round, on a measurement anybody could have run and nobody did:
 **The sixteenth wave — P3d, and the gate that ran a probe instead of an
 argument** (`FEEDBACK-p3d.md`; 14 rounds, 314 findings, 85 blockers, 446 edits
 over 3933 changed lines, 9.1 h by its banked `wf stats -time`, median round
-28.4 min, two artifacts). It is NOT the largest gate in this corpus, and the
+28.4 min, two artifacts, and a launch AFTER the close that came back green — 32
+agents, 0 errors, 4 h 31 min, 4.95 M tokens). It is NOT the largest gate in this
+corpus, and the
 feedback's own comparison said so from two wrong numbers — it quotes "P3b
 485/155" and "P3c 146/59" where those gates' own `wf stats` say 588/177 and
 153/61, against P3d's 314/85. This wave copied the conclusion instead of
@@ -1646,8 +1648,13 @@ than repeated:
   without it) and in three of four of the fifth (0, with thirteen defects still
   filed — 2 MAJOR and 11 MINOR beside 2 NOTE rows, not "fifteen real defects").
   Two rounds against three at the convergent end of a descending gate measures
-  nothing about the clause. What survives is the corollary, which is not a data
-  point: a count is a joint function of the artifact and of what the reviewer
+  nothing about the clause. (The gate's run, banked after this wave shipped, does
+  measure something else: two mechanisms its rounds 9 and 12 argued for on
+  reasoning alone decided the verdict of the real launch — an acceptance step
+  that returns `criterionMet: FALSE` over five green bars, and a term computed
+  AFTER the accept gate rather than frozen before it. That is the corpus's
+  strongest evidence that the delta rounds after a harness re-open are worth
+  their cost.) What survives is the corollary, which is not a data point: a count is a joint function of the artifact and of what the reviewer
   believes it is being asked for, no report can see the framing — `wf stats` and
   `-asks` enforce the QUESTIONS by roster name — and a clause introduced mid-gate
   changes what the count MEANS in the round where somebody finally writes it; **the harness BEFORE/AFTER measurement is re-taken at the END of the
@@ -1845,7 +1852,19 @@ fixtures for the non-ASCII anchor detector).
   `close/stats.txt` and 9.2 h re-run today, because the figure is last commit
   minus first and the close commits land after the work; the 7.9 h in the
   feedback's own header is an earlier close of the same gate, and the
-  reproducible number is the one the command prints. **It did not launch inside the gate**, and its most
+  reproducible number is the one the command prints. **It LAUNCHED, after the
+  gate closed, and came back green** — 32 agents, 0 errors, 4 h 31 min, 4.95 M
+  tokens — and the launch is the only validation in this corpus of a mechanism
+  the gate argued about: the acceptance step returned `criterionMet: FALSE` over
+  five GREEN bars, having found BY MUTATION that one acceptance property's
+  subject was observed by no test (it deleted live rows and watched two whole
+  suites stay green), the accept gate raised it, a fix agent added the missing
+  fixture, and the conditional re-verification over the edited tree returned
+  TRUE with `make smoke` at 225 PASS / 0 FAIL. Before round 12's fix every
+  acceptance term was computed BEFORE the accept gate, so that run would have
+  returned `green: false` on a `criterionMet` frozen at its pre-fix value — red
+  over a tree whose hole had just been closed. Round 12's blocker 6 was not
+  hypothetical; it was the first thing the run did. Its most
   valuable measurement is a PROBE it ran instead of an argument: 4,233 bytes
   REFUSED by the launch's safety classifier in 82 milliseconds at zero tokens,
   3,114 ACCEPTED — the narrowest refusal on record, taken after two of its rounds
