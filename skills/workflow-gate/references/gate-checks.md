@@ -361,7 +361,13 @@ compiles, passes every test, and does nothing.
       went to zero ask whether the decision it carried survives anywhere. Measured: the round that did
       this returned 4 blockers and 20 findings, 17 of them defects IN the cut, and two of them were
       design decisions that survived nowhere afterwards — one of which had already been caught by hand
-      two minutes after the cut landed, which is how the class was known to exist at all.
+      two minutes after the cut landed, which is how the class was known to exist at all. Two tool
+      signals aim that round and neither is a verdict: `wf delta` counts the structural leads the range
+      REMOVES (a count, deliberately not a list — over two gates that cut, the per-round removals run
+      to 49 and 215 and most of them are rewrites), and `wf check stale`'s `swept` line reads BOTH
+      ways — a retired word surviving nowhere means the fix reached every consumer, or the decision it
+      carried stopped existing with nothing in its place. Do not look for a cut in a net-negative diff:
+      one measured cut replaced 28 clauses with 10 properties and the artifact GREW by four lines.
 - [ ] **A criterion can be wrong in the direction of FALSE FAILURE, and that direction is worse.**
       Everyone checks whether a check is too weak. One that goes red against a CORRECT implementation
       stalls the run at the single step usually forbidden to change production code — so the agent that
@@ -556,6 +562,15 @@ compiles, passes every test, and does nothing.
       route-file naming convention, a backtick, a `!` under some shells — so the command names a path
       that does not exist and the agent reads an empty diff it cannot tell from a clean section. Single
       quotes with the embedded-quote escape, or a literal the tool never re-parses.
+- [ ] **An agent's output SCHEMA can be too wide for the launch to accept, and the refusal kills that
+      agent alone.** `blocked by safety classifier: output schema too large to classify safely` — four
+      agents of one run, and on another run the FIFTEENTH and last agent, six hours in, with nothing
+      downstream to catch it. The width is not a judgement call and it is not "risk accepted": run
+      `wfdry`, which prints every schema's serialized width and warns above the widest this corpus has
+      seen accepted, and then PROBE the wide one — one cheap agent carrying that schema and a prompt
+      saying to fill it with placeholders answers in seconds, against a multi-hour run. Width is
+      measurable from the script; acceptance is measurable only by asking. A schema is narrowed by
+      declaring a repeated leaf ONCE and referencing it, which is what took the refused one under.
 
 ## F. Guard integrity
 

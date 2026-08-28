@@ -153,7 +153,11 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    whether a closing commit's diff reaches what the finding NAMES, and a finding naming no artifact
    path cannot be reached at all: `wf round record` counts those and says so at the moment they are
    still cheap to fix. Measured on one gate — 0 of 350 claims checkable on the first record, 26 of 26
-   after the paths went in.
+   after the paths went in. Both reports say NOT A PASS where the check could not reach MORE closures
+   than it checked: measured over six gate workspaces, three of them checked 3 of 110, 5 of 266 and 68
+   of 421 while printing a headline that read like a pass, and two closures recorded on a live gate
+   that no commit touched rode through exactly that way. The scaffold `wf round new` writes states
+   both table rules — name the artifact path, escape a `|` inside a cell.
 
 0. **`wfcheck -root <the repository the script will run in> <script>`** (`~/.local/bin/wfcheck`) — a
    static checker for these scripts. `-root` is load-bearing: with the wrong one, the ownership check
@@ -357,6 +361,14 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    while anchored citations also self-report through `wf check cite` once they shift. Drift is
    measured from the newest frozen round (name another with `-round N`) and is not part of
    `wf check` without arguments, which must keep working before anything is frozen.
+
+   **`wf check cite -at frozen` verifies the document against the bytes its reviewers were handed** —
+   the target revision the newest freeze manifest names — and `-at <rev>` takes any revision. A
+   `-kind run` round moves the target by everything the run wrote, so every citation in the frozen
+   document then resolves a few lines late: measured on one gate, 16 cite failures against the working
+   tree and ZERO against the frozen revision, which is drift and not error. The check says which
+   revision it read in its header, and when the target has moved and findings exist it names the move,
+   the round it was frozen against, and the round's kind.
 
    A companion document must **declare its anchors explicitly and uniquely**, so a static check can
    confirm that every anchor a prompt names still exists. That is the whole of what holds statically: a
@@ -688,7 +700,15 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   measured, the two readings of one gate differ by 2.8% overall and 5.3% on a round — and
   `wf apply -rule RN` declares the rule a batch changes and NAMES the other sites carrying that
   marker, marking the ones in files the batch wrote — the sweep the note beside the number has been
-  pointing at since the meter existed, done at the moment the fix lands. **`-rule` also takes a
+  pointing at since the meter existed, done at the moment the fix lands. With the id form the batch is
+  **REFUSED, before anything is written**, when a marked site sits in a file the batch does not touch:
+  `-rule-ack` is the waiver for a batch that legitimately corrects one site while the others stand.
+  A note arrives after the round has already spent its edit, and the sweep it advises is then a
+  separate act of discipline — measured on one gate, four times in four consecutive rounds the fix
+  landed where the finding was READ rather than everywhere the rule ACTS, and none of the four was
+  reachable by `dup`, `stale` or `rules`, because the copies shared no wording. It is the FILE half:
+  a second site inside a file the batch DOES write is not checked, and the site list beside the
+  refusal names every one of them. **`-rule` also takes a
   free-text rule NAME** (`-rule "bar accounting"`), which sweeps every sentence of the artifact set
   carrying all of its words: a script gate's rules live in prompts and are marked in no document, so
   the id form reaches nothing there — measured, the flag was refused outright and unusable for a whole

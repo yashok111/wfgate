@@ -101,6 +101,20 @@ type Result struct {
 	// them. The prompt sweep is built on this.
 	Prompts   []check.NamedText
 	defaulted map[string]int // report fields the fixture contract did not recognise
+
+	// The serialized width of every schema this mode handed an agent, by label.
+	// It is measured HERE and nowhere else: the runner holds the object the
+	// script actually composed, so `JSON.stringify` of it is exact, while a
+	// static reader would have to re-serialize an AST literal and would produce
+	// a second number for one quantity — this project's most-repeated defect.
+	// A schema composed at run time is invisible to the static half entirely.
+	Schemas []SchemaUse
+}
+
+// SchemaUse is one agent call's schema, as the wire would carry it.
+type SchemaUse struct {
+	Label string
+	Bytes int // len(JSON.stringify(schema)); -1 when it does not serialize
 }
 
 // killedLabel reports whether this mode stubbed the named label dead.
@@ -435,6 +449,12 @@ func runMode(src, mode string, o Options) Result {
 		}
 		if v := opts.Get("schema"); v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
 			bad(label, "no schema")
+		} else {
+			// The width of what this call would put on the wire. Measured at
+			// the spawn because that is where the composed object exists: on
+			// the P3a script 14 of 15 prompts — and their schemas with them —
+			// are built at run time.
+			r.Schemas = append(r.Schemas, SchemaUse{Label: label, Bytes: serializedWidth(vm, v)})
 		}
 		if model == "" {
 			bad(label, "no model")
@@ -675,9 +695,37 @@ func runMode(src, mode string, o Options) Result {
 			names = append(names, n)
 		}
 		sort.Strings(names)
-		r.Notes = append(r.Notes, "unrecognised report field(s) — "+strings.Join(names, ", ")+" — were FALSE in this mode: no branch guarded by one of them was exercised, and the mode's OK covers none of it")
+		// The NAME is the contract, and the note has to say so. Without this
+		// clause the message named the fields and not the rule they broke, so
+		// the vocabulary could only be found by reading this file — three field
+		// names were spent doing that on one gate. Renaming is offered FIRST
+		// because it is free: `x-pass` rides in the schema the launch's safety
+		// classifier reads and widens it, which is the other failure this
+		// runner now measures.
+		r.Notes = append(r.Notes, "unrecognised report field(s) — "+strings.Join(names, ", ")+" — were FALSE in this mode: no branch guarded by one of them was exercised, and the mode's OK covers none of it. A boolean is read as pass-shaped only by its NAME ("+passBoolVocabulary()+"); rename the field, or declare its polarity in the schema with `\"x-pass\": true` (or false for a failure flag), which costs bytes in the schema the classifier reads")
 	}
 	return r
+}
+
+// serializedWidth is len(JSON.stringify(v)) computed by the SAME engine that
+// composed the value, so an operator can compare it against the number a
+// refusal quotes. -1 says the value does not serialize at all, which is its own
+// answer: a schema carrying a function or a cycle is not a schema the launch
+// can send.
+func serializedWidth(vm *goja.Runtime, v goja.Value) int {
+	j, ok := vm.Get("JSON").(*goja.Object)
+	if !ok || j == nil {
+		return -1
+	}
+	fn, ok := goja.AssertFunction(j.Get("stringify"))
+	if !ok {
+		return -1
+	}
+	s, err := fn(goja.Undefined(), v)
+	if err != nil || s == nil || goja.IsUndefined(s) || goja.IsNull(s) {
+		return -1
+	}
+	return len(s.String())
 }
 
 // jsErr and rejection keep the LOCATION. Printing only the message left a
@@ -1004,7 +1052,23 @@ var failVerdicts = regexp.MustCompile(`(?i)^(failed|failing|blocked|broken|vacuo
 // carry, so the CLEAN mode read false and correctly failed a script that was
 // correct. Still anchored, and still a list: the alternative is the substring
 // regex the comment above rejects, which matches `fail` inside `noFailures`.
-var passBools = regexp.MustCompile(`(?i)^(goal|scope|slice|section|acceptance|criteria|criterion)?(passed|ok|green|clean|verified|proven|done|complete|completed|succeeded|finished|met|satisfied|achieved)$`)
+var (
+	passBoolPrefixes = []string{"goal", "scope", "slice", "section", "acceptance", "criteria", "criterion"}
+	passBoolWords    = []string{"passed", "ok", "green", "clean", "verified", "proven", "done", "complete", "completed", "succeeded", "finished", "met", "satisfied", "achieved"}
+	passBools        = regexp.MustCompile(`(?i)^(` + strings.Join(passBoolPrefixes, "|") + `)?(` + strings.Join(passBoolWords, "|") + `)$`)
+)
+
+// passBoolVocabulary is what the note prints, and it is built from the SAME
+// slices the matcher compiles, because a message quoting a vocabulary it does
+// not share is this project's most-repeated defect. Three field names were
+// burned discovering this list by reading the Go source — `held`, `mutationMet`
+// and `smokeAchieved`, each of which made `green` unreachable and failed the
+// clean mode correctly, with nothing in the output saying that the NAME was
+// what went unrecognised.
+func passBoolVocabulary() string {
+	return "one of " + strings.Join(passBoolWords, "/") +
+		", optionally prefixed by " + strings.Join(passBoolPrefixes, "/")
+}
 
 func synth(schema goja.Value, mode, label string, depth int, rec map[string]int) any {
 	if schema == nil || goja.IsUndefined(schema) || goja.IsNull(schema) || depth > 6 {
@@ -1126,6 +1190,20 @@ func value(name string, v map[string]any, mode, label string, depth, idx int, re
 	case "integer", "number":
 		return 1
 	case "boolean":
+		// An explicit polarity beats every matcher. A domain boolean cannot
+		// always be named after the matcher without being renamed away from its
+		// subject — `smokeAchieved` is refused and `criterionMet` accepted, so
+		// the field ends up named for this file rather than for its reader, in
+		// an artifact whose whole discipline is that names carry meaning. The
+		// annotation is NOT free: it rides in the schema the launch's safety
+		// classifier reads, and that width is the other failure this runner
+		// measures, so the note offers renaming first.
+		if xp, ok := v["x-pass"].(bool); ok {
+			if xp {
+				return mode != "acceptfail"
+			}
+			return !passFixture(mode)
+		}
 		if passBools.MatchString(name) {
 			return mode != "acceptfail"
 		}

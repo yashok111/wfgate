@@ -58,6 +58,33 @@ func (r Repo) Run(args ...string) (string, error) {
 	return strings.TrimRight(out.String(), "\n"), nil
 }
 
+// RunRaw is Run without the trim. File CONTENT must not be trimmed: a citation
+// range is counted in lines, and `git show` of a file ending in two newlines
+// loses one of them to Run's TrimRight, which moves the last line's number.
+func (r Repo) RunRaw(args ...string) ([]byte, error) {
+	args = append(append([]string{}, pinned...), args...)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = r.Dir
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+	}
+	return out.Bytes(), nil
+}
+
+// ShowFile returns a file's bytes AT a revision.
+//
+// It exists so a citation can be checked against the revision it was frozen
+// with rather than against the working tree. A `-kind run` round moves the
+// target by everything the run wrote, and every citation in the frozen document
+// then resolves a few lines late — which is drift, not error, and the document
+// was correct at the revision it was frozen against.
+func (r Repo) ShowFile(ref, path string) ([]byte, error) {
+	return r.RunRaw("show", ref+":"+path)
+}
+
 // Init creates the repository. The default branch is named explicitly so the
 // gate does not inherit whatever init.defaultBranch the host happens to carry.
 func (r Repo) Init() error {

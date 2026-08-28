@@ -302,7 +302,29 @@ func TestApplyRuleNamesTheSitesOutsideTheBatch(t *testing.T) {
 	edits := filepath.Join(tmp, "edits.txt")
 	write(t, edits, "=== artifacts/rules.md  count=2  note=R6 repair\n"+
 		"<<<<\nfrom the shared component.\n====\nfrom the shared component, and the 409 stays where it is.\n>>>>\n")
+	// The batch is REFUSED, before anything is written: a note about the other
+	// sites arrives after the round has spent its edit, and the sweep it advises
+	// is then a separate act of discipline. Measured on mocker P3c, four times in
+	// four consecutive rounds.
 	out, err := runWF(t, wsDir, "apply", "-f", edits, "-rule", "6", "-m", "rules: repair R6")
+	if err == nil {
+		t.Fatalf("a batch leaving a marked site untouched is refused:\n%s", out)
+	}
+	mustContain(t, out,
+		"batch REJECTED — nothing was written",
+		"artifacts/gate.mjs:2",
+		"-rule-ack",
+		"This is the FILE half")
+	// And nothing landed: the refusal is the whole guarantee.
+	st, err := runWF(t, wsDir, "status")
+	noErr(t, err, "status")
+	if strings.Contains(st, "409 stays where it is") {
+		t.Fatalf("the refused batch must not have been written:\n%s", st)
+	}
+
+	// The waiver is one flag, and it restores the note — the site the batch did
+	// NOT write is still the point, and it must not be marked as one it did.
+	out, err = runWF(t, wsDir, "apply", "-f", edits, "-rule", "6", "-rule-ack", "-m", "rules: repair R6")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,13 +332,32 @@ func TestApplyRuleNamesTheSitesOutsideTheBatch(t *testing.T) {
 		"rule: [R6] is marked at 3 site(s), 1 of them outside this batch",
 		"artifacts/gate.mjs:",
 		"← a file this batch wrote")
-	// The site the batch did NOT write is the whole point, and it must not be
-	// marked as one it did.
 	for _, l := range strings.Split(out, "\n") {
 		if strings.Contains(l, "artifacts/gate.mjs:") && strings.Contains(l, "this batch wrote") {
 			t.Fatalf("the script was not in this batch: %s", l)
 		}
 	}
+}
+
+// A batch that DOES write every file carrying the marker is not refused: the
+// refusal's population is bounded by the operator having declared the id, and
+// it must not fire on the case the discipline is being followed in.
+func TestApplyRuleDoesNotRefuseWhenEverySiteIsInTheBatch(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	doc := filepath.Join(tmp, "rules.md")
+	write(t, doc, "# Rules\n\n- [R6] The two routes DETACH their envelope from the shared component.\n\n"+
+		"## Restated for the reviewer\n\n- [R6] The two routes DETACH their envelope from the shared component.\n")
+	if _, err := runWF(t, wsDir, "add", doc); err != nil {
+		t.Fatal(err)
+	}
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/rules.md  count=2  note=R6 repair\n"+
+		"<<<<\nfrom the shared component.\n====\nfrom the shared component, and the 409 stays where it is.\n>>>>\n")
+	out, err := runWF(t, wsDir, "apply", "-f", edits, "-rule", "6", "-m", "rules: repair R6")
+	noErr(t, err, "apply")
+	mustContain(t, out, "rule: [R6] is marked at 2 site(s), 0 of them outside this batch")
+	mustNotContain(t, out, "batch REJECTED")
 }
 
 // A batch declaring a rule nothing marks is the loudest outcome of the flag,

@@ -247,11 +247,12 @@ func cmdApply(args []string) error {
 	msg := fs.String("m", "", "commit subject (default derived from the batch)")
 	dry := fs.Bool("dry-run", false, "plan and report, write nothing")
 	rule := fs.String("rule", "", "the [RN] rule this batch changes; the note then names the OTHER sites carrying it")
+	ruleAck := fs.Bool("rule-ack", false, "apply anyway when a declared [RN] rule has marked sites in files this batch does not write")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *file == "" {
-		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [--dry-run]")
+		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]")
 	}
 	ruleID, rulePhrase := parseRuleFlag(*rule)
 	w, err := open()
@@ -321,14 +322,44 @@ func cmdApply(args []string) error {
 	if *dry {
 		fmt.Printf("\ndry run: %d file(s) would change\n", len(bufs))
 		fmt.Printf("  note: the cost estimate is not printed on a dry run — it counts the lines git sees changed, which needs the write\n")
-		touched := make([]string, 0, len(bufs))
+		dryTouched := make([]string, 0, len(bufs))
 		for rel := range bufs {
-			touched = append(touched, rel)
+			dryTouched = append(dryTouched, rel)
 		}
-		if err := printRuleSpread(w, ruleID, rulePhrase, touched); err != nil {
+		if err := printRuleSpread(w, ruleID, rulePhrase, dryTouched); err != nil {
 			return err
 		}
 		return nil
+	}
+	// The refusal, BEFORE anything is written. `wf apply` commits as it writes,
+	// so a note about the other sites of a rule arrives after the round has
+	// already spent its edit; the sweep it advises is then a separate act of
+	// discipline, and discipline is what slips when rounds get expensive.
+	// Measured on mocker P3c: four times in four consecutive rounds the fix
+	// landed where the finding was READ rather than everywhere the rule ACTS,
+	// and none of the four was reachable by `dup`, `stale` or `rules`, because
+	// the copies share no wording.
+	//
+	// It fires only where the OPERATOR declared the id, so its population is
+	// bounded by construction, and `-rule-ack` is the waiver — a batch that
+	// legitimately corrects one site of a rule whose others are right says so
+	// once.
+	touched := make([]string, 0, len(bufs))
+	for rel := range bufs {
+		touched = append(touched, rel)
+	}
+	if miss, err := unwrittenRuleSites(w, ruleID, touched); err != nil {
+		return err
+	} else if len(miss) > 0 && !*ruleAck {
+		fmt.Fprintf(os.Stderr, "\nbatch REJECTED — nothing was written. [%s] is marked in %s this batch does not write:\n", ruleID, fmt.Sprintf("%d file(s)", len(miss)))
+		for _, m := range miss {
+			fmt.Fprintf(os.Stderr, "  %s\n", m)
+		}
+		fmt.Fprintf(os.Stderr, "Visit them in this batch, or re-run with -rule-ack to say they are correct as they stand.\nThis is the FILE half: a second site of the rule inside a file this batch DOES write is not checked here, and two sites twenty lines apart is exactly the shape that cost a gate four rounds — the site list below names every one of them.\n")
+		if err := printRuleSpread(w, ruleID, "", touched); err != nil {
+			return err
+		}
+		return errFindings
 	}
 	written, err := apply.Write(w.Root, bufs)
 	if err != nil {
@@ -471,6 +502,41 @@ func parseRuleFlag(s string) (id, phrase string) {
 // A file the batch wrote is marked rather than dropped: a document holding
 // three sites of one rule is exactly where the copy gets left behind, and the
 // operator must see them together.
+// unwrittenRuleSites names the FILES carrying a marked site of ruleID that this
+// batch does not write. It is the file half of the question, deliberately: the
+// site half needs the post-batch text re-collected through the same reader that
+// produced the sites, and a second reader would be the duplicate-spec defect
+// this project names as its most frequent. The refusal says which half it ran.
+func unwrittenRuleSites(w *ws.Workspace, ruleID string, touched []string) ([]string, error) {
+	if ruleID == "" {
+		return nil, nil
+	}
+	arts, err := w.ArtifactList()
+	if err != nil {
+		return nil, err
+	}
+	sites, _, _, err := check.CollectRuleSites(w.Root, arts)
+	if err != nil {
+		return nil, err
+	}
+	in := map[string]bool{}
+	for _, t := range touched {
+		in[filepath.ToSlash(t)] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, st := range sites[ruleID] {
+		f := filepath.ToSlash(st.File)
+		if in[f] || seen[f] {
+			continue
+		}
+		seen[f] = true
+		out = append(out, fmt.Sprintf("%s:%d", st.File, st.Line))
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 func printRuleSpread(w *ws.Workspace, ruleID, rulePhrase string, touched []string) error {
 	if ruleID == "" && rulePhrase == "" {
 		return nil
@@ -792,6 +858,13 @@ reads [R2]. The scale is closed — wf round record refuses anything else:
   would take to close.
 - **NOTE** — not a defect: an observation or a question with no failure attached.
 
+Two rules about this table, both of which cost a live gate something. The finding
+text NAMES the artifact path it is about — wf check closure reaches a closure only
+through that path, and a row without one is a claim nothing can check. And a
+pipe inside a cell is written \| , because the row is split on unescaped pipes:
+a finding quoting a shell pipeline is the usual way to learn that at the moment
+the record is refused.
+
 | # | level | finding | closed by |
 |---|-------|---------|-----------|
 | 1 | BLOCKER |  |  |
@@ -1093,7 +1166,16 @@ func noteUncheckableClosures(w *ws.Workspace, rows []ws.FindingRow) {
 		}
 	}
 	if unnamed > 0 {
-		fmt.Printf("  closures: %d of %d name no artifact path in the finding text — `wf check closure` cannot reach them. Write the path (and the section id or line) into the finding while you are still writing it\n", unnamed, claims)
+		// The same proportion question, at the moment the operator can still
+		// answer it. Two closures were recorded on one live gate that no commit
+		// touched, and this line had printed on that round and every other, in
+		// the register of bookkeeping — while it is the check announcing it is
+		// about to go unrun on those rows.
+		lead := "closures"
+		if unnamed > claims-unnamed {
+			lead = "closures, NOT A PASS"
+		}
+		fmt.Printf("  %s: %d of %d name no artifact path in the finding text — `wf check closure` cannot reach them. Write the path (and the section id or line) into the finding while you are still writing it\n", lead, unnamed, claims)
 	}
 	if ambiguous > 0 {
 		fmt.Printf("  closures: %d of %d name a path matching more than one artifact — write it from the workspace root\n", ambiguous, claims)
@@ -1781,6 +1863,47 @@ func cmdVerify(args []string) error {
 	return nil
 }
 
+// structuralLeadRe matches the line a reader navigates by: a heading, a numbered
+// item, a list item, or a bold lead-in. It is deliberately not "a line".
+var structuralLeadRe = regexp.MustCompile(`^(#{1,6} |\s*[0-9]+\. |\s*[-*] |\*\*)`)
+
+// noteDeletions names how much STRUCTURE this delta removes, and points at the
+// check that can say something about it. It prints a COUNT and no list, and
+// that is a measurement rather than modesty.
+//
+// `gate-checks` already says a scope cut's deletions are invisible to every
+// check this tool has — `rules` compares the SITES of a marked rule, `dup` and
+// `stale` read what is still written, and nothing watches a decision that stops
+// existing. The obvious answer, a list of what was removed, was measured on the
+// two gates that cut and refused: over mocker P3c the removed structural leads
+// run 49, 23, 13, 9, 2, 0, 0, 0 per round and over P3b they reach 215 in the
+// round that cut a slice for the third time, and most of them are REWRITES, not
+// deletions — a list would paint most of its output, which is `dup`'s
+// 161-groups-of-176 lesson repeated. Set-differencing the lead text leaves 47
+// and 202. And the trigger the feedback proposed — a net-negative diff — sees
+// NOTHING here: P3c's cut replaced 28 clauses with 10 properties and the
+// artifact grew by four lines.
+//
+// So: the count, the class it belongs to, and the one check whose output can be
+// read against it.
+func noteDeletions(out io.Writer, diff, base string) {
+	removed, added := 0, 0
+	for _, l := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(l, "---") || strings.HasPrefix(l, "+++"):
+		case strings.HasPrefix(l, "-") && structuralLeadRe.MatchString(l[1:]):
+			removed++
+		case strings.HasPrefix(l, "+") && structuralLeadRe.MatchString(l[1:]):
+			added++
+		}
+	}
+	if removed == 0 {
+		return
+	}
+	fprintf(out, "\n## deletions\n\nThis delta removes %d structural lead(s) — headings, numbered items, list items, bold lead-ins — and adds %d. Many of those are rewrites; some are decisions that stopped existing, and NO check in this tool watches the second kind: `rules` compares the sites of a marked rule and `dup` and `stale` read what is still written. A cut is an edit like any other and is reviewed like any other. `wf check stale -since %s` mines the vocabulary this range retired; its `swept` line names the tokens that survive nowhere, which is the deletion read from the other side.\n",
+		removed, added, base)
+}
+
 func cmdDelta(args []string) error {
 	fs := flag.NewFlagSet("delta", flag.ExitOnError)
 	from := fs.String("from", "", "base ref (default the previously frozen round)")
@@ -1845,6 +1968,7 @@ func cmdDelta(args []string) error {
 		return err
 	}
 	fprintf(out, "## artifact diff\n\n%s\n", d)
+	noteDeletions(out, d, base)
 	if *save {
 		dir := w.RoundDir(w.M.Round)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -1924,6 +2048,7 @@ func cmdCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	show := fs.Bool("show", false, "cite: print the cited lines")
 	reqAnchor := fs.Bool("require-anchor", false, "cite: fail on a citation written without #anchor")
+	at := fs.String("at", "", "cite: verify against this target revision (`frozen` = the revision the newest freeze names) instead of the working tree")
 	thr := fs.Float64("threshold", 0.82, "dup: similarity threshold for a near match")
 	minWords := fs.Int("min-words", 8, "dup: shortest statement compared")
 	round := fs.Int("round", 0, "drift: frozen round to measure from (default the newest)")
@@ -1969,7 +2094,7 @@ func cmdCheck(args []string) error {
 	}
 	fail := false
 	if which == "all" || which == "cite" {
-		bad, err := runCite(w, arts, *show, *reqAnchor)
+		bad, err := runCite(w, arts, *show, *reqAnchor, *at)
 		if err != nil {
 			return err
 		}
@@ -2078,16 +2203,90 @@ func runDrift(w *ws.Workspace, arts []string, round int) error {
 	return nil
 }
 
-func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, error) {
+// citeRef resolves the -at value to a target revision, or "" for the working
+// tree. It returns a note whenever it resolved something, because a check that
+// silently answered a different question than the one on the command line is
+// the class this tool exists against.
+func citeRef(w *ws.Workspace, at string) (ref, note string, err error) {
+	if at == "" {
+		return "", "", nil
+	}
+	if at != "frozen" {
+		return at, "citations verified against target revision " + at + ", not the working tree", nil
+	}
+	n := newestFrozen(w)
+	if n == 0 {
+		return "", "", fmt.Errorf("-at frozen: nothing is frozen yet, so there is no published revision to read; pass a revision")
+	}
+	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
+	if err != nil {
+		return "", "", err
+	}
+	var fm freezeManifest
+	if err := json.Unmarshal(b, &fm); err != nil {
+		return "", "", err
+	}
+	if fm.TargetRef == "" || fm.TargetRef == "(unknown)" {
+		return "", "", fmt.Errorf("-at frozen: round %d froze without a resolvable target ref", n)
+	}
+	return fm.TargetRef, fmt.Sprintf("citations verified against the revision round %d was FROZEN with (%s), which is the tree its reviewers were pointed at — not the working tree", n, short(fm.TargetRef)), nil
+}
+
+// driftHint says that the target has moved since the newest freeze, and names
+// the round's kind when that round is the one that moved it. A `-kind run`
+// round moves the target by everything the run wrote, so its citations resolve
+// late BY CONSTRUCTION and the finding count above is a measure of the move.
+func driftHint(w *ws.Workspace) string {
+	n := newestFrozen(w)
+	if n == 0 {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(w.RoundDir(n), "freeze.json"))
+	if err != nil {
+		return ""
+	}
+	var fm freezeManifest
+	if err := json.Unmarshal(b, &fm); err != nil || fm.TargetRef == "" || fm.TargetRef == "(unknown)" {
+		return ""
+	}
+	now, err := targetHead(w.M.Target)
+	if err != nil || now == fm.TargetRef {
+		return ""
+	}
+	who := ""
+	kinds := roundKinds(w)
+	if kinds[w.M.Round] == "run" {
+		who = fmt.Sprintf(" Round %d is a `-kind run` round, so the run itself wrote the movement and every citation below resolving late is expected.", w.M.Round)
+	}
+	return fmt.Sprintf("the target is at %s and round %d was frozen against %s, so some of the findings above are DRIFT rather than error.%s Re-run with `-at frozen` to check the document against the bytes its reviewers read, and `wf check drift` to classify the movement",
+		short(now), n, short(fm.TargetRef), who)
+}
+
+func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string) (bool, error) {
 	cits, err := check.ScanCitations(w.Root, arts)
 	if err != nil {
 		return false, err
 	}
-	ix, err := check.NewIndex(w.M.Target)
+	// The revision to read the target at. `frozen` is the one an operator
+	// actually wants: it is the revision the freeze manifest NAMES, which is the
+	// tree the reviewers of that round were pointed at.
+	ref, refNote, err := citeRef(w, at)
 	if err != nil {
 		return false, err
 	}
-	findings, err := check.VerifyCitations(w.M.Target, ix, cits)
+	var ix *check.Index
+	var read func(string) ([]byte, error)
+	if ref == "" {
+		ix, err = check.NewIndex(w.M.Target)
+		read = check.WorktreeReader(w.M.Target)
+	} else {
+		ix, err = check.NewIndexAt(w.M.Target, ref)
+		read = check.RevReader(w.M.Target, ref)
+	}
+	if err != nil {
+		return false, err
+	}
+	findings, err := check.VerifyCitationsWith(read, ix, cits)
 	if err != nil {
 		return false, err
 	}
@@ -2116,12 +2315,30 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, er
 			badAnchors++
 		}
 	}
-	hdr := fmt.Sprintf("## cite — %d citation(s), %d anchored (%d unverified beyond range), %d finding(s)",
-		len(cits), anchored, len(cits)-anchored, len(findings))
+	where := "the working tree"
+	if ref != "" {
+		where = "target " + short(ref)
+	}
+	hdr := fmt.Sprintf("## cite — %d citation(s), %d anchored (%d unverified beyond range), %d finding(s), against %s",
+		len(cits), anchored, len(cits)-anchored, len(findings), where)
 	if badAnchors > 0 {
 		hdr += fmt.Sprintf(", %d anchor(s) not ASCII", badAnchors)
 	}
 	fmt.Println(hdr)
+	if refNote != "" {
+		fmt.Printf("  note: %s\n", refNote)
+	}
+	// A moved target makes every citation in a frozen document resolve late, and
+	// the operator then hand-explains a screenful of errors. Measured on mocker
+	// P3c: the run round moved the target by the 675 lines the run itself wrote
+	// and `wf check cite` reported 16 failures, every one pure drift — the
+	// document was correct at the revision it was frozen against, which is a
+	// claim the tool can now make instead of the operator.
+	if ref == "" && len(findings) > 0 {
+		if n := driftHint(w); n != "" {
+			fmt.Printf("  note: %s\n", n)
+		}
+	}
 	if len(extless) > 0 {
 		fmt.Printf("  note: %d citation-like reference(s) to extensionless tracked file(s) — NOT verified:\n", len(extless))
 		for _, c := range extless {
@@ -2144,7 +2361,7 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool) (bool, er
 	}
 	if show {
 		for _, c := range cits {
-			fmt.Printf("  %s:%d  %s\n%s", c.Artifact, c.AtLine, c.Raw, check.Show(w.M.Target, ix, c))
+			fmt.Printf("  %s:%d  %s\n%s", c.Artifact, c.AtLine, c.Raw, check.ShowWith(read, ix, c))
 		}
 	}
 	return len(findings) > 0, nil
@@ -2401,7 +2618,15 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	case rep.Mined == 0:
 		fmt.Printf("  note: NOT A PASS — this range retired no vocabulary at all, so nothing was swept. A fix that only ADDED text, or one whose every removed word survives elsewhere in the diff, is invisible to this check\n")
 	case rep.Swept > 0:
-		fmt.Printf("  swept: %d of %d retired token(s) survive NOWHERE in the untouched corpus — that fix reached its consumers\n", rep.Swept, rep.Mined)
+		// TWO readings, and the check cannot tell them apart. A retired token
+		// surviving nowhere means the fix reached every consumer — or that the
+		// decision it carried STOPPED EXISTING and nothing replaced it, which is
+		// what a scope cut does and what no check in this tool watches. Measured
+		// on mocker P3c: a clause split in two by round 3 was cut in round 5,
+		// the survivor kept the mutation requirement the deleted half carried,
+		// and it cost a second launch to find. The round that cuts is the round
+		// that must read this line the other way.
+		fmt.Printf("  swept: %d of %d retired token(s) survive NOWHERE in the untouched corpus — either that fix reached its consumers, or the decision those words carried stopped existing and nothing replaced it. A round that CUT reads this line the second way\n", rep.Swept, rep.Mined)
 	}
 	if rep.Common > 0 {
 		fmt.Printf("  note: %d retired token(s) are used all over the corpus and were dropped rather than reported — the OUTPUT is narrowed, never the check; lower -max-df (now %d) to see them\n", rep.Common, maxDF)
@@ -2617,8 +2842,22 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 			}
 		}
 	}
-	fmt.Printf("## closure — %d closure(s) claiming a commit, %d checked against the artifact they name, %d not closed by that commit\n",
+	// The coverage in the HEADER, on the `check rules` precedent: four numbers
+	// that read like a pass while the population they were drawn from sat three
+	// bullets below is this project's named worst failure. Measured over the six
+	// workspaces on disk — p2f checked 3 of 110, mocker A3 5 of 266, P3a 68 of
+	// 421, all three printing a headline "N checked" and one miss under it,
+	// while P3b (568 of 587) and P3c (132 of 153) are genuinely covered. The
+	// predicate is not a share with a chosen constant: the check could not reach
+	// MORE closures than it checked. That is a sentence, and it fires on
+	// exactly the three gates where the check said nothing useful.
+	unreachable := unnamed + ambiguous
+	hdr := fmt.Sprintf("## closure — %d closure(s) claiming a commit, %d checked against the artifact they name, %d not closed by that commit",
 		claims, checked, len(bad))
+	if checked > 0 && unreachable > checked {
+		hdr += fmt.Sprintf(" — NOT A PASS: %d could not be reached, more than were checked", unreachable)
+	}
+	fmt.Println(hdr)
 	if claims > 0 && checked == 0 {
 		fmt.Printf("  note: NOT A PASS — no closure could be checked. `wf round record` proves the sha EXISTS; this check proves the commit touched what the finding names, and it reaches a finding only where the finding names an artifact path\n")
 	}

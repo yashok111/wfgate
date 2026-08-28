@@ -166,7 +166,13 @@ func ownsTargets(entry string) (files, dirs []string) {
 // prompt composed at run time is text this tool never saw, and asking whether a
 // path is absent from it is the polarity error the gate briefs its reviewers
 // about.
-func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
+// textOwned is what the SOURCE-TEXT backstop read, and it is folded into both
+// directions here rather than reported beside them. Two reach lines about one
+// script — one saying every path is covered and one saying sixteen are owned by
+// nobody — is the contradiction this project refuses everywhere else; measured
+// on mocker P3c, where both were true of the same file because they counted
+// different populations.
+func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall, textOwned map[string]bool) {
 	gates := gateConfigs(s)
 	var incomplete []string
 	for _, g := range gates {
@@ -200,7 +206,7 @@ func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) 
 	// dually-owned file — is the second-copy defect on adjacent lines of one
 	// report.
 	seenPath := map[string]bool{}
-	declared, covered, unreachable := 0, 0, 0
+	declared, covered, unreachable, fromText := 0, 0, 0, 0
 	for _, c := range calls {
 		for _, o := range ownedPaths(c.Prompt) {
 			if seenPath[o.Path] {
@@ -232,6 +238,35 @@ func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) 
 		}
 	}
 
+	// The text-read paths, in the same two directions and with no label to name:
+	// this half knows which BLOCK declares a path and not which agent is handed
+	// it, which is exactly why the WARN below says the block rather than the
+	// agent.
+	var textPaths []string
+	for p := range textOwned {
+		if !seenPath[p] {
+			textPaths = append(textPaths, p)
+		}
+	}
+	sort.Strings(textPaths)
+	for _, p := range textPaths {
+		seenPath[p] = true
+		declared++
+		fromText++
+		if len(gates) == 0 {
+			continue
+		}
+		if reaches(gates, p) {
+			covered++
+			continue
+		}
+		if len(incomplete) > 0 {
+			continue
+		}
+		unreachable++
+		r.add(WARN, 1, "a `YOU OWN` block declares %s, and no gate lists it in `owns` — a reviewer briefed on that file can file a blocker no fix agent is allowed to touch (read from the source text: no prompt carrying this block resolves statically)", p)
+	}
+
 	// The population, always: a script with no gate config and a script whose
 	// ownership lines up produce the same silence, and only one of them is news.
 	// A check that exits zero having covered nothing is this project's founding
@@ -240,6 +275,9 @@ func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) 
 	if unread > 0 {
 		lower = fmt.Sprintf(" (a LOWER BOUND: %d prompt(s) are composed at run time and were not read)", unread)
 	}
+	if fromText > 0 {
+		lower += fmt.Sprintf(" — %d of the paths above were read from the SOURCE TEXT rather than from a resolved prompt", fromText)
+	}
 	switch {
 	case len(gates) == 0:
 		r.add(INFO, 1, "%d owned path(s) and no object with both an `owns` array and `reviewers` — the reviewer/fixer reach check covered nothing%s; it reads the list a gate builds its fix agent's YOU OWN block from", declared, lower)
@@ -247,7 +285,7 @@ func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) 
 		r.add(INFO, 1, "reviewer/fixer reach: %d owned path(s) against %d gate config(s), %d reachable by a fix agent, the remaining %d NOT JUDGED%s — the `owns` array of gate(s) %s could not be read in full, and a path missing from a list this tool could not read is not a path nobody owns",
 			declared, len(gates), covered, declared-covered, lower, strings.Join(incomplete, ", "))
 	case declared == 0:
-		r.add(INFO, 1, "%d gate config(s) with an `owns` array and no prompt declaring YOU OWN — the reviewer/fixer reach check compared nothing%s", len(gates), lower)
+		r.add(INFO, 1, "%d gate config(s) with an `owns` array and no prompt or literal declaring YOU OWN — the reviewer/fixer reach check compared nothing%s", len(gates), lower)
 	default:
 		r.add(INFO, 1, "reviewer/fixer reach: %d owned path(s) against %d gate config(s), %d reachable by a fix agent, %d NOT%s", declared, len(gates), covered, unreachable, lower)
 	}
@@ -261,8 +299,11 @@ func checkFixerReach(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) 
 	var stale []string
 	for _, g := range gates {
 		for f := range g.Files {
-			produced := false
+			produced := textOwned[f]
 			for _, c := range readable {
+				if produced {
+					break
+				}
 				if containsPath(ownedPaths(c.Prompt), f) {
 					produced = true
 					break

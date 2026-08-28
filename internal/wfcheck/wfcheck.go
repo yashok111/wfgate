@@ -95,7 +95,7 @@ func Run(path, root string) (*Report, error) {
 	checkOptions(r, s, calls)
 	checkPromptsVsSchemas(r, s, calls)
 	checkOwnership(r, s, calls, root)
-	checkFixerReach(r, s, calls)
+	checkFixerReach(r, s, calls, checkOwnershipText(r, s, calls))
 	checkPromptFootguns(r, calls)
 	checkResultSafety(r, s)
 	checkConsts(r, s, calls)

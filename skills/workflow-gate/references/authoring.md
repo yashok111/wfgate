@@ -84,6 +84,27 @@ BEFORE and AFTER its own fix and records both deltas** — in the script, as a c
 settled trade, with the numbers that settled it. A later round re-opening one then has to refute a
 measurement rather than a preference.
 
+**Measure every schema's WIDTH before the launch, and probe the widest one.** An output schema the
+launch's safety classifier refuses kills that agent alone —
+`blocked by safety classifier: output schema too large to classify safely` — and it lands wherever the
+wide schema is, which on one run was the fifteenth and LAST agent, six hours in. `wfdry` prints the
+serialized width of every schema the script composes, widest first, and WARNs above the widest this
+corpus has seen accepted; the band between that and the narrowest it has seen refused is UNMEASURED,
+not safe. The answer to a warning is not an argument about the number: it is a throwaway workflow with
+ONE cheap agent carrying the schema and a prompt saying to fill it with placeholders, which answers in
+seconds. A gate that had measured its own width to the byte, written the risk down, and accepted it on
+the ground that "acceptance cannot be measured from here" was wrong on exactly that clause. Narrow a
+wide schema by declaring a repeated leaf once and referencing it.
+
+**A completion boolean is recognised by its NAME.** `wfdry` fills a report field as pass-shaped only
+when the field name is one of `passed/ok/green/clean/verified/proven/done/complete/completed/succeeded/
+finished/met/satisfied/achieved`, optionally prefixed by `goal/scope/slice/section/acceptance/criteria/
+criterion`. Anything else is FALSE in every mode, so the branch behind it is exercised by none and the
+`clean` mode fails correctly while nothing says why — three field names were burned discovering this by
+reading the runner's source. The WARN now names the vocabulary. Rename the field, or declare the
+polarity in the schema with `"x-pass": true` (`false` for a failure flag), remembering that the
+annotation rides in the schema the safety classifier reads and widens it.
+
 **Name the spawn wrapper `spawn`.** A script must wrap the spawn call — an unhandled throw at a serial
 step aborts the run (see the gate-checks' failure-handling section) — and `wfcheck` reads every later
 check off its inventory of call sites. The name is a CONVENTION the checker reports, not the mechanism
@@ -126,6 +147,17 @@ is a check going unrun over a script that thought it had declared ownership, and
 prompts that carry a `YOU OWN` heading whether or not their entries parsed, so the two numbers say
 different things on purpose, and one live run shipped exactly that: adopting the form turned the note into `12
 owned path(s) parsed from 8 prompt(s)` and found two pairs of sections writing into the same Go package.
+
+**A block a factory composes is read from the SOURCE TEXT instead**, and the report says which half
+ran. A prompt assembled by one factory out of a per-section config resolves statically to nothing, so
+the parsed half honestly reports zero — measured on a live script that declares sixteen paths, whose
+operator then did the arithmetic by hand four times in one gate. `wfcheck` now reads every `YOU OWN`
+block out of the script's string literals (comments excluded — a comment describing an ownership
+scheme is not one), reports the paths no resolved prompt carries, ERRORs when two BLOCKS name one
+file, and folds them into the one reach report against the gates' `owns` arrays. It is the WEAKER
+half and says so: it knows which BLOCK declares a path, not which agent is handed which block, so a
+block spawned twice looks like one. Keeping the factory is fine — inlining four 60-line prompts to buy
+the parsed check back is a round trip one script gate made and reverted.
 
 **Write `phase()` titles as LITERALS at the call site.** A gate helper that takes the title as a
 parameter (`gate(name, phaseTitle, …)` calling `phase(phaseTitle)`) is unmatchable against `meta.phases`

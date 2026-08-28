@@ -203,6 +203,22 @@ modes: %s
 				strings.Join(never, ", "), orNone(strings.Join(labelsOf(results), ", ")))
 		}
 	}
+	// What each agent would put ON THE WIRE, printed ALWAYS and not only when
+	// it is wide. A green run over an unmeasured width proves nothing about the
+	// launch, and this corpus has lost agents to that number twice — once on a
+	// run's LAST agent, six hours in, with nothing downstream to catch it. The
+	// section is small: it groups by width, not by call site.
+	widths := wfdry.SchemaWidths(results)
+	if len(widths) > 0 {
+		fmt.Printf("\n=== schemas — %d distinct width(s), widest first ===\n", len(widths))
+		for _, w := range widths {
+			if w.Bytes < 0 {
+				fmt.Printf("  does not serialize: %s\n", strings.Join(w.Labels, ", "))
+				continue
+			}
+			fmt.Printf("  %d bytes: %s\n", w.Bytes, strings.Join(w.Labels, ", "))
+		}
+	}
 	if *promptDiff != "" {
 		if code := printPromptDiff(results, *promptDiff); code != 0 {
 			os.Exit(code)
@@ -221,6 +237,12 @@ modes: %s
 				fmt.Println("WARN:", n)
 			}
 		}
+	}
+	// LAST, because it is the one line that is about the launch rather than
+	// about the script: a mode tally cannot fail on a schema width, and an
+	// operator who reads only the final lines must still see it.
+	for _, n := range wfdry.SchemaNotes(widths) {
+		fmt.Println("WARN:", n)
 	}
 	if failed > 0 || deadUnused {
 		os.Exit(1)

@@ -204,6 +204,26 @@ func (ix *Index) resolve(p string) (string, []string) {
 // That is the reviewer's job, and `wf check cite --show` exists to make it cheap
 // rather than to pretend it has been done.
 func VerifyCitations(target string, ix *Index, cits []Citation) ([]Finding, error) {
+	return VerifyCitationsWith(WorktreeReader(target), ix, cits)
+}
+
+// WorktreeReader reads a target path from the working tree.
+func WorktreeReader(target string) func(string) ([]byte, error) {
+	return func(path string) ([]byte, error) { return os.ReadFile(filepath.Join(target, path)) }
+}
+
+// RevReader reads a target path AT a revision, so a citation can be checked
+// against the bytes a freeze published rather than against a tree the run under
+// review has since moved.
+func RevReader(target, ref string) func(string) ([]byte, error) {
+	return func(path string) ([]byte, error) { return gitx.Repo{Dir: target}.ShowFile(ref, path) }
+}
+
+// VerifyCitationsWith is VerifyCitations over an arbitrary source of the
+// target's bytes. ONE verifier: the rules about ranges, anchors and nearest
+// occurrences are the same question whichever revision is being asked about,
+// and a second copy of them would be this project's most-repeated defect.
+func VerifyCitationsWith(read func(string) ([]byte, error), ix *Index, cits []Citation) ([]Finding, error) {
 	lineCache := map[string][]string{}
 	var out []Finding
 	add := func(c Citation, level, msg string) {
@@ -233,7 +253,7 @@ func VerifyCitations(target string, ix *Index, cits []Citation) ([]Finding, erro
 		}
 		lines, ok := lineCache[path]
 		if !ok {
-			b, err := os.ReadFile(filepath.Join(target, path))
+			b, err := read(path)
 			if err != nil {
 				add(c, "error", fmt.Sprintf("read %s: %v", path, err))
 				continue
@@ -325,11 +345,16 @@ func nearest(lines []string, tok string, want int) int {
 
 // Show renders the cited lines so a reviewer can compare them with the claim.
 func Show(target string, ix *Index, c Citation) string {
+	return ShowWith(WorktreeReader(target), ix, c)
+}
+
+// ShowWith prints the cited lines from wherever the caller reads the target.
+func ShowWith(read func(string) ([]byte, error), ix *Index, c Citation) string {
 	path, _ := ix.resolve(c.Path)
 	if path == "" {
 		return "  <unresolved>"
 	}
-	b, err := os.ReadFile(filepath.Join(target, path))
+	b, err := read(path)
 	if err != nil {
 		return "  <unreadable>"
 	}

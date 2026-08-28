@@ -384,6 +384,12 @@ func TestCheckStale_aCompleteSweepIsNotAVacuousOne(t *testing.T) {
 	out, err := runWF(t, wsDir, "check", "stale")
 	noErr(t, err, "check stale")
 	mustContain(t, out, "survive NOWHERE in the untouched corpus", "reached its consumers")
+	// BOTH readings, because this check cannot tell them apart: the same
+	// observation covers a fix that reached every consumer and a decision that
+	// stopped existing with nothing in its place. Measured on mocker P3c, where
+	// a clause split in two was cut and the survivor kept the requirement the
+	// deleted half carried — it cost a second launch.
+	mustContain(t, out, "stopped existing and nothing replaced it", "A round that CUT reads this line the second way")
 	mustNotContain(t, out, "NOT A PASS")
 }
 
