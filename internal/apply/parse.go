@@ -23,11 +23,19 @@ import (
 // between marker lines.
 //
 // A marker line counts only when it is EXACTLY `<<<<`, `====` or `>>>>` —
-// unindented, nothing else on the line. Text that itself contains such a line
-// (a setext underline of exactly four equals) will mis-split — and then fail
-// the plan, because the mis-split old no longer matches the file:
-// all-or-nothing turns the collision into a loud rejection instead of a silent
-// wrong edit.
+// unindented, nothing else on the line. A marker line INSIDE either half is
+// refused, and the refusal is the whole of the guard: the manual used to say a
+// collision "mis-splits and then fails the plan loudly, because the mis-split
+// old matches nothing", and that is true only of the OLD half. In the NEW half
+// it matches EVERYTHING and is written. Measured on the P3d gate: a block
+// whose `>>>>` was forgotten swallowed the next block whole, every edit
+// reported `ok (1 match)`, `verified 1 file(s) byte-for-byte against the
+// planned batch` printed — the verification is against the batch AS PARSED, so
+// a mis-split is confirmed in the same words a correct batch gets — and the
+// literal `<<<<` and `====` lines landed in the artifact, took `wfcheck` from
+// 0 errors to `Unexpected token ===`, and cost two `git revert`s and about half
+// a round. A text half that must carry such a line is the one case for the JSON
+// batch format, where the halves are delimited by nothing.
 func ParseText(b []byte) ([]Edit, error) {
 	lines := strings.Split(string(b), "\n")
 	var edits []Edit
@@ -78,14 +86,22 @@ func ParseText(b []byte) ([]Edit, error) {
 		if i >= len(lines) || lines[i] != "<<<<" {
 			return nil, fmt.Errorf("%s: expected `<<<<` after the header", e.File)
 		}
-		old, next, err := collectUntil(lines, i+1, "====")
+		oldStart := i + 1
+		old, next, err := collectUntil(lines, oldStart, "====")
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.File, err)
 		}
+		if err := noStrayMarker(lines, oldStart, next-1, e.File, "old"); err != nil {
+			return nil, err
+		}
 		e.Old = old
-		nw, next, err := collectUntil(lines, next, ">>>>")
+		newStart := next
+		nw, next, err := collectUntil(lines, newStart, ">>>>")
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.File, err)
+		}
+		if err := noStrayMarker(lines, newStart, next-1, e.File, "new"); err != nil {
+			return nil, err
 		}
 		e.New = nw
 		i = next
@@ -106,4 +122,58 @@ func collectUntil(lines []string, i int, term string) (string, int, error) {
 		buf = append(buf, lines[i])
 	}
 	return "", 0, fmt.Errorf("unterminated block: no %q line", term)
+}
+
+// noStrayMarker refuses a block half carrying a bare marker line.
+//
+// The half is already delimited by the marker that ENDED it, so anything left
+// inside is a marker the format cannot have meant: a forgotten `>>>>` makes the
+// following block part of this one's new text, a forgotten `====` does the same
+// to the old text, and both are written or matched verbatim. There is no
+// legitimate plain-text edit carrying one — this repository's own README
+// documents the format and does it inside a fenced block, which is still a bare
+// marker line, so the refusal names the JSON batch as the way to write one.
+func noStrayMarker(lines []string, from, to int, file, half string) error {
+	// No `i < len(lines)` bound: `collectUntil` returns the index AFTER a line
+	// it matched, so `to` is inside the slice by construction. It was there, no
+	// mutation could make it fail, and this project deletes a guard nothing can
+	// prove rather than shipping it.
+	for i := from; i < to; i++ {
+		switch lines[i] {
+		case "<<<<", ">>>>":
+			// An OPENER or a TERMINATOR inside a half is unambiguous: the half
+			// it belongs to was never closed. `<<<<` in a new half is the next
+			// block swallowed whole; `>>>>` in an old half is this block's own
+			// end read as text.
+			return fmt.Errorf("%s: line %d is a bare %q inside the %s half of a block — the %q above it was never closed, so the block that follows was swallowed into this one and would be written verbatim, not reported; add the missing %q",
+				file, i+1, lines[i], half, openerOf(half), terminatorOf(half))
+		case "====":
+			// AMBIGUOUS, and the refusal says so rather than asserting a
+			// forgotten terminator: a `====` in a new half is either the
+			// separator of a block whose `>>>>` is missing, or content that
+			// genuinely carries a markdown setext underline. Both are refused,
+			// and the second is refused on its own ground — a bare marker line
+			// written INTO an artifact makes every later text batch over that
+			// file mis-split. This repository's own README carries all three
+			// markers in its format section and is therefore JSON-only, which
+			// is the price and is documented.
+			return fmt.Errorf("%s: line %d is a bare %q inside the %s half of a block; either the %q above it is missing its %q, or the text genuinely carries that line — both are refused, because a marker written into an artifact mis-splits every later batch over that file. Use the JSON batch format for text that must carry one",
+				file, i+1, lines[i], half, openerOf(half), terminatorOf(half))
+		}
+	}
+	return nil
+}
+
+func terminatorOf(half string) string {
+	if half == "old" {
+		return "===="
+	}
+	return ">>>>"
+}
+
+func openerOf(half string) string {
+	if half == "old" {
+		return "<<<<"
+	}
+	return "===="
 }

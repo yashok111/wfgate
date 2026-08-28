@@ -535,3 +535,28 @@ func TestStatsCallsABankedEmptyRoundAMeasuredZero(t *testing.T) {
 	mustContain(t, out, "ledger: empty, and its lenses are banked — a measured zero")
 	mustNotContain(t, out, "UNFILLED scaffold", "record NO lens")
 }
+
+// The "it takes a path" clause is attached only where the argument LOOKS like a
+// pasted prompt. Measured need: a live gate pasted one on the command line
+// twice and got the syscall's `file name too long` with nothing saying what was
+// wanted. Measured cost of over-attaching it: an operator who simply mistyped a
+// path is told they pasted a prompt, which is a refusal pointing at the wrong
+// mistake.
+func TestLensReadErrorNamesThePathOnlyWhereItLooksLikeAPrompt(t *testing.T) {
+	wsDir := newGate(t)
+
+	long := strings.Repeat("a review vector that reads the delta and reports blockers. ", 80)
+	_, err := runWF(t, wsDir, "round", "lens", long, "-name", "n", "-model", "m", "-asks", "closure")
+	if err == nil {
+		t.Fatal("a pasted prompt must fail")
+	}
+	mustContain(t, err.Error(), "takes the PATH of a file holding the prompt")
+
+	_, err = runWF(t, wsDir, "round", "lens", filepath.Join(wsDir, "no-such-lens.md"), "-name", "n", "-model", "m", "-asks", "closure")
+	if err == nil {
+		t.Fatal("a missing file must fail")
+	}
+	if strings.Contains(err.Error(), "takes the PATH") {
+		t.Fatalf("a mistyped path must get the plain error: %v", err)
+	}
+}

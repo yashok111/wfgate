@@ -46,8 +46,21 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    names the rule when it sees it). Prefer the text form for anything with multi-line or quote-bearing `old` strings:
    assembling the JSON was the measured bottleneck of the first live gate (a 35-edit batch under
    three layers of quoting — JSON in a heredoc in a shell — crashed on escaping more often than on
-   substance). A marker collision (text containing an exact `====` line) mis-splits and then FAILS
-   the plan loudly, because the mis-split old matches nothing.
+   substance). A bare `<<<<`, `====` or `>>>>` line INSIDE either
+   half is refused at parse, and the wording that used to stand here — "a marker collision mis-splits
+   and then FAILS the plan loudly, because the mis-split old matches nothing" — was true only of the
+   OLD half. In the NEW half it matches EVERYTHING and is WRITTEN: a forgotten `>>>>` swallowed the
+   next block whole, every edit reported `ok (1 match)`, the batch verified byte-for-byte (the
+   verification is against the batch AS PARSED, so a mis-split is confirmed in the words a correct
+   batch gets), the literal markers landed in the artifact, `wfcheck` went from 0 errors to
+   `Unexpected token ===`, and the recovery was two `git revert`s and about half a round. Text that
+   must carry such a line is the one case for the JSON form.
+
+   **An edit file and a findings file are DATA: write them with a file tool, never through a shell
+   heredoc.** The same gate had two records rejected by a pipe it had never typed — a shell hook
+   rewrote a command quoted inside the heredoc that was writing the table and injected an alternation
+   pipe into a row's TEXT. Anything between the shell and the file may rewrite it, and the artifact
+   that arrives is not the one that was authored.
 
    **One replacement carrying the whole artifact is a legitimate shape for a RESTRUCTURE and it
    forfeits every guarantee this command has.** All-or-nothing and the declared `count` are per
@@ -517,7 +530,7 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   write, which is luck and not design. Dispatch every vector against ONE frozen snapshot and batch the
   fixes after the last one returns.
 - **A delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3].**
-  Bank each one with `wf round lens <prompt> -name N -model M -asks Q` — `-name` stays the label your
+  Bank each one with `wf round lens <prompt-file> -name N -model M -asks Q` — `-name` stays the label your
   findings use, `-asks` is the closed set (`orchestration, routing, alignment, facts, seams, criterion,
   closure, fix-induced, ripple, other`) that lets one gate's roster be read beside another's, and `other`
   is always available so a vector your slice needs is never refused. Each required question has a
@@ -534,6 +547,16 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   13 lens RECORDS under TEN distinct names (measured 2026-08-25; one gate is open and the figure moves),
   of which exactly one — `criterion` — appears as a vector name anywhere in this manual, and the other
   four gates banked no roster, so their prompts are gone.
+  **Every one of those prompts says that finding nothing is allowed**, in the same words in every
+  round of the gate: *an empty findings list is the expected and legitimate result; manufacturing a
+  finding to look thorough is one failure mode and downgrading a real one to make the count look good
+  is the other.* `wf stats` and `wf round lens -asks` enforce the QUESTIONS by roster name and can see
+  nothing of the framing. Read off one script gate's banked roster: no prompt of its first three
+  rounds carried the clause (14, 7, 6 blockers), all four prompts of its fourth did (1), and three of
+  four of its fifth did (0, with thirteen defects still filed, two MAJOR). Two rounds against three
+  at the convergent end of a descending gate is not a measurement of the clause — but a count that
+  means one thing in round 3 and another in round 4 is not a descent either, so the clause belongs in
+  round ONE, and this is checkable only because the prompts were banked.
 - **Later rounds are DELTA rounds.** A fix is unreviewed code — in one phase, *half* the blockers of
   rounds 3+ were introduced by the previous round's own fix; in the next, 5 of 11; and in the one after
   that, round 2 was **9 out of 9**: every blocker that round existed only because round 1's fix created

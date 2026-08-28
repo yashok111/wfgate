@@ -45,8 +45,8 @@ const usage = `wf — gate harness
   wf apply -f <edits>             all-or-nothing batch (JSON array or === text blocks), then commit
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
-  wf round record <file>          fill the open round's findings.md from a file, validate closures, commit
-  wf round lens <prompt> -name N -model M -asks Q   bank a reviewer vector against the round (no argument: print the roster)
+  wf round record <file> [-round N]   fill a round's findings.md from a file (- reads stdin), validate closures, commit
+  wf round lens <prompt-file> -name N -model M -asks Q [-round N]   bank a reviewer vector against the round (no argument: print the roster)
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
@@ -783,7 +783,7 @@ func cmdRound(args []string) error {
 		return cmdRoundLens(args[1:])
 	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> | wf round lens <prompt> -name N -model M -asks Q")
+		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> [-round N] | wf round lens <prompt-file> -name N -model M -asks Q [-round N]")
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
@@ -1032,8 +1032,19 @@ func cmdRoundRecord(args []string) error {
 	byCommit, byProse, open, blockers, notes := 0, 0, 0, 0, 0
 	for _, r := range rows {
 		if r.Malformed {
-			return fmt.Errorf("line %d is a table row of %d cell(s), not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
-				r.Line, r.Cells, trunc(r.Raw, 60))
+			// The column, not just the row. Two gates have now paid for this
+			// class, and on the second the pipe was not even authored — a shell
+			// hook rewrote a command inside the heredoc writing the table and
+			// injected an alternation pipe into a row's TEXT — so the operator
+			// was hunting a character they had never typed, with `awk` and
+			// `tr`. A row with too FEW cells has no offending pipe and keeps
+			// the older message.
+			where := ""
+			if r.TailCol > 0 {
+				where = fmt.Sprintf(" — the 4th pipe is at column %d (characters, from the start of the line) and everything after it is %s", r.TailCol, trunc(r.Tail, 60))
+			}
+			return fmt.Errorf("line %d is a table row of %d cell(s), not 4 (%s)%s; a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
+				r.Line, r.Cells, trunc(r.Raw, 60), where)
 		}
 		// The scale is closed on the write path and open on every read path.
 		// Measured over the six ledgers on disk: one scale, four vocabularies
@@ -1121,7 +1132,7 @@ func cmdRoundRecord(args []string) error {
 	// — a refusal here would be a refusal to write down what was found.
 	lenses := roundLenses(w, n)
 	if validLenses(lenses) == 0 {
-		fmt.Printf("  lenses: NONE banked for round %d — the findings are recorded and the prompts that produced them are not. `wf round lens <prompt> -name N -model M -asks Q -round %d`\n", n, n)
+		fmt.Printf("  lenses: NONE banked for round %d — the findings are recorded and the prompts that produced them are not. `wf round lens <prompt-file> -name N -model M -asks Q -round %d`\n", n, n)
 	} else if note := classifyAsks(roundKinds(w)[n], lenses).Note(); note != "" {
 		// Which QUESTIONS the round put is the half a roster of names cannot
 		// answer: measured over the two gates that banked any roster, ten
@@ -1287,7 +1298,7 @@ func cmdFreeze(args []string) error {
 	// named. The OPEN round is exempt: in the prescribed flow it is frozen right
 	// after it is opened, so its scaffold is blank by construction.
 	if unread := unreadRounds(w, w.M.Round-1, kinds); len(unread) > 0 {
-		return fmt.Errorf("round(s) %s: the findings ledger is the untouched scaffold and no lens is recorded, so this freeze would publish a round nobody is recorded as having read as a round that found nothing.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt> -name N -model M -asks Q -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
+		return fmt.Errorf("round(s) %s: the findings ledger is the untouched scaffold and no lens is recorded, so this freeze would publish a round nobody is recorded as having read as a round that found nothing.\n  If its vectors ran and found nothing, bank them: `wf round lens <prompt-file> -name N -model M -asks Q -round N`.\n  If they found something, record it: `wf round record <file> -round N`", roundList(unread))
 	}
 	for _, rn := range []int{w.M.Round - 1, w.M.Round} {
 		if rn < 1 {
@@ -3437,7 +3448,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			len(scaffoldRounds), roundList(scaffoldRounds))
 	}
 	if len(noRoster) > 0 {
-		_, _ = fmt.Fprintf(out, "  note: %d round(s) record NO lens (%s) — what reviewed them is not in this workspace, so no claim about brief wording or model diversity made from these numbers can be checked against it; bank each vector with `wf round lens <prompt> -name N -model M -asks Q`\n",
+		_, _ = fmt.Fprintf(out, "  note: %d round(s) record NO lens (%s) — what reviewed them is not in this workspace, so no claim about brief wording or model diversity made from these numbers can be checked against it; bank each vector with `wf round lens <prompt-file> -name N -model M -asks Q`\n",
 			len(noRoster), roundList(noRoster))
 	}
 	if len(askShort) > 0 {

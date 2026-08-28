@@ -35,7 +35,9 @@ return { done: true }`
 // The width of what a call would put on the wire is measured at the SPAWN,
 // because that is where a composed schema exists. Validated against a live
 // gate's own history: the revision whose last agent was refused measures 4589
-// here and the revision that then launched 15/15 measures 3877.
+// here and the revision that then launched 15/15 measures 3877. The narrowest
+// refusal on record is lower still — 4,233, probed by a later gate for 82
+// milliseconds and zero tokens — and it is what SchemaRefused carries.
 func TestSchemaWidth_isMeasuredPerCallAndGroupedWidestFirst(t *testing.T) {
 	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
 const NARROW = { type: 'object', properties: { done: { type: 'boolean' } } }
@@ -439,4 +441,28 @@ phase('P')
 await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
 return { done: true }`, "clean")
 	wantViolation(t, r, "does not serialize")
+}
+
+// The corpus constants are pinned by their LITERAL value, because every other
+// test in this file builds its fixtures from the symbols and a typo in the
+// number is invisible to all of them: the mutation 4233 -> 4589 survived the
+// whole suite. These two are not thresholds anybody chose — they are the two
+// ends of a measured corpus — so the test is the record, and moving one means
+// changing this line and stating the measurement that moved it.
+func TestSchemaBandIsTheMeasuredCorpus(t *testing.T) {
+	// The widest CLEAN width the launch has ACCEPTED: P3c's second launch, 15
+	// of 15 agents.
+	if SchemaAccepted != 3877 {
+		t.Fatalf("SchemaAccepted is the widest accepted width on record (3877), got %d", SchemaAccepted)
+	}
+	// The narrowest it has REFUSED: P3d's probe, 82 milliseconds and zero
+	// tokens, against P3c's 4589 paid for by a dead agent six hours into a run.
+	if SchemaRefused != 4233 {
+		t.Fatalf("SchemaRefused is the narrowest refusal on record (4233), got %d", SchemaRefused)
+	}
+	// And the band is a band: an accepted width below a refused one, with a gap
+	// this tool must not pretend to have located.
+	if SchemaAccepted >= SchemaRefused {
+		t.Fatalf("the corpus must separate: accepted %d, refused %d", SchemaAccepted, SchemaRefused)
+	}
 }

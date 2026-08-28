@@ -412,3 +412,39 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 		t.Fatalf("an install in step with the binary is not drift, and an abandoned cache is not an install:\n%s", out)
 	}
 }
+
+// The refusal points at a CHARACTER. Two gates have paid for an unescaped pipe,
+// and on the second it was not even authored: a shell hook rewrote a command
+// quoted inside the heredoc that was writing the table and injected an
+// alternation pipe into a row's text. The message named the row and the cell
+// count, so the offending cell was found with `awk` and `tr` by hand.
+func TestRecordRefusalNamesTheOffendingPipe(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | the flag takes --max-columns|--max-columns-preview | 2344d3d8 |\n")
+
+	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	if err == nil {
+		t.Fatal("record must refuse a row that splits into five cells")
+	}
+	// The COLUMN of the fourth unescaped pipe — where a well-formed row's
+	// closed-by cell begins — and the tail it could not place. Which extra pipe
+	// is the author's is not knowable from the row, so the tail is printed
+	// whole and the injected one is inside it.
+	mustContain(t, err.Error(), "the 4th pipe is at column", "--max-columns-preview | 2344d3d8", "nothing was recorded")
+}
+
+// A row with too FEW cells has no offending pipe, and a column invented for one
+// would point at a character that is not the problem.
+func TestRecordRefusalOfAShortRowNamesNoColumn(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | still open |\n")
+
+	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	if err == nil {
+		t.Fatal("record must refuse a three-cell row")
+	}
+	mustContain(t, err.Error(), "not 4")
+	if strings.Contains(err.Error(), "4th pipe") {
+		t.Fatalf("a short row must name no pipe: %v", err)
+	}
+}

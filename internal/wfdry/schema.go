@@ -22,12 +22,28 @@ import (
 // agent, six hours in, with nothing downstream to catch it. Its second launch,
 // after the same narrowing, ran 15 of 15 at 3,877.
 //
+// REFUSED, mocker P3d, and this one was PROBED rather than paid for: one
+// throwaway agent carrying the real schema and a prompt saying to fill it with
+// placeholders answered in 82 milliseconds at zero tokens — 4,233 bytes
+// REFUSED, and 3,114 ACCEPTED in 41 seconds. That is the narrowest refusal on
+// record and it moved the floor down by 356 bytes, from a number two rounds of
+// that gate had argued about from measurements of SIZE alone while the answer
+// cost one cheap agent. The floor is the LOWEST refusal the corpus has
+// recorded, never the last one it heard about.
+//
 // So on the CLEAN quantity the corpus separates: every accepted width is at or
-// below 3,877 and every refused one at or above 4,589. The gap between them is
+// below 3,877 and every refused one at or above 4,233. The gap between them is
 // UNMEASURED, and this tool must not pretend to know where in it the boundary
 // falls. P3c's refusal quoted 4,563 against this runner's 4,589 — two
 // serializers 26 bytes, 0.6%, apart, with this one the LARGER, which is the safe
 // direction for a warning; no check should need them to agree exactly.
+//
+// The same probe answers the other question a wide schema raises. The launch
+// RESOLVES `$defs`/`$ref` and ENFORCES the `minimum`/`minLength` that reach a
+// leaf through one — a deliberately illegal first attempt was rejected — so
+// declaring a repeated leaf once and referencing it is the narrowing this
+// corpus keeps reaching for, and it is safe. It used to cost the dry run,
+// which resolved nothing; it does not any more (see resolveRefs).
 //
 // The review round that measured all of this refuted the wave that shipped it:
 // the constants were P3c's numbers, where the clean width and the widest branch
@@ -39,7 +55,7 @@ const (
 	// SchemaAccepted is the widest CLEAN width this corpus has seen accepted.
 	SchemaAccepted = 3877
 	// SchemaRefused is the narrowest CLEAN width this corpus has seen refused.
-	SchemaRefused = 4589
+	SchemaRefused = 4233
 )
 
 // SchemaWidth is one label's schema, in the two quantities that are not the

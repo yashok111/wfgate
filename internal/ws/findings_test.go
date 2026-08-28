@@ -136,6 +136,64 @@ func TestParseFindings_unescapedPipeIsMalformed(t *testing.T) {
 	if len(rows) != 1 || !rows[0].Malformed {
 		t.Fatalf("want one malformed row, got %+v", rows)
 	}
+	// WHERE, not just THAT. Two gates have paid for this class, and on the
+	// second the pipe was injected into the row by a shell hook rewriting a
+	// command quoted inside the heredoc that wrote the table — so the operator
+	// was hunting a character they had never typed, by hand, with `awk` and
+	// `tr`. The fifth cell here opens at the pipe after `A`.
+	row := doc[strings.Index(doc, "| 1 |"):]
+	col := strings.Index(row, "| B is the rule") + 1 // the 4th unescaped pipe
+	if rows[0].TailCol != col {
+		t.Fatalf("the 4th pipe is at column %d, got %d", col, rows[0].TailCol)
+	}
+	// The tail is what the parser could not place, and the injected pipe is
+	// inside it: WHICH pipe is the extra one is not knowable from the row.
+	if rows[0].Tail != "B is the rule | 2344d3d8" {
+		t.Fatalf("the tail past the 4th pipe must be quoted whole, got %q", rows[0].Tail)
+	}
+}
+
+// The column is in CHARACTERS and counted from the start of the line AS
+// WRITTEN. An indented row and the same row unindented used to report ONE
+// column, and the indented one pointed at the wrong character; a row quoting a
+// Russian product string as DATA is where characters and bytes part company,
+// and the unit is stated rather than left to be discovered.
+func TestParseFindings_columnCountsCharactersOfTheWrittenLine(t *testing.T) {
+	rowOf := func(prefix string) FindingRow {
+		doc := "| # | level | finding | closed by |\n" +
+			"|---|-------|---------|-----------|\n" +
+			prefix + "| 1 | BLOCKER | ру|сский | 2344d3d8 |\n"
+		rows := ParseFindings([]byte(doc))
+		if len(rows) != 1 || !rows[0].Malformed {
+			t.Fatalf("want one malformed row, got %+v", rows)
+		}
+		return rows[0]
+	}
+	bare := rowOf("")
+	// `| 1 | BLOCKER | ру|` — the 4th pipe is the 19th CHARACTER; it is the
+	// 23rd byte, because each Cyrillic letter is two.
+	if bare.TailCol != 19 {
+		t.Fatalf("the 4th pipe is character 19 of that row, got %d", bare.TailCol)
+	}
+	indented := rowOf("    ")
+	if indented.TailCol != bare.TailCol+4 {
+		t.Fatalf("indentation moves the column: want %d, got %d", bare.TailCol+4, indented.TailCol)
+	}
+}
+
+// A row with too FEW cells has no offending pipe, and inventing a column for
+// one would point the operator at a character that is not the problem.
+func TestParseFindings_shortRowNamesNoColumn(t *testing.T) {
+	doc := "| # | level | finding | closed by |\n" +
+		"|---|-------|---------|-----------|\n" +
+		"| 1 | BLOCKER | A |\n"
+	rows := ParseFindings([]byte(doc))
+	if len(rows) != 1 || !rows[0].Malformed {
+		t.Fatalf("want one malformed row, got %+v", rows)
+	}
+	if rows[0].TailCol != 0 || rows[0].Tail != "" {
+		t.Fatalf("a short row names no column, got col=%d tail=%q", rows[0].TailCol, rows[0].Tail)
+	}
 }
 
 // The untouched scaffold still parses: an empty LAST cell keeps its place.

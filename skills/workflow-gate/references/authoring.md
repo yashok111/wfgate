@@ -84,6 +84,12 @@ BEFORE and AFTER its own fix and records both deltas** — in the script, as a c
 settled trade, with the numbers that settled it. A later round re-opening one then has to refute a
 measurement rather than a preference.
 
+**And the AFTER is re-taken at the END of the round, after the last edit of it.** A measurement
+recorded at the moment the harness edit is made goes stale inside the very round that writes it —
+measured twice on one gate, both times found by the NEXT round's lens reading a comment that no
+longer described the file it sat in. A banked number is a claim like any other, and a round's last
+batch is what it is a claim about.
+
 **Measure every schema's WIDTH before the launch, and probe the wide one.** An output schema the
 launch's safety classifier refuses kills that agent alone —
 `blocked by safety classifier: output schema too large to classify safely` — and it lands wherever the
@@ -92,14 +98,23 @@ hours in. `wfdry` prints the serialized width of every schema the script compose
 HAPPY PATH's width, which is the quantity its corpus points are measured in, and beside it the wider
 one a failure branch composes, which is a separate statement — the launch sends whatever the branch
 that runs composes, and a wide branch nobody rehearses is exactly where the expensive refusal landed.
-Over the two gates that have launched, every accepted clean width is at or below 3,877 and every
-refused one at or above 4,589; the gap between them is UNMEASURED, not safe. The answer to a warning
+Over the three gates that have launched, every accepted clean width is at or below 3,877 and every
+refused one at or above 4,233; the gap between them is UNMEASURED, not safe. The floor is the LOWEST
+refusal on record: 4,233 came from a PROBE — 82 milliseconds and zero tokens for the refusal, 41
+seconds for the acceptance at 3,114 — after two rounds of that gate had argued about the band from
+measurements of SIZE alone. The answer to a warning
 is not an argument about the number: it is a throwaway workflow with ONE cheap agent carrying the
 schema and a prompt saying to fill it with placeholders, which answers in seconds. A gate that had
 measured its own width to the byte, written the risk down, and accepted it on the ground that
 "acceptance cannot be measured from here" was wrong on exactly that clause. Narrow a wide schema by
-declaring a repeated leaf once and referencing it. A schema that does not SERIALIZE fails `wfdry`
-outright: there is nothing for the launch to send.
+declaring a repeated leaf once and referencing it: the launch RESOLVES `$defs`/`$ref` and ENFORCES
+the `minimum`/`minLength` that reach a leaf through one — the same probe proved it, by having a
+deliberately illegal first attempt rejected — and `wfdry` resolves them too, so the narrowing no
+longer costs the dry run the leaf it references. (It did: a `$ref`'d bar leaf came back as the raw
+placeholder STRING, `obs.bars[k].result` was undefined and the clean mode returned green:false with
+every bar RED. A reference the runner cannot expand — a typo in the pointer, a remote URL — is now
+NAMED in a note.) A schema that does not SERIALIZE fails `wfdry` outright: there is nothing for the
+launch to send.
 
 **A completion boolean is recognised by its NAME.** `wfdry` fills a report field as pass-shaped only
 when the field name is one of `passed/ok/green/clean/verified/proven/done/complete/completed/succeeded/
@@ -109,6 +124,21 @@ criterion`. Anything else is FALSE in every mode, so the branch behind it is exe
 reading the runner's source. The WARN now names the vocabulary. Rename the field, or declare the
 polarity in the schema with `"x-pass": true` (`false` for a failure flag), remembering that the
 annotation rides in the schema the safety classifier reads and widens it.
+
+**A report ARRAY is filled or emptied by its NAME too, and the vocabulary is a list of DEFECT
+words.** `wfdry` returns an array EMPTY in the passing modes and holding a mixed PAIR elsewhere — two
+items, so both sides of every `filter(f => f.severity === 'blocker')` are exercised — only when its
+name carries one of `blocker/major/failure/unfixed/open/concern/dead/unverified/violation/
+gap/risk/defect/error/issue/problem/finding`, and two of those sixteen are narrower still
+(`failures` and `unfixed` are populated only in the mode named for them). Every other array comes
+back holding one placeholder in every mode — so a `green` term reading `x.length === 0` over an array named for its subject rather
+than for the vocabulary is FALSE in the clean mode, and the mode fails while nothing is wrong.
+Measured on one gate that spent two rounds reaching for that term over `unheldProperties`, including
+a reviewer's proposal to make the items OBJECTS rather than strings: it was tried, and it changed
+nothing — the discriminator was never the item type nor `required`, which the runner does not read.
+Declare the polarity instead: `"x-pass": false` on the array says a populated one is the failure
+shape (empty in the passing modes), `"x-pass": true` says the opposite (empty in `acceptfail`), and
+an explicit polarity beats every matcher. It costs bytes in the schema the classifier reads.
 
 **Name the spawn wrapper `spawn`.** A script must wrap the spawn call — an unhandled throw at a serial
 step aborts the run (see the gate-checks' failure-handling section) — and `wfcheck` reads every later

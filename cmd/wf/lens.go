@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"git.sumka.site/yakov/wfgate/internal/ws"
@@ -390,6 +392,22 @@ func cmdRoundLens(args []string) error {
 	}
 	b, err := os.ReadFile(pos[0])
 	if err != nil {
+		// The argument is a FILE and the usage line used to call it `<prompt>`,
+		// which reads as the text itself: a live gate pasted the prompt on the
+		// command line twice and got `file name too long` from the syscall,
+		// with nothing saying what was wanted. Text is deliberately NOT
+		// accepted as a fallback — a prompt is banked verbatim and a shell
+		// mangles one on the way in.
+		//
+		// The clause is attached only where the argument LOOKS like a pasted
+		// prompt (too long for a filename, or carrying whitespace). A plain
+		// typo'd path gets the plain error: telling an operator who mistyped a
+		// path that they pasted a prompt accuses them of a mistake they did not
+		// make, which is the same defect as a refusal pointing at the wrong
+		// character.
+		if errors.Is(err, syscall.ENAMETOOLONG) || strings.ContainsAny(pos[0], " \t\n") {
+			return fmt.Errorf("%w; `wf round lens` takes the PATH of a file holding the prompt, not the prompt itself", err)
+		}
 		return err
 	}
 	if len(strings.TrimSpace(string(b))) == 0 {

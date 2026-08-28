@@ -691,7 +691,7 @@ only reader is a reviewer imagining a cheat has no floor. What shipped:
   nobody filled, and the last of them is p2e's FINAL round. `-kind tool` is what
   each of them should have been opened as, and none of them existed as a claim
   about findings until now.
-- *`wf round lens <prompt> -name N -model M`* — the escape from that refusal is
+- *`wf round lens <prompt-file> -name N -model M`* — the escape from that refusal is
   a RECORD, not a flag, and it is the item the queue said to build if only one
   was built. The roster was the largest visible driver in that gate and lived
   as DATA: over the delta rounds 2-8 the criterion vector was EXTERNAL at 2/4/6
@@ -1479,7 +1479,9 @@ round, on a measurement anybody could have run and nobody did:
   four agents in one run) and 4,589 (P3c, the last agent); accepted 3,390 (P3a,
   same run), 3,435 (P3a's 44-of-44 relaunch) and 3,877 (P3c's 15-of-15). So the
   corpus SEPARATES on the clean width — everything accepted at or below 3,877,
-  everything refused at or above 4,589 — and the gap is unmeasured, not safe. A
+  everything refused at or above 4,589 — and the gap is unmeasured, not safe.
+  (The floor moved DOWN to 4,233 one wave later, on a probe: the constant is the
+  LOWEST refusal on record, never the last one heard about.) A
   wide FAILURE branch is a different statement and prints as one, because the
   launch sends whatever the branch that runs composes and the expensive refusal
   landed on an agent at the very tail. A width never fails a mode; a schema that
@@ -1541,6 +1543,170 @@ round, on a measurement anybody could have run and nobody did:
   table cell that had been updated. Three guards were deleted rather than shipped
   unproven, and two mutations that broke the BUILD were discarded and rewritten,
   which this file already records as the trap.
+
+**The sixteenth wave — P3d, and the gate that ran a probe instead of an
+argument** (`FEEDBACK-p3d.md`; 14 rounds, 314 findings, 85 blockers, 446 edits
+over 3933 changed lines, 9.1 h by its banked `wf stats -time`, median round
+28.4 min, two artifacts). It is NOT the largest gate in this corpus, and the
+feedback's own comparison said so from two wrong numbers — it quotes "P3b
+485/155" and "P3c 146/59" where those gates' own `wf stats` say 588/177 and
+153/61, against P3d's 314/85. This wave copied the conclusion instead of
+re-running the command, which is the class it banks a rule about two paragraphs
+down, and a review round caught it. Its most useful item is one throwaway agent:
+82 milliseconds and zero tokens bought a number two of its own rounds had argued
+about from measurements of SIZE alone. Every CODE claim below was reproduced
+before a line was written; four claims INHERITED from the feedback were refuted
+by the workspace once a review round read it, and they are corrected here rather
+than repeated:
+
+- *`wf apply` verified a MIS-SPLIT batch exactly as faithfully as a correct
+  one* — reproduced here in three lines: a block whose `>>>>` was forgotten
+  parses clean, and its new half carries `new one\n<<<<\nold two\n====\nnew two`.
+  Every edit reported `ok (1 match)` and the batch `verified 1 file(s)
+  byte-for-byte against the planned batch`, because the verification is against
+  the batch AS PARSED — a mis-split is confirmed in the same words a correct
+  batch gets. The literal markers landed in the artifact, took `wfcheck` from 0
+  errors to `Unexpected token ===` at two sites, and the recovery was two
+  `git revert`s and about half a round with no findings in it. **The manual's
+  own warning is what let it through**: "a marker collision mis-splits and then
+  FAILS the plan loudly, because the mis-split old matches nothing" is true of
+  the OLD half and false of the NEW one, which matches everything and is
+  WRITTEN. A bare marker line inside either half is refused at parse, by line
+  number; the JSON form is the escape, and this repository's own README — which
+  documents the format — is the case that needs it.
+- *`wfdry` did not resolve `$defs`/`$ref`, and the launch does* — that gate
+  probed both directions on one agent. A `$ref`'d bar leaf came back from the
+  fixture as the raw string `"<makeSmoke from fix:accept>"`, `obs.bars[k].result`
+  was undefined, and the clean mode returned green:false with all five bars RED:
+  7/7 modes became 6/7, correctly and for a reason no message explained. Against
+  the real launch the same construct had its `$ref` RESOLVED and its `minimum` /
+  `minLength` ENFORCED — a deliberately illegal first attempt was rejected. So
+  the asymmetry was the runner's, and it fell on exactly the narrowing the width
+  band keeps asking for — and the gate paid a round for it. Measured per revision
+  of its own script: 6,038 bytes with the bar leaf inline, 3,155 with that leaf
+  declared once and referenced, and then REVERTED one commit later, back to 4,233
+  and above the width its own probe would go on to measure as refused, because
+  the reference had blinded the dry run. What took the shipped schema under was
+  trimming the descriptions, with a per-property `$ref` kept: 3,114 against 5,721
+  fully inlined. Expanded before synthesis now, local pointers only (an ANCHOR is
+  refused rather than looked up as a root key), siblings merged over the
+  referenced node MAP BY MAP rather than overwriting its `properties` wholesale,
+  and a cycle refused by the reference being expanded inside its own expansion —
+  never by a depth budget, which the first version charged PER NODE, so it
+  refused a legal `$ref` four objects down and blamed a cycle that did not exist.
+  That is the seventh wave's own banked class, committed in the file whose
+  comment claimed the opposite, and two review vectors found it independently. Validated on the workspace's own
+  history — the revision carrying the `$ref` runs 6/7 on the shipped binary and
+  7/7 on this one — and byte-identical over every other script in the corpus,
+  with every width unchanged, because the width is measured from what the launch
+  RECEIVES, references and all.
+- *The refusal floor moved DOWN 356 bytes, and the way it moved is the point* —
+  4,233 REFUSED and 3,114 ACCEPTED, measured by a throwaway agent in 82
+  milliseconds at zero tokens against 41 seconds and 82k for the acceptance. The
+  constant is the LOWEST refusal the corpus has recorded, never the last one it
+  heard about; the accepted ceiling stays 3,877 and the gap is 356 bytes of
+  UNMEASURED. Run over the corpus the lower floor raises no new warning on any
+  script.
+- *The feedback's own "fixture fact worth a line in the manual" was FALSE, and
+  the true rule was documented nowhere* — it read the discriminator as
+  REQUIREDNESS (the optional `findings` comes back empty, the required
+  `unheldProperties` holds a placeholder). `wfdry` does not read `required` at
+  all: the discriminator is the array's NAME, against a vocabulary of DEFECT
+  words, which is why a reviewer's proposal to make the items OBJECTS was tried
+  and changed nothing. That gate spent two rounds reaching for
+  `unheld.length === 0` as a `green` term and could not have it. The boolean
+  vocabulary was documented and the ARRAY one was not, so it is now — and
+  `x-pass` extends to arrays, where an explicit polarity beats every matcher:
+  `false` says a populated array is the failure shape, `true` says the opposite.
+- *The ledger refusal points at a CHARACTER* — second gate to pay for an
+  unescaped pipe, and this time it was not authored: a shell hook rewrote a
+  command quoted inside the heredoc that was writing the findings table and
+  injected an alternation pipe into a row's TEXT, so two records were rejected
+  over a character nobody typed and the cell was found with `awk` and `tr`. The
+  refusal names the FOURTH unescaped pipe by column and quotes the tail it could
+  not place — which extra pipe is the author's is not knowable from the row, so
+  the tail is printed whole and the injected one is inside it. A row with too
+  FEW cells names no column: pointing at a character that is not the problem is
+  worse than pointing at none. The deeper half is not the tool's and is in the
+  manual: **an edit file and a findings file are DATA, written with a file tool
+  and never through a shell heredoc something may rewrite.**
+- *Two usage lines that cost a round between them* — `wf round record` writes to
+  the CURRENT round and `-round N` appeared in a freeze refusal's advice but in
+  no usage block, so a note meant for r10 landed in r11 after `wf round new` had
+  advanced the counter; and `wf round lens <prompt>` takes a FILE PATH, which
+  produced `file name too long` twice before the argument was read as one. The
+  placeholder is `<prompt-file>` everywhere now and the read error says so.
+  Accepting the text as a fallback was considered and REFUSED: a prompt is
+  banked verbatim and a shell mangles one on the way in.
+- *Three findings changed the MANUAL, not the tool* — **a delta prompt says that
+  finding nothing is allowed, from round ONE** — and the feedback's evidence for
+  it did not survive that gate's own roster, which a review round read: the
+  clause is absent from every prompt of its first three script rounds (14, 7, 6
+  blockers), present in ALL FOUR prompts of the fourth (1 blocker, not a round
+  without it) and in three of four of the fifth (0, with thirteen defects still
+  filed — 2 MAJOR and 11 MINOR beside 2 NOTE rows, not "fifteen real defects").
+  Two rounds against three at the convergent end of a descending gate measures
+  nothing about the clause. What survives is the corollary, which is not a data
+  point: a count is a joint function of the artifact and of what the reviewer
+  believes it is being asked for, no report can see the framing — `wf stats` and
+  `-asks` enforce the QUESTIONS by roster name — and a clause introduced mid-gate
+  changes what the count MEANS in the round where somebody finally writes it; **the harness BEFORE/AFTER measurement is re-taken at the END of the
+  round** (it went stale twice inside the very round that wrote it, both times
+  found by the next round's lens); and **a cheap guard that suppresses coverage
+  of the expensive path it guards is a net loss** — skipping a re-measurement
+  when the verdict is already red was correct on its own terms and its condition
+  was TRUE in every `wfdry` failure mode, so the two newest agents became
+  reachable by NO mode while all seven printed OK, the agent count fell silently
+  from 42 to 40, and the acceptance report was nulled on that path. Three
+  defects for half an hour, reverted with the measurement written beside the
+  reversal.
+
+- *And the wave earned its review round, for the eleventh time running, and two
+  of its three vectors found the same BLOCKER independently* — two Opus vectors
+  (Go correctness with a 21-mutation sweep, and claims/specification) plus one
+  external model over the diff, against five green bars: **two blockers, and ten
+  wrong numbers.** The flagship `$ref` resolver charged its depth budget PER
+  NODE — the seventh wave's own banked class, committed in the file whose
+  comment cited it — so with each JSON-Schema level costing two nodes
+  (`properties` plus the key), a `$ref` on a leaf four objects down was refused
+  on its FIRST indirection: the leaf came back the placeholder STRING this whole
+  feature exists to remove, and the note blamed a cycle that did not exist. It is
+  reproduced end to end in `TestRefIsResolvedAtAnyNestingDepth`, and there is no
+  depth budget any more: a chain of twelve DISTINCT references is legal and
+  finite, what must be refused is a reference expanded inside its own expansion,
+  and an active-path set says exactly that. The external vector found two more
+  in the same file — an ANCHOR (`#name`) was trimmed to a root key and could
+  resolve to the wrong node, and the sibling merge was SHALLOW, so a key written
+  beside a `$ref` dropped the referenced node's whole `properties` map. The
+  second blocker was a message: an unreadable `x-pass` on an ARRAY was filed into
+  the BOOLEAN note, which said it came back FALSE (it came back holding a
+  placeholder), quoted the completion vocabulary (an array is matched against the
+  defect words), and prescribed the annotation the author had just written.
+  **Ten numbers were wrong**, four of them inherited from the feedback and
+  refuted by the workspace: "the largest count in this corpus" (P3b is 588/177
+  over 22 rounds against P3d's 314/85, and the feedback's own comparison quoted
+  two gates' totals wrongly); the framing clause's whole evidence, above; the
+  `$ref` narrowing's arithmetic (6,038 -> 3,155, then REVERTED, and the shipped
+  3,114 came from trimming descriptions with a per-property reference kept); and
+  "fifteen real defects" for 13 defects beside 2 NOTE rows. Also: a README cell
+  described a column the code does not print, a gate-checks clause said the
+  reference form "took every refused one under" when the newest gate refutes it,
+  the array-vocabulary rule was false for two of its sixteen words, and one
+  bullet stated 7.9 h where the command prints 9.2 and the banked file says 9.1.
+  Five conditions had no test and got one — the marker scan's last line, both
+  halves' opener and terminator naming, the corpus band constants (the mutation
+  `4233 -> 4589` survived the entire suite, because every other test in that file
+  builds its fixtures from the symbols), and the mixed PAIR. Two guards were
+  deleted rather than shipped unproven: an `i < len(lines)` bound `collectUntil`
+  makes unreachable, and a rune count over a prefix that is spaces and tabs by
+  construction. One reviewer finding was taken by HALF — the `====` case cannot
+  distinguish a forgotten `>>>>` from content carrying a setext underline, so the
+  refusal stands (a marker written into an artifact mis-splits every later batch
+  over that file) and the MESSAGE stops asserting the first. And one reported red
+  bar did not reproduce in four runs, two of them deliberately concurrent: it was
+  seen while the other review vector had the tree MUTATED mid-sweep, which is
+  this project's own trap — a concurrent reader of a mutation sweep reads a
+  poisoned file.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
@@ -1668,7 +1834,26 @@ fixtures for the non-ASCII anchor detector).
 
 ## State as of 2026-08-28 — read before trusting
 
-- **EIGHT real gates have now run entirely through `wf`,** and P3c
+- **NINE real gates have now run entirely through `wf`,** and P3d
+  (`FEEDBACK-p3d.md`, `~/projects/gates/mocker-p3d-datasnap`) is the newest: 14
+  rounds by its own `wf stats`, 314 findings, 85 blockers, 446 edits over 3933
+  changed lines, median round 28.4 min, over TWO artifacts — a decision document
+  that went 752 -> 1481 lines in eight rounds, one undispatched round nobody
+  filled, and an orchestration script gated for five more. It is NOT the largest
+  gate here: P3b is 588/177 over 22 rounds and P3a 455/143 over 24. Its script
+  half closed at 14 -> 7 -> 6 -> 1 -> 0. Its span is 9.1 h in the banked
+  `close/stats.txt` and 9.2 h re-run today, because the figure is last commit
+  minus first and the close commits land after the work; the 7.9 h in the
+  feedback's own header is an earlier close of the same gate, and the
+  reproducible number is the one the command prints. **It did not launch inside the gate**, and its most
+  valuable measurement is a PROBE it ran instead of an argument: 4,233 bytes
+  REFUSED by the launch's safety classifier in 82 milliseconds at zero tokens,
+  3,114 ACCEPTED — the narrowest refusal on record, taken after two of its rounds
+  had argued about the band from measurements of SIZE alone. The same probe
+  proved the launch RESOLVES `$defs`/`$ref` and enforces the constraints reached
+  through one. Its workspace is on disk and unpruned, and it is what the `$ref`
+  fixture support was validated against.
+- **Eight real gates ran entirely through `wf` before it,** and P3c
   (`FEEDBACK-p3c.md`, `~/projects/gates/mocker-p3c-ref-recipe`) is the first
   where BOTH halves closed on the stop rule: 10 rounds by its own `wf stats`
   (nine plus the run round), 153 findings, 61 blockers, 20 apply batches over 43
@@ -1680,7 +1865,7 @@ fixtures for the non-ASCII anchor detector).
   itself, only size", which was false: one throwaway agent answers it in 16
   seconds. The relaunch after narrowing ran 15 of 15. Its workspace is on disk
   and unpruned, and it is the calibration corpus for the schema-width meter.
-- **Seven real gates ran entirely through `wf` before it,** and P3b
+- **Seven real gates ran entirely through `wf` before those,** and P3b
   (`FEEDBACK-p3b.md`, `~/projects/gates/mocker-p3b-resources`) is the first that
   **stopped instead of closing**: 22 rounds by its own `wf stats`, 588 findings,
   177 blockers, 451 edits over 8388 changed lines, 25.7 h, median round 29.4 min.
@@ -1724,17 +1909,17 @@ fixtures for the non-ASCII anchor detector).
   `check drift` is STILL unexercised live.
 - **The validation corpus DOES survive, and it is the best evidence this
   repository has.** The claim that it did not was stale and cost an
-  investigation an hour of archaeology before it was checked: **SEVEN** gate
+  investigation an hour of archaeology before it was checked: **EIGHT** gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
   `~/gates/p2f` (82 / 102 / 87 commits, verified 2026-08-24), and
   `~/projects/gates/mocker-a3-cas`, `mocker-p3a-resources`,
-  `mocker-p3b-resources`, `mocker-p3c-ref-recipe` (153 / 203 / 247 / 82 commits,
-  verified 2026-08-28). This
+  `mocker-p3b-resources`, `mocker-p3c-ref-recipe`, `mocker-p3d-datasnap`
+  (153 / 203 / 247 / 82 / 168 commits, verified 2026-08-28). This
   bullet listed three of them for three waves, which is why a census that called
   itself complete missed A3 entirely — and it then listed SIX for one more wave,
   which is why the fifteenth wave's own closure census said "six workspaces"
   while running over seven. Re-count them; do not inherit the number. `~/projects/gates/mocker-a-mcp`, the
-  seventh, has been CLOSED AND PRUNED: no `.git`, no
+  ninth, has been CLOSED AND PRUNED: no `.git`, no
   `artifacts/`, no `rounds/` — its numbers survive only in `close/stats.txt`,
   `close/history.tsv`, `close/freezes.tsv` and `close/rounds/`, and `wf stats`
   cannot be run there. Read the banked file; do not try to re-derive them. The six tracked orchestration scripts are in

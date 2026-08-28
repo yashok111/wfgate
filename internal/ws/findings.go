@@ -29,6 +29,33 @@ type FindingRow struct {
 	Malformed bool
 	Raw       string // the line as written, so the refusal can quote it
 	Cells     int    // how many cells the splitter produced, for the refusal to state
+
+	// TailCol is the 1-based column of the FOURTH unescaped pipe — in a
+	// well-formed row, the boundary where the closed-by cell begins — and Tail
+	// is everything after it. Both are zero/empty on a row with too FEW cells,
+	// where no pipe is the offender: pointing at a character that is not the
+	// problem is worse than pointing at none.
+	//
+	// The column is in CHARACTERS and counted from the start of the line AS
+	// WRITTEN, indentation included, because that is what the operator's editor
+	// shows them. The first version counted from the start of the TRIMMED row,
+	// so an indented row and the same row unindented reported one column, and
+	// the indented one pointed at the wrong character. Characters and not
+	// bytes: gate artifacts are English by workflow rule, but a finding quoting
+	// a Russian product string quotes it as DATA, and there the two differ —
+	// the unit is stated rather than left to be discovered.
+	//
+	// Measured on the P3d gate, the second run to pay for this class: the pipe
+	// was not even authored — a shell hook rewrote an `rg` command inside the
+	// heredoc that was writing the table and injected an alternation pipe into
+	// the TEXT of a row. Two rejected records, and finding the cell meant
+	// `awk NR==34 | tr '|' '\n'` by hand. The refusal named the row and the
+	// cell count and pointed at nothing. WHICH extra pipe is the author's is
+	// not knowable — a row with five cells has one too many and any of them
+	// could be it — so what is printed is the boundary the parser read the
+	// text up to, and the tail it could not place.
+	TailCol int
+	Tail    string
 }
 
 // Levels is the CLOSED severity scale, in descending order.
@@ -156,7 +183,13 @@ func ParseFindings(b []byte) []FindingRow {
 		if !strings.HasPrefix(t, "|") {
 			continue
 		}
-		cells := splitCells(t)
+		// What the trim took off the front, so a column names the line as the
+		// operator sees it. Bytes and characters are the same number here by
+		// construction — the prefix is spaces and tabs — and counting runes
+		// over it was a care no mutation could make fail, so it says what it
+		// is instead.
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		cells, at := splitCells(t)
 		if len(cells) == 0 {
 			continue
 		}
@@ -164,7 +197,12 @@ func ParseFindings(b []byte) []FindingRow {
 			continue
 		}
 		if len(cells) != 4 {
-			rows = append(rows, FindingRow{Line: i + 1, Malformed: true, Raw: t, Cells: len(cells)})
+			r := FindingRow{Line: i + 1, Malformed: true, Raw: t, Cells: len(cells)}
+			if len(cells) > 4 {
+				r.TailCol = at[2] + indent
+				r.Tail = strings.Join(cells[3:], " | ")
+			}
+			rows = append(rows, r)
 			continue
 		}
 		rows = append(rows, FindingRow{
@@ -186,11 +224,19 @@ func ParseFindings(b []byte) []FindingRow {
 // A row whose pipes are NOT escaped comes out with the wrong cell count and is
 // returned as such: the caller reports it as malformed rather than guessing
 // which fragment was the author's closure.
-func splitCells(row string) []string {
+// The second return is the 1-based COLUMN of the pipe that terminated each
+// cell, in the row as passed (0 for the last cell, which ends at end of line).
+// It travels with the cells because the caller's refusal has to point at a
+// character and the split is the only place that knows where the characters
+// were.
+func splitCells(row string) ([]string, []int) {
 	var cells []string
+	var at []int
 	var b strings.Builder
 	esc := false
+	col := 0
 	for _, r := range row {
+		col++
 		switch {
 		case esc:
 			b.WriteRune(r) // the backslash is already written; keep the cell as written
@@ -200,22 +246,24 @@ func splitCells(row string) []string {
 			esc = true
 		case r == '|':
 			cells = append(cells, strings.TrimSpace(b.String()))
+			at = append(at, col)
 			b.Reset()
 		default:
 			b.WriteRune(r)
 		}
 	}
 	cells = append(cells, strings.TrimSpace(b.String()))
+	at = append(at, 0)
 	// `| a | b |` splits into an empty cell at each end; a genuinely empty LAST
 	// cell (the scaffold's unfilled "closed by") keeps its place because only
 	// one trailing empty is dropped.
 	if len(cells) > 0 && cells[0] == "" {
-		cells = cells[1:]
+		cells, at = cells[1:], at[1:]
 	}
 	if len(cells) > 0 && cells[len(cells)-1] == "" {
-		cells = cells[:len(cells)-1]
+		cells, at = cells[:len(cells)-1], at[:len(at)-1]
 	}
-	return cells
+	return cells, at
 }
 
 func isSeparator(cell string) bool {

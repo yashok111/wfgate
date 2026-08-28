@@ -116,6 +116,22 @@ comparable without pretending the vector was one of the named ones. The three ar
 spelling of a set is accepted: `-asks closure,fix-induced,ripple`, `-asks
 closure+fix-induced+ripple`, a space-separated list, or the flag repeated.
 
+**And every delta prompt says that finding nothing is allowed, from round ONE.** The sentence is *an
+empty findings list is the expected and legitimate result; manufacturing a finding to look thorough
+is one failure mode and downgrading a real one to make the count look good is the other.* Measured
+by reading one script gate's banked roster, which is the only reason the measurement exists: its
+first three rounds carried the clause in NO prompt and returned 14, 7 and 6 blockers; its fourth
+carried it in all four and returned 1; its fifth carried it in three of four and returned 0, while
+those lenses still filed thirteen defects between them, two MAJOR and both genuine. They did not go
+quiet, they RECLASSIFIED, and the reclassifications survived a hand check against the tree. That is
+two rounds against three, at the convergent end of a gate that was descending anyway, so it is not a
+measurement of what the clause is worth. The corollary is what makes the rule: a blocker count is a
+joint function of the artifact and of what the reviewer believes it is being asked for, so a clause
+introduced in the round where somebody finally writes it changes what the count MEANS in the middle
+of a gate — and no report can see that, because `wf stats` and `-asks` enforce the QUESTIONS by
+roster name and nothing reads the framing. Say it in every round, or the descent is partly a
+measurement of the prompt.
+
 **A banked verification is a claim like any other, and a delta round SAMPLES the previous round's
 rather than inheriting them.** The habit is worth keeping — a NOTE row saying "verified, recorded so
 a later round does not re-derive it" saves real work — and it failed checkably: one round banked
@@ -571,9 +587,17 @@ compiles, passes every test, and does nothing.
       the wide one: one cheap agent carrying that schema and a prompt saying to fill it with
       placeholders answers in seconds, against a multi-hour run. Width is measurable from the script;
       acceptance is measurable only by asking, and a gate that measured its own width to the byte and
-      wrote down that acceptance could not be measured from there was wrong on exactly that clause. A
-      schema is narrowed by declaring a repeated leaf ONCE and referencing it, which is what took both
-      refused ones under.
+      wrote down that acceptance could not be measured from there was wrong on exactly that clause.
+      The next gate proved how cheap the answer is — 4,233 bytes REFUSED in 82 milliseconds at zero
+      tokens, 3,114 ACCEPTED — after two of its rounds had argued about the band from measurements of
+      SIZE alone. A schema is narrowed two ways and the corpus has used both: declaring a repeated leaf ONCE and
+      referencing it (which took two refused schemas under), and trimming the prose in the
+      descriptions (which is what took the third one under, on a schema that already carried four
+      references). The launch RESOLVES `$defs`/`$ref` and ENFORCES the `minimum`/`minLength` that
+      reach a leaf through one — the same probe, with an illegal first attempt rejected — and
+      `wfdry` resolves them too. It did not: one gate declared its bar leaf once, watched the dry
+      run lose the referenced object, and REVERTED the narrowing back over the refusal line for a
+      whole round. That cost is gone; the description trim is still the other half.
 
 ## F. Guard integrity
 
@@ -588,6 +612,19 @@ passing one.
       Both were written to protect the run and both disabled a guard instead. Before shipping any
       shared "never do X" text: grep the whole artifact for X, and check that nothing the artifact
       itself instructs an agent to do is an instance of it.
+
+- [ ] **A cheap guard that suppresses coverage of the expensive path it guards is a net loss.** A
+      round-13 observation was correct on its own terms: when the acceptance gate edits the tree AND
+      leaves a blocker open, re-measuring costs half an hour and a docker build at the end of a
+      four-hour run for a verdict that is already red. The skip was added. The next round measured
+      what it bought: the stub's recheck always returns blockers, so the branch was true in EVERY
+      `wfdry` failure mode, the two newest agents in the script became reachable by NO dry-run mode
+      while all seven still printed OK, the agent count fell silently from 42 to 40, the skip nulled
+      the acceptance report so the run lost its own findings and unheld list, and a bar was filed
+      "not reported" for an agent that had never been spawned. Three defects for half an hour, and it
+      was reverted with the measurement written into the script beside the reversal. The shape to
+      recognise: an optimisation whose condition is TRUE in exactly the modes that exercise the path
+      it skips.
 
 - [ ] **The guard actually compares against the previous state.** Two runs of the *current* build agreeing
       proves determinism within one build; it cannot see a change that shifted every output consistently,
@@ -886,7 +923,7 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       and no lens was banked for it — and it checks EVERY closed round, not only the previous one,
       because `wf round new` does not require the current round to be frozen and a round opened past
       without a freeze was examined by nothing. A round nobody is recorded as having read must not
-      freeze as a round that found nothing: bank the vectors with `wf round lens <prompt> -name N -asks Q -model
+      freeze as a round that found nothing: bank the vectors with `wf round lens <prompt-file> -name N -asks Q -model
       M -round N`, which is also the record that makes the round's reviewers part of the corpus, and
       which counts only where it says which vector, what ran it and what it was asked. A `-kind tool`
       round is exempt: its opening subject already records that no reviewer was dispatched. Then `wf round new`, then `wf freeze` — which

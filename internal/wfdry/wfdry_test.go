@@ -6,6 +6,7 @@
 package wfdry
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1202,5 +1203,355 @@ func TestVerdictKeysAreOrderedSoTwoGuardsCannotDisagree(t *testing.T) {
 				t.Fatalf("run %d: got %v, want %v", i, got, want)
 			}
 		}
+	}
+}
+
+// `$ref` is expanded before the fixture is synthesised, because the launch
+// resolves it and a runner that does not fills the referenced leaf with a
+// placeholder STRING. Measured on the P3d gate: declaring the repeated bar leaf
+// once took its acceptance schema from 6,038 bytes to 3,114 — under the
+// narrowest refusal on record, which is what made the run launchable — and took
+// the runner from 7/7 modes to 6/7, with `obs.bars[k].result` undefined and the
+// clean mode green:false for a reason no message explained.
+func TestRefIsResolvedBeforeSynthesis(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = {
+  type: 'object',
+  properties: {
+    bars: { type: 'object', properties: { smoke: { $ref: '#/$defs/bar' } } },
+    blockers: { type: 'array' },
+  },
+  $defs: { bar: { type: 'object', properties: { result: { type: 'string', enum: ['pass', 'fail'] } } } },
+}
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, kind: typeof r.bars.smoke, verdict: r.bars.smoke.result }`
+	r := run1(t, body, "clean")
+	m, ok := r.Return.(map[string]any)
+	if !ok {
+		t.Fatalf("return is %T: %+v", r.Return, r)
+	}
+	if m["kind"] != "object" {
+		// The failure this test exists for: an unresolved `$ref` carries no
+		// `type`, so the leaf synthesises to "<smoke from w>".
+		t.Fatalf("a $ref'd leaf must synthesise as the object it declares, got %v (%+v)", m["kind"], m)
+	}
+	// The enum reaching through the reference is read like any other: a leaf
+	// resolved into an untyped placeholder would take every branch comparing
+	// against a member with it.
+	if m["verdict"] != "pass" {
+		t.Fatalf("the enum behind the $ref must be read: got %v", m["verdict"])
+	}
+	if len(r.Violations) != 0 || r.Err != nil {
+		t.Fatalf("clean mode must pass: %v %v", r.Violations, r.Err)
+	}
+}
+
+// A reference the runner cannot expand is NAMED. The resolvable ones are silent
+// because they are the normal case; an unresolvable one leaves a placeholder
+// string where an object was declared, which is exactly the shape that took one
+// gate's clean mode to green:false with nothing saying why.
+func TestUnresolvableRefIsNamed(t *testing.T) {
+	cases := []struct{ name, ref, want string }{
+		{"a typo in the pointer", `{ $ref: '#/$defs/typo' }`, `"typo" is not in the schema`},
+		{"a remote reference", `{ $ref: 'https://example.invalid/s.json' }`, "not a local reference"},
+		{"the whole schema", `{ $ref: '#' }`, "a reference to the whole schema is a cycle"},
+		// An ANCHOR. Trimming the `#` and looking the rest up as a root key
+		// made `#bar` resolve to whatever `bar` happens to be at the top of the
+		// schema — a wrong answer where an unresolved one is honest.
+		{"an anchor", `{ $ref: '#bar' }`, "an anchor reference"},
+		// A pointer whose middle step is not an object. The step that is not an
+		// object is the one BEFORE the one that cannot be taken.
+		{"a step through a scalar", `{ $ref: '#/$defs/bar/type/x' }`, `"type" is not an object, so "x" cannot be a step`},
+		// A `$ref` that is not a string at all.
+		{"a $ref that is not a string", `{ $ref: 7 }`, "a $ref that is not a string"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { leaf: ` + c.ref + ` }, $defs: { bar: { type: 'object' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`
+			r := run1(t, body, "clean")
+			joined := strings.Join(r.Notes, "\n")
+			if !strings.Contains(joined, "unresolved $ref") || !strings.Contains(joined, c.want) {
+				t.Fatalf("want a note naming the reference and %q, got %v", c.want, r.Notes)
+			}
+		})
+	}
+	// A schema whose references all resolve says nothing: a note printed over
+	// the normal case is a note nobody reads.
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { leaf: { $ref: '#/$defs/bar' } }, $defs: { bar: { type: 'object', properties: { n: { type: 'integer' } } } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`
+	if joined := strings.Join(run1(t, body, "clean").Notes, "\n"); strings.Contains(joined, "unresolved $ref") {
+		t.Fatalf("a resolvable $ref must be silent: %s", joined)
+	}
+	// An RFC 6901 escape resolves: `~1` is a slash in a key.
+	esc := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { leaf: { $ref: '#/$defs/a~1b' } }, $defs: { 'a/b': { type: 'object', properties: { n: { type: 'integer' } } } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, kind: typeof r.leaf }`
+	res := run1(t, esc, "clean")
+	if m, _ := res.Return.(map[string]any); m == nil || m["kind"] != "object" {
+		t.Fatalf("a ~1 escape must resolve: %+v %v", res.Return, res.Notes)
+	}
+}
+
+// The budget is charged per INDIRECTION and never per node. The first version
+// charged one per structural descent and capped the total, so a `$ref` on a
+// leaf four objects down — each JSON-Schema level costing two nodes,
+// `properties` plus the key — was refused on its FIRST indirection: the leaf
+// came back a placeholder STRING, which is the defect this whole feature exists
+// to remove, and the note blamed a cycle that did not exist. It is the seventh
+// wave's own banked class, committed in the file whose comment claimed the
+// opposite.
+func TestRefIsResolvedAtAnyNestingDepth(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = {
+  type: 'object',
+  $defs: { bar: { type: 'object', properties: { result: { type: 'string', enum: ['pass', 'fail'] } } } },
+  properties: {
+    obs: { type: 'object', properties: {
+      sections: { type: 'object', properties: {
+        codec: { type: 'object', properties: { smoke: { $ref: '#/$defs/bar' } } } } } } },
+    done: { type: 'boolean' },
+  },
+}
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, verdict: r.obs.sections.codec.smoke.result }`
+	r := run1(t, body, "clean")
+	m, _ := r.Return.(map[string]any)
+	if m == nil || m["verdict"] != "pass" {
+		t.Fatalf("a $ref four objects down must resolve: %+v %v", r.Return, r.Notes)
+	}
+	if joined := strings.Join(r.Notes, "\n"); strings.Contains(joined, "unresolved $ref") {
+		t.Fatalf("nothing is unresolved here: %s", joined)
+	}
+}
+
+// A chain of DISTINCT references is legal however long it is, and only a
+// reference expanded inside its own expansion is refused. A hop budget would
+// draw a line across the legal case; the active-path set draws it around the
+// illegal one.
+func TestRefChainOfDistinctLinksIsNotRefused(t *testing.T) {
+	var defs []string
+	for i := 0; i < 12; i++ {
+		defs = append(defs, fmt.Sprintf("l%d: { $ref: '#/$defs/l%d' }", i, i+1))
+	}
+	defs = append(defs, "l12: { type: 'object', properties: { result: { type: 'string', enum: ['pass', 'fail'] } } }")
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { leaf: { $ref: '#/$defs/l0' } }, $defs: { ` + strings.Join(defs, ", ") + ` } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, verdict: r.leaf.result }`
+	r := run1(t, body, "clean")
+	m, _ := r.Return.(map[string]any)
+	if m == nil || m["verdict"] != "pass" {
+		t.Fatalf("a chain of twelve distinct references must resolve: %+v %v", r.Return, r.Notes)
+	}
+}
+
+// A cycle expands to nothing finite, and the runner must return rather than
+// recurse. The self-reference is the shape a hand-written `$defs` reaches by
+// accident.
+func TestRefCycleTerminates(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { leaf: { $ref: '#/$defs/a' } }, $defs: { a: { $ref: '#/$defs/b' }, b: { $ref: '#/$defs/a' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`
+	done := make(chan Result, 1)
+	go func() { done <- run1(t, body, "clean") }()
+	select {
+	case r := <-done:
+		if joined := strings.Join(r.Notes, "\n"); !strings.Contains(joined, "expanded inside its own expansion") {
+			t.Fatalf("a cycle must be named: %v", r.Notes)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("a $ref cycle did not terminate")
+	}
+}
+
+// A key written BESIDE a `$ref` survives the expansion and wins. It is the
+// shape a script writes to annotate one use of a shared leaf, and dropping it
+// would silently discard an `enum` or an `x-pass` written there.
+func TestRefSiblingKeysSurvive(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = {
+  type: 'object',
+  properties: { leaf: { $ref: '#/$defs/bar', properties: { extra: { type: 'string', enum: ['red', 'green'] } } } },
+  $defs: { bar: { type: 'object', properties: { result: { type: 'string', enum: ['pass', 'fail'] } } } },
+}
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, verdict: r.leaf.result, extra: r.leaf.extra }`
+	m, ok := run1(t, body, "clean").Return.(map[string]any)
+	if !ok {
+		t.Fatal("return is not an object")
+	}
+	// BOTH. A shallow overwrite dropped the referenced node's `properties`
+	// wholesale wherever a sibling named the same key, so a fixture came back
+	// missing the very field the shared leaf declares.
+	// `green` and not `red`: an enum member is chosen by what the word MEANS,
+	// which is the rule one layer down and not this test's subject.
+	if m["extra"] != "green" {
+		t.Fatalf("the sibling's own property must be synthesised: got %v", m["extra"])
+	}
+	if m["verdict"] != "pass" {
+		t.Fatalf("the referenced node's properties must survive the merge: got %v", m["verdict"])
+	}
+}
+
+// Where the two DO disagree on a scalar, the site's own key wins — this runner
+// is a fixture generator and not a validator, and the key the author wrote at
+// the call is the one they meant.
+func TestRefSiblingScalarWins(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = {
+  type: 'object',
+  properties: { leaf: { $ref: '#/$defs/bar', properties: { result: { type: 'string', enum: ['red', 'green'] } } } },
+  $defs: { bar: { type: 'object', properties: { result: { type: 'string', enum: ['pass', 'fail'] } } } },
+}
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, verdict: r.leaf.result }`
+	m, _ := run1(t, body, "clean").Return.(map[string]any)
+	if m == nil || m["verdict"] != "green" {
+		t.Fatalf("the sibling's enum must win over the referenced node's: got %v", m)
+	}
+}
+
+// `x-pass` declares an ARRAY's polarity, and the annotation exists because the
+// name vocabulary is a list of DEFECT words: an array whose emptiness is the
+// pass shape under any other name is filled in every mode, so no
+// `length === 0` term over it can ever be true. Measured on the P3d gate, which
+// spent two rounds reaching for that term over `unheldProperties`.
+func TestArrayPolarityIsDeclarable(t *testing.T) {
+	body := func(ann string) string {
+		return `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { unheldProperties: { type: 'array', ` + ann + `items: { type: 'object', properties: { why: { type: 'string' } } } } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, n: r.unheldProperties.length }`
+	}
+	n := func(r Result) int64 {
+		m, ok := r.Return.(map[string]any)
+		if !ok {
+			t.Fatalf("return is %T", r.Return)
+		}
+		v, _ := m["n"].(int64)
+		return v
+	}
+	// Without the annotation the name decides, and this name matches no defect
+	// word: one placeholder in every mode, including the one that must be able
+	// to go green.
+	if got := n(run1(t, body(""), "clean")); got != 1 {
+		t.Fatalf("an unannotated array keeps the name-based behaviour: want 1, got %d", got)
+	}
+	// `x-pass: false` — a populated array is the FAILURE shape.
+	if got := n(run1(t, body(`'x-pass': false, `), "clean")); got != 0 {
+		t.Fatalf("x-pass:false must empty the array in a passing mode, got %d", got)
+	}
+	if got := n(run1(t, body(`'x-pass': false, `), "blockers")); got != 2 {
+		t.Fatalf("x-pass:false must yield the MIXED pair in a failing mode, got %d", got)
+	}
+	// `x-pass: true` — the boolean rule one type over: populated everywhere but
+	// in the mode that fails acceptance.
+	if got := n(run1(t, body(`'x-pass': true, `), "clean")); got != 1 {
+		t.Fatalf("x-pass:true must populate the array in a passing mode, got %d", got)
+	}
+	if got := n(run1(t, body(`'x-pass': true, `), "acceptfail")); got != 0 {
+		t.Fatalf("x-pass:true must empty the array where acceptance fails, got %d", got)
+	}
+	// The NAME still decides where nothing is declared, and the mixed PAIR is
+	// half of that rule: a failing mode's defect array holds two items so both
+	// sides of every `filter(f => f.severity === 'blocker')` are exercised,
+	// while an array outside the vocabulary holds one in every mode.
+	both := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { blockers: { type: 'array' }, notes: { type: 'array' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, n: r.blockers.length, m: r.notes.length }`
+	counts := func(mode string) (int64, int64) {
+		m, ok := run1(t, both, mode).Return.(map[string]any)
+		if !ok {
+			t.Fatalf("return is not an object in mode %s", mode)
+		}
+		a, _ := m["n"].(int64)
+		b, _ := m["m"].(int64)
+		return a, b
+	}
+	if a, b := counts("clean"); a != 0 || b != 1 {
+		t.Fatalf("clean: a defect array is empty and any other holds one, got %d and %d", a, b)
+	}
+	if a, b := counts("blockers"); a != 2 || b != 1 {
+		t.Fatalf("blockers: a defect array holds the MIXED pair and any other still holds one, got %d and %d", a, b)
+	}
+
+	// The annotation beats the name matcher, which is the whole point of an
+	// explicit polarity: `blockers` is the strongest word in the vocabulary.
+	named := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { blockers: { type: 'array', 'x-pass': true } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true, n: r.blockers.length }`
+	if got := n(run1(t, named, "clean")); got != 1 {
+		t.Fatalf("an explicit polarity must beat the name matcher, got %d", got)
+	}
+}
+
+// A spelling the annotation does not accept is NAMED, never silently ignored:
+// the author who reached for the escape hatch would otherwise see the
+// name-based behaviour they were escaping, with nothing saying why.
+func TestUnreadableArrayPolarityIsNamed(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { unheld: { type: 'array', 'x-pass': 'yes' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`
+	r := run1(t, body, "clean")
+	joined := strings.Join(r.Notes, "\n")
+	if !strings.Contains(joined, "unreadable `x-pass` on array field(s) — unheld") {
+		t.Fatalf("an unreadable x-pass must be named: %v", r.Notes)
+	}
+	// Its OWN note. Filed into the boolean one, every clause was wrong about an
+	// array: it did not come back FALSE, it is not matched against the
+	// completion vocabulary that note quotes, and the remedy it offers is the
+	// annotation the author had just written.
+	if strings.Contains(joined, "unrecognised report field(s)") {
+		t.Fatalf("an array must not be described by the boolean note: %s", joined)
+	}
+	if !strings.Contains(joined, "defect words (blocker/major/failure") {
+		t.Fatalf("the note must name the ARRAY vocabulary: %s", joined)
+	}
+	// And a boolean still gets the boolean note, with the array note silent.
+	b := run1(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { held: { type: 'boolean' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`, "clean")
+	bj := strings.Join(b.Notes, "\n")
+	if !strings.Contains(bj, "unrecognised report field(s) — held") || strings.Contains(bj, "on array field(s)") {
+		t.Fatalf("a boolean keeps the boolean note and only it: %v", b.Notes)
 	}
 }

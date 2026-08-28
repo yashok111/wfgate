@@ -102,6 +102,7 @@ type Result struct {
 	// static reader sees one of them. The prompt sweep is built on this.
 	Prompts   []check.NamedText
 	defaulted map[string]int // report fields the fixture contract did not recognise
+	badRefs   map[string]int // `$ref`s the fixture could not expand, with the reason
 
 	// The serialized width of every schema this mode handed an agent, by label.
 	// It is measured HERE and nowhere else: the runner holds the object the
@@ -384,7 +385,7 @@ func min(a, b int) int {
 }
 
 func runMode(src, mode string, o Options) Result {
-	r := Result{Mode: mode, defaulted: map[string]int{}}
+	r := Result{Mode: mode, defaulted: map[string]int{}, badRefs: map[string]int{}}
 	vm := goja.New()
 
 	dead := map[string]bool{}
@@ -487,7 +488,7 @@ func runMode(src, mode string, o Options) Result {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())
 		}
-		return promiseOf(vm, vm.ToValue(synth(opts.Get("schema"), mode, label, 0, r.defaulted)))
+		return promiseOf(vm, vm.ToValue(synth(opts.Get("schema"), mode, label, 0, r.defaulted, r.badRefs)))
 	}
 
 	must := func(name string, v any) {
@@ -700,12 +701,29 @@ func runMode(src, mode string, o Options) Result {
 	// green modes. The note existed and said "defaulted them"; it was the
 	// sixteenth line of a fifteen-hundred-line dump, filed under `log:` beside
 	// the script's own output, and the operator read past it three times.
-	if len(r.defaulted) > 0 {
-		names := make([]string, 0, len(r.defaulted))
-		for n := range r.defaulted {
-			names = append(names, n)
+	// A `$ref` this runner could not expand is named, with the reason. The
+	// resolvable ones are silent because they are now the normal case; an
+	// unresolvable one leaves the referenced leaf a placeholder STRING, which
+	// is exactly the shape that took one gate's clean mode to green:false with
+	// nothing saying why.
+	if len(r.badRefs) > 0 {
+		refs := make([]string, 0, len(r.badRefs))
+		for n := range r.badRefs {
+			refs = append(refs, n)
 		}
-		sort.Strings(names)
+		sort.Strings(refs)
+		r.Notes = append(r.Notes, "unresolved $ref — "+strings.Join(refs, "; ")+" — the referenced node was filled with a placeholder STRING rather than the object it declares, so every term reading through it is false in this mode. The launch DOES resolve `$defs`/`$ref` and enforces the `minimum`/`minLength` that reach a leaf through one (probed), so this is the runner losing the schema, not the launch")
+	}
+	// An array's unreadable polarity is a different claim from a boolean's
+	// unrecognised NAME, and it travels in the same map under a prefix so that
+	// one note cannot describe the other. Every clause of the boolean note is
+	// wrong about an array: it did not come back false, it is not matched
+	// against the completion vocabulary, and the remedy it offers is the
+	// annotation the author just wrote.
+	if bad := prefixed(r.defaulted, arrayPolarityKey); len(bad) > 0 {
+		r.Notes = append(r.Notes, "unreadable `x-pass` on array field(s) — "+strings.Join(bad, ", ")+" — so the array's polarity was decided by its NAME after all: an array is returned EMPTY in the passing modes only when its name carries one of the defect words ("+arrayVocabulary+"), and otherwise holds one placeholder in every mode. `\"x-pass\": false` says a populated array is the failure shape, `true` says it is the pass shape; the value must be a JSON boolean")
+	}
+	if names := prefixed(r.defaulted, ""); len(names) > 0 {
 		// The NAME is the contract, and the note has to say so. Without this
 		// clause the message named the fields and not the rule they broke, so
 		// the vocabulary could only be found by reading this file — three field
@@ -1083,18 +1101,51 @@ var (
 // and `smokeAchieved`, each of which made `green` unreachable and failed the
 // clean mode correctly, with nothing in the output saying that the NAME was
 // what went unrecognised.
+// arrayPolarityKey prefixes an array's unreadable `x-pass` inside the same
+// record map, so the two notes cannot describe each other's population.
+const arrayPolarityKey = "array x-pass: "
+
+// prefixed splits that map: with a prefix it returns the matching names with
+// the prefix stripped, and with the empty one the names carrying NO prefix.
+func prefixed(rec map[string]int, prefix string) []string {
+	var out []string
+	for n := range rec {
+		switch {
+		case prefix != "" && strings.HasPrefix(n, prefix):
+			out = append(out, strings.TrimPrefix(n, prefix))
+		case prefix == "" && !strings.HasPrefix(n, arrayPolarityKey):
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// arrayVocabulary is the defect-word list an ARRAY's name is matched against,
+// spelled for a reader. It is derived from the regex rather than retyped beside
+// it: a vocabulary quoted in a message and edited in one place is this
+// project's most repeated defect.
+var arrayVocabulary = strings.ReplaceAll(strings.TrimPrefix(failArrayRe.String(), "(?i)"), "|", "/")
+
 func passBoolVocabulary() string {
 	return "one of " + strings.Join(passBoolWords, "/") +
 		", optionally prefixed by " + strings.Join(passBoolPrefixes, "/")
 }
 
-func synth(schema goja.Value, mode, label string, depth int, rec map[string]int) any {
+func synth(schema goja.Value, mode, label string, depth int, rec, refs map[string]int) any {
 	if schema == nil || goja.IsUndefined(schema) || goja.IsNull(schema) || depth > 6 {
 		return map[string]any{}
 	}
 	obj, ok := schema.Export().(map[string]any)
 	if !ok {
 		return map[string]any{}
+	}
+	// `$ref` is expanded ONCE, over the whole schema, before anything is
+	// synthesised — the launch resolves it, and a runner that does not fills
+	// the referenced leaf with a placeholder STRING where an object was
+	// declared. See resolveRefs for the measurement.
+	if resolved, ok := resolveRefs(obj, obj, refs).(map[string]any); ok {
+		obj = resolved
 	}
 	if t, _ := obj["type"].(string); t == "array" {
 		return arrayOf("", obj, mode, label, depth, rec)
@@ -1116,8 +1167,40 @@ func synth(schema goja.Value, mode, label string, depth int, rec map[string]int)
 
 func arrayOf(name string, v map[string]any, mode, label string, depth int, rec map[string]int) []any {
 	low := strings.ToLower(name)
+	fail := failArrays[low] || failArrayRe.MatchString(low)
+	// An explicit polarity beats every matcher here too, and an array needed it
+	// more than a boolean did: the vocabulary is a list of DEFECT words, so an
+	// array whose emptiness is the pass shape under any other name is filled in
+	// every mode and no `length === 0` term over it can ever be true. Measured
+	// on the P3d gate, which spent two rounds reaching for exactly that term:
+	// `unheldProperties` matches no defect word, came back holding one
+	// placeholder in the clean mode, and a reviewer's proposal to change the
+	// item TYPE was tried and changed nothing — the discriminator was never the
+	// type, it is the NAME, and the annotation is the way out that does not
+	// require renaming a field away from its subject.
+	//
+	// The polarity is the array's POPULATED state, exactly as for a boolean:
+	// `false` says a populated array is the failure shape (empty in the passing
+	// modes), `true` says it is the pass shape (empty in `acceptfail`).
+	if raw, present := v["x-pass"]; present {
+		if xp, ok := raw.(bool); ok {
+			return itemsOf(name, v, mode, label, depth, rec, xpassCount(xp, mode))
+		}
+		// Present and unreadable, named rather than ignored: the author who
+		// reached for the escape hatch would otherwise see the name-based
+		// behaviour they were escaping, with nothing saying their spelling was
+		// seen and rejected. It goes to its OWN note: the boolean one says the
+		// field was FALSE in this mode and quotes the completion vocabulary,
+		// and every one of those clauses is wrong about an array — it came back
+		// holding a placeholder, it is matched against the DEFECT vocabulary,
+		// and the remedy that note offers is the annotation the author just
+		// wrote.
+		if rec != nil {
+			rec[arrayPolarityKey+name]++
+		}
+	}
 	n := 1
-	if failArrays[low] || failArrayRe.MatchString(low) {
+	if fail {
 		if passFixture(mode) {
 			n = 0
 		}
@@ -1141,9 +1224,30 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int, rec m
 	// non-blocking bucket was empty in every failing mode, so the line that
 	// collects it was executed by NO mode at all and its deletion passed every
 	// bar. The clean mode keeps one benign item: a clean run must stay green.
-	if n == 1 && !passFixture(mode) && (failArrays[low] || failArrayRe.MatchString(low)) {
+	if n == 1 && !passFixture(mode) && fail {
 		n = 2
 	}
+	return itemsOf(name, v, mode, label, depth, rec, n)
+}
+
+// xpassCount is the declared polarity as a cardinality, and it is the boolean
+// rule one type over: a pass-shaped array is populated everywhere but in the
+// mode that fails acceptance, and a failure-shaped one is empty in the passing
+// modes and holds the MIXED pair everywhere else.
+func xpassCount(xp bool, mode string) int {
+	if xp {
+		if mode == "acceptfail" {
+			return 0
+		}
+		return 1
+	}
+	if passFixture(mode) {
+		return 0
+	}
+	return 2
+}
+
+func itemsOf(name string, v map[string]any, mode, label string, depth int, rec map[string]int, n int) []any {
 	items, _ := v["items"].(map[string]any)
 	out := make([]any, 0, n)
 	for i := 0; i < n; i++ {

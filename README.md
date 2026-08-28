@@ -94,8 +94,8 @@ wf delta                                   # the delta round's brief: findings +
 | `wf status` | manifest, current round, who last touched each artifact, dirt, tool version |
 | `wf apply -f <edits> [-m msg] [-rule RN\|"name"] [-rule-ack] [--dry-run]` | all-or-nothing batch of edits (JSON or text blocks), then a commit of only the touched files. It NOTES a replacement whose `old` covers half the file or more, with how many lines that one replacement rewrites: all-or-nothing and `count` are per REPLACEMENT, so a whole-artifact block has a count of one that always matches and every change inside it is verified by nothing — measured on P3b, eighteen of sixty-eight batches were a single replacement, the changes inside them came from a pipeline whose non-matching `str.replace()` is a silent no-op, and a later round found 15 of one round's 30 recorded closures byte-identical to their pre-fix text (a second lens confirmed 11). A note and not a refusal: generating one minimal block per change failed twice on uniqueness on that same gate; `-rule` declares the `[RN]` rule this batch changes and the note then NAMES the other sites carrying that marker, marking the ones in files the batch wrote — a rule nothing marks is said out loud, because that is exactly the corpus `wf check rules` cannot reach either. With the id form the batch is REFUSED before anything is written when a marked site sits in a file the batch does not touch, and `-rule-ack` is the waiver: a note arrives after the round has spent its edit, and the sweep it advises is then a separate act of discipline. Measured on P3c, four times in four consecutive rounds the fix landed where the finding was READ rather than everywhere the rule ACTS, and `dup`, `stale` and `rules` reach none of them because the copies share no wording — but this refusal would have caught NONE of those four: that gate marked nothing, so `wf check rules` reports `0 marker(s), 0 id(s), 0 compared` and the id form reaches nothing there, and three of the four are copies inside ONE file, which is behind the FILE half. It is an argument for marking, not a mechanism that caught them. A second site inside a file the batch DOES write is not refused, and the site list beside the refusal is what reaches those. It also takes a free-text rule NAME, which sweeps every sentence carrying all of its words and says out loud that it is the weaker half: a script gate's rules live in prompts and are marked in no document, so the id form reaches nothing there — measured on P3a, `-rule "bar accounting"` was refused outright and the flag was unusable for the whole gate whose most valuable sweep it is |
 | `wf round new [-title T] [-kind full\|delta\|tool\|run]` | open the next round, scaffold `rounds/rN/findings.md` with its scope. `run` marks a round that CONTAINS a live run of what the gate built: it is a reviewer round everywhere except the clock, where its span is printed on its own, kept out of the median, and split under the head `run` rather than `review` — one gate's launch round spanned 288.2 min against a median of 45.3, and `-time`'s note called it a break rather than work |
-| `wf round record <file>\|- [-round N]` | fill a round's findings.md from a file or from stdin (`-`), validating closures before writing; the file is POSITIONAL (there is no `-file`) and an empty input is refused rather than recorded over a filled ledger; the `level` cell must be one of **BLOCKER, MAJOR, MINOR, NOTE** and anything else is refused before a byte is written — a finding's level is decided by what catches it downstream, never by how bad it reads, and measured 2026-08-25 over the six gate ledgers then on disk, the open scale had produced FOUR vocabularies for one scale, 172 of 1065 findings at a level no other gate can be read against (the corpus has grown since; the shape has not), and a script `enum` does not save the other side: it validates the VALUE and never the LIST, so the scripts those six gates produced carry three lists of their own plus a drifted field NAME (`level` on one, `severity` elsewhere), including the `['blocker','advisory']` this repository's own template shipped into three gated scripts. Every READ path stays permissive so the closed workspaces keep being readable; a `closed by` sha the workspace does not have is refused by an error that names the repository it looked in and says when the sha IS a commit in the TARGET (the shape a round recording a LAUNCH reaches for); prints a note when the round banks no lens — measured: eleven of one gate's thirteen rounds recorded their findings and lost the prompts that produced them — and, on a DELTA round, what its banked roster does not cover, through the same classifier the roster and `wf stats` read. It also counts the closures `wf check closure` will NOT be able to reach — those whose finding text names no artifact path — at the moment the operator is still writing the file: measured on P3a, 0 of 350 claims checkable on the first record and 26 of 26 after the paths went in |
-| `wf round lens <prompt> -name N -model M -asks Q[,Q] [-round N]` | bank one reviewer vector against a round — the prompt verbatim and what ran it — into `rounds/rN/lens-<name>.md`; no argument prints the roster. `-round` must name a round the gate has opened. A banked prompt is never rewritten, and one left uncommitted by a failed commit is committed on the next run. It is also how a round whose vectors ran and found NOTHING says so, which is what separates it from a round nobody dispatched. A file counts as a record only if it says which vector (`# Lens`), what ran it (`Model:`) and what it was asked (a prompt after the `---`), and only once committed — the roster is the escape from two refusals, so a `touch`ed filename must not be one. `-asks` takes the set however it is written — `closure,fix-induced,ripple`, `closure+fix-induced+ripple`, a space-separated list, or the flag repeated — because one gate banked a single vector per round and then hand-edited `Asks:` in the file nineteen times over ten rounds, having been refused the natural spelling. It is the COMPARABLE half beside a free-text `-name`: the set is closed (`orchestration, routing, alignment, facts, seams, criterion, closure, fix-induced, ripple, other`) and an unknown value is refused, while `other` is always available so a vector a slice genuinely needs is never refused — measured 2026-08-25, when two gates banked any roster at all: 13 lens RECORDS under TEN distinct names, of which exactly one appears as a VECTOR NAME anywhere in the manual. The corpus has since grown — three gates bank 92 records today, 23 distinct names in one of them — so read the date, not the figure. A delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3]; the roster and `wf stats` NOTE what a delta round's roster does not cover, and never refuse it |
+| `wf round record <file>\|- [-round N]` | fill a round's findings.md from a file or from stdin (`-`), validating closures before writing; the file is POSITIONAL (there is no `-file`) and an empty input is refused rather than recorded over a filled ledger; a row that does not split into four cells is refused by NAME and, when it splits into too many, the refusal gives the COLUMN of the FOURTH unescaped pipe — where a well-formed row's `closed by` cell opens — in characters from the start of the line as written, and quotes the tail it could not place (which of the extra pipes is the author's is not knowable from the row, so the tail is printed whole and the injected one is inside it; a row with too FEW cells names no column at all) — two gates have paid for an unescaped pipe, and on the second it was not even authored: a shell hook rewrote a command quoted inside the heredoc writing the table and injected an alternation pipe into a row's text, so the operator hunted a character they had never typed with `awk` and `tr` (an edit file and a findings file are DATA — write them with a file tool, never through a heredoc something may rewrite); the `level` cell must be one of **BLOCKER, MAJOR, MINOR, NOTE** and anything else is refused before a byte is written — a finding's level is decided by what catches it downstream, never by how bad it reads, and measured 2026-08-25 over the six gate ledgers then on disk, the open scale had produced FOUR vocabularies for one scale, 172 of 1065 findings at a level no other gate can be read against (the corpus has grown since; the shape has not), and a script `enum` does not save the other side: it validates the VALUE and never the LIST, so the scripts those six gates produced carry three lists of their own plus a drifted field NAME (`level` on one, `severity` elsewhere), including the `['blocker','advisory']` this repository's own template shipped into three gated scripts. Every READ path stays permissive so the closed workspaces keep being readable; a `closed by` sha the workspace does not have is refused by an error that names the repository it looked in and says when the sha IS a commit in the TARGET (the shape a round recording a LAUNCH reaches for); prints a note when the round banks no lens — measured: eleven of one gate's thirteen rounds recorded their findings and lost the prompts that produced them — and, on a DELTA round, what its banked roster does not cover, through the same classifier the roster and `wf stats` read. It also counts the closures `wf check closure` will NOT be able to reach — those whose finding text names no artifact path — at the moment the operator is still writing the file: measured on P3a, 0 of 350 claims checkable on the first record and 26 of 26 after the paths went in |
+| `wf round lens <prompt-file> -name N -model M -asks Q[,Q] [-round N]` | bank one reviewer vector against a round — the prompt verbatim and what ran it — into `rounds/rN/lens-<name>.md`; no argument prints the roster. `-round` must name a round the gate has opened. A banked prompt is never rewritten, and one left uncommitted by a failed commit is committed on the next run. It is also how a round whose vectors ran and found NOTHING says so, which is what separates it from a round nobody dispatched. A file counts as a record only if it says which vector (`# Lens`), what ran it (`Model:`) and what it was asked (a prompt after the `---`), and only once committed — the roster is the escape from two refusals, so a `touch`ed filename must not be one. `-asks` takes the set however it is written — `closure,fix-induced,ripple`, `closure+fix-induced+ripple`, a space-separated list, or the flag repeated — because one gate banked a single vector per round and then hand-edited `Asks:` in the file nineteen times over ten rounds, having been refused the natural spelling. It is the COMPARABLE half beside a free-text `-name`: the set is closed (`orchestration, routing, alignment, facts, seams, criterion, closure, fix-induced, ripple, other`) and an unknown value is refused, while `other` is always available so a vector a slice genuinely needs is never refused — measured 2026-08-25, when two gates banked any roster at all: 13 lens RECORDS under TEN distinct names, of which exactly one appears as a VECTOR NAME anywhere in the manual. The corpus has since grown — three gates bank 92 records today, 23 distinct names in one of them — so read the date, not the figure. A delta round asks CLOSURE, FIX-INDUCED and RIPPLE, and may add vectors but never drop those three [R3]; the roster and `wf stats` NOTE what a delta round's roster does not cover, and never refuse it |
 | `wf freeze [-refreeze]` | sha256 of all artifacts + target HEAD + tool version + citation counts + the corpus size in lines (with the delta against the previous freeze — a document that doubles while the blocker count holds is a design being elaborated rather than settled) → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open; notes (never refuses) every citation that no longer RESOLVES against the target's HEAD, a round whose artifacts changed without `wf apply`, and — when it could not resolve them, or the round's window has no lower bound — that the check did not run. Refuses when ANY closed round carries an untouched findings scaffold and no banked lens: a round nobody is recorded as having read must not freeze as a round that found nothing (a `-kind tool` round is exempt — its opening subject already says no reviewer was dispatched; the OPEN round is exempt because its scaffold is blank by construction). Every closed round, not just the previous one — `wf round new` does not require the current round to be frozen, so a round opened past without a freeze was seen by no refusal at all. `-refreeze` republishes a round already tagged: freezing stays one-way by default (the manifest is read from the WORKTREE by `wf verify`, so a silent rewrite turned a MISMATCH into "clean"), but `wf check cite` surfaces a mis-aimed anchor without a freeze — what only freeze does is REPUBLISH the corrected bytes under the tag reviewers were handed, and five of one gate's twenty-two rounds deleted the tag by hand to do it, twelve times in all (round 13 six times, round 15 five). The superseded manifest is read from the TAG, never from the worktree copy this command rewrites: a re-freeze whose tag move failed otherwise left a NEW manifest under an OLD tag, and the retry compared it against itself and refused. The tag MOVES, the manifest records how many freezes the round has had and which commits they published, and it refuses when every artifact hashes the same against the same target revision: a re-freeze republishes CHANGED bytes. A re-freeze also prints how many changed line(s) the tag just moved over: every window in `wf stats` is bounded by `gate-rN`, so a batch applied after the round's FIRST publication is priced as the fix that produced that round's findings, and `wf stats` excludes such a round from the prediction basis by number. That detection reads GIT — the tag's commit against the round's first freeze commit — and not the manifest's `refreezes` counter, which only this flag writes: measured on the gate that stopped instead of closing, twelve extra freeze commits over five rounds left it ABSENT from all five manifests, the note fired not once, and 611 of 8388 changed lines (7.3%) were priced against the round that produced them rather than the round they repaired |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping. Ends with a `## deletions` section when the range REMOVES structural leads (headings, numbered items, list items, bold lead-ins): a count and deliberately no list — measured over the two gates that cut, the per-round removals reach 49 on one and 215 on the other, and most are rewrites, so a list would paint most of its output. A cut's deletions are watched by no check here, and the section points at `wf check stale`, whose `swept` line is the same fact from the other side. Do not look for a cut in a net-negative diff: one measured cut replaced 28 clauses with 10 properties and the artifact GREW by four lines |
@@ -144,7 +144,18 @@ the replacement
 
 Each replacement block carries its own `=== <file>` header — `count` is scoped
 to that one replacement, not to the file; fifteen replacements in one file are
-fifteen headers. When a batch changes enough LINES that the workspace's own
+fifteen headers. A bare `<<<<`, `====` or `>>>>` line INSIDE either half is
+REFUSED at parse, naming the line. The rule used to be that a marker collision
+"mis-splits and then fails the plan loudly, because the mis-split old matches
+nothing", and that holds only for the OLD half: in the NEW half it matches
+everything and is WRITTEN. Measured on the P3d gate — a forgotten `>>>>`
+swallowed the following block, every edit reported `ok (1 match)`, the batch
+verified byte-for-byte (the verification is against the batch AS PARSED, so a
+mis-split is confirmed in the same words a correct batch gets), the literal
+markers landed in the artifact and took `wfcheck` from 0 errors to `Unexpected
+token ===`, and the recovery was two `git revert`s and about half a round. Text
+that must legitimately carry such a line — this README documents the format and
+does — is the one case for the JSON form. When a batch changes enough LINES that the workspace's own
 history (findings per 100 changed lines, from the ledger and the apply commits)
 predicts a costly next round, `apply` prints a note suggesting a split by rule,
 and says that a rule's consumers are not in the diff — a note, never a refusal.
@@ -397,9 +408,12 @@ them design decisions that a scope cut had deleted and that survived nowhere
 else — a gate that had trusted that line would have shipped a document missing
 both.
 
-So the difference is made a RECORD rather than a guess. `wf round lens <prompt>
--name NAME -model MODEL -asks Q[,Q]` writes `rounds/rN/lens-<name>.md` — the prompt
-verbatim, with what ran it — and `wf freeze` refuses while ANY closed round's
+So the difference is made a RECORD rather than a guess. `wf round lens
+<prompt-file> -name NAME -model MODEL -asks Q[,Q]` writes
+`rounds/rN/lens-<name>.md` — the prompt verbatim, with what ran it. The argument
+is the PATH of a file holding the prompt, never the prompt itself: a live gate
+pasted one on the command line and got `file name too long` from the syscall,
+twice, with nothing saying what was wanted — and `wf freeze` refuses while ANY closed round's
 ledger is the untouched scaffold with no lens banked, `wf close` refuses to bank
 one, and `wf stats` marks the line `ledger: UNFILLED scaffold, not a measured
 zero` (and, when the lenses ARE banked, `ledger: empty, and its lenses are
@@ -487,6 +501,48 @@ boolean property makes it pass-shaped whatever it is called, `false` makes it a
 failure flag. Renaming is offered first because it is free — the annotation
 rides in the schema the launch's safety classifier reads, and widens it.
 
+An ARRAY is filled or emptied by its name in the same way, and its vocabulary is
+a list of DEFECT words: `blocker/major/failure/unfixed/open/concern/dead/
+unverified/violation/gap/risk/defect/error/issue/problem/finding`. An array
+whose name carries one comes back EMPTY in the passing modes and holding a mixed
+PAIR elsewhere — two items, so both sides of every
+`filter(f => f.severity === 'blocker')` are exercised; every other array comes
+back holding one placeholder in every mode. Two of the sixteen are narrower
+still: `failures` and `unfixed` are populated only in the mode named for them
+(`acceptfail`, `unfixed`), because those are the modes that exist to walk one
+branch each. So a `green` term reading `x.length === 0` over an array named for its
+subject is false in the clean mode, and the mode fails while nothing is wrong.
+P3d spent two rounds reaching for exactly that term over `unheldProperties`,
+including a reviewer's proposal to make the items objects rather than strings —
+it was tried and changed nothing, because the discriminator is neither the item
+type nor `required`, which this runner does not read. `"x-pass"` declares it:
+`false` says a populated array is the failure shape, `true` says the opposite,
+and an explicit polarity beats every matcher.
+
+### `wfdry` and `$defs`/`$ref`
+
+A `$ref` is expanded against the schema's own `$defs` before the fixture is
+synthesised, because the LAUNCH resolves it: a probe against the real thing had
+a deliberately illegal `subjects: 0` rejected, so the `minimum` and `minLength`
+that reach a leaf through a reference are enforced there. This runner used to
+resolve nothing, and the referenced node — carrying no `type` of its own —
+synthesised to a placeholder STRING. Measured on P3d, per revision of its own
+script: the acceptance schema was 6,038 bytes with the bar leaf inline;
+declaring that leaf once and referencing it took it to 3,155 — and took `wfdry`
+from 7/7 modes to 6/7, with `obs.bars[k].result` undefined and all five bars
+reported RED, so the gate REVERTED it one commit later and went back to 4,233,
+above the width its own probe then measured as REFUSED. What took the shipped
+schema under in the end was trimming the descriptions, with the per-property
+leaf's `$ref` kept: 3,114 bytes against 5,721 fully inlined, by the gate's own
+record. So the narrowing was reverted for exactly the cost this change
+removes. So the narrowing that the width band keeps asking
+for used to cost the dry run its own happy path; it no longer does. Local pointers only
+(`#/$defs/...`); a key written beside a `$ref` survives the expansion and wins;
+a reference this runner cannot expand — a typo, a remote URL, a cycle — is
+NAMED in a note rather than left to surface as a placeholder. The WIDTH is
+unaffected: it is measured from the object the script composed, which is what
+the launch receives, with its references in it.
+
 ### `wfdry` and the schema width
 
 Every run prints what each agent would put ON THE WIRE: the serialized width of
@@ -500,7 +556,7 @@ branch: on one script those coincide, on another they differ by 55%, and the
 tool warned that a schema the launch had accepted 44 times over had been
 refused. One number computed, another calibrated.
 
-Measured with this runner over the two gates that have launched, against the
+Measured with this runner over the three gates that have launched, against the
 launch's safety classifier (`output schema too large to classify safely`):
 
 | | refused | accepted |
@@ -509,11 +565,15 @@ launch's safety classifier (`output schema too large to classify safely`):
 | P3a, launch 3 (44 of 44, zero errors) | — | widest 3,435 |
 | P3c, launch 1 | `accept` 4,589 — the FIFTEENTH and last agent, six hours in | — |
 | P3c, launch 2 (15 of 15) | — | `accept` 3,877 |
+| P3d, probed before the launch | `accept` 4,233 — 82 ms, zero tokens | 3,114 — 41 s |
 
 So on the clean quantity the corpus separates: every accepted width is at or
-below 3,877 and every refused one at or above 4,589. The gap between them is
+below 3,877 and every refused one at or above 4,233. The gap between them is
 UNMEASURED, not safe, and this tool does not pretend to know where in it the
-boundary falls. P3c's refusal quoted 4,563 against this runner's 4,589 — two
+boundary falls. The floor is the LOWEST refusal recorded, not the last one
+heard: P3d's probe moved it down 356 bytes for 82 milliseconds of work, after
+two rounds of that gate had argued about the band from measurements of SIZE
+alone. P3c's refusal quoted 4,563 against this runner's 4,589 — two
 serializers 26 bytes, 0.6%, apart, with this one the LARGER, which is the safe
 direction for a warning.
 
