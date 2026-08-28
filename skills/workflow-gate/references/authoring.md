@@ -155,8 +155,8 @@ owned path(s) parsed from 8 prompt(s)` and found two pairs of sections writing i
 
 **A block a factory composes is read from the SOURCE TEXT instead**, and the report says which half
 ran. A prompt assembled by one factory out of a per-section config resolves statically to nothing, so
-the parsed half honestly reports zero — measured on a live script that declares sixteen paths, whose
-operator then did the arithmetic by hand four times in one gate. `wfcheck` now reads every `YOU OWN`
+the parsed half honestly reports zero — measured on a live script that declares sixteen paths, on
+which the arithmetic was then done by hand four times in one gate, by three different agents. `wfcheck` now reads every `YOU OWN`
 block out of the script's string literals (comments excluded — a comment describing an ownership
 scheme is not one), reports the paths no resolved prompt carries, ERRORs when two BLOCKS name one
 file, and folds them into the one reach report against the gates' `owns` arrays. It is the WEAKER
