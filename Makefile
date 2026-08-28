@@ -80,6 +80,15 @@ check-tools: build
 	@if ./wfdry testdata/collapse.mjs --quiet 2>&1 | grep -q "(clean: 6 agents)"; then \
 		echo "wfdry collapse fixture: prints the happy path's count beside each mode"; \
 	else echo "wfdry collapse fixture: no baseline printed — the operator has nothing to compare a mode against"; exit 1; fi
+	@if ./wfdry testdata/wide-schema.mjs --quiet 2>&1 | grep -q '^  4846 bytes: build'; then \
+		echo "wfdry wide-schema fixture: the schemas section prints what the launch would carry"; \
+	else echo "wfdry wide-schema fixture: no schemas section — the width the launch refuses is measured and never shown"; exit 1; fi
+	@if ./wfdry testdata/wide-schema.mjs --quiet 2>&1 | grep -q '^WARN: schema width: 4846 bytes on the happy path'; then \
+		echo "wfdry wide-schema fixture: the width WARN repeats at the tail, where an operator reads"; \
+	else echo "wfdry wide-schema fixture: the width warning never reaches the tail — the last lines are what an operator acts on"; exit 1; fi
+	@if ./wfdry testdata/wide-schema.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry wide-schema fixture: a width is a QUESTION — exit 0"; \
+	else echo "wfdry wide-schema fixture: a wide schema must not fail a mode; the corpus brackets the boundary and does not locate it"; exit 1; fi
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfcheck -root . .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \

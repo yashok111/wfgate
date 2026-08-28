@@ -142,3 +142,73 @@ func TestDeltaBrief_namesTheDeletionPopulation(t *testing.T) {
 		"NO check in this tool watches the second kind",
 		"wf check stale -since gate-r2")
 }
+
+// A closure naming a commit git cannot read was not checked either. Leaving
+// `unreadable` out of the unreachable sum let the exact headline this marker
+// exists to catch print as a pass: three unreadable shas of four closures gave
+// "1 checked" with no marker and the population two lines below it.
+func TestCheckClosure_anUnreadableShaIsUnreachableToo(t *testing.T) {
+	wsDir, sha := twoArtifactGate(t)
+	ledger(t, wsDir, 1,
+		"| 1 | MAJOR | artifacts/decisions.md needs a revision | "+sha+" fixed |\n"+
+			"| 2 | MAJOR | artifacts/decisions.md again | dead1beef2 |\n"+
+			"| 3 | MAJOR | artifacts/decisions.md once more | dead3beef4 |\n"+
+			"| 4 | MAJOR | artifacts/decisions.md and again | dead5beef6 |\n")
+	// The ledger is written directly: `wf round record` refuses a sha the
+	// workspace does not have, which is a different guard and the right one.
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "could not be reached, more than were checked", "git could not read")
+}
+
+// Two NOT A PASS lines about one report is the second-copy defect. Where NOTHING
+// was checked the older note already says it, and the header stays quiet.
+func TestCheckClosure_saysNotAPassOnce(t *testing.T) {
+	wsDir, sha := twoArtifactGate(t)
+	ledger(t, wsDir, 1,
+		"| 1 | MAJOR | a finding naming no artifact at all | "+sha+" fixed |\n"+
+			"| 2 | MAJOR | another naming nothing | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "NOT A PASS — no closure could be checked")
+	mustNotContain(t, out, "could not be reached, more than were checked")
+}
+
+// An AMBIGUOUS closure is unreachable as surely as an unnamed one, and BOTH
+// reports must say so: the record-time note counting it on the reachable side
+// left `wf round record` quiet about a round `wf check closure` then called NOT
+// A PASS — two commands contradicting each other, with the quieter one at the
+// moment the operator could still fix it.
+func TestClosureCoverage_anAmbiguousPathIsUnreachableInBothReports(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	// Two artifacts whose BASENAME is the same: a finding naming `notes.md`
+	// resolves to neither.
+	for _, d := range []string{"a", "b"} {
+		p := filepath.Join(tmp, d, "notes.md")
+		write(t, p, "# Notes "+d+"\n\nA second artifact.\n")
+		if _, err := runWF(t, wsDir, "add", p, "-as", "artifacts/"+d+"/notes.md"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	batch := filepath.Join(tmp, "fix.txt")
+	write(t, batch, "=== artifacts/decisions.md  count=1  note=a fix\n"+
+		"<<<<\n# Decisions\n====\n# Decisions (revised)\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", batch)
+	noErr(t, err, "apply")
+	sha := commitShaOf(t, applied)
+	ledger(t, wsDir, 1,
+		"| 1 | MAJOR | artifacts/decisions.md needs a revision | "+sha+" fixed |\n"+
+			"| 2 | MAJOR | notes.md is wrong somewhere | "+sha+" fixed |\n"+
+			"| 3 | MAJOR | notes.md is wrong elsewhere too | "+sha+" fixed |\n")
+	rec, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+	mustContain(t, rec, "NOT A PASS", "matching more than one artifact")
+
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "NOT A PASS: 2 could not be reached, more than were checked")
+}

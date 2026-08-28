@@ -212,11 +212,19 @@ modes: %s
 	if len(widths) > 0 {
 		fmt.Printf("\n=== schemas — %d distinct width(s), widest first ===\n", len(widths))
 		for _, w := range widths {
-			if w.Bytes < 0 {
+			if w.Clean < 0 || w.Widest < 0 {
 				fmt.Printf("  does not serialize: %s\n", strings.Join(w.Labels, ", "))
 				continue
 			}
-			fmt.Printf("  %d bytes: %s\n", w.Bytes, strings.Join(w.Labels, ", "))
+			// The happy path's width is the quantity the corpus is measured in;
+			// a wider FAILURE branch is a different statement and prints as one,
+			// because a schema assembled on a branch is only sent where that
+			// branch runs.
+			branch := ""
+			if w.Widest > w.Clean {
+				branch = fmt.Sprintf(" (%d on a failure branch)", w.Widest)
+			}
+			fmt.Printf("  %d bytes%s: %s\n", w.Clean, branch, strings.Join(w.Labels, ", "))
 		}
 	}
 	if *promptDiff != "" {

@@ -453,3 +453,34 @@ func TestApplyRuleSaysWhenNoSentenceCarriesThePhrase(t *testing.T) {
 	}
 	mustContain(t, out, `NO sentence of 4 words or more in 1 artifact(s) carries every word of "clause regression channel"`)
 }
+
+// The refusal counts FILES, not sites: two marked sites in one untouched file is
+// one file to visit, and "marked in 2 file(s)" naming the same path twice is a
+// count nobody can act on.
+func TestApplyRule_theRefusalCountsFilesNotSites(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	doc := filepath.Join(tmp, "rules.md")
+	write(t, doc, "# Rules\n\n- [R6] The two routes DETACH their envelope from the shared component.\n")
+	if _, err := runWF(t, wsDir, "add", doc); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(tmp, "context.md")
+	// TWO marked sites in ONE file the batch does not write.
+	write(t, other, "# Context\n\n- [R6] The two routes DETACH their envelope from the shared component.\n\n"+
+		"## Again\n\n- [R6] The two routes DETACH their envelope from the shared component.\n")
+	if _, err := runWF(t, wsDir, "add", other); err != nil {
+		t.Fatal(err)
+	}
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/rules.md  count=1  note=R6 repair\n"+
+		"<<<<\nfrom the shared component.\n====\nfrom the shared component, and the 409 stays where it is.\n>>>>\n")
+	out, err := runWF(t, wsDir, "apply", "-f", edits, "-rule", "6")
+	if err == nil {
+		t.Fatalf("want the refusal:\n%s", out)
+	}
+	mustContain(t, out, "marked in 1 file(s) this batch does not write")
+	// And the site list is what makes the refusal actionable — it is the half
+	// that reaches the sites inside a file the batch DOES write.
+	mustContain(t, out, "rule: [R6] is marked at 3 site(s)", "artifacts/context.md:")
+}

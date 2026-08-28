@@ -566,11 +566,14 @@ compiles, passes every test, and does nothing.
       agent alone.** `blocked by safety classifier: output schema too large to classify safely` — four
       agents of one run, and on another run the FIFTEENTH and last agent, six hours in, with nothing
       downstream to catch it. The width is not a judgement call and it is not "risk accepted": run
-      `wfdry`, which prints every schema's serialized width and warns above the widest this corpus has
-      seen accepted, and then PROBE the wide one — one cheap agent carrying that schema and a prompt
-      saying to fill it with placeholders answers in seconds, against a multi-hour run. Width is
-      measurable from the script; acceptance is measurable only by asking. A schema is narrowed by
-      declaring a repeated leaf ONCE and referencing it, which is what took the refused one under.
+      `wfdry`, which prints every schema's serialized width — the happy path's, and the wider one a
+      failure branch composes — and warns from the two ends the corpus actually measured. Then PROBE
+      the wide one: one cheap agent carrying that schema and a prompt saying to fill it with
+      placeholders answers in seconds, against a multi-hour run. Width is measurable from the script;
+      acceptance is measurable only by asking, and a gate that measured its own width to the byte and
+      wrote down that acceptance could not be measured from there was wrong on exactly that clause. A
+      schema is narrowed by declaring a repeated leaf ONCE and referencing it, which is what took both
+      refused ones under.
 
 ## F. Guard integrity
 

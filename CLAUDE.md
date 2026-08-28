@@ -1457,6 +1457,91 @@ entirely to what the reports SAY. Items landed so far:
   SURVIVED and had not been** — both broke the build, which is the trap this
   file already records, met twice more in one session.
 
+**The fifteenth wave — P3c, and the launch-killer the corpus had measured
+twice** (`FEEDBACK-p3c.md`; the first gate where both halves closed on the stop
+rule, and the run then died on its LAST agent). Six proposals, each measured
+before a line was written, and three landed somewhere other than where the
+feedback aimed them. The wave's own flagship was then REFUTED by its review
+round, on a measurement anybody could have run and nobody did:
+
+- *The schema-width refusal is measured in the RUNNER, and the quantity is the
+  whole finding* — `blocked by safety classifier: output schema too large to
+  classify safely` killed four agents of one run and the fifteenth and last
+  agent of another, six hours in, with nothing downstream to catch it. `wfdry`
+  holds the composed object at every spawn, so `JSON.stringify` of it is exact
+  and covers the schemas a script builds at run time; `wfcheck` was deliberately
+  NOT given this, because re-serializing an AST literal produces a SECOND number
+  for one quantity. The first version compared the WIDEST width any mode composed
+  against constants measured on the CLEAN path. On the gate they came from those
+  coincide; on the other they differ by 55%, so the tool WARNed that a schema the
+  launch had accepted 44 times over had been refused. Measured with the tool's
+  own binary, on the clean quantity: refused 27,212 / 8,596 / 5,760 / 4,814 (P3a,
+  four agents in one run) and 4,589 (P3c, the last agent); accepted 3,390 (P3a,
+  same run), 3,435 (P3a's 44-of-44 relaunch) and 3,877 (P3c's 15-of-15). So the
+  corpus SEPARATES on the clean width — everything accepted at or below 3,877,
+  everything refused at or above 4,589 — and the gap is unmeasured, not safe. A
+  wide FAILURE branch is a different statement and prints as one, because the
+  launch sends whatever the branch that runs composes and the expensive refusal
+  landed on an agent at the very tail. A width never fails a mode; a schema that
+  does not SERIALIZE does, because there is nothing for the launch to send.
+- *The class was in NO shipped reference* — `gate-checks` records nothing about
+  the classifier, and the earlier gate's lesson lives in ONE findings row of one
+  workspace, which is why the next gate repeated it. The pairing that row is
+  quoted by is also false: 23,756 is a sub-object's width recorded as "measured
+  and judged acceptable as built", not the four agents' number. One rule in E,
+  one in `authoring.md`, both with the measured widths.
+- *`wfcheck` reads a factory-composed `YOU OWN` block from the SOURCE TEXT* —
+  the parsed half reported `0 owned path(s) parsed from 1 prompt(s)`, honestly,
+  over a script declaring sixteen, and the arithmetic was then done by hand four
+  times in one gate by three different agents. Comments excluded, escapes
+  decoded, a block split by a `${...}` hole still one block. It reads **16 paths
+  in 4 blocks, 16 distinct, 16 reachable by a fix agent** — the hand result. It
+  is FOLDED into the one reach report rather than printed beside it: both halves
+  speaking at once produced a report saying every path was covered and sixteen
+  were owned by nobody, of the same file.
+- *`wf apply -rule RN` REFUSES before writing* when a marked site sits in a file
+  the batch does not touch, `-rule-ack` waives it — and the honest scope is
+  written down beside it: on the gate that motivated it the refusal would have
+  fired ZERO times, because that gate marked nothing and three of its four cases
+  are copies inside ONE file, behind the FILE half. It is an argument for
+  marking, not a mechanism that caught them.
+- *Two closure reports say NOT A PASS on the SAME predicate* — the check could
+  not reach more closures than it checked. Measured over the seven unpruned
+  workspaces: p2d and p2e reached nothing and already said so, p2f checked 3 of
+  110, A3 5 of 266 and P3a 68 of 421 under a headline that reads like a pass,
+  while P3b and P3c are genuinely covered. An UNREADABLE or AMBIGUOUS row counts
+  as unreached like an unnamed one — the first version omitted both, so three
+  unreadable shas of four closures printed `1 checked` with no marker, and
+  `wf round record` stayed in the bookkeeping register for a round `wf check
+  closure` then called NOT A PASS.
+- *`wf check cite -at frozen|<rev>`* verifies the document against the bytes its
+  reviewers were handed: **16 findings against the working tree, ZERO against the
+  frozen revision**, on the gate whose run round moved the target. The operator
+  had established that by hand and written it into the ledger. One revision
+  answers both questions — the index and the bytes — and a ref that is not a sha
+  is not abbreviated, because `short()` turned `gate-r10^` into `gate-r10`, a
+  real and different commit.
+- *The removed-headings list was REFUSED on measurement* — the proposed trigger,
+  a net-negative diff, misses the cut that motivated it (28 clauses became 10 and
+  the artifact GREW by four lines), and the list paints 49 and 215 leads a round,
+  most of them rewrites. What ships is a COUNT in `wf delta` and the second
+  reading of `stale`'s `swept` line: a retired word surviving nowhere means the
+  fix reached every consumer, OR the decision it carried stopped existing.
+- *And the wave earned its review round, for the tenth time running, and the
+  claims vector killed its flagship* — two Opus vectors (Go correctness with a
+  65-mutation sweep, and claims/specification); the external model could not run,
+  because the proxy's upstream certificate pin no longer matched. **4 blockers,
+  23 surviving mutations.** The correctness vector found that an unserialisable
+  schema was a WARN over `7/7 modes completed` at exit 0 — the fourteenth wave's
+  own promotion argument, one feature later — and that the whole DELIVERY layer
+  of the flagship (`=== schemas ===` and the tail WARN) could be deleted with
+  every bar green; `testdata/wide-schema.mjs` is banked against that. The claims
+  vector found the calibration above, ten wrong numbers, and the README paragraph
+  still calling `-rule` "a note, never a refusal" two hundred lines under the
+  table cell that had been updated. Three guards were deleted rather than shipped
+  unproven, and two mutations that broke the BUILD were discarded and rewritten,
+  which this file already records as the trap.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file
@@ -1581,9 +1666,21 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-27 — read before trusting
+## State as of 2026-08-28 — read before trusting
 
-- **SEVEN real gates have now run entirely through `wf`,** and P3b
+- **EIGHT real gates have now run entirely through `wf`,** and P3c
+  (`FEEDBACK-p3c.md`, `~/projects/gates/mocker-p3c-ref-recipe`) is the first
+  where BOTH halves closed on the stop rule: 10 rounds by its own `wf stats`
+  (nine plus the run round), 153 findings, 61 blockers, 20 apply batches over 43
+  edits and 2408 changed lines. The decision gate ran five rounds at 15 -> 7 ->
+  10 -> 6 -> 0 blockers and the script gate four at 11 -> 9 -> 1 -> 0. **It
+  launched, and the run died on its LAST agent** — `output schema too large to
+  classify safely` at a width the gate had measured, written down and accepted,
+  on the stated ground that "what cannot be measured from here is acceptance
+  itself, only size", which was false: one throwaway agent answers it in 16
+  seconds. The relaunch after narrowing ran 15 of 15. Its workspace is on disk
+  and unpruned, and it is the calibration corpus for the schema-width meter.
+- **Seven real gates ran entirely through `wf` before it,** and P3b
   (`FEEDBACK-p3b.md`, `~/projects/gates/mocker-p3b-resources`) is the first that
   **stopped instead of closing**: 22 rounds by its own `wf stats`, 588 findings,
   177 blockers, 451 edits over 8388 changed lines, 25.7 h, median round 29.4 min.
@@ -1591,7 +1688,7 @@ fixtures for the non-ASCII anchor detector).
   script half ran four and was halted by the operator. It did NOT launch. The
   workspace is on disk and unpruned, and it is now the calibration corpus for the
   blocker-origin split and for the closure check that was REFUSED on it.
-- **Six real gates ran entirely through `wf` before it,** and P3a
+- **Six real gates ran entirely through `wf` before those,** and P3a
   (`FEEDBACK-p3a.md`, `~/projects/gates/mocker-p3a-resources`) is the first
   workspace gated TWICE — sixteen rounds over a decision document, closed, then
   the orchestration script added as a SECOND artifact to the same workspace and
@@ -1627,13 +1724,16 @@ fixtures for the non-ASCII anchor detector).
   `check drift` is STILL unexercised live.
 - **The validation corpus DOES survive, and it is the best evidence this
   repository has.** The claim that it did not was stale and cost an
-  investigation an hour of archaeology before it was checked: **SIX** gate
+  investigation an hour of archaeology before it was checked: **SEVEN** gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
   `~/gates/p2f` (82 / 102 / 87 commits, verified 2026-08-24), and
   `~/projects/gates/mocker-a3-cas`, `mocker-p3a-resources`,
-  `mocker-p3b-resources` (153 / 203 / 247 commits, verified 2026-08-27). This
+  `mocker-p3b-resources`, `mocker-p3c-ref-recipe` (153 / 203 / 247 / 82 commits,
+  verified 2026-08-28). This
   bullet listed three of them for three waves, which is why a census that called
-  itself complete missed A3 entirely. `~/projects/gates/mocker-a-mcp`, the
+  itself complete missed A3 entirely — and it then listed SIX for one more wave,
+  which is why the fifteenth wave's own closure census said "six workspaces"
+  while running over seven. Re-count them; do not inherit the number. `~/projects/gates/mocker-a-mcp`, the
   seventh, has been CLOSED AND PRUNED: no `.git`, no
   `artifacts/`, no `rounds/` — its numbers survive only in `close/stats.txt`,
   `close/history.tsv`, `close/freezes.tsv` and `close/rounds/`, and `wf stats`

@@ -7,7 +7,9 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -121,4 +123,109 @@ func TestCiteAt_anExplicitRevisionIsNamed(t *testing.T) {
 	out, err := runWF(t, wsDir, "check", "cite", "-at", "HEAD~1")
 	noErr(t, err, "check cite -at HEAD~1")
 	mustContain(t, out, "against target HEAD~1", "not the working tree")
+}
+
+// The header abbreviates a REVISION only where abbreviating means something. A
+// blanket `short()` printed `refs/hea` for `refs/heads/main` and — worse —
+// `gate-r10` for `gate-r10^`, a real and different commit, with the note below
+// the header then disagreeing with it.
+func TestCiteAt_aRefThatIsNotAShaIsNotAbbreviated(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	moveTarget(t, wsDir)
+	// The moved target makes the citation fail; the header is the point.
+	out, _ := runWF(t, wsDir, "check", "cite", "-at", "refs/heads/main")
+	mustContain(t, out, "against target refs/heads/main")
+	mustNotContain(t, out, "against target refs/hea ")
+}
+
+// `-at frozen` must not be told to re-run with `-at frozen`. The drift note is a
+// statement about the WORKING TREE having moved past the freeze; printed over a
+// run that already read the frozen revision it is advice to do what was just
+// done.
+func TestCiteDriftNote_isNotPrintedWhenAlreadyReadingTheFrozenRevision(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	moveTarget(t, wsDir)
+	// A citation that is broken at BOTH revisions, so `-at frozen` has findings.
+	art := filepath.Join(filepath.Dir(wsDir), "broken.md")
+	write(t, art, "# More\n\nNot there at any revision: `src/main.go:999`.\n")
+	if _, err := runWF(t, wsDir, "add", art); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := runWF(t, wsDir, "check", "cite", "-at", "frozen")
+	mustContain(t, out, "citation covers 999")
+	mustNotContain(t, out, "DRIFT rather than error")
+}
+
+// A freeze that recorded no resolvable target ref is refused by name, not
+// answered with a screenful of read errors against a revision called
+// "(unknown)".
+func TestCiteAt_anUnresolvableFrozenRefIsRefused(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	fm := filepath.Join(wsDir, "rounds", "r1", "freeze.json")
+	b, err := os.ReadFile(fm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The literal `(unknown)` is what freeze writes when it could not resolve the
+	// target's HEAD — a real state, and the one a bare `== ""` check misses.
+	re := regexp.MustCompile(`"targetRef":\s*"[^"]*"`)
+	if !re.MatchString(string(b)) {
+		t.Fatalf("the manifest must carry a targetRef to blank:\n%s", b)
+	}
+	write(t, fm, re.ReplaceAllString(string(b), `"targetRef": "(unknown)"`))
+	out, err := runWF(t, wsDir, "check", "cite", "-at", "frozen")
+	if err == nil {
+		t.Fatalf("want a refusal:\n%s", out)
+	}
+	if !strings.Contains(out+err.Error(), "without a resolvable target ref") {
+		t.Fatalf("the refusal must name why: %v\n%s", err, out)
+	}
+	// And the drift note, which reads the same field, stays silent rather than
+	// telling the operator to compare against a revision called "(unknown)".
+	// It needs a MOVED target and a finding to be reachable at all.
+	moveTarget(t, wsDir)
+	out, _ = runWF(t, wsDir, "check", "cite")
+	mustContain(t, out, "anchor \"NeedleFn\" not in")
+	mustNotContain(t, out, "DRIFT rather than error")
+}
+
+// ONE revision answers both questions. Resolving the path index against the
+// working tree while reading the bytes from a revision reports a file the
+// revision does not have as read errors, and vice versa.
+func TestCiteAt_indexAndBytesComeFromTheSameRevision(t *testing.T) {
+	wsDir := newGate(t)
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	// A file that exists ONLY after the freeze, cited by a new artifact.
+	target := filepath.Join(filepath.Dir(wsDir), "target")
+	write(t, filepath.Join(target, "src", "later.go"), "package main\n\nfunc LaterFn() {}\n")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "a file the freeze never saw")
+	art := filepath.Join(filepath.Dir(wsDir), "later.md")
+	write(t, art, "# Later\n\nA file added after the freeze: `src/later.go:3#LaterFn`.\n")
+	if _, err := runWF(t, wsDir, "add", art); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "cite", "-at", "frozen")
+	if err == nil {
+		t.Fatalf("a file the frozen revision does not have cannot resolve there:\n%s", out)
+	}
+	// It must fail as an UNRESOLVED path — the index is the frozen one — never
+	// as a read error against a path the index claimed to have.
+	mustContain(t, out, "no tracked file matches src/later.go")
+	mustNotContain(t, out, "read src/later.go")
 }

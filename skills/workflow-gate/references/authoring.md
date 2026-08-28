@@ -84,17 +84,22 @@ BEFORE and AFTER its own fix and records both deltas** — in the script, as a c
 settled trade, with the numbers that settled it. A later round re-opening one then has to refute a
 measurement rather than a preference.
 
-**Measure every schema's WIDTH before the launch, and probe the widest one.** An output schema the
+**Measure every schema's WIDTH before the launch, and probe the wide one.** An output schema the
 launch's safety classifier refuses kills that agent alone —
 `blocked by safety classifier: output schema too large to classify safely` — and it lands wherever the
-wide schema is, which on one run was the fifteenth and LAST agent, six hours in. `wfdry` prints the
-serialized width of every schema the script composes, widest first, and WARNs above the widest this
-corpus has seen accepted; the band between that and the narrowest it has seen refused is UNMEASURED,
-not safe. The answer to a warning is not an argument about the number: it is a throwaway workflow with
-ONE cheap agent carrying the schema and a prompt saying to fill it with placeholders, which answers in
-seconds. A gate that had measured its own width to the byte, written the risk down, and accepted it on
-the ground that "acceptance cannot be measured from here" was wrong on exactly that clause. Narrow a
-wide schema by declaring a repeated leaf once and referencing it.
+wide schema is, which on one run was four agents and on another the fifteenth and LAST agent, six
+hours in. `wfdry` prints the serialized width of every schema the script composes, widest first: the
+HAPPY PATH's width, which is the quantity its corpus points are measured in, and beside it the wider
+one a failure branch composes, which is a separate statement — the launch sends whatever the branch
+that runs composes, and a wide branch nobody rehearses is exactly where the expensive refusal landed.
+Over the two gates that have launched, every accepted clean width is at or below 3,877 and every
+refused one at or above 4,589; the gap between them is UNMEASURED, not safe. The answer to a warning
+is not an argument about the number: it is a throwaway workflow with ONE cheap agent carrying the
+schema and a prompt saying to fill it with placeholders, which answers in seconds. A gate that had
+measured its own width to the byte, written the risk down, and accepted it on the ground that
+"acceptance cannot be measured from here" was wrong on exactly that clause. Narrow a wide schema by
+declaring a repeated leaf once and referencing it. A schema that does not SERIALIZE fails `wfdry`
+outright: there is nothing for the launch to send.
 
 **A completion boolean is recognised by its NAME.** `wfdry` fills a report field as pass-shaped only
 when the field name is one of `passed/ok/green/clean/verified/proven/done/complete/completed/succeeded/

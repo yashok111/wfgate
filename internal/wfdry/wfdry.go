@@ -96,9 +96,10 @@ type Result struct {
 	Killed []string
 
 	// Every prompt this mode actually handed an agent, with its label. The
-	// runner is the ONLY place these exist as text: measured on the P3a script,
-	// 14 of 15 prompts are composed at run time, so a static reader sees one of
-	// them. The prompt sweep is built on this.
+	// runner is the ONLY place these exist as text: measured on the P3a script
+	// at the revision that motivated this, 14 of 15 prompts are composed at run
+	// time (15 of 16 as it stands, after the chunking fix added an agent), so a
+	// static reader sees one of them. The prompt sweep is built on this.
 	Prompts   []check.NamedText
 	defaulted map[string]int // report fields the fixture contract did not recognise
 
@@ -452,9 +453,19 @@ func runMode(src, mode string, o Options) Result {
 		} else {
 			// The width of what this call would put on the wire. Measured at
 			// the spawn because that is where the composed object exists: on
-			// the P3a script 14 of 15 prompts — and their schemas with them —
-			// are built at run time.
-			r.Schemas = append(r.Schemas, SchemaUse{Label: label, Bytes: serializedWidth(vm, v)})
+			// the P3a script as it stands, 15 of 16 prompts — and their schemas
+			// with them — are built at run time.
+			n := serializedWidth(vm, v)
+			r.Schemas = append(r.Schemas, SchemaUse{Label: label, Bytes: n})
+			// A width is a QUESTION and never fails a mode — the corpus
+			// brackets the boundary and does not locate it. A schema that does
+			// not SERIALIZE is not a width question at all: it is a launch that
+			// cannot happen, and a WARN there would leave `7/7 modes completed`
+			// and exit 0 standing over it, which is the shape the collapse check
+			// was promoted out of one wave earlier.
+			if n < 0 {
+				bad(label, "its schema does not serialize — `JSON.stringify` returned nothing, so there is nothing for the launch to send")
+			}
 		}
 		if model == "" {
 			bad(label, "no model")
@@ -1198,11 +1209,19 @@ func value(name string, v map[string]any, mode, label string, depth, idx int, re
 		// annotation is NOT free: it rides in the schema the launch's safety
 		// classifier reads, and that width is the other failure this runner
 		// measures, so the note offers renaming first.
-		if xp, ok := v["x-pass"].(bool); ok {
-			if xp {
-				return mode != "acceptfail"
+		if raw, present := v["x-pass"]; present {
+			if xp, ok := raw.(bool); ok {
+				if xp {
+					return mode != "acceptfail"
+				}
+				return !passFixture(mode)
 			}
-			return !passFixture(mode)
+			// Present and unreadable. The author who reaches for the escape
+			// hatch after reading the WARN would otherwise get the same WARN
+			// again, with nothing saying their spelling was seen and rejected.
+			if rec != nil {
+				rec["x-pass on "+name+" is not a boolean"]++
+			}
 		}
 		if passBools.MatchString(name) {
 			return mode != "acceptfail"

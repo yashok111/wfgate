@@ -502,6 +502,7 @@ func parseRuleFlag(s string) (id, phrase string) {
 // A file the batch wrote is marked rather than dropped: a document holding
 // three sites of one rule is exactly where the copy gets left behind, and the
 // operator must see them together.
+
 // unwrittenRuleSites names the FILES carrying a marked site of ruleID that this
 // batch does not write. It is the file half of the question, deliberately: the
 // site half needs the post-batch text re-collected through the same reader that
@@ -536,7 +537,6 @@ func unwrittenRuleSites(w *ws.Workspace, ruleID string, touched []string) ([]str
 	sort.Strings(out)
 	return out, nil
 }
-
 func printRuleSpread(w *ws.Workspace, ruleID, rulePhrase string, touched []string) error {
 	if ruleID == "" && rulePhrase == "" {
 		return nil
@@ -1165,20 +1165,26 @@ func noteUncheckableClosures(w *ws.Workspace, rows []ws.FindingRow) {
 			unnamed++
 		}
 	}
+	// The same proportion question, at the moment the operator can still answer
+	// it. Two closures were recorded on one live gate that no commit touched, and
+	// this line had printed on that round and every other, in the register of
+	// bookkeeping — while it is the check announcing it is about to go unrun on
+	// those rows.
+	//
+	// The SAME predicate `wf check closure` uses — the check could not reach more
+	// closures than it checked — because two commands contradicting each other
+	// about one round is worse than either answer, and the quieter one is the one
+	// printed while the operator can still fix it. An AMBIGUOUS row is
+	// unreachable as surely as an unnamed one, so it carries the marker too.
+	lead := "closures"
+	if unnamed+ambiguous > claims-unnamed-ambiguous {
+		lead = "closures, NOT A PASS"
+	}
 	if unnamed > 0 {
-		// The same proportion question, at the moment the operator can still
-		// answer it. Two closures were recorded on one live gate that no commit
-		// touched, and this line had printed on that round and every other, in
-		// the register of bookkeeping — while it is the check announcing it is
-		// about to go unrun on those rows.
-		lead := "closures"
-		if unnamed > claims-unnamed {
-			lead = "closures, NOT A PASS"
-		}
 		fmt.Printf("  %s: %d of %d name no artifact path in the finding text — `wf check closure` cannot reach them. Write the path (and the section id or line) into the finding while you are still writing it\n", lead, unnamed, claims)
 	}
 	if ambiguous > 0 {
-		fmt.Printf("  closures: %d of %d name a path matching more than one artifact — write it from the workspace root\n", ambiguous, claims)
+		fmt.Printf("  %s: %d of %d name a path matching more than one artifact — write it from the workspace root\n", lead, ambiguous, claims)
 	}
 }
 
@@ -1879,8 +1885,11 @@ var structuralLeadRe = regexp.MustCompile(`^(#{1,6} |\s*[0-9]+\. |\s*[-*] |\*\*)
 // run 49, 23, 13, 9, 2, 0, 0, 0 per round and over P3b they reach 215 in the
 // round that cut a slice for the third time, and most of them are REWRITES, not
 // deletions — a list would paint most of its output, which is `dup`'s
-// 161-groups-of-176 lesson repeated. Set-differencing the lead text leaves 47
-// and 202. And the trigger the feedback proposed — a net-negative diff — sees
+// 161-groups-of-176 lesson repeated. Set-differencing the lead text does not
+// rescue it either: on an exact match it leaves 49 and 215, and every
+// normalisation tried moves those by single digits, because a lead with one word
+// changed is a lead that "stopped existing". And the trigger the feedback
+// proposed — a net-negative diff — sees
 // NOTHING here: P3c's cut replaced 28 clauses with 10 properties and the
 // artifact grew by four lines.
 //
@@ -2207,6 +2216,29 @@ func runDrift(w *ws.Workspace, arts []string, round int) error {
 // tree. It returns a note whenever it resolved something, because a check that
 // silently answered a different question than the one on the command line is
 // the class this tool exists against.
+// shortRef abbreviates a REVISION for the report, and only where abbreviating
+// means anything. `short()` cuts to eight characters, which turns
+// `refs/heads/main` into `refs/hea` and — worse — `gate-r10^` into `gate-r10`,
+// a real and different commit, with the note below the header then disagreeing
+// with it. A sha abbreviates; a name does not.
+func shortRef(ref string) string {
+	if len(ref) >= 8 && isHexToken(ref) {
+		return short(ref)
+	}
+	return ref
+}
+
+// isHexToken says every byte is a hex digit.
+func isHexToken(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
 func citeRef(w *ws.Workspace, at string) (ref, note string, err error) {
 	if at == "" {
 		return "", "", nil
@@ -2317,7 +2349,7 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string
 	}
 	where := "the working tree"
 	if ref != "" {
-		where = "target " + short(ref)
+		where = "target " + shortRef(ref)
 	}
 	hdr := fmt.Sprintf("## cite — %d citation(s), %d anchored (%d unverified beyond range), %d finding(s), against %s",
 		len(cits), anchored, len(cits)-anchored, len(findings), where)
@@ -2844,14 +2876,20 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	}
 	// The coverage in the HEADER, on the `check rules` precedent: four numbers
 	// that read like a pass while the population they were drawn from sat three
-	// bullets below is this project's named worst failure. Measured over the six
-	// workspaces on disk — p2f checked 3 of 110, mocker A3 5 of 266, P3a 68 of
-	// 421, all three printing a headline "N checked" and one miss under it,
-	// while P3b (568 of 587) and P3c (132 of 153) are genuinely covered. The
+	// bullets below is this project's named worst failure. Measured 2026-08-28
+	// over the SEVEN unpruned workspaces on disk — p2d and p2e reached NOTHING
+	// and already said so through the older clause; p2f checked 3 of 110, mocker
+	// A3 5 of 266 and P3a 68 of 421, all three printing a headline "N checked"
+	// (with one miss under it on the first two and none on the third), while
+	// P3b (568 of 587) and P3c (132 of 153) are genuinely covered. The
 	// predicate is not a share with a chosen constant: the check could not reach
 	// MORE closures than it checked. That is a sentence, and it fires on
 	// exactly the three gates where the check said nothing useful.
-	unreachable := unnamed + ambiguous
+	// `unreadable` belongs here: a closure naming a commit git cannot read was
+	// not checked either, and leaving it out let the exact headline this marker
+	// exists to catch print as a pass — three unreadable shas of four closures
+	// gave `1 checked` with no marker and the population two lines below.
+	unreachable := unnamed + ambiguous + unreadable
 	hdr := fmt.Sprintf("## closure — %d closure(s) claiming a commit, %d checked against the artifact they name, %d not closed by that commit",
 		claims, checked, len(bad))
 	if checked > 0 && unreachable > checked {

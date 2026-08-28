@@ -143,3 +143,58 @@ func TestRun_pinDoesNotDisplaceCallerFlags(t *testing.T) {
 		t.Fatalf("core.quotePath=false did not survive the pin: %q", out)
 	}
 }
+
+// File CONTENT must not be trimmed. `Run` strips trailing newlines, so a file
+// ending in a blank line lost it and every citation into its last lines shifted
+// — a false out-of-range under `wf check cite -at`.
+func TestShowFile_keepsTrailingNewlines(t *testing.T) {
+	r := repo(t)
+	body := "one\ntwo\n\n\n"
+	if err := os.WriteFile(filepath.Join(r.Dir, "f.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Run("add", "-A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Commit("add f", []string{"f.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.ShowFile("HEAD", "f.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Fatalf("ShowFile must return the bytes verbatim: %q, want %q", got, body)
+	}
+	if n := strings.Count(string(got), "\n"); n != 4 {
+		t.Fatalf("a trimmed read moves the last line's number: %d newlines, want 4", n)
+	}
+}
+
+// `<ref>:<path>` resolves from the REPO ROOT while everything else this package
+// reports is relative to Dir. Unreachable through today's callers — a workspace
+// refuses a target whose `.git` is not directly under it — and this is the single
+// seam, so the helper is right for any Dir.
+func TestShowFile_isRelativeToDirNotTheRepoRoot(t *testing.T) {
+	r := repo(t)
+	sub := filepath.Join(r.Dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "f.txt"), []byte("inside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Run("add", "-A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Commit("add sub/f", []string{"sub/f.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Repo{Dir: sub}.ShowFile("HEAD", "f.txt")
+	if err != nil {
+		t.Fatalf("a path relative to Dir must resolve: %v", err)
+	}
+	if string(got) != "inside\n" {
+		t.Fatalf("got %q", got)
+	}
+}

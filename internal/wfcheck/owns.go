@@ -80,19 +80,14 @@ func literalChunks(src string) []litChunk {
 	return out
 }
 
-// checkOwnershipText reports what the parsed half could not reach.
-//
-// It runs ALWAYS and prints only the paths the parsed half did not see, because
-// two reports of one collision on adjacent lines is the second-copy defect this
-// project names as its most frequent. A script whose prompts are literals
-// therefore gets nothing from here, which is correct: there the strong half ran.
 // checkOwnershipText reports what the parsed half could not reach, and returns
 // the paths it read so the reach check can fold them in.
 //
-// It prints only the paths the parsed half did not see, because two reports of
-// one collision on adjacent lines is the second-copy defect this project names
-// as its most frequent. A script whose prompts are literals therefore gets
-// nothing from here, which is correct: there the strong half ran.
+// It runs ALWAYS and prints only the paths the parsed half did not see, because
+// two reports of one collision on adjacent lines is the second-copy defect this
+// project names as its most frequent — committed here, in this comment, by the
+// wave that names it. A script whose prompts are literals gets nothing from
+// here, which is correct: there the strong half ran.
 func checkOwnershipText(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) map[string]bool {
 	parsed := map[string]bool{}
 	for _, c := range calls {
@@ -100,8 +95,9 @@ func checkOwnershipText(r *Report, s *wfscript.Script, calls []wfscript.AgentCal
 			parsed[o.Path] = true
 		}
 	}
-	blocks, found := ownsFromLiterals(s.Src)
+	_, found := ownsFromLiterals(s.Src)
 	byPath := map[string][]int{}
+	blocksSeen := map[int]bool{}
 	var order []string
 	unseen := 0
 	for _, o := range found {
@@ -109,19 +105,26 @@ func checkOwnershipText(r *Report, s *wfscript.Script, calls []wfscript.AgentCal
 			continue
 		}
 		unseen++
+		// The BLOCKS that contributed one of these paths, not every block in the
+		// file: this line is the operator's hand arithmetic ("16 paths in 4
+		// blocks, 16 distinct"), and counting a block the parsed half already
+		// read makes its middle number false.
+		blocksSeen[o.Block] = true
 		if _, seen := byPath[o.Path]; !seen {
 			order = append(order, o.Path)
 		}
-		if !containsInt(byPath[o.Path], o.Block) {
-			byPath[o.Path] = append(byPath[o.Path], o.Block)
-		}
+		// No dedupe by block: `ownedPaths` already merges a path declared twice
+		// inside one block into one entry, so the (path, block) pair cannot
+		// repeat. A guard for it was written, no mutation could make it fail,
+		// and it was deleted rather than shipped unproven.
+		byPath[o.Path] = append(byPath[o.Path], o.Block)
 	}
 	if unseen == 0 {
 		return nil
 	}
 	sort.Strings(order)
 	r.add(INFO, 1, "ownership, read from the SOURCE TEXT: %d path(s) in %d `YOU OWN` block(s) that no resolved prompt carries, %d distinct — the WEAKER half, and it says so: it knows which BLOCK declares a path, not which agent is handed which block",
-		unseen, blocks, len(order))
+		unseen, len(blocksSeen), len(order))
 	out := map[string]bool{}
 	for _, p := range order {
 		out[p] = true
@@ -130,13 +133,4 @@ func checkOwnershipText(r *Report, s *wfscript.Script, calls []wfscript.AgentCal
 		}
 	}
 	return out
-}
-
-func containsInt(xs []int, x int) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
-	}
-	return false
 }

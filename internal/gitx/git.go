@@ -82,7 +82,12 @@ func (r Repo) RunRaw(args ...string) ([]byte, error) {
 // then resolves a few lines late — which is drift, not error, and the document
 // was correct at the revision it was frozen against.
 func (r Repo) ShowFile(ref, path string) ([]byte, error) {
-	return r.RunRaw("show", ref+":"+path)
+	// `./` because `<ref>:<path>` resolves from the REPO ROOT while everything
+	// else this package reports — `Files`, `FilesAt`, and therefore every
+	// citation path — is relative to Dir. Unreachable while a workspace refuses
+	// a target whose `.git` is not directly under it, and this is the single
+	// seam: the helper must be right for any Dir, not for today's callers.
+	return r.RunRaw("show", ref+":./"+path)
 }
 
 // Init creates the repository. The default branch is named explicitly so the

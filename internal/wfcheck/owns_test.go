@@ -156,3 +156,91 @@ func TestOwnershipText_readsABlockWrittenWithEscapedNewlines(t *testing.T) {
 		t.Fatalf("an escaped-newline block is still a block:\n%s", dump(r))
 	}
 }
+
+// One path named TWICE inside ONE block is not a collision — it is a list that
+// repeats itself, and reporting it would be the phantom-ERROR class this
+// checker's own history is built against.
+func TestOwnershipText_onePathTwiceInOneBlockIsNotACollision(t *testing.T) {
+	r := run(t, factory("YOU OWN\n  internal/a.go — the one thing\n  internal/a.go — and again\n"))
+	if has(r, ERROR, "is declared in") {
+		t.Fatalf("one block naming a path twice owns it once:\n%s", dump(r))
+	}
+	if !has(r, INFO, "1 distinct") {
+		t.Fatalf("the distinct count is what the operator checks:\n%s", dump(r))
+	}
+}
+
+// A script with NO gate config gets no per-path reach WARN. The summary line
+// already says the comparison covered nothing, and a WARN beside it would be the
+// report contradicting its own summary — which is the defect the fold was
+// written to prevent.
+func TestOwnershipText_aScriptWithNoGateGetsNoReachWarn(t *testing.T) {
+	r := run(t, factory("YOU OWN\n  internal/a.go — the one thing\n"))
+	if has(r, WARN, "no gate lists it in `owns`") {
+		t.Fatalf("with no gate there is nothing to be missing from:\n%s", dump(r))
+	}
+	if !has(r, INFO, "the reviewer/fixer reach check covered nothing") {
+		t.Fatalf("the population must still be printed:\n%s", dump(r))
+	}
+}
+
+// A gate whose `owns` could not be read in full cannot convict a path of being
+// unowned — the polarity rule this file's own doc invokes. Without the
+// abstention the text half would file a WARN the parsed half explicitly
+// withholds on the same script.
+func TestOwnershipText_anUnreadableOwnsArrayWithholdsTheReachWarn(t *testing.T) {
+	body := factoryHead + `const G = { slug: 'g1', owns: [...someGlobalList], reviewers: [{ slug: 'r', vector: 'v', model: 'sonnet' }] }
+const SECTIONS = [{ slug: 'sa', ownsBlock: ` + "`YOU OWN\n  internal/a.go — the one thing\n`" + ` }]
+phase('P')
+for (const cfg of SECTIONS) { await spawn('do it\n' + cfg.ownsBlock, { model: 'sonnet', effort: 'low', label: cfg.slug, phase: 'P', schema: S }) }
+log(G.slug)
+return { done: true }`
+	r := run(t, body)
+	if has(r, WARN, "no gate lists it in `owns`") {
+		t.Fatalf("a list this tool could not read is not a list nobody owns:\n%s", dump(r))
+	}
+	if !has(r, INFO, "NOT JUDGED") {
+		t.Fatalf("the abstention must be said out loud:\n%s", dump(r))
+	}
+}
+
+// The text half's WARNs come out of a map, and a report whose line order moves
+// between runs cannot be diffed. Two unreachable paths, asserted in order.
+func TestOwnershipText_reachWarnsAreOrdered(t *testing.T) {
+	body := factoryHead + `const G = { slug: 'g1', owns: ['internal/zzz.go'], reviewers: [{ slug: 'r', vector: 'v', model: 'sonnet' }] }
+const SECTIONS = [{ slug: 'sa', ownsBlock: ` + "`YOU OWN\n  internal/b.go — second alphabetically\n  internal/a.go — first alphabetically\n`" + ` }]
+phase('P')
+for (const cfg of SECTIONS) { await spawn('do it\n' + cfg.ownsBlock, { model: 'sonnet', effort: 'low', label: cfg.slug, phase: 'P', schema: S }) }
+log(G.slug)
+return { done: true }`
+	for i := 0; i < 5; i++ {
+		r := run(t, body)
+		var order []string
+		for _, f := range r.Findings {
+			if f.Level == WARN && strings.Contains(f.Msg, "no gate lists it") {
+				order = append(order, f.Msg)
+			}
+		}
+		if len(order) != 2 {
+			t.Fatalf("two unreachable paths, got %d:\n%s", len(order), dump(r))
+		}
+		if !strings.Contains(order[0], "internal/a.go") || !strings.Contains(order[1], "internal/b.go") {
+			t.Fatalf("the WARNs must be ordered, got:\n%s\n%s", order[0], order[1])
+		}
+	}
+}
+
+// The middle number of the line the operator checks by hand counts the blocks
+// that CONTRIBUTED an unseen path, not every literal block in the file: a script
+// with one resolved prompt and one factory block said "1 path(s) in 2 blocks".
+func TestOwnershipText_theBlockCountCountsOnlyContributingBlocks(t *testing.T) {
+	body := factoryHead + `const SECTIONS = [{ slug: 'sa', ownsBlock: ` + "`YOU OWN\n  internal/a.go — the factory one\n`" + ` }]
+phase('P')
+await spawn(` + "`YOU OWN\n  internal/literal.go — read statically\n`" + `, { model: 'sonnet', effort: 'low', label: 'lit', phase: 'P', schema: S })
+for (const cfg of SECTIONS) { await spawn('do it\n' + cfg.ownsBlock, { model: 'sonnet', effort: 'low', label: cfg.slug, phase: 'P', schema: S }) }
+return { done: true }`
+	r := run(t, body)
+	if !has(r, INFO, "1 path(s) in 1 `YOU OWN` block(s)") {
+		t.Fatalf("the block the parsed half already read is not one of these:\n%s", dump(r))
+	}
+}
