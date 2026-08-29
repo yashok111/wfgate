@@ -13,7 +13,7 @@ import (
 // only `"$defs" is not in the schema`, which names the failure and not the fix.
 //
 // Measured on the P3e gate, which read this as the whole feature being broken,
-// reverted to twenty-two inlined copies of the leaf and paid about 1,800 bytes
+// reverted to twenty-two inlined copies of the leaf and paid about 1,900 bytes
 // of width for it against a classifier with a measured refusal at 4,233. The
 // root-anchored spelling resolved then and resolves now (the test below it), so
 // what was owed was the pointer that WOULD work.
@@ -296,5 +296,147 @@ return { done: true }`
 	}
 	if got := Fixtures(r, []string{"w"}); len(got) != 2 {
 		t.Fatalf("both shapes must be reachable by label, got %+v", got)
+	}
+}
+
+// `vm.ToValue` hands goja a WRITE-THROUGH view of the same Go map, so every
+// assignment the script makes to an agent's result lands in the object this
+// list holds. Without a deep copy the flag printed the SCRIPT's own writes
+// under the heading "the object the stub returned" — the exact confusion it
+// exists to remove — and the second, unmutated spawn then deduped against the
+// first's pre-mutation bytes, so the real fixture appeared nowhere.
+func TestFixtureIsDetachedFromWhatTheScriptWrites(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const S = { type: 'object', properties: { note: { type: 'string' } } }
+const a = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+a.note = 'THE SCRIPT OVERWROTE THIS'
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`
+	r := run1(t, body, "clean")
+	for _, f := range r.Fixtures {
+		m, _ := f.Value.(map[string]any)
+		if m != nil && m["note"] == "THE SCRIPT OVERWROTE THIS" {
+			t.Fatalf("the fixture must be what the STUB returned, got the script's write: %+v", r.Fixtures)
+		}
+	}
+	if len(r.Fixtures) != 1 {
+		t.Fatalf("two identical stub returns collapse to one entry, got %d: %+v", len(r.Fixtures), r.Fixtures)
+	}
+}
+
+// A schema that is not an object at all — `schema: ['a']` — SERIALIZES, so the
+// serialization guard does not cover it and the census runs. Returning zero
+// there would print "0 key(s) required" over a schema nobody measured, and
+// `wf check schema` would compare a fabricated zero against a real count.
+func TestCensusOfANonObjectSchemaIsUnmeasured(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: ['a'] })
+return { done: true }`
+	r := run1(t, body, "clean")
+	if len(r.Schemas) != 1 || r.Schemas[0].Required != -1 || r.Schemas[0].NoRequired != -1 {
+		t.Fatalf("a non-object schema has NO census, got %+v", r.Schemas)
+	}
+}
+
+// A label composed by NO clean mode has a FAILURE branch's census, and the two
+// print typographically identically unless the group says so. `*:fix` labels of
+// this shape exist on real gated scripts.
+func TestSchemaWidthMarksACensusNoCleanModeComposed(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn(` + "`a`" + `, { model: 'sonnet', effort: 'low', label: 'review', schema: { type: 'object', required: ['blockers'], properties: { blockers: { type: 'array' } } } })
+if (r.blockers.length > 0) {
+  await spawn(` + "`b`" + `, { model: 'sonnet', effort: 'low', label: 'fix', schema: { type: 'object', required: ['a', 'b', 'c'], properties: { a: { type: 'string' }, b: { type: 'string' }, c: { type: 'string' } } } })
+}
+return { done: true }`
+	rs, err := Run(script(t, body), []string{"clean", "blockers"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen bool
+	for _, w := range SchemaWidths(rs) {
+		for _, l := range w.Labels {
+			switch l {
+			case "fix":
+				seen = true
+				if !w.CleanMissing {
+					t.Fatalf("`fix` is composed by no clean mode and must say so: %+v", w)
+				}
+			case "review":
+				if w.CleanMissing {
+					t.Fatalf("`review` IS composed by the clean mode: %+v", w)
+				}
+			}
+		}
+	}
+	if !seen {
+		t.Fatal("the failure-branch label was never composed; the fixture proves nothing")
+	}
+}
+
+// Go randomises map order, so a schema declaring the same `$defs` name at two
+// sites would otherwise get a nondeterministic pointer — and the whole value of
+// the hint is that it is a patch the author can paste.
+func TestDefsHintIsDeterministicAcrossTwoCandidateSites(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const LEAF = { type: 'object', properties: { met: { type: 'boolean' } } }
+const S = { type: 'object', properties: {
+  aaa: { $defs: { prop: LEAF }, properties: { x: { type: 'string' } } },
+  zzz: { $defs: { prop: LEAF }, properties: { y: { type: 'string' } } },
+  report: { $ref: '#/$defs/prop' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`
+	for i := 0; i < 8; i++ {
+		r := run1(t, body, "clean")
+		if joined := strings.Join(r.Notes, "\n"); !strings.Contains(joined, "#/properties/aaa/$defs/prop") {
+			t.Fatalf("run %d picked a different site: %s", i, joined)
+		}
+	}
+}
+
+// `--fixture "a, b"` is what an operator types. The labels are trimmed, and
+// nothing else pinned it.
+func TestFixturesTrimsTheLabelsItIsGiven(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: { type: 'object', properties: { a: { type: 'string' } } } })
+return { done: true }`
+	r := run1(t, body, "clean")
+	if got := Fixtures(r, []string{"  w  "}); len(got) != 1 {
+		t.Fatalf("a label written with spaces must resolve, got %+v", got)
+	}
+}
+
+// Two labels share a schema LINE only when their schemas agree on the width AND
+// on the census: equal byte counts do not make two schemas the same schema, and
+// merging them would attribute one census to two different obligations.
+func TestSchemaWidthsDoNotMergeEqualWidthsWithDifferentCensuses(t *testing.T) {
+	// Both serialize to the SAME length — the one-character description pays
+	// for the `"required":["ab"],` the other carries — so the only thing that
+	// can separate them in the report is the census.
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const A = { type: 'object', required: ['ab'], properties: { ab: { type: 'string' } } }
+const B = { type: 'object', properties: { ab: { type: 'string', description: 'x' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`a`" + `, { model: 'sonnet', effort: 'low', label: 'one', schema: A })
+await spawn(` + "`b`" + `, { model: 'sonnet', effort: 'low', label: 'two', schema: B })
+return { done: true }`
+	r := run1(t, body, "clean")
+	// A skipping test proves nothing: the equal width is the PREMISE and is
+	// asserted, not hoped for.
+	if len(r.Schemas) != 2 || r.Schemas[0].Bytes != r.Schemas[1].Bytes {
+		t.Fatalf("the fixture must put two schemas at ONE width or it tests nothing: %+v", r.Schemas)
+	}
+	if ws := SchemaWidths([]Result{r}); len(ws) != 2 {
+		t.Fatalf("equal widths with different censuses are two lines, got %+v", ws)
 	}
 }

@@ -98,15 +98,16 @@ hours in. `wfdry` prints the serialized width of every schema the script compose
 HAPPY PATH's width, which is the quantity its corpus points are measured in, and beside it the wider
 one a failure branch composes, which is a separate statement — the launch sends whatever the branch
 that runs composes, and a wide branch nobody rehearses is exactly where the expensive refusal landed.
-Over the gates that have launched or probed, every accepted clean width is at or below 3,974 and every
-refused one at or above 4,233; the gap between them is UNMEASURED, not safe. The floor is the LOWEST
-refusal on record and the ceiling is the HIGHEST acceptance: 4,233 came from a PROBE — 82 milliseconds
-and zero tokens for the refusal, 41 seconds for the acceptance at 3,114 — after two rounds of that gate
-had argued about the band from measurements of SIZE alone; and 3,974 came from a gate that probed TWICE,
-the second time because restoring a `required` array a width-reduction edit had dropped took the schema
-INTO the band, and it was re-probed rather than argued about (18 s and 19 s, 58k tokens each). The answer to a warning
+**`wfdry` carries the band and WARNS across it — do not restate the two numbers here or reason from a
+number you remember.** It holds the highest clean width the corpus has seen ACCEPTED and the lowest it
+has seen REFUSED, and the gap between them is UNMEASURED rather than safe: a schema inside that gap is
+warned with BOTH ends named, and one at or above the refusal is warned with the floor it crossed. The ceiling moves UP whenever an acceptance is measured and the floor moves DOWN whenever a
+refusal is, so any figure written into a document is stale by construction; the runner's own message is
+the current one. The answer to that warning
 is not an argument about the number: it is a throwaway workflow with ONE cheap agent carrying the
-schema and a prompt saying to fill it with placeholders, which answers in seconds. A gate that had
+schema and a prompt saying to fill it with placeholders, which answers in SECONDS at nearly no cost —
+one recorded probe returned its refusal in under a tenth of a second for zero tokens, and a gate that
+probed twice inside one round moved a corpus constant for well under a minute of work. A gate that had
 measured its own width to the byte, written the risk down, and accepted it on the ground that
 "acceptance cannot be measured from here" was wrong on exactly that clause. Narrow a wide schema by
 declaring a repeated leaf once and referencing it: the launch RESOLVES `$defs`/`$ref` and ENFORCES
@@ -125,7 +126,8 @@ that pointer. A nested `$defs` is legal; what is wrong is the ROOT-ANCHORED spel
 and either fix works (move the `$defs`, or write `#/properties/report/$defs/prop`).
 Every property then comes back a placeholder STRING and every term reading through one is false in
 every mode. One gate read that as the reference support being broken, reverted to twenty-two inlined
-copies of the leaf and paid about 1,800 bytes of width for it, against a classifier with a measured
+copies of the leaf and paid about 1,900 bytes of width for it (2,894 inlined against 982 referenced,
+re-derived — the artifact's own "about 1,800" prices its DESCRIPTION trim, not the reference), against a classifier with a measured
 refusal at 4,233. The root-anchored spelling resolves, including from keys built by
 `Object.fromEntries(...map(...))` — nothing about computed keys defeats it. `wfdry` now names the
 pointer that WOULD resolve rather than only reporting that yours did not.

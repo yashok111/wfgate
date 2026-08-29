@@ -20,8 +20,8 @@ import (
 // width classifier and left a stale band behind; P3e, narrowing one for the same
 // reason, lost `required: ['met','evidence']` from the leaf of a twenty-two-key
 // report — in a hunk whose own comment was entirely about width, with no warrant
-// recorded — and for two rounds a property could come back `{met: true}` with no
-// evidence at all, which was the only thing the acceptance gate's evidence
+// recorded — and one frozen revision published a report whose every property
+// could come back `{met: true}` with no evidence at all, which was the only thing the acceptance gate's evidence
 // reviewer had to read. Nothing static reaches it: the leaf is built inside an
 // `Object.fromEntries(...map(...))` callback, so `wfcheck` sees no literal, and
 // both static tools were clean over that script. The RUNNER holds the composed
@@ -85,7 +85,7 @@ func runSchema(w *ws.Workspace, arts []string, since string) (bool, error) {
 		old, oldErr := censusAt(w, ref, a)
 		switch {
 		case nowErr != nil:
-			fmt.Printf("  %s: NOT A PASS — the working tree's copy did not run (%v)\n", a, nowErr)
+			fmt.Printf("  %s: NOT A PASS — the working tree's copy did not run cleanly (%v)\n", a, nowErr)
 			continue
 		case oldErr != nil:
 			// A script ADDED since the reference has no prior census, and that
@@ -124,21 +124,32 @@ func runSchema(w *ws.Workspace, arts []string, since string) (bool, error) {
 				// an absent measurement wearing a finding's clothes.
 				changed++
 				fmt.Printf("  %s %s: NOT A PASS — no census on the %s side (the schema does not serialize, a `$ref` did not expand, or this label composes more than one schema), so nothing was compared\n",
-					a, l, map[bool]string{true: "working-tree", false: ref}[n.Required < 0])
-			case n.Required < o.Required:
-				drops++
+					a, l, unmeasuredSide(o.Required < 0, n.Required < 0, ref))
+			default:
+				// The two populations are judged INDEPENDENTLY, and that is a
+				// correction: reporting the no-required rise only where the
+				// required TOTAL was unchanged made it unreachable whenever the
+				// total moved at all — so an edit that stripped `required` from
+				// every leaf while the root's own list grew printed `rose` and
+				// exited 0, which is the exact shape this check was written for
+				// with the arithmetic arranged so the total does not fall.
+				reqDrop := n.Required < o.Required
+				noReqRise := n.NoRequired > o.NoRequired
+				if !reqDrop && !noReqRise && n.Required == o.Required && n.NoRequired == o.NoRequired {
+					break
+				}
 				changed++
-				fmt.Printf("  %s %s: DROP — %d required key(s), was %d (%s); %d byte(s), was %d\n",
-					a, l, n.Required, o.Required, widthMove(o.Bytes, n.Bytes), n.Bytes, o.Bytes)
-			case n.Required > o.Required:
-				changed++
-				fmt.Printf("  %s %s: rose — %d required key(s), was %d; %d byte(s), was %d\n",
-					a, l, n.Required, o.Required, n.Bytes, o.Bytes)
-			case n.NoRequired > o.NoRequired:
-				drops++
-				changed++
-				fmt.Printf("  %s %s: DROP — %d object(s) declare properties and require none, was %d; %d byte(s), was %d\n",
-					a, l, n.NoRequired, o.NoRequired, n.Bytes, o.Bytes)
+				verb := "rose"
+				if reqDrop || noReqRise {
+					drops++
+					verb = "DROP"
+				}
+				// BOTH numbers, always: they move together and each is half the
+				// statement — a total that rises while more objects require
+				// nothing is one edit doing two things.
+				fmt.Printf("  %s %s: %s — %d required key(s), was %d; %d object(s) declare properties and require none, was %d (%s); %d byte(s), was %d\n",
+					a, l, verb, n.Required, o.Required, n.NoRequired, o.NoRequired,
+					widthMove(o.Bytes, n.Bytes), n.Bytes, o.Bytes)
 			}
 		}
 		if changed == 0 {
@@ -178,6 +189,14 @@ func censusOf(path string) (map[string]wfdry.SchemaUse, error) {
 	}
 	if rs[0].Err != nil {
 		return nil, rs[0].Err
+	}
+	// A clean run that VIOLATED is not a census. The script's own wrapper turns
+	// a stub refusal into null, so a run that aborted half way still returns a
+	// Result with the labels it reached — and every label it never got to was
+	// then reported as a deliberate GONE at exit 0, which reads as "the author
+	// removed that agent" over a script whose dry run is red.
+	if !rs[0].OK() {
+		return nil, fmt.Errorf("the clean mode did not complete: %s", firstOr(rs[0].Violations, "the run returned a verdict this runner refuses"))
 	}
 	out := map[string]wfdry.SchemaUse{}
 	for _, s := range rs[0].Schemas {
@@ -236,4 +255,26 @@ func scriptSet(arts []string) []string {
 		}
 	}
 	return out
+}
+
+// unmeasuredSide names whichever side has no census, or both. Reporting only
+// one where both are unmeasured sends the reader to compare against a revision
+// that has nothing to compare.
+func unmeasuredSide(oldBad, nowBad bool, ref string) string {
+	switch {
+	case oldBad && nowBad:
+		return "working-tree side and the " + ref
+	case nowBad:
+		return "working-tree"
+	default:
+		return ref
+	}
+}
+
+// firstOr returns the first line of a list, or a stand-in for an empty one.
+func firstOr(xs []string, or string) string {
+	if len(xs) == 0 {
+		return or
+	}
+	return xs[0]
 }

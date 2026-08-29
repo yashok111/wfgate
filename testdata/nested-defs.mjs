@@ -5,7 +5,7 @@ export const meta = { name: 'fixture-nested-defs', description: 'wfdry fixture: 
 // anchored at the schema ROOT, so `#/$defs/prop` does not reach it — and the
 // note used to say only `"$defs" is not in the schema`, which names the failure
 // and not the fix. The P3e gate read that as the whole feature being broken,
-// reverted to twenty-two inlined copies of the leaf and paid about 1,800 bytes
+// reverted to twenty-two inlined copies of the leaf and paid about 1,900 bytes
 // of width for it. The root-anchored spelling resolves, and always did.
 const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
 phase('P')

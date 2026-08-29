@@ -209,11 +209,17 @@ func pointer(ref string, root map[string]any) (any, error) {
 // root and referenced from twenty-two keys built by `Object.fromEntries` fills
 // in every mode), the sub-schema shape does not, and the note said only
 // `"$defs" is not in the schema`. That gate reverted to twenty-two inlined
-// copies and paid about 1,800 bytes of width against a classifier with a
+// copies and paid about 1,900 bytes of width against a classifier with a
 // measured refusal at 4,233 — for a pointer it could have moved. So the hint
 // names the pointer that WOULD resolve: the same trade `check drift` makes
 // when it prints the re-aimed range rather than saying a citation moved.
 func defsHint(ref string, root map[string]any) string {
+	// The slash test is the one that carries weight: `#/$defs/a/b` points INTO a
+	// definition rather than AT one, and its target is not something this hint
+	// can relocate. The other two clauses state the contract and are not
+	// separately provable — a name no `$defs` map carries makes the walk return
+	// nothing anyway — so they are documented as contract rather than counted
+	// as guards.
 	name, ok := strings.CutPrefix(ref, "#/$defs/")
 	if !ok || name == "" || strings.Contains(name, "/") {
 		return ""
@@ -243,7 +249,9 @@ func findDefs(node any, name string, path []string) string {
 		// guard no mutation can make fail is a guard nothing proves.
 		if defs, ok := v["$defs"].(map[string]any); ok {
 			if _, ok := defs[name]; ok {
-				return jsonPointer(append(append([]string{}, path...), "$defs", name))
+				// No defensive copy of `path`: this frame returns immediately
+				// and every descendant writes only at indices >= len(path).
+				return jsonPointer(append(path, "$defs", name))
 			}
 		}
 		keys := make([]string, 0, len(v))
@@ -311,8 +319,10 @@ func requiredCensus(schema any) (required, noRequired int) {
 	// defect, so a failed expansion makes the whole census unmeasured; the note
 	// naming the reference is already printed beside it.
 	failed := map[string]int{}
+	// `resolveRefs` over a map always returns a map, so there is no nil case to
+	// guard: a guard no mutation can make fail is a guard nothing proves.
 	expanded, _ := resolveRefs(root, root, failed).(map[string]any)
-	if len(failed) > 0 || expanded == nil {
+	if len(failed) > 0 {
 		return -1, -1
 	}
 	var walk func(any)

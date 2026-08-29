@@ -102,18 +102,27 @@ check-tools: build
 				echo "wf new-script skeleton: the $$src step's non-blocking findings reach NO bucket — a major is a real defect by this repo's own scale and it would survive the run as nothing"; exit 1; }; \
 		done; \
 		echo "wf new-script skeleton: review, recheck and accept all CARRY their non-blocking findings"
-	@if ./wfdry testdata/nested-defs.mjs --quiet >/dev/null 2>&1; then \
-		echo "wfdry nested-defs fixture: EXIT 0 over a schema whose every leaf came back a placeholder STRING"; exit 1; \
-	else echo "wfdry nested-defs fixture: fails as it must"; fi
+	@out=$$(./wfdry testdata/nested-defs.mjs --quiet 2>&1); rc=$$?; \
+		if [ $$rc -eq 0 ]; then \
+			echo "wfdry nested-defs fixture: EXIT 0 over a schema whose every leaf came back a placeholder STRING"; exit 1; fi; \
+		echo "$$out" | grep -q 'unresolved \$$ref' \
+			|| { echo "wfdry nested-defs fixture: non-zero for some OTHER reason — the bar cannot tell the defect from an unrelated failure"; exit 1; }; \
+		echo "wfdry nested-defs fixture: fails as it must, naming the unresolved reference"
+	@./wfdry testdata/nested-defs.mjs --quiet 2>&1 | grep -q 'census NOT MEASURED' \
+		&& echo "wfdry nested-defs fixture: the required census says UNMEASURED rather than printing a partial count" \
+		|| { echo "wfdry nested-defs fixture: a schema whose \$$ref did not expand printed a census anyway, or printed nothing — silence is indistinguishable from the tool not bothering"; exit 1; }
 	@./wfdry testdata/nested-defs.mjs --quiet 2>&1 | grep -q 'at `#/properties/properties/\$$defs/prop`' \
 		&& echo "wfdry nested-defs fixture: NAMES the pointer that would resolve" \
 		|| { echo "wfdry nested-defs fixture: said a \$$ref did not resolve and not where the \$$defs IS — one gate reverted a correct narrowing over exactly that"; exit 1; }
 	@./wfdry testdata/clean.mjs --quiet --fixture worker 2>/dev/null | grep -q '<blockers from worker>' \
 		&& echo "wfdry --fixture: prints the object the stub handed the agent" \
 		|| { echo "wfdry --fixture: printed no fixture — three of one gate's dry-run reds were this object and were read as artifact defects"; exit 1; }
-	@if ./wfdry testdata/clean.mjs --quiet --fixture nosuch >/dev/null 2>&1; then \
-		echo "wfdry --fixture: EXIT 0 over a label no mode composed — every reading behind the name went over the empty set"; exit 1; \
-	else echo "wfdry --fixture: a label no mode composed is refused as it must"; fi
+	@out=$$(./wfdry testdata/clean.mjs --quiet --fixture nosuch 2>&1); rc=$$?; \
+		if [ $$rc -eq 0 ]; then \
+			echo "wfdry --fixture: EXIT 0 over a label no mode composed — every reading behind the name went over the empty set"; exit 1; fi; \
+		echo "$$out" | grep -q 'which no mode composed as a label' \
+			|| { echo "wfdry --fixture: non-zero for some OTHER reason — the day clean.mjs regresses this bar goes vacuous"; exit 1; }; \
+		echo "wfdry --fixture: a label no mode composed is refused BY NAME as it must"
 	@./wfdry testdata/clean.mjs --quiet 2>&1 | grep -q 'key(s) required' \
 		&& echo "wfdry schemas: the required census prints beside the width" \
 		|| { echo "wfdry schemas: no census — a schema that stops requiring a field moves no number anybody reads"; exit 1; }

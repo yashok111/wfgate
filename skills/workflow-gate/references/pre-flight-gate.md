@@ -20,14 +20,13 @@ column and re-record (`wf round record <file> -round N`) → static check → re
 the next round → re-freeze → `wf verify` → hand the next reviewer `wf delta`.
 
 -2. **Grill the DECISIONS into existence, before the workspace exists.** The document round 1
-   reviews is written in a window no command in this toolchain can see. `wf stats -time` prices
-   `init -> first artifact` at 2.2 to 42.2 minutes over the eight unpruned gates (9.9, 31.7, 42.2,
-   4.3, 5.0, 39.2, 2.2, 20.9; median 15.4), and the two shortest are not fast authoring — they are
-   the gates whose document was drafted BEFORE `wf init`, so the drafting itself falls outside every
-   measurement banked here. What that window produces is read for the first time by round 1, and
-   round 1 is the most expensive round of every gate on record: **7, 15, 7, 13, 15, 19, 15, 13
-   blockers** (median 13) against 17 to 45 findings, every one of them filed against a document
-   nobody had questioned before it was frozen.
+   reviews is written in a window no command in this toolchain can see. `wf stats -time` prices it — run it across the
+   workspaces you have; the window has run from a couple of minutes to well over an hour, and its
+   short end is not fast authoring but the gates whose document was drafted BEFORE `wf init`, so the
+   drafting itself falls outside every measurement banked anywhere. What that window produces is read
+   for the first time by round 1, and **round 1 is the most expensive round of every gate on
+   record** — by a wide margin, in blockers and in findings alike, every one of them filed against a
+   document nobody had questioned before it was frozen.
 
    The procedure is an INTERVIEW of the operator, and it is breadth-first. Map the slice as a design
    tree: every decision branches into the decisions that hang off it. The **frontier** is every
@@ -80,10 +79,10 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    **Two honest limits.** The frontier is the interviewer's judgement and not a computed graph, so
    two questions can share a round and only afterwards prove dependent; when that happens, say so and
    reopen the branch in the next round. And the saving is a HYPOTHESIS: no gate on record ran this
-   step, the eight round-1 blocker counts above are the baseline it has to beat, and one gate under
-   the band is not evidence — the interview lengthens a window nothing measures in order to shorten a
-   round count that is measured, and the exchange rate is one median round: 25.1 minutes, pooled over
-   the 106 rounds of those same eight gates whose span is under two hours.
+   step, the round-1 blocker counts of the gates on record are the baseline it has to beat (take them
+   from `wf stats` per gate — a pooled figure quoted here goes stale at the next gate), and ONE gate
+   under the band is not evidence. The interview lengthens a window nothing measures in order to
+   shorten a round count that is measured, and the exchange rate is one median round.
 
 -1. **Open a gate workspace: `wf init <name> -target <repo>`.** Every artifact of the gate — the
    decision document, the context document the prompts read, the script, each round's findings — lives
@@ -184,13 +183,12 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
 
    **Bank the round's LENS ROSTER with `wf round lens <prompt-file> -name NAME -model MODEL -asks Q[,Q]`,** one call
    per vector, and it writes `rounds/rN/lens-<name>.md` — the prompt verbatim, with what ran it. It is
-   not bookkeeping: on one gate, across its delta rounds 2-8, the criterion vector was an external model
-   at rounds 2, 4 and 6 and an internal one at 3, 5, 7 and 8, and the gate blockers were 17, 16, 12
-   against 10, 11, 6, 7 — 1.76x, with the two lowest-blocker rounds of the whole gate being the two
-   after the external lens was dropped for quota. (Round 1 sits outside that comparison because it is
-   the full round against a first draft; its criterion vector was external too, at 13 blockers, and
-   including it gives 1.71x — the narrowing is named because a population narrowed in silence is this
-   tool's own named defect.) Any descent a stop rule reads there is confounded with a billing decision,
+   not bookkeeping: on one gate the criterion vector alternated between an external model and an
+   internal one across its delta rounds, and the rounds it ran externally returned close to TWICE the
+   blockers — the two lowest-blocker rounds of the whole gate being the two after the external lens was
+   dropped for quota. (The exact ratio, and the round it excludes, are in this repository's own
+   `CLAUDE.md`; what an operator acts on is that the roster is the only thing separating the two
+   explanations.) Any descent a stop rule reads there is otherwise confounded with a billing decision,
    and nothing in the workspace recorded which model ran what AS DATA: `rounds/rN/brief.md` is the
    `wf delta` output, not the reviewer prompt, and the roster survived only as prose in each findings
    header — checkable by hand-reading eight of them, readable by no command and printable in no report.
@@ -242,9 +240,9 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    after the paths went in. Both reports say NOT A PASS where the check could not reach MORE closures
    than it checked — the same predicate in both, because two commands contradicting each other about
    one round is worse than either answer, and an unreadable or ambiguous row is unreached as surely as
-   an unnamed one. Measured 2026-08-28 over the SEVEN unpruned gate workspaces: p2d and p2e reached
-   nothing at all, p2f checked 3 of 110, mocker A3 5 of 266 and P3a 68 of 421 while printing a headline
-   that read like a pass, and only P3b and P3c are genuinely covered. Two closures recorded on a live
+   an unnamed one. Measured across the unpruned gate workspaces: two reached
+   nothing at all, and three more checked a small fraction of their closures while printing a headline
+   that read like a pass — only the most recent gates are genuinely covered. Two closures recorded on a live
    gate that no commit touched rode through exactly that way. The scaffold `wf round new` writes states
    both table rules — name the artifact path, escape a `|` inside a cell.
 
@@ -522,7 +520,7 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    defaulted false because names like `P8a` carry no polarity, and `finalCount === 22`, an integer
    against a constant that no report-shaped fixture can satisfy — and each cost a reading of
    twenty-two "unmet" rows to diagnose as ONE gap. One of the three ended with the script paying about
-   1,800 bytes of width to inline twenty-two copies of a leaf it had correctly declared once.
+   1,900 bytes of width to inline twenty-two copies of a leaf it had correctly declared once.
    A report field whose name the fixture contract does not recognise as pass-shaped or fail-shaped is
    FALSE in every mode, and the runner prints a WARN naming it — including under `--quiet`, and again
    after the tally. That WARN means "no mode exercised the branch guarded by this field": act on it,
@@ -768,28 +766,24 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   monotonically** — one gate ran 1050 / 374 / 169 lines, the next 583 / 236 / 342 / 167, where the third
   round was 45% LARGER than the second because the second's fix opened a seam the third had to close
   across several consumers. Budget for the round COUNT; do not plan on later rounds being cheap.
-  **`wf stats -time` prints what a round actually cost**, derived from the workspace's own commit
-  times — the span, and its split into review, fix and bookkeeping tail. Re-pooled 2026-08-29 over the
-  EIGHT unpruned workspaces, over the 106 rounds of 116 whose span is under two hours (the other ten
-  are breaks, and seven of the eight workspaces carry at least one): the **median round is 25.1
-  minutes and its middle half runs 17.8 to 32.9**, the review segment a median 90% of it (10th to
-  90th percentile 26-97%) and the bookkeeping tail a median 3.0% — so the round COUNT is the cost
-  function and the bookkeeping is not. The figures this paragraph carried until then — 35 rounds,
-  median 15.5, review 70-87% — were the first THREE gates and under-price every gate since: the
-  per-gate medians run 14.2, 24.3, 19.5, 37.6, 21.4, 29.4, 39.0, 32.3, so the round got longer as the
-  gates got bigger. Do not inherit a pooled number without re-running the command over the corpus you
-  are reasoning about. The ~1% figure
-  quoted for the command sequence measures a narrower span (the last apply to the next round's open)
-  and is not the `tail` column.
-  Read the median: a span of several hours is the operator away from the desk, and three of the four
-  measured workspaces carry one. A `-kind run` round's span is the run: it is printed on its own line,
+  **`wf stats -time` prints what a round actually cost** — the span, and its split into review, fix
+  and bookkeeping tail, derived from the workspace's own commit times. **Run it; do not read a figure
+  out of this paragraph.** What holds across every gate on record is the SHAPE, and only the shape is
+  written here: a round is TENS of minutes, the review segment is the overwhelming majority of it, and
+  the bookkeeping tail is a low single-digit percentage — so the round COUNT is the cost function and
+  the command sequence is not worth compressing. The round also got LONGER as the gates got bigger,
+  which is why a pooled number taken over an older corpus under-prices the gate in front of you. This
+  paragraph used to carry the pooled median, the middle half and the per-gate list; every one of them
+  went stale, twice, and a review round had to re-derive them — the numbers live in this repository's
+  own `CLAUDE.md`, where they are a maintenance record rather than something an agent acts on.
+  Read the median rather than the total: a span of several hours is the operator away from the desk,
+  and most workspaces carry one. A `-kind run` round's span is the run: it is printed on its own line,
   split under the head `run` rather than `review`, and kept out of the median rather than counted as a
-  long round or a break. Nothing else narrows that population — a tool round is in this median too, and
-  the figures above were measured over it. The same line prints the AUTHORING window — init to the
-  first artifact, **2.2 to 42.2 minutes over the eight workspaces (9.9, 31.7, 42.2, 4.3, 5.0, 39.2,
-  2.2, 20.9; median 15.4)** — which no round covers because it happens before round 1 opens, and whose
-  short end is a document drafted before `wf init` and therefore outside every measurement banked
-  anywhere. Step -2 is what occupies that window.
+  long round or a break. Nothing else narrows that population — a tool round is in this median too.
+  The same line prints the AUTHORING window — init to the first artifact — which no round covers
+  because it happens before round 1 opens, and which has run from a couple of minutes to well over an
+  hour; its short end is a document drafted before `wf init` and therefore outside every measurement
+  banked anywhere. Step -2 is what occupies that window.
 - **Drop FACTS first when the count descends.** One gate's round 1 returned: SEAMS 3 blockers,
   CRITERION 3 blockers, FACTS 0 blockers (every citation and count in a 150 KB script was correct). Run FACTS once —
   its one major was an invariant asserted in another reviewer's own prompt that the code did not hold —
@@ -804,11 +798,12 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   `wf check dup` for copies that DRIFTED and `wf check stale` for the consumers the fix's OWN old text
   names, then hand-check for copies that CONTRADICT, which no similarity metric reaches; on a SCRIPT,
   add `wf check schema` where the batch touched a SCHEMA: it compares what every agent's output schema
-  obliges its agent to fill, against the previous freeze, and a DROP is the finding. Twice now a
-  `required` array has disappeared inside an edit whose stated purpose was WIDTH, once leaving an
+  obliges its agent to fill, against the previous freeze, and a DROP is the finding. ONCE so far a
+  `required` array has disappeared inside an edit whose stated purpose was WIDTH — leaving an
   acceptance report where every property could come back without the evidence field the gate over it
-  had to read. Nothing static reaches it where the leaf is built in a `.map()` callback, and both
-  static tools were clean over that script;
+  had to read — and once a width-reduction edit left a stale band CONSTANT behind instead, which is
+  the same edit doing two jobs and saying so about one. Nothing static reaches the first where the
+  leaf is built in a `.map()` callback, and both static tools were clean over that script;
   add `wfdry <script> --prompt-diff <a>,<b>` for each pair of agents the batch gave the same job — the
   rule and its measurement are in `gate-checks.md` section B, "Two agents asked the SAME question";
   run `wf check closure` before recording the closures, because it asks of every `closed by` sha the
@@ -922,11 +917,14 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   gates — a round that was 4 of 4 fix-induced and carried one blocker was followed by a round filing
   seven findings and another blocker, and a 3-of-3 fix-induced round carried a blocker itself. The
   blocker descent is not monotone either — 7, 5, 1, 0, 2, 5, 3, 2, 1, 0 on one gate — so a
-  zero is not a trend. Nor is a BUMP one: two of the three decision gates long enough to show it
-  bounced once before closing (10, 8, 7, 2, 2, 1, **3**, 1, 0 on one; 15, 7, **10**, 6, 0 on another),
-  both around rounds 3-7, and in both the rise came from a fix opening new surface rather than from a
-  regression. Read a bump as what it is — the round after a large fix — and not as a signal about the
-  artifact. The stop rule stays exactly what it says above, and nothing else does. The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1].
+  zero is not a trend. Nor is a BUMP one, and this is the corpus NORM rather than an
+  exception: **every gate workspace on record bounces at least once**, and gates have closed on the
+  rule with a bump inside their last few rounds. What a bump is NOT is reliably "the round after a
+  large fix" — one was measured following the SMALLEST fix of its gate to that point, and on another
+  the majority of the bumped round's blockers were not marked `[fix-induced]` at all. Read a bump as
+  the normal shape of a descent, never as a signal about the artifact, and read the `[fix-induced]`
+  split beside it, which is the only thing in the workspace that says where a round's blockers came
+  from. The stop rule stays exactly what it says above, and nothing else does. The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1].
   **And a descent that PRECEDES a first review says nothing about it.** A round whose window brings a
   new artifact into the gate reviews it for the first time, and `wf stats` says so BEFORE that round's
   counts — the suppressed ratio used to sit in a parenthesis after them. Measured on mocker A3: nine

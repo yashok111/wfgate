@@ -173,7 +173,18 @@ func (r *Result) killedLabel(label string) bool {
 // addFixture records a label's synthesised report unless an identical one is
 // already there. Equality is over the RENDERED form, because that is what the
 // flag prints and what the reader compares.
+//
+// The value is DEEP-COPIED first, and that is the whole correctness of this
+// flag. `vm.ToValue` hands goja a write-through view of the same Go map, so
+// every assignment the script makes to an agent's result — `r.verdict = ...`,
+// a field the harness fills in — lands in the map this list holds. Without the
+// copy the flag printed the SCRIPT's own writes under the heading "the object
+// the stub returned", which is precisely the confusion it exists to remove:
+// reproduced, a label spawned twice with one schema printed the script's
+// overwrite and the real fixture appeared nowhere, because the second, clean
+// spawn deduped against the first's pre-mutation bytes.
 func (r *Result) addFixture(label string, v any) {
+	v = deepCopy(v)
 	rendered, err := json.Marshal(v)
 	if err != nil {
 		rendered = nil
@@ -184,6 +195,27 @@ func (r *Result) addFixture(label string, v any) {
 		}
 	}
 	r.Fixtures = append(r.Fixtures, FixtureUse{Label: label, Value: v, rendered: rendered})
+}
+
+// deepCopy detaches a synthesised fixture from the object the script can write
+// to. Only the shapes `synth` produces are handled — maps, slices and scalars.
+func deepCopy(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, e := range t {
+			out[k] = deepCopy(e)
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(t))
+		for _, e := range t {
+			out = append(out, deepCopy(e))
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // kill records a stubbed death once per label.

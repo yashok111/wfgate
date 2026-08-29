@@ -393,9 +393,19 @@ func trunc(s string) string {
 // the same schema.
 func requiredNote(w wfdry.SchemaWidth) string {
 	if w.Required < 0 {
-		return ""
+		// NOT silence. A schema that serialises but carries a `$ref` this
+		// runner could not expand has no census, and printing nothing there is
+		// indistinguishable from the tool not bothering — the banked
+		// `nested-defs.mjs` is exactly that shape.
+		return " — census NOT MEASURED (see the $ref note below)"
 	}
 	s := fmt.Sprintf(" — %s required", plural(w.Required, "key"))
+	if w.CleanMissing {
+		// The numbers are a FAILURE branch's: no clean mode composed this
+		// label. The corpus band is measured on the happy path, and so is this
+		// census.
+		s += " on a FAILURE branch (no clean mode composed this label)"
+	}
 	if w.NoRequired > 0 {
 		// Not a verdict. An object that requires none of its properties is
 		// legal and common, and every agent may omit every field of it; the
@@ -422,7 +432,17 @@ func plural(n int, what string) string {
 // fixture can satisfy — and each cost a reading of twenty-two "unmet" rows to
 // diagnose as one gap. The object separates them in one look.
 func printFixtures(results []wfdry.Result, spec string) int {
-	want := strings.Split(spec, ",")
+	// Two spellings of ONE label print the same fixture twice, which is the
+	// class `--prompt-diff` refuses one flag over. Here the honest answer is to
+	// collapse them: the operator asked for a label, not for a count.
+	var want []string
+	asked := map[string]bool{}
+	for _, w := range strings.Split(spec, ",") {
+		if w = strings.TrimSpace(w); w != "" && !asked[w] {
+			asked[w] = true
+			want = append(want, w)
+		}
+	}
 	seen := map[string]bool{}
 	for _, r := range results {
 		fs := wfdry.Fixtures(r, want)
@@ -453,8 +473,29 @@ func printFixtures(results []wfdry.Result, spec string) int {
 		}
 	}
 	if len(never) > 0 {
-		fmt.Fprintf(os.Stderr, "wfdry: --fixture named %s, which no mode composed as a label. Labels this run composed: %s\n",
-			strings.Join(never, ", "), orNone(strings.Join(labelsOf(results), ", ")))
+		// A label that DID spawn and was then refused by the runner — no
+		// `effort`, an unserialisable schema — records a prompt and no
+		// fixture, and calling that a typo names a label the run did compose.
+		spawned := map[string]bool{}
+		for _, l := range labelsOf(results) {
+			spawned[l] = true
+		}
+		var typo, refused []string
+		for _, n := range never {
+			if spawned[n] {
+				refused = append(refused, n)
+			} else {
+				typo = append(typo, n)
+			}
+		}
+		if len(refused) > 0 {
+			fmt.Fprintf(os.Stderr, "wfdry: --fixture named %s, which every mode spawned and this runner then REFUSED, so no fixture was ever synthesised for it — read the violation above rather than the label\n",
+				strings.Join(refused, ", "))
+		}
+		if len(typo) > 0 {
+			fmt.Fprintf(os.Stderr, "wfdry: --fixture named %s, which no mode composed as a label. Labels this run composed: %s\n",
+				strings.Join(typo, ", "), orNone(strings.Join(labelsOf(results), ", ")))
+		}
 		return 2
 	}
 	return 0

@@ -11,3 +11,4 @@
 
 # a `git worktree add` for an old revision, if one is ever made here again
 /prewave/
+.claude/worktrees/

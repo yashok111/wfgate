@@ -629,9 +629,10 @@ passing one.
 - [ ] **A width-reduction edit is the shape that quietly drops a `required`.** Twice now: one gate
       narrowed a schema for the classifier and left a stale band constant behind, and the next lost
       `required: ['met','evidence']` from the leaf of a twenty-two-key acceptance report — in a hunk
-      whose own comment was entirely about width, with no warrant recorded — so for two rounds every
-      property could come back `{met: true}` with no evidence at all, which was the only thing the
-      gate over that report had to read. Nothing static reaches it where the leaf is built inside an
+      whose own comment was entirely about width, with no warrant recorded — so ONE frozen revision
+      published a report whose every property could come back `{met: true}` with no evidence at all,
+      the only thing the gate over that report had to read. The next round's lens caught it by
+      reading; the value of the check is that it is mechanical and one line long. Nothing static reaches it where the leaf is built inside an
       `Object.fromEntries(...map(...))` callback: both static tools were clean over that script.
       `wf check schema -since <ref>` compares what every agent's schema OBLIGES its agent to fill,
       between the previous freeze and now, and a DROP is the finding. Run it after any batch that

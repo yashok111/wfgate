@@ -306,3 +306,146 @@ return { done: true, dead: [] }
 	noErr(t, err, "check schema")
 	mustContain(t, out, "NOT A PASS", "composes more than one schema")
 }
+
+// A clean run that VIOLATED is not a census. The script's own wrapper turns a
+// stub refusal into null, so a run that aborted half way still returns the
+// labels it reached — and every label it never got to was reported as a
+// deliberate GONE at exit 0, which reads as "the author removed that agent"
+// over a script whose dry run is red.
+func TestCheckSchemaWillNotCensusARedCleanRun(t *testing.T) {
+	two := strings.Replace(scriptWith(`'met'`), "return { done:",
+		`await spawn('second', { model: 'sonnet', effort: 'low', label: 'verify', schema: { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } } })
+return { done:`, 1)
+	wsDir, art := gateWithScript(t, two)
+	// Remove the first spawn's `effort`: wfdry refuses the call, the wrapper
+	// swallows the throw, and the run never reaches `verify`.
+	broken := strings.Replace(two, "{ model: 'sonnet', effort: 'low', label: 'accept'", "{ model: 'sonnet', label: 'accept'", 1)
+	if err := os.WriteFile(art, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "schema")
+	noErr(t, err, "check schema")
+	mustContain(t, out, "NOT A PASS", "did not run cleanly")
+	if strings.Contains(out, "GONE") {
+		t.Fatalf("a label an aborted run never reached is not a deletion:\n%s", out)
+	}
+}
+
+// The census is taken on the CLEAN mode, and nothing else pinned it: a per-branch
+// schema would otherwise be priced on a mode the corpus band was never measured
+// on. The failure branch here requires MORE than the happy path, so reading the
+// wrong mode reports a rise that did not happen.
+func TestCheckSchemaCensusIsTheCleanMode(t *testing.T) {
+	body := func(failReq string) string {
+		return `export const meta = { name: 'demo', description: 'd', phases: [{ title: 'P' }] }
+async function spawn(p, o) { try { return await agent(p, o) } catch { return null } }
+phase('P')
+const r = await spawn('a', { model: 'sonnet', effort: 'low', label: 'review', schema: { type: 'object', required: ['blockers'], properties: { blockers: { type: 'array' } } } })
+const wide = { type: 'object', required: [` + failReq + `], properties: { a: { type: 'string' }, b: { type: 'string' }, c: { type: 'string' } } }
+const narrow = { type: 'object', required: ['a'], properties: { a: { type: 'string' } } }
+await spawn('b', { model: 'sonnet', effort: 'low', label: 'worker', schema: r.blockers.length > 0 ? wide : narrow })
+return { done: true, dead: [] }
+`
+	}
+	wsDir, art := gateWithScript(t, body(`'a', 'b', 'c'`))
+	// Only the FAILURE branch changes. The clean census must be unmoved.
+	if err := os.WriteFile(art, []byte(body(`'a'`)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "schema")
+	noErr(t, err, "check schema")
+	mustContain(t, out, "no change in what any schema requires")
+}
+
+// A script that composes NO schema at all reports every reference label as GONE
+// at exit 0 — indistinguishable from a deliberate deletion — unless the run
+// itself is refused.
+func TestCheckSchemaRefusesARunThatComposedNoSchema(t *testing.T) {
+	wsDir, art := gateWithScript(t, scriptWith(`'met'`))
+	none := `export const meta = { name: 'demo', description: 'd', phases: [{ title: 'P' }] }
+async function spawn(p, o) { try { return await agent(p, o) } catch { return null } }
+phase('P')
+return { done: true, dead: [] }
+`
+	if err := os.WriteFile(art, []byte(none), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "schema")
+	noErr(t, err, "check schema")
+	mustContain(t, out, "NOT A PASS")
+	if strings.Contains(out, "GONE") {
+		t.Fatalf("a run that composed nothing is not a deletion:\n%s", out)
+	}
+}
+
+// An UNCHANGED width is not a narrowing. The width is printed beside the drop
+// because the corpus correlates the two; saying "inside a NARROWING edit" where
+// nothing narrowed is a false claim about the one correlation there is.
+func TestCheckSchemaDoesNotCallAnUnchangedWidthANarrowing(t *testing.T) {
+	// Two required keys become one, with a name padded so the byte count holds.
+	before := `export const meta = { name: 'demo', description: 'd', phases: [{ title: 'P' }] }
+async function spawn(p, o) { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn('a', { model: 'sonnet', effort: 'low', label: 'w', schema: { type: 'object', required: ['aa', 'bb'], properties: { aa: { type: 'string' }, bb: { type: 'string' } } } })
+return { done: true, dead: [] }
+`
+	// `["aa","bb"]` and `["aaaaaaa"]` are both 11 serialized characters, so the
+	// width is EXACTLY unchanged — which is the boundary `widthMove` decides.
+	after := strings.Replace(before, `required: ['aa', 'bb']`, `required: ['aaaaaaa']`, 1)
+	wsDir, art := gateWithScript(t, before)
+	if err := os.WriteFile(art, []byte(after), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "schema")
+	if err == nil {
+		t.Fatalf("a required key was dropped:\n%s", out)
+	}
+	mustContain(t, out, "DROP")
+	if strings.Contains(out, "NARROWING") || strings.Contains(out, "grew") {
+		t.Fatalf("the width is unchanged here, so it neither narrowed nor grew:\n%s", out)
+	}
+}
+
+// The population is the ARTIFACTS. A `.mjs` elsewhere in the workspace — a
+// scratch file, a hook — is not an artifact of the gate and must not be run.
+func TestCheckSchemaOnlyReadsArtifacts(t *testing.T) {
+	// The stray must exist AT THE REFERENCE: the working-tree side is built
+	// from `ArtifactList`, which walks `artifacts/` and can see nothing else,
+	// so only the reference side — which lists every file in the tree — can
+	// pick one up.
+	wsDir := newGate(t)
+	stray := filepath.Join(wsDir, "rounds", "scratch.mjs")
+	if err := os.WriteFile(stray, []byte("this is not valid javascript ((("), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "a stray script outside artifacts/")
+	art := filepath.Join(wsDir, "artifacts", "demo.mjs")
+	if err := os.WriteFile(art, []byte(scriptWith(`'met'`)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "add", art); err != nil {
+		t.Fatal(err)
+	}
+	reviewedRound(t, wsDir, 1)
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "schema")
+	noErr(t, err, "check schema")
+	if strings.Contains(out, "scratch.mjs") {
+		t.Fatalf("only artifacts/ is this check's population:\n%s", out)
+	}
+}
+
+// A `-o` outside the workspace is not adopted by `wf add`, so the UNTRACKED
+// line must not be printed for it.
+func TestNewScriptDoesNotClaimAdoptionOutsideArtifacts(t *testing.T) {
+	wsDir := newGate(t)
+	dst := filepath.Join(t.TempDir(), "elsewhere.mjs")
+	out, err := runWF(t, wsDir, "new-script", "slice-c", "-o", dst)
+	noErr(t, err, "new-script")
+	if strings.Contains(out, "UNTRACKED") {
+		t.Fatalf("a file outside artifacts/ is not adopted by `wf add`:\n%s", out)
+	}
+}

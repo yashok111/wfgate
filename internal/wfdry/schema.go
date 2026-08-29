@@ -88,6 +88,14 @@ type SchemaWidth struct {
 	// equal byte counts do not make two schemas the same schema.
 	Required   int
 	NoRequired int
+
+	// True when NO clean mode composed this label — `--mode X` builds a run of
+	// one, and a `*:fix` label cannot spawn on the happy path at all. Both
+	// numbers above are then a FAILURE branch's, and printing them under the
+	// same heading as a clean census is an unmeasured quantity in the register
+	// of a measured one: two typographically identical lines, one of them about
+	// a mode the corpus band was never measured on.
+	CleanMissing bool
 }
 
 // SchemaWidths groups the schemas a run composed, widest clean width first.
@@ -97,7 +105,10 @@ type SchemaWidth struct {
 // merging them attributes one width to two call sites. `wfcheck` already WARNs
 // on the missing `label:` that produces one.
 func SchemaWidths(rs []Result) []SchemaWidth {
-	type widths struct{ clean, widest, required, noRequired int }
+	type widths struct {
+		clean, widest, required, noRequired int
+		cleanMissing                        bool
+	}
 	acc := map[string]*widths{}
 	var order []string
 	for _, r := range rs {
@@ -127,9 +138,11 @@ func SchemaWidths(rs []Result) []SchemaWidth {
 	var pairs []widths
 	for _, k := range order {
 		w := *acc[k]
-		if w.clean < 0 {
+		missing := w.clean < 0
+		if missing {
 			w.clean = w.widest
 		}
+		w.cleanMissing = missing
 		if _, seen := byPair[w]; !seen {
 			pairs = append(pairs, w)
 		}
@@ -137,7 +150,7 @@ func SchemaWidths(rs []Result) []SchemaWidth {
 	}
 	out := make([]SchemaWidth, 0, len(pairs))
 	for _, p := range pairs {
-		out = append(out, SchemaWidth{Clean: p.clean, Widest: p.widest, Required: p.required, NoRequired: p.noRequired, Labels: byPair[p]})
+		out = append(out, SchemaWidth{Clean: p.clean, Widest: p.widest, Required: p.required, NoRequired: p.noRequired, CleanMissing: p.cleanMissing, Labels: byPair[p]})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Clean != out[j].Clean {

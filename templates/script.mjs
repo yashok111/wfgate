@@ -168,13 +168,26 @@ async function runGate(cfg) {
   // A reviewer that returned verdict `blockers` with no blocker in its findings
   // contradicts itself, and the cheap reading of that is "pass". Fail closed:
   // the disagreement is banked as an open blocker of its own.
-  for (const r of reviews.filter(Boolean)) {
-    const has = (r.findings || []).some((f) => f.severity === 'blocker')
+  //
+  // It records WHICH REVIEWER and WHAT IT SAID, never just the gate. Measured
+  // on a real launch whose only red term was `inconsistent: ['gate1']`: finding
+  // out which of two reviewers had contradicted itself, and over what, meant
+  // parsing `journal.jsonl` by hand and indexing agents positionally — while
+  // the guard had the label and the severities in hand at the moment it fired.
+  // A run that is already red is exactly the run where a human is trying to
+  // find out what happened. Indexed rather than filtered, because
+  // `filter(Boolean)` destroys the correspondence with `cfg.reviewers`.
+  reviews.forEach((r, i) => {
+    if (!r) return
+    const label = 'review:' + cfg.slug + ':' + (cfg.reviewers[i] ? cfg.reviewers[i].slug : i)
+    const levels = (r.findings || []).map((f) => f.severity)
+    const has = levels.includes('blocker')
     if ((r.verdict === 'blockers') !== has) {
-      log(cfg.slug + ': a review contradicted itself — verdict ' + r.verdict + ' with ' + (has ? 'a' : 'no') + ' blocker finding')
-      inconsistent.push(cfg.slug)
+      log(label + ': a review contradicted itself — verdict ' + r.verdict + ' with ' + (has ? 'a' : 'no') +
+        ' blocker finding; it filed [' + (levels.join(', ') || 'nothing') + ']')
+      inconsistent.push({ label, verdict: r.verdict, levels })
     }
-  }
+  })
 
   const all = reviews.filter(Boolean).flatMap((r) => r.findings || [])
   const blockers = all.filter((f) => f.severity === 'blocker')
@@ -391,7 +404,7 @@ log(spawned.length - dead.length + '/' + spawned.length + ' agent(s) came back')
 if (dead.length) log('DEAD: ' + dead.join(', '))
 if (openBlockers.length) log('OPEN BLOCKERS: ' + openBlockers.length)
 if (barFailures.length) log('BAR FAILURES: ' + barFailures.map((b) => b.section + ' ' + b.command + ' ' + b.result).join('; '))
-if (inconsistent.length) log('SELF-CONTRADICTING REVIEWS: ' + inconsistent.join(', '))
+if (inconsistent.length) log('SELF-CONTRADICTING REVIEWS: ' + inconsistent.map((c) => c.label + ' (verdict ' + c.verdict + ', filed [' + (c.levels.join(', ') || 'nothing') + '])').join('; '))
 if (carried.length) log('CARRIED (major/minor/note, do not loop a section): ' + carried.length)
 
 return {
