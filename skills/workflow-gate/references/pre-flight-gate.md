@@ -82,8 +82,8 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    reopen the branch in the next round. And the saving is a HYPOTHESIS: no gate on record ran this
    step, the eight round-1 blocker counts above are the baseline it has to beat, and one gate under
    the band is not evidence — the interview lengthens a window nothing measures in order to shorten a
-   round count that is measured, and the exchange rate is one median round, 26.9 minutes over those
-   same eight gates.
+   round count that is measured, and the exchange rate is one median round: 25.1 minutes, pooled over
+   the 106 rounds of those same eight gates whose span is under two hours.
 
 -1. **Open a gate workspace: `wf init <name> -target <repo>`.** Every artifact of the gate — the
    decision document, the context document the prompts read, the script, each round's findings — lives
@@ -753,19 +753,27 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   round was 45% LARGER than the second because the second's fix opened a seam the third had to close
   across several consumers. Budget for the round COUNT; do not plan on later rounds being cheap.
   **`wf stats -time` prints what a round actually cost**, derived from the workspace's own commit
-  times — the span, and its split into review, fix and bookkeeping tail. Measured over three closed
-  gates, over the 35 rounds whose span is under two hours (the rest are breaks): a round runs 10 to
-  40 minutes, the pooled median is 15.5, the review segment is 70-87% of it and the bookkeeping tail
-  is about 3% — so the round COUNT is the cost function and the bookkeeping is not. The ~1% figure
+  times — the span, and its split into review, fix and bookkeeping tail. Re-pooled 2026-08-29 over the
+  EIGHT unpruned workspaces, over the 106 rounds of 116 whose span is under two hours (the other ten
+  are breaks, and seven of the eight workspaces carry at least one): the **median round is 25.1
+  minutes and its middle half runs 17.8 to 32.9**, the review segment a median 90% of it (10th to
+  90th percentile 26-97%) and the bookkeeping tail a median 3.0% — so the round COUNT is the cost
+  function and the bookkeeping is not. The figures this paragraph carried until then — 35 rounds,
+  median 15.5, review 70-87% — were the first THREE gates and under-price every gate since: the
+  per-gate medians run 14.2, 24.3, 19.5, 37.6, 21.4, 29.4, 39.0, 32.3, so the round got longer as the
+  gates got bigger. Do not inherit a pooled number without re-running the command over the corpus you
+  are reasoning about. The ~1% figure
   quoted for the command sequence measures a narrower span (the last apply to the next round's open)
   and is not the `tail` column.
   Read the median: a span of several hours is the operator away from the desk, and three of the four
   measured workspaces carry one. A `-kind run` round's span is the run: it is printed on its own line,
   split under the head `run` rather than `review`, and kept out of the median rather than counted as a
   long round or a break. Nothing else narrows that population — a tool round is in this median too, and
-  the figures above were measured over it. The same line prints the AUTHORING window — init to the first
-  artifact, 42 and 10 minutes on two gates — which no round covers because it happens before round 1
-  opens.
+  the figures above were measured over it. The same line prints the AUTHORING window — init to the
+  first artifact, **2.2 to 42.2 minutes over the eight workspaces (9.9, 31.7, 42.2, 4.3, 5.0, 39.2,
+  2.2, 20.9; median 15.4)** — which no round covers because it happens before round 1 opens, and whose
+  short end is a document drafted before `wf init` and therefore outside every measurement banked
+  anywhere. Step -2 is what occupies that window.
 - **Drop FACTS first when the count descends.** One gate's round 1 returned: SEAMS 3 blockers,
   CRITERION 3 blockers, FACTS 0 blockers (every citation and count in a 150 KB script was correct). Run FACTS once —
   its one major was an invariant asserted in another reviewer's own prompt that the code did not hold —

@@ -1957,15 +1957,30 @@ fixtures for the non-ASCII anchor detector).
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
   workspace over any set of documents.
 - **The cost of a gate is now measured by the tool, and the answer moved the
-  work.** `wf stats -time` over the three closed gates: a round is 10-40
-  minutes, the pooled median 15.5, the review segment 70-87% of it and the
-  bookkeeping tail about 3%. So the ROUND COUNT is the cost function, the
-  ~9-command sequence is not worth compressing (1.4 minutes across p2d's eleven
-  rounds), and the largest measured saving in the whole investigation is a
-  DOCUMENT change already in the manual: running the decision gate to exhaustion
-  before the script exists took one gate from 10+6 rounds to 8+3, about an hour.
-  The authoring window — init to the first artifact, 31.7 and 42.2 minutes — is
-  the largest block no round covers.
+  work.** `wf stats -time`, re-pooled 2026-08-29 over the EIGHT unpruned
+  workspaces rather than the three closed ones it was first taken over, and over
+  the same population that figure was taken on — the 106 rounds of 116 whose
+  span is under two hours: **median 25.1 min, middle half 17.8-32.9**, the
+  review segment a median 90% of a round and the bookkeeping tail a median 3.0%.
+  The other ten rounds are breaks (seven of the eight workspaces carry at least
+  one, the longest 637.9 min) and none of them is a round length. The old
+  figures — "10-40 minutes, pooled median 15.5, review 70-87%" — were three
+  gates and are not wrong so much as SMALL: per-gate medians run 14.2, 24.3,
+  19.5, 37.6, 21.4, 29.4, 39.0, 32.3, so the round got longer as the gates got
+  bigger, and a number banked from the first three under-prices every gate
+  since. So the ROUND
+  COUNT is the cost function, the ~9-command sequence is not worth compressing
+  (1.4 minutes across p2d's eleven rounds), and the largest measured saving in
+  the whole investigation is a DOCUMENT change already in the manual: running
+  the decision gate to exhaustion before the script exists took one gate from
+  10+6 rounds to 8+3, about an hour. The authoring window — init to the first
+  artifact — is **2.2 to 42.2 min (9.9, 31.7, 42.2, 4.3, 5.0, 39.2, 2.2, 20.9;
+  median 15.4)**, and this file quoted only its two largest for three waves. It
+  is the largest block no round covers, and the short end is worse than it
+  looks: those are the gates whose document was drafted BEFORE `wf init`, so the
+  authoring itself falls outside every measurement banked here. `pre-flight-gate.md`
+  step -2 is what now occupies that window, against a round-1 blocker baseline
+  of 7, 15, 7, 13, 15, 19, 15, 13.
 - **The seventh wave was reviewed the same way, and the review is again why it
   is trustworthy** (2026-08-24; two Opus vectors — Go correctness with a
   mutation sweep, and the claims/specification — plus one external model on the
