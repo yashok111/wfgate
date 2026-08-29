@@ -19,6 +19,19 @@ round's findings and record them with `wf round record` → bank the vectors tha
 column and re-record (`wf round record <file> -round N`) → static check → re-dry-run → open
 the next round → re-freeze → `wf verify` → hand the next reviewer `wf delta`.
 
+**What the operator actually thinks, at the moment the discipline breaks.** Every row is a measured
+drift out of the tool, and every one was committed by somebody who knew the rule. The rules are
+elsewhere in this manual and are pointed at rather than restated; what is written here is the THOUGHT,
+because the thought is the form the failure arrives in.
+
+| the thought | what is true | where the rule is |
+|---|---|---|
+| "This edit is one word — quicker by hand than through `wf apply`" | The hand edit gives up all-or-nothing AND the declared occurrence count, and it drops the round out of the cost meter. One gate stopped using `wf apply` at round 18 and found out at close: seven rounds and 39 findings the meter never saw, printed per round as a bare zero | `gate-checks.md` I |
+| "`wfcheck` is 0/0 and `wfdry` is 7/7, so the script is checked" | Both read control flow. One gate's two round-19 blockers passed both, because both were properties of PROMPT TEXT and of OWNERSHIP LISTS, which no mode enters | steps 0 and 2b |
+| "This vector came back early and its findings are obviously correct — I will start fixing now" | Fixes land at a barrier. Measured: five such fixes went in while two vectors were still reading, and one of those vectors then reported as open two blockers that were already closed | `gate-checks.md` I |
+| "The check printed its numbers, so something was measured" | An empty population prints numbers too. Every check here says NOT A PASS when it compared nothing — read that line before the ones beside it | `gate-checks.md` A |
+| "The freeze is stale — I will delete the tag and freeze again" | A hand `git tag -d` moves every window `wf stats` derives from it, so a round's fixes get priced against the round that produced them. `wf freeze -refreeze` republishes, moves the tag and records the supersession | step 2 |
+
 -2. **Grill the DECISIONS into existence, before the workspace exists.** The document round 1
    reviews is written in a window no command in this toolchain can see. `wf stats -time` prices it — run it across the
    workspaces you have; the window has run from a couple of minutes to well over an hour, and its

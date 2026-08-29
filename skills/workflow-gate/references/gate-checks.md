@@ -205,6 +205,26 @@ becomes a wrong instruction that no downstream step questions.
       an agent to fix it.** A prompt written from a hypothesis produces a fix nothing can falsify — the
       agent closes a defect that may not exist, and the acceptance check is written to match the fix.
       One written from a reproduction names the exact input that must stop working.
+- [ ] **A question the gate is ARGUING is often a question one observation settles — price the
+      observation before spending a round on the argument.** Rank an open question by what it costs to
+      OBSERVE, not by how interesting it is to reason about: where one throwaway agent, one command or
+      one request answers it, that observation IS the answer, and a round spent arguing it buys nothing
+      but a document that sounds settled. Measured on the class in section E — a gate measured its own
+      figures to the byte, wrote down that the other half "cannot be measured from here", and argued
+      the band over two rounds; the next gate asked instead and had the answer in a fraction of a
+      second for no tokens. The rule is not about that class. Before a round spends its weight on a
+      question, say what observation would settle it and what that observation costs, and when the cost
+      is nothing, go and get it. Where the observation is genuinely out of reach, write down what it
+      would take — that sentence is what stops the next gate repeating the argument.
+- [ ] **A claim has three verdicts, and the third one is the one that goes missing.** VERIFIED: the
+      observation was made and it holds. REFUTED: it was made and it does not. NOT A PASS: no
+      observation was made, or the one made cannot decide it — an empty population, a baseline that
+      does not exist, a command that ran over nothing. Every check in this toolchain prints that third
+      verdict by name, and each of them prints it because it was caught printing a clean line over the
+      same hole; prose has no such habit, and an absent measurement written in the register of a
+      measured pass is this corpus's most-repeated defect. Say which of the three, every time. And
+      where a claim compares a BEFORE with an AFTER, capture both with the SAME command — section D
+      carries what happens when one quantity has five derivations and the verdict consumes the highest.
 - [ ] **An option named for a response format may not cover every method the library serves.**
       One transport flag promised plain request/response; a method registered unconditionally by
       the same library forced streaming regardless, producing exactly the long-lived response the
@@ -350,6 +370,16 @@ compiles, passes every test, and does nothing.
       reviewer asked for a per-clause verdict over a nonempty criterion returns SOMETHING, and its other
       82-88% is "none constructed", which nothing separates from "did not try". Measured on the gate that ran it: 352 lines of acceptance section carried 2
       lines naming a defeat, so the rule had never been applied at all.
+- [ ] **The defeat is a CONDITION, not a label, and the cheapest one to check gets checked here.** The
+      rule above ships and does not get applied; its FORM is why. "Fails if the copy is read before the
+      source changes" names an observation somebody can go and make. "Correctness risk", "execution
+      risk", "may be fragile" name a worry, and a worry cannot be audited, closed, or handed to the
+      implementing run. Write every defeat as `Fails if <condition>`, in terms of what would be
+      observably true. Then rank the clauses by what it costs if this one is wrong, times how plausible
+      it is that it is, times how cheap it is to check — and take them off the top: the cheap
+      high-cost ones are checked while the gate is open, and only what genuinely needs a running system
+      waits for the implementing run. A section whose every clause defers to a run nobody has launched
+      is a section no round can falsify, which is the bullet above seen from the other side.
 - [ ] **An acceptance section states OBSERVATIONS, never test designs.** Every clause names a command whose
       exit status decides it, a number a query returns, or a property a reviewer can hold against a real
       diff — never a test to be written later and argued about now. A clause whose only reader is a
@@ -831,6 +861,14 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       strongest when one vector returns early and its findings look obviously correct: measured, five
       such fixes went in while two other vectors were still reading, and one then reported two blockers
       as open against a file where they were already closed.
+- [ ] **A finding you REFUSE is recorded with the observation that would reverse the refusal.**
+      Reviewers false-positive and refusing one is ordinary work, but "we looked at this and decided it
+      was not a defect" is a claim the next round cannot check, cannot re-open, and will either re-file
+      from scratch or inherit unread. Record three things in the row: the reason, the observation that
+      would make the refusal wrong, and whether anybody went looking for it. A refusal whose reversal
+      condition cannot be stated is not a refusal but a deferral, and it is filed as one. The same
+      discipline is what makes a HALF-taken finding legible — say which half was taken and what the
+      other half asserted, because the untaken half is what the next reviewer meets first.
 - [ ] **Starting a script from a gated one copies its UNFOUND defects, so re-read that gate's ROUNDS
       FILE, not its code.** Measured: an A2 script built from a shipped A1 script inherited its harness
       verbatim, including a reviewer guard that tested `findings.length` instead of "does any finding
