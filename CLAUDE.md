@@ -1775,6 +1775,14 @@ stopped here, not discovered by a commit in the wrong tree.
   is the backstop; the bump is the mechanism. The plugin sat four releases
   behind the clone once, and the SKILL.md sessions loaded described a rule the
   manual had already replaced.
+- **Gate reviewers run on SONNET.** Every lens of a `wf` gate round — decision
+  gate and script gate alike — plus the section-gate reviewers inside a script.
+  Set 2026-08-29 after the round count, not the launch, turned out to be what
+  exhausts the operator's quota: a reviewer's tier is paid once per ROUND, and
+  the nine gates on record spent 148 of them. Opus on a reviewer is a per-round
+  exception that NAMES the miss it guards against and is banked in the roster
+  (`wf round lens -model`). The manual's own opus-for-all-three pre-flight
+  policy is retired; do not re-instate it from memory of an older reference.
 - **Artifacts are changed through `wf apply`, never by hand.** A hand edit plus
   `git commit` gives up both all-or-nothing and the declared `count` — the two
   reasons the command exists.

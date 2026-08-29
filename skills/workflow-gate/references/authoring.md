@@ -1,6 +1,6 @@
 # Workflow orchestration guide
 
-Full operating manual for the `Workflow` multi-agent orchestration tool: model routing, the opus
+Full operating manual for the `Workflow` multi-agent orchestration tool: model routing, the
 pre-flight script-review gate, the per-section dual-review gate, and cost/context discipline. It is
 delivered as the `workflow-gate` skill; **before authoring or running any Workflow, read every
 reference the SKILL.md maps to your activity — in full.** `wf docs guide` prints the five authoring

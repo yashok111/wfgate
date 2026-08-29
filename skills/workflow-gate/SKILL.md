@@ -45,6 +45,12 @@ reviewer's checklist rather than part of the manual's argument).
   an omitted one inherits the launching session, so the script's cost is not
   written in the script. Producers inside a fan-out are cheap on both axes;
   opus and `high`+ are the exceptions that must argue for themselves.
+- Gate REVIEWERS are **sonnet** — every lens of the pre-flight gate and of the
+  decision gate before it, and both section-gate reviewers. Opus on a reviewer
+  is a per-round exception that NAMES the miss it guards against and is banked
+  in the round's roster (`wf round lens -model`). A reviewer's tier is paid once
+  per ROUND, not once per gate: the nine gates on record spent 148 rounds, and
+  the round nobody dispatches because the quota ran out finds nothing at all.
 - No Workflow launches without the pre-flight gate: static check (`wfcheck`),
   dry-run (`wfdry`, BEFORE the freeze), freeze, `wf verify` green.
 - The gate's bookkeeping goes through `wf` (workspace, rounds, apply, freeze,

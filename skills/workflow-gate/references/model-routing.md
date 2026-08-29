@@ -27,8 +27,11 @@ list above): per-item producers are sonnet (or haiku), never opus. The ONLY opus
 SINGLE fan-in convergence agent that reads all N outputs, runs ONCE, and clears the three-prong gate (a
 mechanical merge won't). A per-item *terminal* stage runs N times → NOT that agent → sonnet. N
 same-role opus producers in parallel is banned — if you think you need it, the decomposition is wrong;
-split out one fan-in opus agent instead. (Gate reviewers are exempt — the section-review gate's two
-reviewers AND the pre-flight gate's reviewers, each governed by its own section below.)
+split out one fan-in opus agent instead. (Gate reviewers are exempt from the BAN — the section-review
+gate's two reviewers AND the pre-flight gate's reviewers, each governed by its own section below. The
+exemption is not a licence: both of those sections set **sonnet** as the reviewer default and make opus an
+exception that must name the miss it guards against, because a gate reviewer's tier is paid once per ROUND
+and a gate is 10-25 rounds — 148 of them over the nine gates on record.)
 
 **Tie-breaks & round-ups:**
 - Unsure between two tiers → pick cheaper. Default sonnet; escalate ONE fan-in agent before upgrading a
