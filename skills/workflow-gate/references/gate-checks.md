@@ -900,18 +900,6 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       reproduce it" is not available, and the equivalent step is to resolve what the row CITES against
       the artifact — the path, the section, the sentence — before touching a fix. Routing such a
       finding to the refusal record because nothing executed is how a correct BLOCKER gets refused.
-- [ ] **There is a floor under refusing, and it is armed on the ledger rather than on your own
-      judgement.** A rule that fired on "rounds where the reader judged nothing actionable" would be
-      armed on the reader's own classification — the same act it exists to catch, which is the failure
-      this manual names one section over: a floor must sit on a DIFFERENT field from the one it
-      constrains. The field the ledger already records is the CLOSURE: two consecutive rounds in which
-      lenses filed findings and every non-NOTE row was closed by PROSE rather than by a commit is a
-      claim about the reader, not about the artifact. No command reads that pair today, so this is a
-      thing to look at rather than a check that runs — `wf stats` prints each round's prose-versus-
-      commit closures, and reading two rounds of them is the whole of it. **No round in this corpus
-      has yet met the condition**, so the rule is a floor with no measured instance: it is stated so
-      that the first one is recognised, not because one has been seen. When it does fire, say so in
-      the round's own record and hand the next round a lens that was NOT the one being refused.
 - [ ] **Starting a script from a gated one copies its UNFOUND defects, so re-read that gate's ROUNDS
       FILE, not its code.** Measured: an A2 script built from a shipped A1 script inherited its harness
       verbatim, including a reviewer guard that tested `findings.length` instead of "does any finding
