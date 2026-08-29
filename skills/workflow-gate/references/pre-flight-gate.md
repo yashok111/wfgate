@@ -19,18 +19,19 @@ round's findings and record them with `wf round record` → bank the vectors tha
 column and re-record (`wf round record <file> -round N`) → static check → re-dry-run → open
 the next round → re-freeze → `wf verify` → hand the next reviewer `wf delta`.
 
-**What the operator actually thinks, at the moment the discipline breaks.** Every row is a measured
-drift out of the tool, and every one was committed by somebody who knew the rule. The rules are
-elsewhere in this manual and are pointed at rather than restated; what is written here is the THOUGHT,
-because the thought is the form the failure arrives in.
+**What the operator actually thinks, at the moment the discipline breaks.** Three rows are a measured
+drift OUT of the tool and two are an over-reading of what it covers; all five were committed by
+somebody who knew the rule. The rules are elsewhere in this manual and are POINTED at — the middle
+column carries the consequence and no figures, because a measurement restated is a measurement that
+can drift apart from itself, and nothing here compares the copies.
 
 | the thought | what is true | where the rule is |
 |---|---|---|
-| "This edit is one word — quicker by hand than through `wf apply`" | The hand edit gives up all-or-nothing AND the declared occurrence count, and it drops the round out of the cost meter. One gate stopped using `wf apply` at round 18 and found out at close: seven rounds and 39 findings the meter never saw, printed per round as a bare zero | `gate-checks.md` I |
-| "`wfcheck` is 0/0 and `wfdry` is 7/7, so the script is checked" | Both read control flow. One gate's two round-19 blockers passed both, because both were properties of PROMPT TEXT and of OWNERSHIP LISTS, which no mode enters | steps 0 and 2b |
-| "This vector came back early and its findings are obviously correct — I will start fixing now" | Fixes land at a barrier. Measured: five such fixes went in while two vectors were still reading, and one of those vectors then reported as open two blockers that were already closed | `gate-checks.md` I |
-| "The check printed its numbers, so something was measured" | An empty population prints numbers too. Every check here says NOT A PASS when it compared nothing — read that line before the ones beside it | `gate-checks.md` A |
-| "The freeze is stale — I will delete the tag and freeze again" | A hand `git tag -d` moves every window `wf stats` derives from it, so a round's fixes get priced against the round that produced them. `wf freeze -refreeze` republishes, moves the tag and records the supersession | step 2 |
+| "This edit is one word — quicker by hand than through `wf apply`" | The hand edit gives up all-or-nothing AND the declared occurrence count, and it drops the round out of the cost meter. One gate did it for several rounds and found out at close, with those rounds printing a bare zero | step 2, and `gate-checks.md` I |
+| "`wfcheck` is 0/0 and `wfdry` is 7/7, so the script is checked" | `wfdry` runs control flow; `wfcheck` reads the parsed program and only what a prompt or an `owns` array DECLARES. A file named in neither is invisible to both, and one gate's round-19 blockers included two of exactly that shape | steps 0 and 2b |
+| "This vector came back early and its findings are obviously correct — I will start fixing now" | Fixes land at a barrier. One gate applied a returning vector's fixes while two others were still reading, and one of those then reported as open a blocker that was already closed | `gate-checks.md` I |
+| "The check printed its numbers, so something was measured" | An empty population prints numbers too. `rules`, `stale`, `closure` and `schema` say NOT A PASS when they compared nothing; `cite` and `dup` say it in the other shape, by printing the unverified or hidden population — on those two, that line IS the verdict and there is no phrase to search for | `gate-checks.md` A |
+| "The freeze is stale — I will delete the tag and freeze again" | A hand `git tag -d` moves every window `wf stats` derives from it. The tool then refuses that round a ratio and drops it from the prediction basis BY NUMBER, so what the shortcut costs is the measurement, not merely its accuracy. `wf freeze -refreeze` republishes, moves the tag and records the supersession | step 2 |
 
 -2. **Grill the DECISIONS into existence, before the workspace exists.** The document round 1
    reviews is written in a window no command in this toolchain can see. `wf stats -time` prices it — run it across the
@@ -56,6 +57,18 @@ because the thought is the form the failure arrives in.
    model, cheap effort, the producer routing in `model-routing.md` governs — and the rest of the
    frontier is asked while it runs, because a running exploration is an unsettled prerequisite for
    its own branch and for nothing else. Never ask the operator something you could have looked up.
+
+   **And the same question is asked of an ARGUMENT, not only of a fact: price the observation before
+   spending a round on it.** Rank an open question by what it costs to OBSERVE, not by how interesting
+   it is to reason about — where one throwaway agent, one command or one request answers it, go and
+   get the answer, because a round spent arguing buys a document that sounds settled and nothing
+   else. Measured on the class in `gate-checks.md` section E: a gate measured its own figures to the
+   byte, wrote down that the other half "cannot be measured from here", argued it over two of its own
+   rounds and then simply asked — and had the refusal back in a fraction of a second for no tokens.
+   The rule is not LIMITED to that class. An observation settles the point it was taken at and not
+   the band around it, so record what was observed and re-run the argument against it rather than
+   banking a point as a rule. Where the observation is genuinely out of reach, write down what it
+   would take: that sentence is what stops the next gate repeating the argument.
 
    **A recommendation is an OPTION, never a decision.** A question the operator did not answer is
    UNSETTLED, and it enters the draft as an open question rather than as a decision. This is the one
@@ -563,17 +576,17 @@ because the thought is the form the failure arrives in.
    not a current pin, and silence over it would be the same absent measurement wearing a pass. Without it each new run's reviewers start from zero and re-discover
    `git add -N`. **Every round that finds a novel blocker appends one line to it.**
 
-   **Hand a lens the ARTIFACT and the CONTRACT, never the CONCLUSION it is meant to test.** A prompt
-   that carries the operator's own verdict — "this was fixed in `abc123`", "the acceptance section now
-   states observations", "this was verified last round" — is asking the reviewer to agree, and it
-   usually does. The delta brief is the deliberate exception and only for the vectors it belongs to:
-   the CLOSURE lens is handed the previous round's findings and their claimed closures BY
-   CONSTRUCTION, because judging whether a closure landed is its whole question. A FIX-INDUCED or
-   RIPPLE lens gets the diff and the rule, not the story of why the diff is right. The same applies to
-   a verification the previous round BANKED: it is a claim like any other, so the next round SAMPLES
-   it rather than inheriting it — measured on one gate, a round banked "ownership union exact at 33
-   files" while a thirty-fourth joined in the commit that banked it, and three of four such claims
-   held on spot-check, which is the ratio that keeps the habit and refuses the trust.
+   **Add no CONCLUSION of your own to a lens prompt.** `wf delta` is what a delta reviewer is handed
+   and it is handed WHOLE — the previous round's findings, the closures it claims and the artifact
+   diff, in one output with no flag that omits a section. That is deliberate and it is the brief's
+   whole cost argument, and it is not what this rule is about: across the rosters on record most
+   lenses asking fix-induced or ripple ask CLOSURE in the same lens, so a brief partitioned by vector
+   would be unsatisfiable for the shape these gates actually run. What the rule forbids is the
+   operator's OWN verdict added on top — "this is fixed", "the acceptance section now states
+   observations", "this was verified last round". A prompt that carries the answer is asking the
+   reviewer to agree, and it usually does. The same applies to a verification the previous round
+   BANKED: it is a claim like any other, so the next round SAMPLES it rather than inheriting it —
+   `gate-checks.md` section 0b carries the measurement and the ratio, and this is a pointer to it.
 
 Default = **3 reviewers, each a different vector** (round 1 only — see round discipline below):
 1. **Orchestration correctness & safety** — control flow is right: `pipeline()` vs `parallel()`-barrier choice justified; loop termination sound and every `while`-loop guards on `budget.total` (can't run to the 1000-agent cap); dedup-vs-`seen` correct; `schema` present on every structured return; stage args threaded; return shape sane; `.filter(Boolean)` after `parallel()`; no race on global `phase()` inside a fan-out (use `opts.phase`); `isolation:'worktree'` only when agents mutate files in parallel. ALSO enforce the **Workflow cost & context discipline** section: flag read-amplification (N producers each re-reading the whole corpus instead of working from a map + named slices), any large shared blob (>~10-20 KB) inlined into every fan-out agent, and run the total-agents × per-agent-read sanity estimate — a read-amplifying design is a BLOCKER (redesign before launch), not an advisory.

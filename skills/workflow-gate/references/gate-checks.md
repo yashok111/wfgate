@@ -137,7 +137,7 @@ rather than inheriting them.** The habit is worth keeping — a NOTE row saying 
 a later round does not re-derive it" saves real work — and it failed checkably: one round banked
 "ownership union exact at 33 files, and gate 6 lists all 33" while a thirty-fourth file joined in
 the same commit that banked the claim. It was found because the next round's lens was instructed to
-spot-check three banked verifications rather than trust them; three of four held, which is the right
+spot-check the round's banked verifications rather than trust them; three of four held, which is the right
 ratio to keep the habit and the wrong one to trust it blind.
 
 ---
@@ -205,25 +205,21 @@ becomes a wrong instruction that no downstream step questions.
       an agent to fix it.** A prompt written from a hypothesis produces a fix nothing can falsify — the
       agent closes a defect that may not exist, and the acceptance check is written to match the fix.
       One written from a reproduction names the exact input that must stop working.
-- [ ] **A question the gate is ARGUING is often a question one observation settles — price the
-      observation before spending a round on the argument.** Rank an open question by what it costs to
-      OBSERVE, not by how interesting it is to reason about: where one throwaway agent, one command or
-      one request answers it, that observation IS the answer, and a round spent arguing it buys nothing
-      but a document that sounds settled. Measured on the class in section E — a gate measured its own
-      figures to the byte, wrote down that the other half "cannot be measured from here", and argued
-      the band over two rounds; the next gate asked instead and had the answer in a fraction of a
-      second for no tokens. The rule is not about that class. Before a round spends its weight on a
-      question, say what observation would settle it and what that observation costs, and when the cost
-      is nothing, go and get it. Where the observation is genuinely out of reach, write down what it
-      would take — that sentence is what stops the next gate repeating the argument.
 - [ ] **A claim has three verdicts, and the third one is the one that goes missing.** VERIFIED: the
       observation was made and it holds. REFUTED: it was made and it does not. NOT A PASS: no
-      observation was made, or the one made cannot decide it — an empty population, a baseline that
-      does not exist, a command that ran over nothing. Every check in this toolchain prints that third
-      verdict by name, and each of them prints it because it was caught printing a clean line over the
-      same hole; prose has no such habit, and an absent measurement written in the register of a
-      measured pass is this corpus's most-repeated defect. Say which of the three, every time. And
-      where a claim compares a BEFORE with an AFTER, capture both with the SAME command — section D
+      observation COULD be made, or the one made cannot decide it — an empty population, a baseline
+      that does not exist, a command that ran over nothing. Most of the checks here print that third
+      verdict by name (`rules`, `stale`, `closure`, `schema`, `wfdry --prompt-diff`), and most of them
+      print it because they were caught printing a clean line over the same hole; `cite` and `dup`
+      answer it in the other shape, by publishing the unverified or hidden POPULATION rather than a
+      verdict, so on those two the population line IS the third verdict and there is no phrase to look
+      for. Prose has no such habit at all, and an absent measurement written in the register of a
+      measured pass is a defect this corpus has committed in every wave that reviewed itself. Say
+      which of the three, every time — and a NOT A PASS names WHY no observation could be made. An
+      observation nobody ATTEMPTED is not a verdict: it is an open question, and it is filed as one
+      for the next round, because a third verdict that also absorbs "I did not look" is a place to
+      file undone work in the register of a report. And where a claim compares a BEFORE with an
+      AFTER, capture both with the SAME command — section D
       carries what happens when one quantity has five derivations and the verdict consumes the highest.
 - [ ] **An option named for a response format may not cover every method the library serves.**
       One transport flag promised plain request/response; a method registered unconditionally by
@@ -370,16 +366,22 @@ compiles, passes every test, and does nothing.
       reviewer asked for a per-clause verdict over a nonempty criterion returns SOMETHING, and its other
       82-88% is "none constructed", which nothing separates from "did not try". Measured on the gate that ran it: 352 lines of acceptance section carried 2
       lines naming a defeat, so the rule had never been applied at all.
-- [ ] **The defeat is a CONDITION, not a label, and the cheapest one to check gets checked here.** The
-      rule above ships and does not get applied; its FORM is why. "Fails if the copy is read before the
-      source changes" names an observation somebody can go and make. "Correctness risk", "execution
-      risk", "may be fragile" name a worry, and a worry cannot be audited, closed, or handed to the
-      implementing run. Write every defeat as `Fails if <condition>`, in terms of what would be
-      observably true. Then rank the clauses by what it costs if this one is wrong, times how plausible
-      it is that it is, times how cheap it is to check — and take them off the top: the cheap
-      high-cost ones are checked while the gate is open, and only what genuinely needs a running system
-      waits for the implementing run. A section whose every clause defers to a run nobody has launched
-      is a section no round can falsify, which is the bullet above seen from the other side.
+- [ ] **The defeat is a CONDITION, not a label, and it REPLACES prose in the clause it belongs to.**
+      The rule above shipped and, on the one gate measured for it, was never applied; its FORM is why.
+      "Fails if the copy is read before the source changes" names an observation somebody can go and
+      make. "Correctness risk", "execution risk", "may be fragile" name a worry, and a worry cannot be
+      audited, closed, or handed to the implementing run. Write every defeat as `Fails if <condition>`,
+      in terms of what would be observably true. **The line replaces the clause's prose; it does not
+      add a clause** — that bound is not decoration, because the mechanism this corpus measured for a
+      runaway acceptance section is that a named defeat gets closed by ADDING one, and an author names
+      defeats exactly as a reviewer does. Where a defeat can be OBSERVED while the gate is still open,
+      observe it there and write down what it printed; where it needs a running system, say so, and
+      say what would settle it. Do NOT rank the clauses by an estimated cost times an estimated
+      likelihood: that is the severity-by-likelihood scale this project closed its own scale to avoid,
+      two of its three factors are a reviewer's prior rather than an observation, and a ranking nobody
+      can reproduce decides coverage while looking like a procedure. A section whose every clause
+      defers to a run nobody has launched is a section no round can falsify, which is the bullet above
+      seen from the other side.
 - [ ] **An acceptance section states OBSERVATIONS, never test designs.** Every clause names a command whose
       exit status decides it, a number a query returns, or a property a reviewer can hold against a real
       diff — never a test to be written later and argued about now. A clause whose only reader is a
@@ -861,28 +863,43 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       strongest when one vector returns early and its findings look obviously correct: measured, five
       such fixes went in while two other vectors were still reading, and one then reported two blockers
       as open against a file where they were already closed.
-- [ ] **A finding you REFUSE is recorded with the observation that would reverse the refusal.**
-      Reviewers false-positive and refusing one is ordinary work, but "we looked at this and decided it
-      was not a defect" is a claim the next round cannot check, cannot re-open, and will either re-file
-      from scratch or inherit unread. Record three things in the row: the reason, the observation that
-      would make the refusal wrong, and whether anybody went looking for it. A refusal whose reversal
-      condition cannot be stated is not a refusal but a deferral, and it is filed as one. The same
-      discipline is what makes a HALF-taken finding legible — say which half was taken and what the
-      other half asserted, because the untaken half is what the next reviewer meets first.
-- [ ] **Reproduce a finding before you fix it, and say which of three answers you got.** CONFIRMED,
-      with the command and what it printed. NOT REPRODUCED, in which case it goes through the refusal
-      record above rather than into a fix. Or NOT ENOUGH DETAIL, which is a question for the lens that
-      filed it and not a licence to guess. Measured: one review round filed a red bar that did not
-      reproduce in four runs, two of them deliberately concurrent — it had been seen while ANOTHER
-      vector held the tree mutated mid-sweep, which is this toolchain's own banked trap, so the finding
-      was true of a tree nobody was reviewing. A fix written for a defect that was never reproduced
-      lands in the artifact anyway, and the next round reviews it.
-- [ ] **There is a floor under refusing, and it is checkable.** Two consecutive rounds in which lenses
-      filed substantive findings and NOT ONE was classified as actionable is a claim about the reader,
-      not about the artifact. The failure has the same shape as the one section D measures from the
-      other side — a criterion vector that never returns zero is a loop generator, and an operator who
-      never accepts a finding is its mirror. When the count hits that floor, say so out loud in the
-      round's own record and hand the next round a lens that was NOT the one being refused.
+- [ ] **A finding you REFUSE is recorded with the observation that would reverse the refusal, and
+      the record goes in the FINDING cell.** Reviewers false-positive and refusing one is ordinary
+      work, but "we looked at this and decided it was not a defect" is a claim the next round cannot
+      check, cannot re-open, and will either re-file from scratch or inherit unread. Write the reason,
+      the observation that would make the refusal wrong, and whether anybody went looking for it — and
+      **reclassify the row to NOTE**, which is what the closed scale already means by "not a defect".
+      Never put a refusal in `closed by`: that cell is read by `wf freeze`, a prose closure passes its
+      open-blocker check, and a refused BLOCKER left at BLOCKER with prose beside it freezes as closed
+      — by hand, the same false green the cell splitter was fixed to stop. A refusal whose reversal
+      condition cannot be stated is a deferral rather than a refusal, and the row SAYS so in its text;
+      the level stays on the closed scale, because `wf round record` refuses any other word and records
+      nothing at all. The same discipline is what makes a HALF-taken finding legible — say which half
+      was taken and what the other half asserted, because the untaken half is what the next reviewer
+      meets first.
+- [ ] **A finding that asserts something a command can RUN is reproduced before it is fixed.**
+      CONFIRMED, with the command and what it printed. Or NOT REPRODUCED, which goes through the
+      refusal record above rather than into a fix. Or NOT ENOUGH DETAIL, which is a question for the
+      lens that filed it and not a licence to guess. Measured: one review round filed a red bar that
+      did not reproduce, because it had been observed while ANOTHER vector held the tree mutated
+      mid-sweep — true of a tree nobody was reviewing. **Most findings in a decision gate are not of
+      that kind**, and the rule must not be read onto them: a claim about a document, a prompt, an
+      ownership list or a design that has not been built has no command behind it, "I could not
+      reproduce it" is not available, and the equivalent step is to resolve what the row CITES against
+      the artifact — the path, the section, the sentence — before touching a fix. Routing such a
+      finding to the refusal record because nothing executed is how a correct BLOCKER gets refused.
+- [ ] **There is a floor under refusing, and it is armed on the ledger rather than on your own
+      judgement.** A rule that fired on "rounds where the reader judged nothing actionable" would be
+      armed on the reader's own classification — the same act it exists to catch, which is the failure
+      this manual names one section over: a floor must sit on a DIFFERENT field from the one it
+      constrains. The field the ledger already records is the CLOSURE: two consecutive rounds in which
+      lenses filed findings and every non-NOTE row was closed by PROSE rather than by a commit is a
+      claim about the reader, not about the artifact. No command reads that pair today, so this is a
+      thing to look at rather than a check that runs — `wf stats` prints each round's prose-versus-
+      commit closures, and reading two rounds of them is the whole of it. **No round in this corpus
+      has yet met the condition**, so the rule is a floor with no measured instance: it is stated so
+      that the first one is recognised, not because one has been seen. When it does fire, say so in
+      the round's own record and hand the next round a lens that was NOT the one being refused.
 - [ ] **Starting a script from a gated one copies its UNFOUND defects, so re-read that gate's ROUNDS
       FILE, not its code.** Measured: an A2 script built from a shipped A1 script inherited its harness
       verbatim, including a reviewer guard that tested `findings.length` instead of "does any finding
@@ -1024,20 +1041,28 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       "not measured", never as "none".
 - [ ] **Budget rounds, not perfection.** Reviewer COUNT descends (3 → 2 → 1); the round count does not cap.
       The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. The last phase needed four.
-- [ ] **A series that stops descending is a claim about the ARTIFACT'S SIZE, and running another
-      round is not the answer to it.** This is NOT a second termination clause and it does not touch
-      the rule above: the gate still ends where that rule says and nowhere else. It is what to do while
-      the rule has not fired. Measured on two gates: one ran eight reviewed rounds with no descent
-      while the section under review grew from 23 lines to 352 and absorbed a third of all growth in
-      the document; another ran four script rounds at 9, 3, 5, 5 blockers and was halted by the
-      operator rather than by any rule. In both, the round count was measuring the surface handed to
-      each reviewer, not the defect density in it. The move is to cut the surface — and the honest half
-      is that a cut is not a fix: on the gate that made one, the round REVIEWING the cut returned 4
-      blockers and 20 findings, 17 of them defects in the cut itself, so the cut moved the loop to a
-      cheaper place rather than ending it. Two rules already here govern what happens next: a scope cut
-      is an edit like any other and is reviewed like any other, and an acceptance section states
-      observations rather than test designs, which is what made that particular surface grow.
-
+- [ ] **A series that stops descending has TWO candidate causes, and the tool names one of them
+      before you guess at the other.** This is NOT a second termination clause and it does not touch
+      the rule above: the gate still ends where that rule says and nowhere else. It is what to read
+      while the rule has not fired. Run `wf stats` FIRST: it prints the share of each round's blockers
+      carrying `[fix-induced]` and names the rounds where that share is a majority, and its own note
+      says why — a fix rate matching the introduction rate is, from outside, exactly what a flat
+      descent looks like. Where the flat rounds are majority fix-induced, the surface is not the
+      variable and cutting it does nothing; section 0 carries the other half of that reading, which is
+      to ask whether the remaining findings would make a fleet BUILD the wrong thing or merely tell it
+      something stale. Only where neither of those explains the series is the SURFACE the candidate —
+      an artifact that grows at every freeze while the blocker count holds is a design being
+      elaborated, and `wf freeze` records the corpus size with its delta so the growth is visible at
+      all. Then the honest half: a cut is not a fix. On the one gate that made one, the round REVIEWING
+      the cut filed blockers, most of its findings were defects IN the cut, and two deleted design
+      decisions were recovered only because that round diffed the pre-cut span token by token. Density
+      is the check on all of this — one gate's flat rounds ran at nearly triple the findings per
+      hundred changed lines of the round before, on a fix that had SHRUNK, which is the opposite of a
+      surface problem. Two rules already here govern what follows a cut: a scope cut is an edit like
+      any other and is reviewed like any other, and an acceptance section states observations rather
+      than test designs, which is what made that particular surface grow. **A zero from the round that
+      reviews a cut is the least informative zero in the gate** — nothing here watches a decision that
+      stopped existing except that round.
 - [ ] **When a finding names a CLASS, enumerate the class before fixing a member.** "Both of the
       accumulating terms", "every copy of this rule", "each of these prompts" — fixing the members the
       finding happened to list is the same defect one round later, and it reads as closed in the

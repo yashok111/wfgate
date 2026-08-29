@@ -30,7 +30,7 @@ reviewer's checklist rather than part of the manual's argument).
 |---|---|
 | author or edit a workflow script | `references/authoring.md`, then `references/model-routing.md` |
 | author or edit the DECISION document — above all its ACCEPTANCE section | `references/pre-flight-gate.md` step -2, which is how the document gets written at all, then `references/gate-checks.md` section D, before the first clause is written. Its rules are AUTHOR-side and this table reached them from nowhere: the two other rows naming that file are for REVIEWING and for BRIEFING a reviewer, so an author who does neither never opens it. Measured on the gate that added this row — an acceptance section written as prose test specifications rather than observations was rewritten in four consecutive rounds, killing 8 then 2 then 5 then 9 clauses while the document around it was settling, and the rule it broke was written out in section D the whole time |
-| open and RUN the gate workspace (`wf`, `wfcheck`, `wfdry`) | `references/pre-flight-gate.md` — steps -2, -1, -1b, 0, 2, 2b and 4 are the operator mechanics, 19 KB of its 54; step 1 and step 3 are the reviewer's half. The file is written in step order, which is NOT the order you execute |
+| open and RUN the gate workspace (`wf`, `wfcheck`, `wfdry`) | `references/pre-flight-gate.md` — steps -2, -1, -1b, 0, 2, 2b and 4 are the operator mechanics and step 1 is the reviewer's half; step 3 is BOTH, because what an operator may put in a lens prompt is written there. The file is written in step order, which is NOT the order you execute |
 | choose models or reasoning effort for agents | `references/model-routing.md` |
 | review a script or gate its artifacts (the pre-flight gate) | `references/pre-flight-gate.md` + `references/gate-checks.md` |
 | add per-section review gates inside a script | `references/section-gate.md` |
@@ -49,7 +49,7 @@ reviewer's checklist rather than part of the manual's argument).
   decision gate before it, and both section-gate reviewers. Opus on a reviewer
   is a per-round exception that NAMES the miss it guards against and is banked
   in the round's roster (`wf round lens -model`). A reviewer's tier is paid once
-  per ROUND, not once per gate: the nine gates on record spent 148 rounds, and
+  per ROUND, not once per gate: the ten gates on record spent 166 rounds, and
   the round nobody dispatches because the quota ran out finds nothing at all.
 - No Workflow launches without the pre-flight gate: static check (`wfcheck`),
   dry-run (`wfdry`, BEFORE the freeze), freeze, `wf verify` green.
