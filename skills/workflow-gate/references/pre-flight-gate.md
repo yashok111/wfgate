@@ -5,7 +5,8 @@
 Reviewers are **`model: 'sonnet'` — every lens of this gate AND of the decision gate in step 1.** Changed 2026-08-29, and the policy it replaces is worth naming, because its argument was right about the wrong quantity: opus on all three was justified as "the last check before launch", which prices the gate as ONE round of three reviewers. It is not one round. The nine gates that have run through `wf` spent **148 review rounds** between them (10, 17, 13, 25, 13, 24, 22, 10, 14, by each gate's own banked `wf stats`) at one to four lenses a round, so the reviewer TIER multiplies by the round count — the cost function this manual already names — and that product, not the launch, is what an operator runs out of. A gate that stops because the quota stopped is the worse outcome: the round that is never dispatched finds nothing at all, and `wf stats` cannot tell it from a round that found nothing. Depth is the axis to keep, and it is the cheaper one — a reviewer's value is in how hard it reads, and for these out-of-band `Agent` calls that comes from the reviewing session rather than from a per-call `effort` (see `model-routing.md`), so do not drop the session's effort while a round is running. **Opus on a gate reviewer is a per-round exception the operator argues for out loud**, in the round's own lens roster (`wf round lens <prompt-file> -name N -model opus -asks Q`): a security-/correctness-critical artifact where a subtle, high-cost-if-missed defect is plausible, or a single fan-in lens reconciling genuinely conflicting reports that nothing downstream re-checks. If you cannot name the specific miss it guards against, it is sonnet. Two routing-rule clarifications survive the change: (a) these are standalone out-of-band `Agent` calls, so the fan-out "producers are cheap" rule does not apply — the tier list in `model-routing.md` governs; (b) they are gate reviewers, exempt from the no-N-same-role-in-parallel ban, so running every lens of a round on one tier is intended. They run out-of-band BEFORE the workflow launches, so they do NOT draw on the script's `budget.total`; the Proportionality rule below scales the **count**, and the tier is now scaled by this paragraph. The external lens (step 1, `vcodex`) is untouched — it bills against a different quota, which is a second reason the standing instruction to alternate internal and external lenses between rounds is worth following.
 
 **Before you spawn a single reviewer, in this order.** The order matters and is not the order these
-paragraphs were written in — it is: open the WORKSPACE (-1) → open the ROUND (-1b) → gate the
+paragraphs were written in — it is: GRILL the decisions into existence (-2) → open the WORKSPACE
+(-1) → open the ROUND (-1b) → gate the
 DECISIONS (1) → author the script → static check (0) → **dry-run the artifact set (2b)** → freeze the
 whole set (2) → hand reviewers the frozen paths (3) → and when the gate is done, BANK it (4). The dry-run comes BEFORE the freeze, reversed
 2026-08-22: a dry-run defect found after freezing invalidates a freeze, and republishing it
@@ -17,6 +18,72 @@ round's findings and record them with `wf round record` → bank the vectors tha
 `wf round lens` → fix with `wf apply` → fill the closed-by
 column and re-record (`wf round record <file> -round N`) → static check → re-dry-run → open
 the next round → re-freeze → `wf verify` → hand the next reviewer `wf delta`.
+
+-2. **Grill the DECISIONS into existence, before the workspace exists.** The document round 1
+   reviews is written in a window no command in this toolchain can see. `wf stats -time` prices
+   `init -> first artifact` at 2.2 to 42.2 minutes over the eight unpruned gates (9.9, 31.7, 42.2,
+   4.3, 5.0, 39.2, 2.2, 20.9; median 15.4), and the two shortest are not fast authoring — they are
+   the gates whose document was drafted BEFORE `wf init`, so the drafting itself falls outside every
+   measurement banked here. What that window produces is read for the first time by round 1, and
+   round 1 is the most expensive round of every gate on record: **7, 15, 7, 13, 15, 19, 15, 13
+   blockers** (median 13) against 17 to 45 findings, every one of them filed against a document
+   nobody had questioned before it was frozen.
+
+   The procedure is an INTERVIEW of the operator, and it is breadth-first. Map the slice as a design
+   tree: every decision branches into the decisions that hang off it. The **frontier** is every
+   decision whose prerequisites are already settled — the questions that can honestly be asked
+   without guessing at an answer nobody has given yet — and a **round** is one frontier, asked in
+   full: number each question, put the recommended answer on its own line so the round is answerable
+   by number, and then WAIT. Two questions never share a round if one depends on the other; a
+   question hanging on an answer still open belongs to the next round. Answers push the frontier
+   outward and the next round is recomputed, never pre-written. This is not a `Workflow` and it
+   spawns no fan-out; it is the operator's own session asking and the operator answering.
+
+   **Facts are the interviewer's job, decisions are the operator's.** A frontier question the
+   filesystem, the target repository or a command can settle is dispatched to a sub-agent — cheap
+   model, cheap effort, the producer routing in `model-routing.md` governs — and the rest of the
+   frontier is asked while it runs, because a running exploration is an unsettled prerequisite for
+   its own branch and for nothing else. Never ask the operator something you could have looked up.
+
+   **A recommendation is an OPTION, never a decision.** A question the operator did not answer is
+   UNSETTLED, and it enters the draft as an open question rather than as a decision. This is the one
+   rule that cannot be relaxed: an author who adopts the interviewer's answers hands round 1 a
+   document the interviewer designed, so the gate's whole value — an independent read — is spent
+   before the workspace exists. The same failure is documented upstream, where the interview
+   technique comes from, as its most reported defect: an agent that answers its own questions has
+   broken the procedure, not interpreted it liberally.
+
+   **The first frontier is the CRITERION, not the design.** Every decision under it is judged by it,
+   so it cannot be a later round, and it is the section this corpus has paid the most for: read
+   `gate-checks.md` section D before the first clause is written. An acceptance section states
+   OBSERVATIONS, never test designs — the gate that broke that rule rewrote its acceptance section in
+   four consecutive rounds. Grill each criterion for the wrong implementation it exists to fail; a
+   clause with no named defeat is a clause with no floor.
+
+   **The output is the DOCUMENT, and a decision that survives only in the transcript did not
+   survive.** Nothing downstream reads a conversation — not `wf apply`, not a reviewer, not
+   `wf check rules`, not `wf check stale`. Every settled decision lands in the draft as a numbered
+   section, and a rule stated at more than one site carries a `[RN]` marker at every site while you
+   are still writing it, because that markup is the only thing `wf check rules` can read and a corpus
+   carrying none compares nothing. Do NOT `wf add` the transcript: a derived document beside its
+   source is measured noise (a derived context document yields 21 to 25 `dup` groups per one real
+   contradiction) and every reviewer of every round would pay for it.
+
+   **It ends when the frontier is empty AND the operator says the understanding is shared** — an
+   interviewer that runs out of questions and starts drafting has replaced the interview with its own
+   opinion. Then, and only then: `wf init`, `wf add <draft>`, `wf round new`, and round 1 reads it.
+   The interview is NOT a round: it dispatches no reviewer, files no finding, banks no lens, and
+   nothing about having run one lowers the round count you budget for. The checks never impersonate
+   coverage and neither does this — an interview is the author sharpening their own thinking, a round
+   is an independent read of frozen bytes.
+
+   **Two honest limits.** The frontier is the interviewer's judgement and not a computed graph, so
+   two questions can share a round and only afterwards prove dependent; when that happens, say so and
+   reopen the branch in the next round. And the saving is a HYPOTHESIS: no gate on record ran this
+   step, the eight round-1 blocker counts above are the baseline it has to beat, and one gate under
+   the band is not evidence — the interview lengthens a window nothing measures in order to shorten a
+   round count that is measured, and the exchange rate is one median round, 26.9 minutes over those
+   same eight gates.
 
 -1. **Open a gate workspace: `wf init <name> -target <repo>`.** Every artifact of the gate — the
    decision document, the context document the prompts read, the script, each round's findings — lives
