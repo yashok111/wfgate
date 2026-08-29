@@ -98,11 +98,13 @@ hours in. `wfdry` prints the serialized width of every schema the script compose
 HAPPY PATH's width, which is the quantity its corpus points are measured in, and beside it the wider
 one a failure branch composes, which is a separate statement — the launch sends whatever the branch
 that runs composes, and a wide branch nobody rehearses is exactly where the expensive refusal landed.
-Over the three gates that have launched, every accepted clean width is at or below 3,877 and every
+Over the gates that have launched or probed, every accepted clean width is at or below 3,974 and every
 refused one at or above 4,233; the gap between them is UNMEASURED, not safe. The floor is the LOWEST
-refusal on record: 4,233 came from a PROBE — 82 milliseconds and zero tokens for the refusal, 41
-seconds for the acceptance at 3,114 — after two rounds of that gate had argued about the band from
-measurements of SIZE alone. The answer to a warning
+refusal on record and the ceiling is the HIGHEST acceptance: 4,233 came from a PROBE — 82 milliseconds
+and zero tokens for the refusal, 41 seconds for the acceptance at 3,114 — after two rounds of that gate
+had argued about the band from measurements of SIZE alone; and 3,974 came from a gate that probed TWICE,
+the second time because restoring a `required` array a width-reduction edit had dropped took the schema
+INTO the band, and it was re-probed rather than argued about (18 s and 19 s, 58k tokens each). The answer to a warning
 is not an argument about the number: it is a throwaway workflow with ONE cheap agent carrying the
 schema and a prompt saying to fill it with placeholders, which answers in seconds. A gate that had
 measured its own width to the byte, written the risk down, and accepted it on the ground that
@@ -115,6 +117,27 @@ placeholder STRING, `obs.bars[k].result` was undefined and the clean mode return
 every bar RED. A reference the runner cannot expand — a typo in the pointer, a remote URL — is now
 NAMED in a note.) A schema that does not SERIALIZE fails `wfdry` outright: there is nothing for the
 launch to send.
+
+**A `$ref` is anchored at the SCHEMA ROOT, so write the `$defs` there — or write the whole pointer.**
+`#/$defs/prop` is a pointer into the document the schema IS, so a `$defs` on a SUB-schema — beside the
+leaf it declares, in the same constant, which is the natural way to write it — is not reachable by
+that pointer. A nested `$defs` is legal; what is wrong is the ROOT-ANCHORED spelling reaching for it,
+and either fix works (move the `$defs`, or write `#/properties/report/$defs/prop`).
+Every property then comes back a placeholder STRING and every term reading through one is false in
+every mode. One gate read that as the reference support being broken, reverted to twenty-two inlined
+copies of the leaf and paid about 1,800 bytes of width for it, against a classifier with a measured
+refusal at 4,233. The root-anchored spelling resolves, including from keys built by
+`Object.fromEntries(...map(...))` — nothing about computed keys defeats it. `wfdry` now names the
+pointer that WOULD resolve rather than only reporting that yours did not.
+
+**A red `wfdry` mode is a fact about the SCRIPT or about the FIXTURE, and the two read alike.** Three
+of one gate's dry-run reds were fixture-synthesis limits reported as artifact defects: a `$ref` the
+runner could not expand, twenty-two booleans defaulted false because their names carry no polarity,
+and `finalCount === 22`, an integer against a constant that no report-shaped fixture can satisfy.
+Each cost a reading of twenty-two "unmet" rows to diagnose as ONE gap. `wfdry --fixture <label>`
+prints the object the stub actually returned to that agent, which separates the three in one look;
+the clean mode's own verdict violation now points at it. Read the fixture BEFORE editing the script:
+the run this corpus most regrets is the one that changed a correct script to satisfy a stub.
 
 **A completion boolean is recognised by its NAME.** `wfdry` fills a report field as pass-shaped only
 when the field name is one of `passed/ok/green/clean/verified/proven/done/complete/completed/succeeded/

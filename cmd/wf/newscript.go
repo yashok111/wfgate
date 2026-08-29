@@ -60,6 +60,16 @@ func cmdNewScript(args []string) error {
 	dst := *out
 	if dst == "" {
 		dst = name + ".mjs"
+		// Inside a workspace the skeleton belongs where every other artifact
+		// lives. It used to land in the working directory — which is the
+		// workspace ROOT when the operator is standing in it — and a stray file
+		// there is exactly what `wf verify` refuses, so the command created the
+		// state the next command objects to and the operator paid a `wf add`,
+		// a copy and a delete for it. Measured on the P3e gate, first-hand and
+		// in no round: the two-step was performed by hand.
+		if w, err := open(); err == nil {
+			dst = filepath.Join(w.Artifacts(), dst)
+		}
 	}
 	// Never over a file that exists. A skeleton written over an authored script
 	// is the whole-file overwrite `wf add` refuses for the same reason.
@@ -111,6 +121,12 @@ func cmdNewScript(args []string) error {
 	fmt.Printf("  read `wf docs authoring` before the first edit, then:\n")
 	fmt.Printf("    wfcheck -root %s %s\n", repo, dst)
 	fmt.Printf("    wfdry %s\n", dst)
+	// A file under `artifacts/` is not yet an artifact: it is untracked, and
+	// `wf verify` says so. `wf add` adopts a draft already in place, which is
+	// the whole reason the skeleton may be written there at all.
+	if w, err := open(); err == nil && strings.HasPrefix(dst, w.Artifacts()+string(filepath.Separator)) {
+		fmt.Printf("  it is UNTRACKED until it is adopted — `wf add %s` makes it an artifact of this gate\n", dst)
+	}
 	// No count of "how many a tool can see". It was hand-pinned once and then
 	// derived wrongly once — `TODO/` appears in owns: arrays that produce no
 	// WARN — and a number nobody re-derives is the defect one of this project's

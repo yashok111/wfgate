@@ -102,6 +102,21 @@ check-tools: build
 				echo "wf new-script skeleton: the $$src step's non-blocking findings reach NO bucket — a major is a real defect by this repo's own scale and it would survive the run as nothing"; exit 1; }; \
 		done; \
 		echo "wf new-script skeleton: review, recheck and accept all CARRY their non-blocking findings"
+	@if ./wfdry testdata/nested-defs.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry nested-defs fixture: EXIT 0 over a schema whose every leaf came back a placeholder STRING"; exit 1; \
+	else echo "wfdry nested-defs fixture: fails as it must"; fi
+	@./wfdry testdata/nested-defs.mjs --quiet 2>&1 | grep -q 'at `#/properties/properties/\$$defs/prop`' \
+		&& echo "wfdry nested-defs fixture: NAMES the pointer that would resolve" \
+		|| { echo "wfdry nested-defs fixture: said a \$$ref did not resolve and not where the \$$defs IS — one gate reverted a correct narrowing over exactly that"; exit 1; }
+	@./wfdry testdata/clean.mjs --quiet --fixture worker 2>/dev/null | grep -q '<blockers from worker>' \
+		&& echo "wfdry --fixture: prints the object the stub handed the agent" \
+		|| { echo "wfdry --fixture: printed no fixture — three of one gate's dry-run reds were this object and were read as artifact defects"; exit 1; }
+	@if ./wfdry testdata/clean.mjs --quiet --fixture nosuch >/dev/null 2>&1; then \
+		echo "wfdry --fixture: EXIT 0 over a label no mode composed — every reading behind the name went over the empty set"; exit 1; \
+	else echo "wfdry --fixture: a label no mode composed is refused as it must"; fi
+	@./wfdry testdata/clean.mjs --quiet 2>&1 | grep -q 'key(s) required' \
+		&& echo "wfdry schemas: the required census prints beside the width" \
+		|| { echo "wfdry schemas: no census — a schema that stops requiring a field moves no number anybody reads"; exit 1; }
 	@./wfcheck -root . testdata/conforming.mjs >/dev/null && echo "wfcheck conforming fixture: no errors on a script written to the manual"
 	@./wfdry testdata/prompt-drift.mjs --quiet --prompt-diff accept:reads,verify 2>/dev/null \
 		| grep -q "only .accept:reads.: A clause you believe is true" \

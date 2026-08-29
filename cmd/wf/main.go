@@ -50,7 +50,7 @@ const usage = `wf — gate harness
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
-  wf check [cite|dup|drift|rules|stale|closure] deterministic checks over the artifacts
+  wf check [cite|dup|drift|rules|stale|closure|schema] deterministic checks over the artifacts
                                   stale -since REF: sentences still using vocabulary a fix retired
                                   closure [-round N]: does each closing commit touch what the finding names
   wf stats [-time]                per-round findings, closures and batches, from the ledger and git
@@ -2072,7 +2072,7 @@ func cmdCheck(args []string) error {
 	thr := fs.Float64("threshold", 0.82, "dup: similarity threshold for a near match")
 	minWords := fs.Int("min-words", 8, "dup: shortest statement compared")
 	round := fs.Int("round", 0, "drift: frozen round to measure from (default the newest)")
-	since := fs.String("since", "", "dup: show only groups with a copy touched after this ref; stale: the fix range to mine (default the newest freeze)")
+	since := fs.String("since", "", "dup: show only groups with a copy touched after this ref; stale: the fix range to mine, schema: the reference to compare against (default the newest freeze)")
 	// Calibrated on a live gate's real fix range (450 sentences, 1050 lines):
 	// at 8 the report was 26 hits carrying "were", "right", "tell", "stays" —
 	// English, not vocabulary — and at 3 it is 8 hits over 5 retired tokens,
@@ -2102,6 +2102,19 @@ func cmdCheck(args []string) error {
 	// stale is not part of "all" for drift's reason: it is measured FROM a
 	// reference, and "all" must keep working on a workspace that has frozen
 	// nothing yet.
+	// schema is not part of "all" for stale's reason: it is measured FROM a
+	// reference, and it runs the script, which "all" must not do on a workspace
+	// whose script is mid-edit.
+	if which == "schema" {
+		bad, err := runSchema(w, arts, *since)
+		if err != nil {
+			return err
+		}
+		if bad {
+			return errFindings
+		}
+		return nil
+	}
 	if which == "stale" {
 		bad, err := runStale(w, arts, *since, *minWords, *maxDF)
 		if err != nil {
@@ -2145,7 +2158,7 @@ func cmdCheck(args []string) error {
 		fail = fail || bad
 	}
 	if which != "all" && which != "cite" && which != "dup" && which != "rules" && which != "closure" {
-		return fmt.Errorf("unknown check %q (cite, dup, drift, rules, stale, closure)", which)
+		return fmt.Errorf("unknown check %q (cite, dup, drift, rules, stale, closure, schema)", which)
 	}
 	if fail {
 		return errFindings

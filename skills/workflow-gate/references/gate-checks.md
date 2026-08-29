@@ -626,6 +626,31 @@ passing one.
       recognise: an optimisation whose condition is TRUE in exactly the modes that exercise the path
       it skips.
 
+- [ ] **A width-reduction edit is the shape that quietly drops a `required`.** Twice now: one gate
+      narrowed a schema for the classifier and left a stale band constant behind, and the next lost
+      `required: ['met','evidence']` from the leaf of a twenty-two-key acceptance report — in a hunk
+      whose own comment was entirely about width, with no warrant recorded — so for two rounds every
+      property could come back `{met: true}` with no evidence at all, which was the only thing the
+      gate over that report had to read. Nothing static reaches it where the leaf is built inside an
+      `Object.fromEntries(...map(...))` callback: both static tools were clean over that script.
+      `wf check schema -since <ref>` compares what every agent's schema OBLIGES its agent to fill,
+      between the previous freeze and now, and a DROP is the finding. Run it after any batch that
+      touched a schema, and state the warrant in the hunk when a requirement really is being removed.
+
+- [ ] **A presence check is not a content check, and the difference matters most on the report nobody
+      re-reads.** One run's sixteen reviewer prompts were told "the diff against HEAD is exactly what
+      this run has produced", and `git diff HEAD` shows no untracked file — so a section that put new
+      code in a NEW file was invisible to its reviewers and to the ownership gate over them. The fix
+      added `git status --porcelain -uall`, and the very next round demonstrated by RUNNING it that
+      the replacement is vacuous: porcelain prints a status code and a path, never bytes, and every
+      file the acceptance mutations touch already reads `" M"` because a section wrote it, so a
+      mutation LEFT IN PLACE produces the identical two readings and the guard passes whether or not
+      the revert happened. Two rounds for one gap. Where an agent must prove it left the tree as it
+      found it, the evidence is a HASH of the content (`git diff HEAD | sha256sum`) — status is what
+      sees a file created or deleted, which a tracked-file diff misses, so both readings are taken and
+      both must match. Neither is expected to be EMPTY: it is the DIFFERENCE between two readings that
+      is the evidence.
+
 - [ ] **The guard actually compares against the previous state.** Two runs of the *current* build agreeing
       proves determinism within one build; it cannot see a change that shifted every output consistently,
       which is the failure the rule exists for. Capture the baseline from the unmodified tree BEFORE the

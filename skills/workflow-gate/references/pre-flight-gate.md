@@ -2,7 +2,7 @@
 
 **HARD RULE — before you ever call the `Workflow` tool, the authored script MUST pass a pre-flight review.** This is a one-time gate on the *script source itself*, run BEFORE the workflow launches — distinct from the section-review gate below, which runs INSIDE the script after each section produces artifacts. Run it out-of-band with the `Agent` tool: spawn the reviewers (concurrently — multiple `Agent` calls emitted in one message run in parallel; sequential is fine too, order doesn't matter for a read-only gate), hand each the full script + the user's task/goal but point each at its own vector's focus, collect findings, then ACT before launching. Both this gate and the section-review gate are fixed harness procedures, NOT authored workflow logic — they are themselves exempt from review (no infinite regress; the fixes they demand are re-reviewed, the gates are not).
 
-Reviewers are **`model: 'sonnet'` — every lens of this gate AND of the decision gate in step 1.** Changed 2026-08-29, and the policy it replaces is worth naming, because its argument was right about the wrong quantity: opus on all three was justified as "the last check before launch", which prices the gate as ONE round of three reviewers. It is not one round. The nine gates that have run through `wf` spent **148 review rounds** between them (10, 17, 13, 25, 13, 24, 22, 10, 14, by each gate's own banked `wf stats`) at one to four lenses a round, so the reviewer TIER multiplies by the round count — the cost function this manual already names — and that product, not the launch, is what an operator runs out of. A gate that stops because the quota stopped is the worse outcome: the round that is never dispatched finds nothing at all, and `wf stats` cannot tell it from a round that found nothing. Depth is the axis to keep, and it is the cheaper one — a reviewer's value is in how hard it reads, and for these out-of-band `Agent` calls that comes from the reviewing session rather than from a per-call `effort` (see `model-routing.md`), so do not drop the session's effort while a round is running. **Opus on a gate reviewer is a per-round exception the operator argues for out loud**, in the round's own lens roster (`wf round lens <prompt-file> -name N -model opus -asks Q`): a security-/correctness-critical artifact where a subtle, high-cost-if-missed defect is plausible, or a single fan-in lens reconciling genuinely conflicting reports that nothing downstream re-checks. If you cannot name the specific miss it guards against, it is sonnet. Two routing-rule clarifications survive the change: (a) these are standalone out-of-band `Agent` calls, so the fan-out "producers are cheap" rule does not apply — the tier list in `model-routing.md` governs; (b) they are gate reviewers, exempt from the no-N-same-role-in-parallel ban, so running every lens of a round on one tier is intended. They run out-of-band BEFORE the workflow launches, so they do NOT draw on the script's `budget.total`; the Proportionality rule below scales the **count**, and the tier is now scaled by this paragraph. The external lens (step 1, `vcodex`) is untouched — it bills against a different quota, which is a second reason the standing instruction to alternate internal and external lenses between rounds is worth following.
+Reviewers are **`model: 'sonnet'` — every lens of this gate AND of the decision gate in step 1.** Changed 2026-08-29, and the policy it replaces is worth naming, because its argument was right about the wrong quantity: opus on all three was justified as "the last check before launch", which prices the gate as ONE round of three reviewers. It is not one round. The ten gates that have run through `wf` spent **166 rounds** between them (13, 17, 13, 25, 13, 24, 22, 10, 15, 14, by each gate's own `wf stats`, re-derived 2026-08-29) at one to four lenses a round, so the reviewer TIER multiplies by the round count — the cost function this manual already names — and that product, not the launch, is what an operator runs out of. A gate that stops because the quota stopped is the worse outcome: the round that is never dispatched finds nothing at all, and `wf stats` cannot tell it from a round that found nothing. Depth is the axis to keep, and it is the cheaper one — a reviewer's value is in how hard it reads, and for these out-of-band `Agent` calls that comes from the reviewing session rather than from a per-call `effort` (see `model-routing.md`), so do not drop the session's effort while a round is running. **Opus on a gate reviewer is a per-round exception the operator argues for out loud**, in the round's own lens roster (`wf round lens <prompt-file> -name N -model opus -asks Q`): a security-/correctness-critical artifact where a subtle, high-cost-if-missed defect is plausible, or a single fan-in lens reconciling genuinely conflicting reports that nothing downstream re-checks. If you cannot name the specific miss it guards against, it is sonnet. Two routing-rule clarifications survive the change: (a) these are standalone out-of-band `Agent` calls, so the fan-out "producers are cheap" rule does not apply — the tier list in `model-routing.md` governs; (b) they are gate reviewers, exempt from the no-N-same-role-in-parallel ban, so running every lens of a round on one tier is intended. They run out-of-band BEFORE the workflow launches, so they do NOT draw on the script's `budget.total`; the Proportionality rule below scales the **count**, and the tier is now scaled by this paragraph. The external lens (step 1, `vcodex`) is untouched — it bills against a different quota, which is a second reason the standing instruction to alternate internal and external lenses between rounds is worth following.
 
 **Before you spawn a single reviewer, in this order.** The order matters and is not the order these
 paragraphs were written in — it is: GRILL the decisions into existence (-2) → open the WORKSPACE
@@ -206,6 +206,12 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `closure+fix-induced+ripple`, a space-separated list, or the flag repeated — because a delta round is required to ask all
    three and one gate banked one vector per round and then hand-edited `Asks:` in the file,
    nineteen times over ten rounds, having been refused the natural spelling.
+   **A lens that DIED for a reason outside the artifact is banked too, with what replaced it.** On one
+   round an external lens was quota-blocked mid-round and produced no report; it was replaced by an
+   opus lens carrying the identical prompt, and BOTH were banked. That is the only form in which a
+   later reading of the descent is not confounded with a billing decision — which is the same
+   confounding the roster exists to remove, arriving through a different door. A round whose vector
+   simply vanished from the roster reads as a round that never had it.
    `wf round record` prints a note when the round it just recorded banks no lens, because recording
    the findings is the step that feels like the work: measured on mocker A3, eleven of thirteen rounds
    banked none, and for rounds 1-10 the findings are in the ledger while the prompts that produced
@@ -507,6 +513,16 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    `dead: repair` and returned `green: false`. Seven modes were green over it, because acceptance failed
    in all seven and repair was therefore always alive; an opus reviewer found it in the end by copying
    the script's tail into a file and executing it with green values by hand.
+   **A red mode is a fact about the SCRIPT or about the FIXTURE, and the two read alike — so read the
+   fixture BEFORE you edit the script.** `wfdry --fixture <label>` prints the object the stub handed
+   that agent, per mode, and the clean mode's own verdict violation points at it. Measured on one
+   gate: THREE of its dry-run reds were fixture-synthesis limits reported as artifact defects — a
+   `$ref` the runner could not expand (a `$defs` written on a sub-schema; the pointer is anchored at
+   the schema ROOT, and the note now names the pointer that would resolve), twenty-two booleans
+   defaulted false because names like `P8a` carry no polarity, and `finalCount === 22`, an integer
+   against a constant that no report-shaped fixture can satisfy — and each cost a reading of
+   twenty-two "unmet" rows to diagnose as ONE gap. One of the three ended with the script paying about
+   1,800 bytes of width to inline twenty-two copies of a leaf it had correctly declared once.
    A report field whose name the fixture contract does not recognise as pass-shaped or fail-shaped is
    FALSE in every mode, and the runner prints a WARN naming it — including under `--quiet`, and again
    after the tally. That WARN means "no mode exercised the branch guarded by this field": act on it,
@@ -787,6 +803,12 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   after making it; sweep with
   `wf check dup` for copies that DRIFTED and `wf check stale` for the consumers the fix's OWN old text
   names, then hand-check for copies that CONTRADICT, which no similarity metric reaches; on a SCRIPT,
+  add `wf check schema` where the batch touched a SCHEMA: it compares what every agent's output schema
+  obliges its agent to fill, against the previous freeze, and a DROP is the finding. Twice now a
+  `required` array has disappeared inside an edit whose stated purpose was WIDTH, once leaving an
+  acceptance report where every property could come back without the evidence field the gate over it
+  had to read. Nothing static reaches it where the leaf is built in a `.map()` callback, and both
+  static tools were clean over that script;
   add `wfdry <script> --prompt-diff <a>,<b>` for each pair of agents the batch gave the same job — the
   rule and its measurement are in `gate-checks.md` section B, "Two agents asked the SAME question";
   run `wf check closure` before recording the closures, because it asks of every `closed by` sha the
@@ -900,7 +922,11 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   gates — a round that was 4 of 4 fix-induced and carried one blocker was followed by a round filing
   seven findings and another blocker, and a 3-of-3 fix-induced round carried a blocker itself. The
   blocker descent is not monotone either — 7, 5, 1, 0, 2, 5, 3, 2, 1, 0 on one gate — so a
-  zero is not a trend. The stop rule stays exactly what it says above, and nothing else does. The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1].
+  zero is not a trend. Nor is a BUMP one: two of the three decision gates long enough to show it
+  bounced once before closing (10, 8, 7, 2, 2, 1, **3**, 1, 0 on one; 15, 7, **10**, 6, 0 on another),
+  both around rounds 3-7, and in both the rise came from a fix opening new surface rather than from a
+  regression. Read a bump as what it is — the round after a large fix — and not as a signal about the
+  artifact. The stop rule stays exactly what it says above, and nothing else does. The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1].
   **And a descent that PRECEDES a first review says nothing about it.** A round whose window brings a
   new artifact into the gate reviews it for the first time, and `wf stats` says so BEFORE that round's
   counts — the suppressed ratio used to sit in a parenthesis after them. Measured on mocker A3: nine

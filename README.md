@@ -76,6 +76,7 @@ wf add ~/draft/context.md ~/draft/script.md  # first commit of an artifact; wf a
 
 wf round new -title "kernel + checkpoints"   # -kind delta for a delta round
 wf check                                   # cite + dup + rules + closure
+wf check schema -since gate-r10            # what an agent's schema stopped requiring
 wf apply -f fixes.json -m "close r1 blockers"
 wf round record findings.md                # the round's ledger, closures validated
 wf round lens criterion.md -name CRITERION -model "external gpt-5.6-sol" -asks criterion   # what reviewed it
@@ -99,10 +100,10 @@ wf delta                                   # the delta round's brief: findings +
 | `wf freeze [-refreeze]` | sha256 of all artifacts + target HEAD + tool version + citation counts + the corpus size in lines (with the delta against the previous freeze — a document that doubles while the blocker count holds is a design being elaborated rather than settled) → `rounds/rN/freeze.json`, commit, tag `gate-rN`; refuses while a blocker of the round being closed stands open; notes (never refuses) every citation that no longer RESOLVES against the target's HEAD, a round whose artifacts changed without `wf apply`, and — when it could not resolve them, or the round's window has no lower bound — that the check did not run. Refuses when ANY closed round carries an untouched findings scaffold and no banked lens: a round nobody is recorded as having read must not freeze as a round that found nothing (a `-kind tool` round is exempt — its opening subject already says no reviewer was dispatched; the OPEN round is exempt because its scaffold is blank by construction). Every closed round, not just the previous one — `wf round new` does not require the current round to be frozen, so a round opened past without a freeze was seen by no refusal at all. `-refreeze` republishes a round already tagged: freezing stays one-way by default (the manifest is read from the WORKTREE by `wf verify`, so a silent rewrite turned a MISMATCH into "clean"), but `wf check cite` surfaces a mis-aimed anchor without a freeze — what only freeze does is REPUBLISH the corrected bytes under the tag reviewers were handed, and five of one gate's twenty-two rounds deleted the tag by hand to do it, twelve times in all (round 13 six times, round 15 five). The superseded manifest is read from the TAG, never from the worktree copy this command rewrites: a re-freeze whose tag move failed otherwise left a NEW manifest under an OLD tag, and the retry compared it against itself and refused. The tag MOVES, the manifest records how many freezes the round has had and which commits they published, and it refuses when every artifact hashes the same against the same target revision: a re-freeze republishes CHANGED bytes. A re-freeze also prints how many changed line(s) the tag just moved over: every window in `wf stats` is bounded by `gate-rN`, so a batch applied after the round's FIRST publication is priced as the fix that produced that round's findings, and `wf stats` excludes such a round from the prediction basis by number. That detection reads GIT — the tag's commit against the round's first freeze commit — and not the manifest's `refreezes` counter, which only this flag writes: measured on the gate that stopped instead of closing, twelve extra freeze commits over five rounds left it ABSENT from all five manifests, the note fired not once, and 611 of 8388 changed lines (7.3%) were priced against the round that produced them rather than the round they repaired |
 | `wf verify [-round N]` | the pre-launch check: the tree is byte-for-byte what was frozen |
 | `wf delta [-from REF] [-to REF] [-save]` | the round's findings, the closure checklist, and the artifact diff; `-save` commits the brief into the open round's bookkeeping. Ends with a `## deletions` section when the range REMOVES structural leads (headings, numbered items, list items, bold lead-ins): a count and deliberately no list — measured over the two gates that cut, the per-round removals reach 49 on one and 215 on the other, and most are rewrites, so a list would paint most of its output. A cut's deletions are watched by no check here, and the section points at `wf check stale`, whose `swept` line is the same fact from the other side. Do not look for a cut in a net-negative diff: one measured cut replaced 28 clauses with 10 properties and the artifact GREW by four lines |
-| `wf check [cite\|dup\|drift\|rules\|stale\|closure]` | deterministic checks (no argument = cite + dup + rules + closure); `dup` takes `-since REF`, `-threshold F` and `-min-words N`; `stale` takes `-since REF` (default the newest freeze) and `-max-df N` (default 3); `closure` takes `-round N` (refused when that round does not exist). A `.js`/`.mjs` artifact is compared as PROSE — its comments and string literals, never its code — and every report says so; a script whose prose is empty is named rather than counted as clean |
+| `wf check [cite\|dup\|drift\|rules\|stale\|closure\|schema]` | deterministic checks (no argument = cite + dup + rules + closure); `dup` takes `-since REF`, `-threshold F` and `-min-words N`; `stale` takes `-since REF` (default the newest freeze) and `-max-df N` (default 3); `closure` takes `-round N` (refused when that round does not exist); `schema` takes `-since REF` (default the newest freeze) and RUNS each `.js`/`.mjs` artifact, so it is not part of "all". A `.js`/`.mjs` artifact is compared as PROSE — its comments and string literals, never its code — and every report says so; a script whose prose is empty is named rather than counted as clean |
 | `wf stats [-time]` | per-round findings, closures, apply batches, edits and changed lines (with findings per 100 changed lines — the batch cost meter; a round whose window contains the commit that CREATED an artifact says FIRST REVIEW before its counts and prints no ratio at all, because it prices a corpus its batches did not write and a descent before it says nothing about it — on a `-kind tool` round the same line says an artifact was added and NO reviewer was dispatched, because that round reviewed nothing by declaration), each round's frozen corpus size and its growth, the prediction basis `wf apply` reads (narrower than the gate total, and the difference printed rather than reconciled; a workspace with no apply commit is named as an absent population, and a round whose window cannot be attributed has its numbers omitted rather than filled from the whole history — where every candidate is excluded the line reads `NOT A PASS, no round is priceable` and still names the exclusions, because a line that VANISHES cannot say whether a gate has no basis or lost every round it had), the opt-in `[fix-induced]` share (with the rounds carrying no marker named, so the share reads as the lower bound it is) and the same marker read over BLOCKERS — per round beside the count, as a gate total, and as one line naming every round whose blockers are a MAJORITY self-inflicted, because a flat descent is what the fix rate matching the introduction rate looks like from outside (measured: 100 of 177 blockers and 11 of 22 rounds on the gate that stopped instead of closing, 22 of 79 and 12 of 28 on two others), the rounds whose `gate-rN` was PUBLISHED MORE THAN ONCE (derived from git — the tag's commit against the round's first freeze commit, never the manifest's `refreezes` counter, which only the sanctioned path writes — with the changed lines the move re-attributed; such a round prints no per-round ratio and leaves the prediction basis by number, and `wf apply` names it there too), the rounds that applied no batch at all, every run of three or more rounds at exactly ONE blocker, the rounds whose findings.md could not be read at all (an absent measurement, not a measured zero), the rounds carrying an UNFILLED findings scaffold (an empty form, not a measured zero — the shape under which a gate can end without anyone having looked), each round's banked lens roster and the rounds that record none (tool rounds excluded from both, for the same reason), and reviewer-vs-tool round totals, from the ledger and git; `-time` adds each round's wall clock split into review / fix / bookkeeping tail, plus the authoring window and the median round — over every round except the `-kind run` ones, whose spans print on their own lines (the population is narrowed by nothing else: a tool round has always been in this median, and the medians published from these gates were measured over it) |
 | `wf round new [-title T] [-kind K]` and `wf freeze` | ...and both now name a workspace `gate-checks.md` that is no longer the reference the binary carries — or the absence of one at all, because no pin is not a current pin — listing the sections the pin predates — a note, never a refusal: one gate reads ONE version of the rules, and measured on P3a a sixteen-round-old pin briefed two rounds of reviewers without the closed severity scale, found by a human asking rather than by a check |
-| `wf new-script <name> [-target REPO] [-o FILE]` | emit the orchestration-script harness — wrapper, schemas, per-section gate, liveness ledger, read-only accept, tally; `wfcheck`-clean and `wfdry` 7/7 as emitted, and re-verified by `make check-tools`. Never writes over an existing file |
+| `wf new-script <name> [-target REPO] [-o FILE]` | emit the orchestration-script harness — wrapper, schemas, per-section gate, liveness ledger, read-only accept, tally; `wfcheck`-clean and `wfdry` 7/7 as emitted, and re-verified by `make check-tools`. Never writes over an existing file. Inside a workspace it lands in `artifacts/` and says it is UNTRACKED until `wf add` adopts it: it used to land in the working directory, which is the workspace ROOT when the operator is standing in it, and a stray file there is exactly what `wf verify` refuses — the command created the state the next command objects to, and the copy-and-delete was paid by hand |
 | `wf close [-archive DIR] [-artifacts=false]` | bank the gate's own record — `history.tsv` (commit times and subjects), `stats.txt` (`wf stats -time`), `freezes.tsv`, every round's findings, and every file of every round, and a feedback scaffold with the derived numbers prefilled; a filled scaffold is never overwritten. Refuses while ANY round carries an untouched findings scaffold with no banked lens, and names a last round that dispatched no reviewer at all (a `-kind tool` round is exempt from the refusal and is instead NAMED, because its opening subject already records that no reviewer was dispatched). the artifacts themselves are banked too, because their CONTENT is the one thing `prune` destroys that nothing else holds; `-artifacts=false` opts out, and `prune` then names each artifact before removing it |
 | `wf prune [-yes]` | delete `artifacts/`, `rounds/` and then `.git` once the record is banked; refuses without one, refuses a stale one (including a record committed together with the work it describes), and reports without `-yes`. Measured on one closed gate: 4.2 MB down to 696 KB, and the record holds the artifacts, every round's files, the commit log and the stats |
 | `wf docs [name]` | print the embedded operating manual (`guide`, `checks`, `routing`, `preflight`, ...) |
@@ -351,6 +352,34 @@ a second launch to find.
 Which hit ARGUES from the old rule and which merely shares its vocabulary is
 judgement. The check reports; it never rewrites.
 
+### `wf check schema`
+
+What every agent's output schema OBLIGES its agent to fill, compared between a
+reference and the working tree, per label. A DROP is the finding; a rise is
+printed and is not, because a schema requiring more of its agent is the
+direction this check exists to protect.
+
+It answers one measured shape, twice. P3d narrowed a schema for the width
+classifier and left a stale band behind; P3e, narrowing one for the same reason,
+lost `required: ['met','evidence']` from the leaf of a twenty-two-key acceptance
+report — in a hunk whose own comment was entirely about width, with no warrant
+recorded — and for two rounds a property could come back `{met: true}` with no
+evidence at all, which was the only thing that gate's evidence reviewer had to
+read. Nothing static reaches it: the leaf is built inside an
+`Object.fromEntries(...map(...))` callback, so `wfcheck` sees no literal, and
+both static tools were clean over that script. The RUNNER holds the composed
+object, so this check runs it — which is why it is not part of `wf check` with
+no argument.
+
+The width prints beside the drop deliberately: that is the correlation the
+corpus has, and both instances happened INSIDE an edit whose stated purpose was
+size. On P3e's own history `accept` goes 74 required keys and 1 object requiring
+none at the round-10 freeze to 33 and 23 at round 11, at a width that fell from
+3,869 to 3,314. A label that appeared or disappeared is NAMED and is not a drop;
+a side whose schema does not serialize has no census and prints NOT A PASS,
+because comparing an unmeasured -1 against a real count would file the largest
+finding in the report over a schema nothing measured.
+
 ### `wf check closure`
 
 `wf round record` proves a `closed by` sha EXISTS. This asks the next question:
@@ -543,6 +572,52 @@ NAMED in a note rather than left to surface as a placeholder. The WIDTH is
 unaffected: it is measured from the object the script composed, which is what
 the launch receives, with its references in it.
 
+The pointer is anchored at the SCHEMA ROOT. A `$defs` on a sub-schema — beside
+the leaf it declares, in the same constant, which is how a script naturally
+writes it — is legal, but it is NOT reachable by `#/$defs/x`, so every property
+comes back a placeholder STRING. Either fix works: move the `$defs` to the root,
+or write the pointer that reaches it. P3e read that as
+the whole feature being broken, reverted to twenty-two inlined copies of its
+acceptance leaf and paid about 1,800 bytes of width for it. The root-anchored
+form resolved then and resolves now, including through keys built by
+`Object.fromEntries(...map(...))`; what was missing was the note saying WHERE
+the `$defs` it could not reach actually is. It now prints the pointer that would
+resolve, which is the same trade `check drift` makes when it prints the re-aimed
+range rather than saying a citation moved.
+
+### `wfdry --fixture <label>`
+
+Prints the object the stub returned to that agent, per mode. Three of one gate's
+dry-run reds were fixture-synthesis limits reported as artifact defects — a
+`$ref` the runner lost, twenty-two booleans defaulted false because their names
+carry no polarity, and `finalCount === 22`, an integer against a constant no
+report-shaped fixture can satisfy — and each cost a reading of twenty-two
+"unmet" rows to diagnose as one gap. The object separates them in one look, and
+the clean mode's verdict violation points at it. A label no mode composed is
+refused with the labels the run did compose, for the reason `--dead` refuses one:
+every reading behind the name went over the empty set.
+
+### The `required` census beside the width
+
+Every schema line also prints how many keys the schema names as `required`, over
+every object node, and how many nodes declare `properties` and require none of
+them. Neither is a verdict: an object requiring none of its properties is legal
+and common. What the pair buys is that losing a `required` is a CHANGED NUMBER.
+P3e dropped `required: ['met','evidence']` from an acceptance leaf inside a hunk
+whose own comment was entirely about width, and for two rounds a property could
+come back `{met: true}` with no evidence at all — the only thing that gate's
+evidence reviewer had to read. Nothing static reaches it: the leaf is built
+inside an `Object.fromEntries(...map(...))` callback, so `wfcheck` sees no
+literal, and both static tools were clean over that script. On the workspace's
+own history the `accept` schema goes 74 required keys and 1 such object at the
+round-10 freeze to 33 and 23 at round 11, at a width that FELL from 3,869 to
+3,314. The census is taken over the EXPANDED schema, because the obligation is
+per USE, and it is not taken at all over a schema that does not SERIALIZE or one
+carrying a `$ref` that did not EXPAND — an unexpanded reference leaves the
+referenced leaf a placeholder, so its `required` is not in the walk and the
+count would be short by exactly the amount the author cares about. `-1` prints
+as nothing, which is a different claim from zero.
+
 ### `wfdry` and the schema width
 
 Every run prints what each agent would put ON THE WIRE: the serialized width of
@@ -556,7 +631,7 @@ branch: on one script those coincide, on another they differ by 55%, and the
 tool warned that a schema the launch had accepted 44 times over had been
 refused. One number computed, another calibrated.
 
-Measured with this runner over the three gates that have launched, against the
+Measured with this runner over the four gates that have probed or launched, against the
 launch's safety classifier (`output schema too large to classify safely`):
 
 | | refused | accepted |
@@ -566,14 +641,19 @@ launch's safety classifier (`output schema too large to classify safely`):
 | P3c, launch 1 | `accept` 4,589 — the FIFTEENTH and last agent, six hours in | — |
 | P3c, launch 2 (15 of 15) | — | `accept` 3,877 |
 | P3d, probed before the launch | `accept` 4,233 — 82 ms, zero tokens | 3,114 — 41 s |
+| P3e, probed TWICE before the launch | — | `accept` 3,869 — 18 s · then 3,974 — 19 s |
 
 So on the clean quantity the corpus separates: every accepted width is at or
-below 3,877 and every refused one at or above 4,233. The gap between them is
+below 3,974 and every refused one at or above 4,233. The gap between them is
 UNMEASURED, not safe, and this tool does not pretend to know where in it the
 boundary falls. The floor is the LOWEST refusal recorded, not the last one
-heard: P3d's probe moved it down 356 bytes for 82 milliseconds of work, after
-two rounds of that gate had argued about the band from measurements of SIZE
-alone. P3c's refusal quoted 4,563 against this runner's 4,589 — two
+heard, and the ceiling is the HIGHEST acceptance: P3d's probe moved the floor
+down 356 bytes for 82 milliseconds of work, after two rounds of that gate had
+argued about the band from measurements of SIZE alone, and P3e moved the ceiling
+UP 97 bytes by probing twice inside one gate — the second time because restoring
+a `required` array that a width-reduction edit had dropped took the schema into
+the band, and it was re-probed rather than argued about, for about 40 seconds
+and 116k tokens across both. P3c's refusal quoted 4,563 against this runner's 4,589 — two
 serializers 26 bytes, 0.6%, apart, with this one the LARGER, which is the safe
 direction for a warning.
 

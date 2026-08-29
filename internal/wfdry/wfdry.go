@@ -16,6 +16,8 @@
 package wfdry
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -104,6 +106,17 @@ type Result struct {
 	defaulted map[string]int // report fields the fixture contract did not recognise
 	badRefs   map[string]int // `$ref`s the fixture could not expand, with the reason
 
+	// What this mode actually handed each agent back, by label and in spawn
+	// order. The runner synthesises it and then reports only the CONSEQUENCE —
+	// a verdict that went false, a field it did not recognise — which is the
+	// right register for a check and the wrong one for a diagnosis. Measured on
+	// the P3e gate: THREE of its dry-run reds were fixture-synthesis limits
+	// reported as artifact defects (a `$ref` the runner lost, twenty-two
+	// booleans defaulted false by NAME, an integer term no fixture can satisfy),
+	// and each cost a reading of twenty-two "unmet" rows to diagnose as one gap.
+	// The object itself answers all three in one look, so `--fixture` prints it.
+	Fixtures []FixtureUse
+
 	// The serialized width of every schema this mode handed an agent, by label.
 	// It is measured HERE and nowhere else: the runner holds the object the
 	// script actually composed, so `JSON.stringify` of it is exact, while a
@@ -117,6 +130,34 @@ type Result struct {
 type SchemaUse struct {
 	Label string
 	Bytes int // len(JSON.stringify(schema)); -1 when it does not serialize
+
+	// How many keys the schema names as `required`, over every object node in
+	// it, and how many object nodes declare `properties` and require NONE of
+	// them. Both are printed and neither is a verdict: an object with no
+	// `required` is legal and common, and a bar over it would paint every
+	// correct script.
+	//
+	// It is here because this is the only place the number exists. P3e lost
+	// `required: ['met','evidence']` from a leaf inside a width-reduction edit
+	// whose own comment was entirely about width, and for two rounds a property
+	// could come back `{met: true}` with no evidence at all — the one thing the
+	// evidence reviewer had to read. Nothing static reaches it: the leaf is
+	// built inside an `Object.fromEntries(...map(...))` callback, so `wfcheck`
+	// sees no literal. The runner holds the composed object. A DROP between two
+	// rounds is a changed number in this line.
+	Required   int
+	NoRequired int
+}
+
+// FixtureUse is one agent call's synthesised report, exactly as the stub
+// returned it.
+type FixtureUse struct {
+	Label string
+	Value any
+
+	// The JSON of Value, kept so that two spawns of one label are compared
+	// once rather than at every later spawn.
+	rendered []byte
 }
 
 // killedLabel reports whether this mode stubbed the named label dead.
@@ -127,6 +168,22 @@ func (r *Result) killedLabel(label string) bool {
 		}
 	}
 	return false
+}
+
+// addFixture records a label's synthesised report unless an identical one is
+// already there. Equality is over the RENDERED form, because that is what the
+// flag prints and what the reader compares.
+func (r *Result) addFixture(label string, v any) {
+	rendered, err := json.Marshal(v)
+	if err != nil {
+		rendered = nil
+	}
+	for _, f := range r.Fixtures {
+		if f.Label == label && bytes.Equal(f.rendered, rendered) {
+			return
+		}
+	}
+	r.Fixtures = append(r.Fixtures, FixtureUse{Label: label, Value: v, rendered: rendered})
 }
 
 // kill records a stubbed death once per label.
@@ -457,7 +514,17 @@ func runMode(src, mode string, o Options) Result {
 			// the P3a script as it stands, 15 of 16 prompts — and their schemas
 			// with them — are built at run time.
 			n := serializedWidth(vm, v)
-			r.Schemas = append(r.Schemas, SchemaUse{Label: label, Bytes: n})
+			// The census is taken only over a schema that SERIALIZES. Not a
+			// convenience: the honest unserialisable case is a cycle, and a
+			// census walking one does not return — the census is a statement
+			// about what the launch would oblige an agent to fill, and a
+			// schema the launch cannot send obliges nothing. `-1` says
+			// unmeasured, which is a different claim from zero.
+			req, noreq := -1, -1
+			if n >= 0 {
+				req, noreq = requiredCensus(v.Export())
+			}
+			r.Schemas = append(r.Schemas, SchemaUse{Label: label, Bytes: n, Required: req, NoRequired: noreq})
 			// A width is a QUESTION and never fails a mode — the corpus
 			// brackets the boundary and does not locate it. A schema that does
 			// not SERIALIZE is not a width question at all: it is a launch that
@@ -488,7 +555,15 @@ func runMode(src, mode string, o Options) Result {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())
 		}
-		return promiseOf(vm, vm.ToValue(synth(opts.Get("schema"), mode, label, 0, r.defaulted, r.badRefs)))
+		fixture := synth(opts.Get("schema"), mode, label, 0, r.defaulted, r.badRefs)
+		// One entry per DISTINCT fixture, not per label. A label spawned in a
+		// loop usually synthesises the same shape and a list with a hundred
+		// copies of it in is a list nobody reads — but a label whose schema is
+		// built per item composes DIFFERENT ones, and keeping only the first
+		// would hide exactly the case the flag exists for behind the ordinal
+		// that happened to run first.
+		r.addFixture(label, fixture)
+		return promiseOf(vm, vm.ToValue(fixture))
 	}
 
 	must := func(name string, v any) {
@@ -611,9 +686,9 @@ func runMode(src, mode string, o Options) Result {
 			b, _ := r.Return.(map[string]any)[k].(bool)
 			switch {
 			case passBools.MatchString(k) && !b:
-				r.Violations = append(r.Violations, "clean: the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
+				r.Violations = append(r.Violations, "clean: the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not."+fixtureAdvice)
 			case failVerdicts.MatchString(k) && b:
-				r.Violations = append(r.Violations, "clean: the run returned `"+k+": true` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not")
+				r.Violations = append(r.Violations, "clean: the run returned `"+k+": true` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not."+fixtureAdvice)
 			}
 		}
 	}
@@ -1442,4 +1517,36 @@ func labelList(ps []check.NamedText) string {
 		}
 	}
 	return strings.Join(out, ", ")
+}
+
+// fixtureAdvice is appended to the clean mode's verdict violation, and it is
+// the half that was missing. The violation states a fact about the SCRIPT — it
+// derives the verdict from something no fixture can satisfy — and on the P3e
+// gate that fact was three times a fact about the RUNNER instead: a `$ref` it
+// could not expand, booleans it defaulted false because their names carry no
+// polarity, and an integer term (`finalCount === 22`) that no report-shaped
+// fixture can make true. All three read identically from here, and the object
+// the stub returned separates them in one look.
+const fixtureAdvice = " The fixture this mode returned is what the term read: `--fixture <label>` prints it"
+
+// Fixtures returns one mode's synthesised reports for the named labels, in
+// spawn order, and only for the labels this mode actually composed. A label
+// that spawned in one mode and not another is the normal case — `dead-reviews`
+// hands a reviewer null before a fixture exists — so a missing one is silence
+// here and the caller's job across the whole run: a label NO mode composed is
+// the `--dead` typo class, one flag over.
+func Fixtures(r Result, labels []string) []FixtureUse {
+	var out []FixtureUse
+	for _, want := range labels {
+		want = strings.TrimSpace(want)
+		// EVERY distinct shape this label composed, not the first: a per-item
+		// briefing built in a loop has more than one, and the one that differs
+		// is the one worth reading.
+		for _, f := range r.Fixtures {
+			if f.Label == want {
+				out = append(out, f)
+			}
+		}
+	}
+	return out
 }

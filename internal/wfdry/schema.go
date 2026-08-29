@@ -31,8 +31,16 @@ import (
 // cost one cheap agent. The floor is the LOWEST refusal the corpus has
 // recorded, never the last one it heard about.
 //
+// ACCEPTED, mocker P3e, probed TWICE inside one gate and neither time argued
+// about: 3,869 (18 s, 58k tokens), and then — after a `required` array that a
+// width-reduction edit had dropped was restored, taking the schema to 3,974 and
+// INTO the unmeasured band — 3,974, re-probed rather than reasoned about (19 s,
+// 58k tokens). That moved the ceiling up by 97 bytes for about 40 seconds and
+// 116k tokens, and it is the strongest evidence in this corpus that the probe
+// rule is load-bearing practice rather than a lesson re-learned each gate.
+//
 // So on the CLEAN quantity the corpus separates: every accepted width is at or
-// below 3,877 and every refused one at or above 4,233. The gap between them is
+// below 3,974 and every refused one at or above 4,233. The gap between them is
 // UNMEASURED, and this tool must not pretend to know where in it the boundary
 // falls. P3c's refusal quoted 4,563 against this runner's 4,589 — two
 // serializers 26 bytes, 0.6%, apart, with this one the LARGER, which is the safe
@@ -53,7 +61,9 @@ import (
 // 44 of 44. One quantity computed, another calibrated.
 const (
 	// SchemaAccepted is the widest CLEAN width this corpus has seen accepted.
-	SchemaAccepted = 3877
+	// It is the HIGHEST acceptance on record and moves UP as one is measured,
+	// exactly as SchemaRefused is the LOWEST refusal and moves down.
+	SchemaAccepted = 3974
 	// SchemaRefused is the narrowest CLEAN width this corpus has seen refused.
 	SchemaRefused = 4233
 )
@@ -70,6 +80,14 @@ type SchemaWidth struct {
 	Clean  int
 	Widest int
 	Labels []string
+
+	// The `required` census of the CLEAN schema — how many keys it names as
+	// required over every object node, and how many nodes declare `properties`
+	// and require none of them. It groups WITH the width rather than beside it:
+	// two labels share a line only when their schemas agree on both, because
+	// equal byte counts do not make two schemas the same schema.
+	Required   int
+	NoRequired int
 }
 
 // SchemaWidths groups the schemas a run composed, widest clean width first.
@@ -79,7 +97,7 @@ type SchemaWidth struct {
 // merging them attributes one width to two call sites. `wfcheck` already WARNs
 // on the missing `label:` that produces one.
 func SchemaWidths(rs []Result) []SchemaWidth {
-	type widths struct{ clean, widest int }
+	type widths struct{ clean, widest, required, noRequired int }
 	acc := map[string]*widths{}
 	var order []string
 	for _, r := range rs {
@@ -90,7 +108,7 @@ func SchemaWidths(rs []Result) []SchemaWidth {
 			}
 			w, seen := acc[key]
 			if !seen {
-				w = &widths{clean: -1, widest: s.Bytes}
+				w = &widths{clean: -1, widest: s.Bytes, required: s.Required, noRequired: s.NoRequired}
 				acc[key] = w
 				order = append(order, key)
 			}
@@ -99,6 +117,7 @@ func SchemaWidths(rs []Result) []SchemaWidth {
 			}
 			if r.Mode == "clean" {
 				w.clean = s.Bytes
+				w.required, w.noRequired = s.Required, s.NoRequired
 			}
 		}
 	}
@@ -118,7 +137,7 @@ func SchemaWidths(rs []Result) []SchemaWidth {
 	}
 	out := make([]SchemaWidth, 0, len(pairs))
 	for _, p := range pairs {
-		out = append(out, SchemaWidth{Clean: p.clean, Widest: p.widest, Labels: byPair[p]})
+		out = append(out, SchemaWidth{Clean: p.clean, Widest: p.widest, Required: p.required, NoRequired: p.noRequired, Labels: byPair[p]})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Clean != out[j].Clean {

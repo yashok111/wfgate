@@ -450,10 +450,13 @@ return { done: true }`, "clean")
 // ends of a measured corpus — so the test is the record, and moving one means
 // changing this line and stating the measurement that moved it.
 func TestSchemaBandIsTheMeasuredCorpus(t *testing.T) {
-	// The widest CLEAN width the launch has ACCEPTED: P3c's second launch, 15
-	// of 15 agents.
-	if SchemaAccepted != 3877 {
-		t.Fatalf("SchemaAccepted is the widest accepted width on record (3877), got %d", SchemaAccepted)
+	// The widest CLEAN width the launch has ACCEPTED: P3e's second probe, 19
+	// seconds and 58k tokens, taken because restoring a `required` array that a
+	// width-reduction edit had dropped pushed the schema INTO the band. It
+	// replaces P3c's 3,877 (its second launch, 15 of 15 agents), and it moved
+	// UP — an acceptance raises this end exactly as a refusal lowers the other.
+	if SchemaAccepted != 3974 {
+		t.Fatalf("SchemaAccepted is the widest accepted width on record (3974), got %d", SchemaAccepted)
 	}
 	// The narrowest it has REFUSED: P3d's probe, 82 milliseconds and zero
 	// tokens, against P3c's 4589 paid for by a dead agent six hours into a run.

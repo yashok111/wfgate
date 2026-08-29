@@ -9,11 +9,13 @@
 //	wfdry <script.mjs> --args '{"x":1}' hand this to the script as `args`
 //	wfdry <script.mjs> --quiet          verdicts only, no per-mode detail
 //	wfdry <script.mjs> --prompt-diff a,b  what one prompt says and the other does not
+//	wfdry <script.mjs> --fixture accept   print the report the stub handed that agent
 //
 // Exit 1 if any mode fails.
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -46,11 +48,12 @@ func main() {
 	args := flag.String("args", "", "JSON handed to the script as `args`")
 	quiet := flag.Bool("quiet", false, "verdicts only")
 	promptDiff := flag.String("prompt-diff", "", "two agent labels, `a,b`: print the sentences one prompt carries and the other does not")
+	fixture := flag.String("fixture", "", "comma-separated agent labels: print the report the stub returned to each, per mode")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `wfdry — dynamic dry run over a Workflow orchestration script
 
-usage: wfdry <script.mjs> [--mode M] [--dead a,b] [--budget N] [--args JSON] [--quiet] [--prompt-diff a,b]
+usage: wfdry <script.mjs> [--mode M] [--dead a,b] [--budget N] [--args JSON] [--quiet] [--prompt-diff a,b] [--fixture a,b]
 modes: %s
 `, strings.Join(wfdry.Modes, ", "))
 	}
@@ -224,7 +227,18 @@ modes: %s
 			if w.Widest > w.Clean {
 				branch = fmt.Sprintf(" (%d on a failure branch)", w.Widest)
 			}
-			fmt.Printf("  %d bytes%s: %s\n", w.Clean, branch, strings.Join(w.Labels, ", "))
+			// The `required` census beside the width, because the two move
+			// TOGETHER and only one of them was ever printed. P3e dropped a
+			// leaf's `required` inside an edit whose stated purpose was width;
+			// nothing static could see it — the leaf is built in a `.map()`
+			// callback — and for two rounds a property could come back with no
+			// evidence at all. A drop is a changed number here.
+			fmt.Printf("  %d bytes%s: %s%s\n", w.Clean, branch, strings.Join(w.Labels, ", "), requiredNote(w))
+		}
+	}
+	if *fixture != "" {
+		if code := printFixtures(results, *fixture); code != 0 {
+			os.Exit(code)
 		}
 	}
 	if *promptDiff != "" {
@@ -371,4 +385,77 @@ func trunc(s string) string {
 		lines = lines[:8]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// requiredNote renders the `required` census for one width group, or nothing
+// when the group's labels do not agree on it — two labels share a width when
+// their schemas serialize to the same number of bytes, which does not make them
+// the same schema.
+func requiredNote(w wfdry.SchemaWidth) string {
+	if w.Required < 0 {
+		return ""
+	}
+	s := fmt.Sprintf(" — %s required", plural(w.Required, "key"))
+	if w.NoRequired > 0 {
+		// Not a verdict. An object that requires none of its properties is
+		// legal and common, and every agent may omit every field of it; the
+		// count is here so that losing a `required` shows up as a number.
+		s += fmt.Sprintf(", %s declaring properties and requiring none", plural(w.NoRequired, "object"))
+	}
+	return s
+}
+
+func plural(n int, what string) string {
+	return fmt.Sprintf("%d %s(s)", n, what)
+}
+
+// printFixtures prints what the stub handed each named agent, per mode.
+//
+// It is never a failure and never changes the exit code unless NO mode composed
+// a label the operator named — that is the typo, and it is the same claim
+// `--dead` makes one flag over: every reading behind the name went over the
+// empty set.
+//
+// It exists because three of one gate's dry-run reds were fixture-synthesis
+// limits reported as artifact defects — a `$ref` the runner lost, twenty-two
+// booleans defaulted false by NAME, and an integer term no report-shaped
+// fixture can satisfy — and each cost a reading of twenty-two "unmet" rows to
+// diagnose as one gap. The object separates them in one look.
+func printFixtures(results []wfdry.Result, spec string) int {
+	want := strings.Split(spec, ",")
+	seen := map[string]bool{}
+	for _, r := range results {
+		fs := wfdry.Fixtures(r, want)
+		if len(fs) == 0 {
+			continue
+		}
+		fmt.Printf("\n=== fixtures (%s) ===\n", r.Mode)
+		for _, f := range fs {
+			seen[f.Label] = true
+			// HTML escaping OFF: every placeholder this runner synthesises is
+			// `<something from label>`, and `\u003c` on both ends of each of
+			// twenty-two of them is the reading this flag exists to make cheap.
+			var buf bytes.Buffer
+			enc := json.NewEncoder(&buf)
+			enc.SetEscapeHTML(false)
+			enc.SetIndent("  ", " ")
+			if err := enc.Encode(f.Value); err != nil {
+				fmt.Printf("  %s: does not render (%v)\n", f.Label, err)
+				continue
+			}
+			fmt.Printf("  %s: %s", f.Label, buf.String())
+		}
+	}
+	var never []string
+	for _, w := range want {
+		if w = strings.TrimSpace(w); w != "" && !seen[w] {
+			never = append(never, w)
+		}
+	}
+	if len(never) > 0 {
+		fmt.Fprintf(os.Stderr, "wfdry: --fixture named %s, which no mode composed as a label. Labels this run composed: %s\n",
+			strings.Join(never, ", "), orNone(strings.Join(labelsOf(results), ", ")))
+		return 2
+	}
+	return 0
 }

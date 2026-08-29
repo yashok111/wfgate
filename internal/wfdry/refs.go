@@ -2,6 +2,8 @@ package wfdry
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -120,7 +122,7 @@ func (r *refResolver) expand(raw any) (map[string]any, bool) {
 	}
 	target, err := pointer(ref, r.root)
 	if err != nil {
-		record(r.rec, ref+" ("+err.Error()+")")
+		record(r.rec, ref+" ("+err.Error()+defsHint(ref, r.root)+")")
 		return nil, false
 	}
 	r.active[ref] = true
@@ -194,4 +196,153 @@ func pointer(ref string, root map[string]any) (any, error) {
 		prev = fmt.Sprintf("%q", seg)
 	}
 	return cur, nil
+}
+
+// defsHint answers the question the failure leaves open: a `$defs` written on a
+// SUB-schema is not reachable by `#/$defs/x`, because a JSON pointer is
+// anchored at the document the schema IS — and that is the shape a script
+// reaches for, because the leaf and the `$defs` declaring it are written
+// together in one constant and the constant is then nested under `properties`.
+//
+// Measured on the P3e gate, which reported the whole feature as broken: the
+// root-anchored shape resolves and always did (a leaf declared at the schema
+// root and referenced from twenty-two keys built by `Object.fromEntries` fills
+// in every mode), the sub-schema shape does not, and the note said only
+// `"$defs" is not in the schema`. That gate reverted to twenty-two inlined
+// copies and paid about 1,800 bytes of width against a classifier with a
+// measured refusal at 4,233 — for a pointer it could have moved. So the hint
+// names the pointer that WOULD resolve: the same trade `check drift` makes
+// when it prints the re-aimed range rather than saying a citation moved.
+func defsHint(ref string, root map[string]any) string {
+	name, ok := strings.CutPrefix(ref, "#/$defs/")
+	if !ok || name == "" || strings.Contains(name, "/") {
+		return ""
+	}
+	if at := findDefs(root, name, nil); at != "" {
+		return "; a `$defs` declaring " + strconv.Quote(name) + " IS in this schema, at `" + at +
+			"` — a `$ref` is anchored at the schema root, so either move the `$defs` there or write `" + at + "`"
+	}
+	return ""
+}
+
+// findDefs walks the schema for a `$defs` map carrying `name` and returns the
+// pointer that reaches it. The walk is breadth-agnostic and returns the FIRST
+// site in map order made deterministic by sorting: a schema declaring the same
+// name in two places is a different defect and naming either one is a patch.
+//
+// ARRAYS are walked too, with their index as a segment. `allOf`/`anyOf`/`oneOf`
+// hold their subschemas in one, and a hint that stops at the first array is a
+// hint that misses the composition keywords a large schema is most likely to
+// use.
+func findDefs(node any, name string, path []string) string {
+	switch v := node.(type) {
+	case map[string]any:
+		// No "not at the root" guard: the walk is only ever reached from a
+		// pointer that FAILED, and `#/$defs/x` fails exactly when the root has
+		// no such path — so a root `$defs` carrying the name cannot be here. A
+		// guard no mutation can make fail is a guard nothing proves.
+		if defs, ok := v["$defs"].(map[string]any); ok {
+			if _, ok := defs[name]; ok {
+				return jsonPointer(append(append([]string{}, path...), "$defs", name))
+			}
+		}
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if at := findDefs(v[k], name, append(path, k)); at != "" {
+				return at
+			}
+		}
+	case []any:
+		for i, e := range v {
+			if at := findDefs(e, name, append(path, strconv.Itoa(i))); at != "" {
+				return at
+			}
+		}
+	}
+	return ""
+}
+
+// jsonPointer joins segments into a local pointer, ESCAPED. RFC 6901 spells a
+// tilde `~0` and a slash `~1`, in that order — and this is the one place the
+// project emits a pointer rather than reading one, so an unescaped segment
+// would hand the author a pointer that does not resolve, which is worse than
+// no hint at all: the whole value of the hint is that it is a patch.
+func jsonPointer(segs []string) string {
+	out := make([]string, 0, len(segs))
+	for _, s := range segs {
+		s = strings.ReplaceAll(s, "~", "~0")
+		out = append(out, strings.ReplaceAll(s, "/", "~1"))
+	}
+	return "#/" + strings.Join(out, "/")
+}
+
+// requiredCensus counts, over the schema the script composed, how many keys
+// every object node names as `required` and how many nodes declare
+// `properties` and require none of them.
+//
+// It expands `$ref` first, deliberately: the census is a statement about what
+// the AGENT must fill, and a leaf declared once and referenced twenty-two times
+// is twenty-two obligations. Counting the unexpanded form would price the same
+// schema differently for the two spellings the width band keeps pushing an
+// author between, so a narrowing edit would move a number that is not about
+// narrowing.
+//
+// Neither number is a verdict. An object with no `required` is legal and
+// common — this runner's own `clean.mjs` fixture is one — so a bar over it
+// would paint every correct script, which is `dup`'s 161-of-176 lesson. What
+// the pair buys is that a DROP is a changed number in a line the operator
+// already reads: on the P3e gate `required: ['met','evidence']` disappeared
+// from a leaf inside an edit whose stated purpose was width, and no bar, no
+// static check and no reviewer saw it for two rounds.
+func requiredCensus(schema any) (required, noRequired int) {
+	root, ok := schema.(map[string]any)
+	if !ok {
+		return -1, -1
+	}
+	// A `$ref` that did not expand leaves the referenced leaf a placeholder, so
+	// the `required` it declares is not in the walk and the census UNDERCOUNTS
+	// — silently, and by exactly the amount the author cares about. Measured on
+	// the banked nested-defs fixture: 4 keys reported against 10 declared. A
+	// partial count printed as a measurement is this project's own most-named
+	// defect, so a failed expansion makes the whole census unmeasured; the note
+	// naming the reference is already printed beside it.
+	failed := map[string]int{}
+	expanded, _ := resolveRefs(root, root, failed).(map[string]any)
+	if len(failed) > 0 || expanded == nil {
+		return -1, -1
+	}
+	var walk func(any)
+	walk = func(n any) {
+		switch v := n.(type) {
+		case map[string]any:
+			req, _ := v["required"].([]any)
+			required += len(req)
+			// `$defs` is a declaration site, not a node the agent fills: a leaf
+			// declared there and never referenced would otherwise be counted
+			// once for existing and again for every use.
+			if props, ok := v["properties"].(map[string]any); ok && len(props) > 0 && len(req) == 0 {
+				noRequired++
+			}
+			keys := make([]string, 0, len(v))
+			for k := range v {
+				if k != "$defs" {
+					keys = append(keys, k)
+				}
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				walk(v[k])
+			}
+		case []any:
+			for _, e := range v {
+				walk(e)
+			}
+		}
+	}
+	walk(expanded)
+	return required, noRequired
 }
