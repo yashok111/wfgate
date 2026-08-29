@@ -236,14 +236,17 @@ modes: %s
 			fmt.Printf("  %d bytes%s: %s%s\n", w.Clean, branch, strings.Join(w.Labels, ", "), requiredNote(w))
 		}
 	}
+	// A refusal from either flag is collected and acted on AFTER the tally and
+	// the tail WARNs, never instead of them. Exiting here suppressed the run's
+	// own verdict — `6/7 modes completed` and every deduplicated WARN — over an
+	// operator's typo in a flag, which is the one line an operator reads.
+	flagCode := 0
 	if *fixture != "" {
-		if code := printFixtures(results, *fixture); code != 0 {
-			os.Exit(code)
-		}
+		flagCode = printFixtures(results, *fixture)
 	}
 	if *promptDiff != "" {
 		if code := printPromptDiff(results, *promptDiff); code != 0 {
-			os.Exit(code)
+			flagCode = code
 		}
 	}
 	fmt.Printf("\n%s: %d/%d modes completed\n", path, len(results)-failed, len(results))
@@ -265,6 +268,9 @@ modes: %s
 	// operator who reads only the final lines must still see it.
 	for _, n := range wfdry.SchemaNotes(widths) {
 		fmt.Println("WARN:", n)
+	}
+	if flagCode != 0 {
+		os.Exit(flagCode)
 	}
 	if failed > 0 || deadUnused {
 		os.Exit(1)

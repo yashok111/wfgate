@@ -449,3 +449,44 @@ func TestNewScriptDoesNotClaimAdoptionOutsideArtifacts(t *testing.T) {
 		t.Fatalf("a file outside artifacts/ is not adopted by `wf add`:\n%s", out)
 	}
 }
+
+// A script that THROWS — a syntax error, a runtime error before the first
+// spawn — is not a census either, and the failure is a different one from a
+// clean run that merely violated.
+func TestCheckSchemaNamesAScriptThatThrows(t *testing.T) {
+	wsDir, art := gateWithScript(t, scriptWith(`'met'`))
+	if err := os.WriteFile(art, []byte("export const meta = { name: 'demo', description: 'd', phases: [] }\nthis is not javascript ((("), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "schema")
+	noErr(t, err, "check schema")
+	mustContain(t, out, "NOT A PASS", "did not run cleanly")
+	if strings.Contains(out, "GONE") {
+		t.Fatalf("a script that never ran deleted no agent:\n%s", out)
+	}
+	// The VERDICT here is carried by the `OK()` check either way; what this
+	// branch carries is the MESSAGE. Without it the operator is told the run
+	// "did not complete" and not that the file does not parse, which is the
+	// difference between a fix and a hunt.
+	mustContain(t, out, "Unexpected identifier")
+}
+
+// A RUNTIME throw — not a parse failure — leaves the violation list empty, so
+// the only thing that can name it is the throw's own text. This is the case
+// that makes the `Err`-vs-violation distinction in `censusOf` provable: a parse
+// failure never reaches it, because `wfdry.Run` reports that as its own error.
+func TestCheckSchemaCarriesAThrowsOwnText(t *testing.T) {
+	wsDir, art := gateWithScript(t, scriptWith(`'met'`))
+	thrower := `export const meta = { name: 'demo', description: 'd', phases: [{ title: 'P' }] }
+async function spawn(p, o) { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn('go', { model: 'sonnet', effort: 'low', label: 'accept', schema: { type: 'object', properties: { a: { type: 'string' } } } })
+throw new Error('BOOM from the script body')
+`
+	if err := os.WriteFile(art, []byte(thrower), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "schema")
+	noErr(t, err, "check schema")
+	mustContain(t, out, "NOT A PASS", "BOOM from the script body")
+}

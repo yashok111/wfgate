@@ -440,3 +440,42 @@ return { done: true }`
 		t.Fatalf("equal widths with different censuses are two lines, got %+v", ws)
 	}
 }
+
+// `--mode X` builds a run of ONE, so no clean mode composed anything and the
+// width has to fall back to the widest a mode did compose. Without the
+// fallback every group reports a clean width of -1 and the whole schemas
+// section reads as "does not serialize".
+func TestSchemaWidthFallsBackWhereNoCleanModeRan(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: { type: 'object', required: ['a'], properties: { a: { type: 'string' } } } })
+return { done: true }`
+	ws := SchemaWidths([]Result{run1(t, body, "blockers")})
+	if len(ws) != 1 {
+		t.Fatalf("one group, got %+v", ws)
+	}
+	if ws[0].Clean <= 0 || ws[0].Clean != ws[0].Widest {
+		t.Fatalf("with no clean mode the widest IS the reported width: %+v", ws[0])
+	}
+	if !ws[0].CleanMissing {
+		t.Fatalf("and the group must say the clean mode never composed it: %+v", ws[0])
+	}
+}
+
+// A `$defs` entry that is not an OBJECT — `{ prop: 'not an object' }` — is a
+// reference the runner cannot expand into anything, and the leaf stays a
+// placeholder. Reported by a reviewer as a dead guard; it is not, and this is
+// the case that proves it.
+func TestRefToANonObjectDefinitionIsNamed(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', $defs: { prop: 'not an object' }, properties: { leaf: { $ref: '#/$defs/prop' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+phase('P')
+await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
+return { done: true }`
+	r := run1(t, body, "clean")
+	if joined := strings.Join(r.Notes, "\n"); !strings.Contains(joined, "resolves to something that is not an object") {
+		t.Fatalf("a non-object definition must be named: %s", joined)
+	}
+}

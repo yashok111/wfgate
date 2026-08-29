@@ -375,11 +375,13 @@ The width prints beside the drop deliberately: that is the correlation the
 corpus has, and both instances happened INSIDE an edit whose stated purpose was
 size. On P3e's own history `accept` goes 74 required keys at the round-10
 freeze to 33 at round 11, at a width that fell from 3,869 to 3,314, and
-`wf check schema -since gate-r10` prints exactly that as one DROP line. The
-second population moves in the same edit — 1 object requiring none of its
-properties to 23 — and it is the `wfdry` schema line that prints it: this check
-reports it only where the required COUNT is unchanged, because a drop already
-names itself. A label that appeared or disappeared is NAMED and is not a drop;
+`wf check schema -since gate-r10` prints exactly that as one DROP line, with the
+second population beside it — 1 object requiring none of its properties to 23 —
+because the two move TOGETHER and each is half the statement. They are judged
+INDEPENDENTLY: reporting the no-required rise only where the required total was
+unchanged made it unreachable whenever the total moved, so an edit stripping
+`required` from every leaf while the root's own list GREW printed `rose` at exit
+0 — this check's own shape, arranged so the total does not fall. A label that appeared or disappeared is NAMED and is not a drop;
 a side whose schema does not serialize has no census and prints NOT A PASS,
 because comparing an unmeasured -1 against a real count would file the largest
 finding in the report over a schema nothing measured.

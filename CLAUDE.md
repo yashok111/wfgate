@@ -1837,7 +1837,25 @@ anybody could have run, and the refutation is the more useful result:
   Makefile bars that passed on ANY non-zero exit now grep the message they claim
   to pin. One test that SKIPPED was rewritten to assert its own premise: a
   skipping test proves nothing.
-  The external vector had found eight, all real, four HIGH. The worst was the wave's own named class
+  The external vector had found eight, all real, four HIGH.
+  **Asked afterwards whether every blocker and major was actually fixed, the
+  audit found four MINORs still open and one of the wave's own doc fixes gone
+  STALE from the wave's own later code change** — the README said `check schema`
+  reports the no-required population "only where the required COUNT is
+  unchanged", which stopped being true the moment that MAJOR was fixed to judge
+  the two independently. Its own named class, one commit deep. Of the four:
+  three unproven guards got the case they lacked (the clean-width fallback, a
+  `$defs` entry that is not an OBJECT, and a runtime throw's own text), and one
+  reviewer finding was REFUTED with a reproduction — the second `expanded ==
+  nil` is LIVE, and `$defs: { prop: 'not an object' }` is the schema that
+  reaches it. Two of the three needed the guard RESTRUCTURED before a mutation
+  could reach them: `rs[0].Err != nil` was unreachable for a parse failure (which
+  `wfdry.Run` reports as its own error) and produced identical text for
+  everything else, so the two branches are one now and what the distinction buys
+  is the MESSAGE — a runtime throw leaves an empty violation list, and its own
+  text is the difference between a fix and a hunt. A flag refusal also no longer
+  exits BEFORE the mode tally and the tail WARNs: an operator's typo in
+  `--fixture` used to suppress the one line an operator reads. The worst was the wave's own named class
   committed inside the fix for it: `requiredCensus` expanded `$ref`s with the
   failure map DISCARDED, so a schema whose reference did not resolve produced a
   partial count printed as a measurement — the banked `nested-defs.mjs` reported
