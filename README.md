@@ -79,7 +79,7 @@ wf check                                   # cite + dup + rules + closure
 wf check schema -since gate-r10            # what an agent's schema stopped requiring
 wf apply -f fixes.json -m "close r1 blockers"
 wf round record findings.md                # the round's ledger, closures validated
-wf round lens criterion.md -name CRITERION -model "external gpt-5.6-sol" -asks criterion   # what reviewed it
+wf round lens criterion.md -name CRITERION -model "external gpt-5.6-luna" -asks criterion   # what reviewed it
 wf freeze                                  # hashes + target HEAD + tool version → commit, tag gate-r1
 wf verify                                  # the pre-launch check: what runs is what was reviewed
 

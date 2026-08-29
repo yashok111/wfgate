@@ -335,15 +335,28 @@ can drift apart from itself, and nothing here compares the copies.
    Measured on one phase gated this way: 8 KB of decision list, two independent reviewers, **six
    blockers and a scope cut** — before a single prompt existed. The scope cut was the more valuable half: both reviewers
    independently showed that a third of the slice was P2 work the phase criterion did not need. Use TWO
-   lenses here, not one, and make one external — both on sonnet, per the tier rule at the head of this
-   file — they overlapped on two blockers and each found one the
+   lenses here, not one, and make one external — the INTERNAL one on sonnet, per the tier rule at the
+   head of this file; the external one is pinned by the recipe below and bills against a different
+   quota — they overlapped on two blockers and each found one the
    other missed, for a few minutes of wall clock. Run the external one in this exact form, because the
-   two things that make it work are otherwise a file away and get paid for again:
+   three things that make it work are otherwise a file away and get paid for again:
 
    ```bash
-   timeout 900 vcodex exec -s read-only -m <model> -c model_reasoning_effort="medium" \
+   timeout 900 vcodex exec -s read-only -m gpt-5.6-luna -c model_reasoning_effort="high" \
      "<prompt naming absolute paths>" < /dev/null > /abs/path/round-N.txt 2>&1
    ```
+
+   **The model and the effort are PINNED per run, on the command line, never left to
+   `~/.codex/config.toml`.** `gpt-5.6-luna` at effort `high` is the external lens of a gate round, and
+   both halves are spelled out in the invocation for the same reason `freeze.json` stamps the `wf`
+   binary's version: a config edit moves the reviewer setup silently, and an unpinned run does not say
+   in its own command line what it ran as — a banked roster that cannot be read back to a setup prices
+   nothing. Effort is `high` rather than the config default because this is a gate reviewer, not a
+   producer: it is the one read nothing downstream re-checks, which is the routing section's own
+   trigger for raising effort, and the external lens bills outside the session's quota, so depth here
+   does not multiply against the round count the way the internal tier does. Bank it verbatim —
+   `wf round lens <prompt-file> -name N -model "external gpt-5.6-luna" -asks Q` — so a roster read a
+   gate later says which lens ran and at what depth.
 
    Redirect stdin or it blocks forever on "reading additional input"; write to a file, never pipe to
    `tail`, or progress is hidden and a hang looks like work; keep it read-only — a second opinion must
