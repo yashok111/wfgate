@@ -373,16 +373,34 @@ func noteCollapse(rs []Result) {
 		// tolerance would be calibrated on a population with no variance in it.
 		// The missing titles are NAMED, because "fewer phases" sends an operator
 		// to diff two runs by hand.
-		// `dead-reviews` is exempt, and the reason is the guard one screen up:
-		// that mode's shortfall is INJECTED by the runner, and the sibling check
-		// demands the verdict depend on the reviewers having run — so a script
-		// that reacts by HALTING is doing what it is told and was then refused
-		// for it. The other failure modes keep the check: there the narrowing is
-		// the script's own, and a red-bar abort that empties them is the defect
-		// the thirteenth wave banked, not a style.
-		if missing := missingPhases(basePhases, r.Phases); len(missing) > 0 && r.Mode != "dead-reviews" {
-			r.Violations = append(r.Violations, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here, so every section behind them, and every gate over those sections, ran ONLY in `%s` and no failure mode covers it",
-				r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode, baseMode))
+		// `dead-reviews` is exempt from the VIOLATION, and the reason is the
+		// guard one screen up: that mode's shortfall is INJECTED by the runner,
+		// and the sibling check demands the verdict depend on the reviewers
+		// having run — so a script that reacts by HALTING is doing what it is
+		// told and was then refused for it. The other failure modes keep the
+		// check: there the narrowing is the script's own, and a red-bar abort
+		// that empties them is the defect the thirteenth wave banked, not a
+		// style.
+		//
+		// Exempt from the violation is not exempt from being SAID. Measured on
+		// P3g: an abort guard that ended the run on any dead PRODUCER took
+		// `dead-reviews` to 11 of 14 phases — Gate 6, the acceptance step and
+		// Gate 7 exercised by nothing — while the mode printed `OK` and the run
+		// printed `7/7 modes completed`, because 16 agents clears the
+		// half-of-clean floor. A lens found it by reading the phase list by
+		// hand. The WARN is safe to ship because it paints nothing: across the
+		// seven gated scripts on disk and every OK fixture in testdata/,
+		// `dead-reviews` reaches its baseline's phase set EXACTLY — zero
+		// shortfalls — and the one revision carrying that abort guard is the
+		// only member of the corpus that produces one.
+		if missing := missingPhases(basePhases, r.Phases); len(missing) > 0 {
+			if r.Mode == "dead-reviews" {
+				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. This mode's shortfall can be the runner's own injection (a script that HALTS when a reviewer dies is doing what it is told), which is why it is not a failure; it can equally be an abort guard that ends the run wider than it meant to, and then every section behind those phases, and every gate over them, is covered by no failure mode",
+					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
+			} else {
+				r.Violations = append(r.Violations, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here, so every section behind them, and every gate over those sections, ran ONLY in `%s` and no failure mode covers it",
+					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode, baseMode))
+			}
 		}
 		if r.Spawned*2 >= base {
 			continue

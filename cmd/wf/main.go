@@ -43,6 +43,7 @@ const usage = `wf — gate harness
   wf init <name> -target <repo>   create a workspace (its own git repo)
   wf status                       manifest, round, dirty artifacts
   wf apply -f <edits>             all-or-nothing batch (JSON array or === text blocks), then commit
+  wf apply -whole <path>          adopt a file rewritten in the worktree: the diff IS the batch, and it is verified by NOTHING
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
   wf round record <file> [-round N]   fill a round's findings.md from a file (- reads stdin), validate closures, commit
@@ -248,16 +249,26 @@ func cmdApply(args []string) error {
 	dry := fs.Bool("dry-run", false, "plan and report, write nothing")
 	rule := fs.String("rule", "", "the [RN] rule this batch changes; the note then names the OTHER sites carrying it")
 	ruleAck := fs.Bool("rule-ack", false, "apply anyway when a declared [RN] rule has marked sites in files this batch does not write")
+	whole := fs.String("whole", "", "adopt <path> as it lies in the worktree: no block format, the diff against HEAD IS the batch")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *file == "" {
-		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]")
+	if *file == "" && *whole == "" {
+		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]\n       wf apply -whole <path> [-m msg] [-rule RN] [--dry-run]")
+	}
+	// The two are different acts, not two spellings of one: `-f` plans a batch
+	// and verifies it, `-whole` records a rewrite it did not watch. Taking both
+	// would have to pick which one the trailer describes.
+	if *file != "" && *whole != "" {
+		return fmt.Errorf("-f and -whole are exclusive: one plans a batch this command verifies, the other adopts a rewrite it did not")
 	}
 	ruleID, rulePhrase := parseRuleFlag(*rule)
 	w, err := open()
 	if err != nil {
 		return err
+	}
+	if *whole != "" {
+		return applyWhole(w, *whole, *msg, ruleID, rulePhrase, *dry)
 	}
 	var raw []byte
 	if *file == "-" {
@@ -421,6 +432,111 @@ func cmdApply(args []string) error {
 		return err
 	}
 	fmt.Printf("\ncommitted %s  (%d file(s))\n", short(sha), len(written))
+	return nil
+}
+
+// applyWhole adopts a file the operator rewrote in the worktree, as it lies.
+//
+// It exists because the meter LOSES a round otherwise. Measured on P3g: a
+// structural merge of two sections of one `.mjs` — two Go packages and a
+// function signature moving together — is forty-odd non-adjacent edits in a
+// single file, the operator applied it with `git commit`, and `wf freeze`
+// correctly reported that four of that gate's thirteen rounds contribute NO
+// edit count. The cost meter then priced the whole gate on rounds 2-8, and the
+// prediction every later round was handed came from a corpus those rounds did
+// not write.
+//
+// It does NOT pretend to be a batch. `wf apply -f` earns its name from two
+// properties — all-or-nothing, and a declared occurrence count per replacement —
+// and neither is available over a rewrite this command never saw being made.
+// That is stated in the output, in the commit, and in `wf stats`, because a
+// batch nothing verified printing in the register of one that was verified is
+// this project's single most repeated defect.
+//
+// The honest edit count is the number of HUNKS at `--unified=0`: the maximal
+// split git will report, which is the count of separate places the file
+// changed. Anything larger would be invented and anything smaller would price a
+// restructure as one edit.
+func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, dry bool) error {
+	// The same refusal `apply` and `add` have, for the same reason: a path
+	// argument written by an agent that has confused the workspace with the
+	// repository under review must be stopped here.
+	rel := arg
+	if filepath.IsAbs(arg) {
+		r, err := filepath.Rel(w.Root, arg)
+		if err != nil {
+			return fmt.Errorf("%s: not inside this workspace", arg)
+		}
+		rel = r
+	}
+	abs, key, err := apply.SafeJoin(w.Root, rel)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return fmt.Errorf("%s: %w", key, err)
+	}
+	// Tracked at HEAD, or this is not an adoption of a REWRITE. A file that is
+	// new to the workspace is `wf add`'s job, and routing it here would record
+	// a whole first draft as a round's edit count.
+	if tracked, _ := w.Git.Run("ls-files", "--", key); tracked == "" {
+		return fmt.Errorf("%s is untracked; `wf add` adopts a new artifact, `-whole` adopts a REWRITE of one already under review", key)
+	}
+	// --unified=0 and the forced prefixes for the reason `check drift` uses
+	// them: the parse must not depend on a host diff config.
+	raw, err := w.Git.Run("-c", "core.quotePath=false", "diff", "--no-renames", "--no-ext-diff",
+		"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "HEAD", "--", key)
+	if err != nil {
+		return err
+	}
+	hunks := 0
+	for _, l := range strings.Split(raw, "\n") {
+		if strings.HasPrefix(l, "@@ ") {
+			hunks++
+		}
+	}
+	// A batch that changes nothing is refused, exactly as `-f` refuses a
+	// replacement whose `old` equals its `new`: recording a round's edits from
+	// an unchanged file is the false green in the meter itself.
+	if hunks == 0 {
+		return fmt.Errorf("%s is byte-identical to HEAD — there is no rewrite to adopt, and an edit count taken from one would price a round that changed nothing", key)
+	}
+	changed := worktreeChangedLines(w, []string{key})
+	fmt.Printf("  %s: %d hunk(s), %d changed line(s) against HEAD\n", key, hunks, changed)
+	// The sentence `noteWholeArtifact` prints over a whole-file replacement,
+	// owed here for the same reason and always rather than over a threshold:
+	// this command's whole population IS that shape.
+	before, headErr := w.Git.Head()
+	src := "the artifact as it stood before this commit"
+	if headErr == nil {
+		src = fmt.Sprintf("`git show %s:%s`", short(before), key)
+	}
+	fmt.Printf("  note: this is an ADOPTION, not a verified batch — `wf apply -f` rejects a batch whole when one replacement misses and checks each declared occurrence count, and neither reaches a rewrite this command did not watch being made. A change inside it that silently did nothing is indistinguishable here from one that landed: byte-verify each against %s before recording a closure for it\n", src)
+	if dry {
+		fmt.Printf("\ndry run: %s would be committed as %d edit(s)\n", key, hunks)
+		return printRuleSpread(w, ruleID, rulePhrase, []string{key})
+	}
+	hist, authoringSkipped, republishedSkipped := batchHistory(w)
+	if note, warn := batchNote(hunks, changed, hist, authoringSkipped, republishedSkipped); warn {
+		fmt.Println(note)
+	}
+	if err := printRuleSpread(w, ruleID, rulePhrase, []string{key}); err != nil {
+		return err
+	}
+	subject := msg
+	if subject == "" {
+		subject = fmt.Sprintf("apply -whole: %s (%d hunk(s))", key, hunks)
+	}
+	// The trailer the meter reads, so the round is priced — and a SECOND line
+	// nothing the operator writes can erase either, so that what the meter
+	// counted can still be told apart from a batch this command verified.
+	body := subject + "\n\n" + fmt.Sprintf("- %s: adopted whole from the worktree, %d hunk(s), %d changed line(s)\n", key, hunks, changed)
+	body += fmt.Sprintf("\n%s %d edit(s) in 1 file(s)\n%s %s\n", applyTrailer, hunks, applyWholeTrailer, key)
+	sha, err := w.Git.Commit(body, []string{key})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("\ncommitted %s  (1 file(s))\n", short(sha))
 	return nil
 }
 
@@ -3241,6 +3357,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		rw := windows[n-1]
 		attributable, rng := rw.Attributable, rw.Range
 		batches, edits, lines, unknown := 0, 0, 0, 0
+		adopted := 0
 		if attributable {
 			for _, b := range applyBatches(w, rng) {
 				batches++
@@ -3248,6 +3365,9 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 				lines += b.Lines
 				if !b.Known {
 					unknown++
+				}
+				if b.Whole {
+					adopted++
 				}
 			}
 		} else {
@@ -3306,6 +3426,13 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 			// that changed a RULE runs 6.3-14.9, a separation the edit count
 			// cannot see.
 			ed = fmt.Sprintf(", %d edit(s) / %d changed line(s)", edits, lines)
+			// Said per round, where the ratio beside it is read. An adopted
+			// rewrite is priced exactly like a planned batch and was verified
+			// by nothing — the number is honest about cost and says nothing
+			// about whether each change inside it landed.
+			if adopted > 0 {
+				ed += fmt.Sprintf(" (%d ADOPTED whole, verified by no batch)", adopted)
+			}
 			if unknown > 0 {
 				// An unreadable batch is an unknown denominator, and a ratio
 				// over a denominator that is short by an unknown amount is not
@@ -4010,6 +4137,11 @@ func cmdDocs(args []string) error {
 // meter that stopped reading them would answer "0" for a different reason.
 const applyTrailer = "wf-apply:"
 
+// The second trailer, written only by `-whole`. The first makes the round
+// COUNT; this one keeps it distinguishable, because an adopted rewrite and a
+// verified batch are the same number about two different acts.
+const applyWholeTrailer = "wf-apply-whole:"
+
 var applySubjectRe = regexp.MustCompile(`^apply: (\d+) edit\(s\)`)
 var applyTrailerRe = regexp.MustCompile(`(?m)^` + applyTrailer + ` (\d+) edit\(s\)`)
 
@@ -4034,6 +4166,11 @@ type applyBatch struct {
 	Lines int
 	Known bool   // false when git could not be read: unknown, never zero
 	Src   string // trailer | subject | body — the third is INFERRED, and says so
+	// True for `wf apply -whole`: the edits are a diff this command adopted,
+	// not a batch it planned and verified. The count is real and the guarantee
+	// behind it is not, and a report that prints the two identically is the
+	// absent-measurement class one door over.
+	Whole bool
 }
 
 // applyBodyEdits counts the per-edit lines of an apply body, and ONLY when every
@@ -4275,7 +4412,7 @@ func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 			continue
 		}
 		lines, known := changedLines(w, c.SHA)
-		out = append(out, applyBatch{Edits: n, Lines: lines, Known: known, Src: src})
+		out = append(out, applyBatch{Edits: n, Lines: lines, Known: known, Src: src, Whole: strings.Contains(c.Msg, applyWholeTrailer+" ")})
 	}
 	return out
 }

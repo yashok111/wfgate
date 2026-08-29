@@ -213,7 +213,17 @@ modes: %s
 	// section is small: it groups by width, not by call site.
 	widths := wfdry.SchemaWidths(results)
 	if len(widths) > 0 {
-		fmt.Printf("\n=== schemas — %d distinct width(s), widest first ===\n", len(widths))
+		// The BAND in the header, on every run and not only when a width is in
+		// trouble. The two constants live in this binary and were printed only
+		// inside the WARN, so an operator under the ceiling read silence and
+		// could not tell "measured safe" from "not checked" — measured on P3g,
+		// which probed a 3,705-byte schema against a remembered ceiling of
+		// 3,378 and spent 24 seconds and 64k tokens re-measuring a width this
+		// binary already knew was below the widest acceptance on record. A
+		// shipped capability the report never mentions is a capability nobody
+		// has.
+		fmt.Printf("\n=== schemas — %d distinct width(s), widest first; corpus band: <=%d ACCEPTED, >=%d REFUSED, the gap UNMEASURED ===\n",
+			len(widths), wfdry.SchemaAccepted, wfdry.SchemaRefused)
 		for _, w := range widths {
 			if w.Clean < 0 || w.Widest < 0 {
 				fmt.Printf("  does not serialize: %s\n", strings.Join(w.Labels, ", "))

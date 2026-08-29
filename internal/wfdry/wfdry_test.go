@@ -1133,6 +1133,87 @@ func TestAModeThatSkipsAPhaseFailsEvenInsideTheAgentRatio(t *testing.T) {
 	}
 }
 
+// `dead-reviews` is exempt from the phase VIOLATION and not from being SAID.
+// Measured on P3g: an abort guard that ended the run on any dead PRODUCER ended
+// it on the reviewer this mode kills, so the mode reached 11 of 14 phases —
+// a gate, the acceptance step and the last gate exercised by nothing — while
+// printing OK, because 16 agents clears the half-of-clean floor. The banked
+// fixture is that shape at 6/2 clean against 3/1.
+func TestDeadReviewsPhaseShortfallIsANoteAndNotAViolation(t *testing.T) {
+	rs, err := Run(filepath.Join("..", "..", "testdata", "dead-halt.mjs"), Modes, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saw := false
+	for _, r := range rs {
+		if r.Mode != "dead-reviews" {
+			continue
+		}
+		saw = true
+		// A NOTE, because a script that halts when a reviewer dies is doing
+		// what the sibling check demands; the runner injected that death.
+		if !r.OK() {
+			t.Fatalf("the shortfall must not fail the mode, got %v", r.Violations)
+		}
+		for _, v := range r.Violations {
+			if strings.Contains(v, "never reached") {
+				t.Fatalf("the phase shortfall must not be a violation here, got %q", v)
+			}
+		}
+		note := ""
+		for _, n := range r.Notes {
+			if strings.Contains(n, "never reached") {
+				note = n
+			}
+		}
+		if note == "" {
+			t.Fatalf("the lost phase must be SAID, notes were %v", r.Notes)
+		}
+		// NAMED, because "fewer phases" sends an operator to diff two runs by
+		// hand — the same trade every other report in this tool makes.
+		if !strings.Contains(note, "`S2`") {
+			t.Errorf("the missing phase must be named, got %q", note)
+		}
+		// The MODE's name, because the tail deduplicates notes by their string.
+		if !strings.HasPrefix(note, "dead-reviews:") {
+			t.Errorf("the note must name its mode, got %q", note)
+		}
+		// The ratio must not be what caught it, or the fixture proves nothing.
+		for _, o := range r.Violations {
+			if strings.Contains(o, "exercised a fraction of the script") {
+				t.Errorf("the agent ratio fired too, so the phase note is untested here")
+			}
+		}
+	}
+	if !saw {
+		t.Fatal("dead-reviews did not run")
+	}
+}
+
+// The other half of the same guard, and the reason the note is safe to ship:
+// across the corpus on disk `dead-reviews` reaches its baseline's phase set
+// exactly, so a note that fired on a correct script would be `dup`'s own
+// 161-groups-of-176 lesson repeated. The passing fixtures stand in for that
+// population here.
+func TestDeadReviewsPhaseNoteDoesNotPaintACorrectScript(t *testing.T) {
+	for _, f := range []string{"clean.mjs", "section-collapse.mjs", "own-forbid.mjs"} {
+		rs, err := Run(filepath.Join("..", "..", "testdata", f), Modes, Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rs {
+			if r.Mode != "dead-reviews" {
+				continue
+			}
+			for _, n := range r.Notes {
+				if strings.Contains(n, "never reached") {
+					t.Errorf("%s: a script whose dead-reviews reaches every phase must produce no shortfall note, got %q", f, n)
+				}
+			}
+		}
+	}
+}
+
 // Distinct TITLES, never `len(r.Phases)`: a mode that runs one phase twice
 // reaches the same count having covered less, and the titles are what a reader
 // is being told were exercised.

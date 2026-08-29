@@ -89,6 +89,15 @@ check-tools: build
 	@if ./wfdry testdata/wide-schema.mjs --quiet >/dev/null 2>&1; then \
 		echo "wfdry wide-schema fixture: a width is a QUESTION — exit 0"; \
 	else echo "wfdry wide-schema fixture: a wide schema must not fail a mode; the corpus brackets the boundary and does not locate it"; exit 1; fi
+	@if ./wfdry testdata/clean.mjs --quiet 2>&1 | grep -q '=== schemas — .*corpus band: <=3974 ACCEPTED, >=4233 REFUSED'; then \
+		echo "wfdry schemas section: prints the corpus band on every run"; \
+	else echo "wfdry schemas section: the band the binary HOLDS is printed only when a width is already in trouble — one gate re-probed a schema it already knew was under the ceiling"; exit 1; fi
+	@if ./wfdry testdata/dead-halt.mjs --quiet >/dev/null 2>&1; then \
+		echo "wfdry dead-halt fixture: a dead-reviews shortfall is a QUESTION — exit 0"; \
+	else echo "wfdry dead-halt fixture: the mode whose shortfall the RUNNER injects must not fail; a script that halts on a dead reviewer is doing what it is told"; exit 1; fi
+	@./wfdry testdata/dead-halt.mjs --quiet 2>&1 | grep -q 'WARN: dead-reviews: never reached 1 phase — the phase(s) `S2`' \
+		&& echo "wfdry dead-halt fixture: NAMES the phase dead-reviews lost, at the tail" \
+		|| { echo "wfdry dead-halt fixture: an abort guard that ends the run wider than it meant to printed OK — 11 of 14 phases went unsaid on one gate and a lens found it by hand"; exit 1; }
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfcheck -root . .check-skel/skeleton.mjs >/dev/null \
 		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \

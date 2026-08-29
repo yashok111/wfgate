@@ -90,7 +90,12 @@ can drift apart from itself, and nothing here compares the copies.
    `wf check rules`, not `wf check stale`. Every settled decision lands in the draft as a numbered
    section, and a rule stated at more than one site carries a `[RN]` marker at every site while you
    are still writing it, because that markup is the only thing `wf check rules` can read and a corpus
-   carrying none compares nothing. Do NOT `wf add` the transcript: a derived document beside its
+   carrying none compares nothing. **A marker goes on a site that STATES the rule, never on one that
+   points at it.** "That is D3.1's rule", "forced by", "so X is satisfied by" — the natural instinct
+   is to mark every mention, and a sentence that merely refers to a rule states nothing and therefore
+   disagrees with every statement of it. The check reports those as conflicts and names the cause
+   under its output, which is one round too late to save the markup pass; the repair is to drop the
+   marker from the reference, never to reword the artifact until the check is quiet. Do NOT `wf add` the transcript: a derived document beside its
    source is measured noise (a derived context document yields 21 to 25 `dup` groups per one real
    contradiction) and every reviewer of every round would pay for it.
 
@@ -168,6 +173,14 @@ can drift apart from itself, and nothing here compares the copies.
    each change against `git show HEAD:<artifact>` before recording a closure for it — an assertion
    that a replacement MATCHED covers only the replacements somebody wrote, and a fix nobody wrote is
    silent in exactly the same way.
+
+   **A restructure you made by hand is adopted with `wf apply -whole <path>`, never with
+   `git commit`.** The command takes the file as it lies, prices the round from the diff's hunks, and
+   marks the commit as an ADOPTION so nothing later reads it as a batch the tool verified — the
+   guarantees are forfeited either way, and the difference is whether the round is priced at all.
+   Measured: one gate applied a structural merge of two script sections by hand, four of its thirteen
+   rounds then contributed no edit count, and the cost meter every later round was handed came from
+   the rounds that used the block format.
 
    Each replacement also declares how many occurrences it expects, and **that `count` is scoped to ONE
    file**: it catches a rule you believed appeared once in an artifact and that appears there twice. It
@@ -542,7 +555,16 @@ can drift apart from itself, and nothing here compares the copies.
    too: across the three correct gated scripts on disk the failure modes run WIDER than the happy path
    (36 against 44, 18 against 30, 15 against 25), so none of them trips it. `throw-serial` is exempt
    because it aborts AT the first spawn by construction, and so is `no-args`, which the runner narrows
-   on purpose. A run with no `clean` mode SAYS its baseline is a stand-in, and a single `--mode` run
+   on purpose. **The PHASE set is the additive half of the same question**: a mode that reaches every
+   phase but a fraction of the agents, and a mode that keeps its agent count while losing a whole
+   section, miss opposite shapes, so the runner compares the phase TITLES too and names the ones a
+   mode never reached. `dead-reviews` is the one mode where that shortfall is a WARN and not a
+   failure — the runner injected those deaths, so a script that HALTS on them is doing what the
+   sibling check demands — and the warning still has to be read: measured, an abort guard written for
+   a dead PRODUCER ended the run on any death at all, the mode reached 11 of 14 phases with a gate,
+   the acceptance step and the last gate exercised by nothing, and the agent count cleared the ratio
+   so every mode printed OK. Which of the two it is, is yours to answer; the runner's job is to stop
+   printing OK over the question. A run with no `clean` mode SAYS its baseline is a stand-in, and a single `--mode` run
    says nothing was compared at all — the case where the check used to disappear in silence. **A `clean` run that returns a not-green verdict FAILS the mode**, and so does one that
    returns a failure flag set: no fixture in that mode can produce either, so the script is deriving the
    verdict from something it should not. Measured — the shape it caught: a repair agent spawned only
@@ -1028,6 +1050,22 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
   every "at least N" there is an N, so the next degenerate report satisfied the new shape. **A guard
   over a report asks "is this what the document NAMES", never "does this look like enough".** When the
   signal fires, stop patching the guard and re-ask what it is for.
+
+  **The signal is the SECTION, not the blocker count.** A run of ones is one shape of it; the
+  general one is *the same artifact section produces a blocker in three consecutive rounds*, whatever
+  the round totals are. A later gate's rounds ran at 1, 4, 6 and 3 while one property was rewritten
+  in every one of them and produced a blocker in three, so nothing matching "a run of ones" fired and
+  the gate took four rounds to act on a signal that had been true since the second.
+
+  **Withdrawing the guard is one of the legitimate answers, and often the cheapest.** A property
+  whose subject is better read by an agent HOLDING THE DIFF belongs in the section gates, not in a
+  guard over the final report. Measured: that same property was a comment-freshness check, and it
+  took two defensible intermediate forms — a table of fragments, then a pair of fixed `rg` commands —
+  before withdrawal was obvious. Both failed the same way, which is the reusable half:
+  **a hand-written enumeration cannot be complete, and a fixed pattern is both incomplete and
+  over-complete against the same tree.** Those two `rg` commands missed the two claims the slice most
+  obviously falsified and printed two hits about nothing, and both halves were found by different
+  lenses in one round.
 4. **When the gate is done: `wf close`.** It writes the gate's own record into the workspace and
    commits it — the commit log as text (the timings that price every round live there and nowhere
    else), `wf stats -time` verbatim, the freeze manifests' surviving half, every FILE of every round
