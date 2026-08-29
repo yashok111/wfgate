@@ -563,6 +563,18 @@ because the thought is the form the failure arrives in.
    not a current pin, and silence over it would be the same absent measurement wearing a pass. Without it each new run's reviewers start from zero and re-discover
    `git add -N`. **Every round that finds a novel blocker appends one line to it.**
 
+   **Hand a lens the ARTIFACT and the CONTRACT, never the CONCLUSION it is meant to test.** A prompt
+   that carries the operator's own verdict — "this was fixed in `abc123`", "the acceptance section now
+   states observations", "this was verified last round" — is asking the reviewer to agree, and it
+   usually does. The delta brief is the deliberate exception and only for the vectors it belongs to:
+   the CLOSURE lens is handed the previous round's findings and their claimed closures BY
+   CONSTRUCTION, because judging whether a closure landed is its whole question. A FIX-INDUCED or
+   RIPPLE lens gets the diff and the rule, not the story of why the diff is right. The same applies to
+   a verification the previous round BANKED: it is a claim like any other, so the next round SAMPLES
+   it rather than inheriting it — measured on one gate, a round banked "ownership union exact at 33
+   files" while a thirty-fourth joined in the commit that banked it, and three of four such claims
+   held on spot-check, which is the ratio that keeps the habit and refuses the trust.
+
 Default = **3 reviewers, each a different vector** (round 1 only — see round discipline below):
 1. **Orchestration correctness & safety** — control flow is right: `pipeline()` vs `parallel()`-barrier choice justified; loop termination sound and every `while`-loop guards on `budget.total` (can't run to the 1000-agent cap); dedup-vs-`seen` correct; `schema` present on every structured return; stage args threaded; return shape sane; `.filter(Boolean)` after `parallel()`; no race on global `phase()` inside a fan-out (use `opts.phase`); `isolation:'worktree'` only when agents mutate files in parallel. ALSO enforce the **Workflow cost & context discipline** section: flag read-amplification (N producers each re-reading the whole corpus instead of working from a map + named slices), any large shared blob (>~10-20 KB) inlined into every fan-out agent, and run the total-agents × per-agent-read sanity estimate — a read-amplifying design is a BLOCKER (redesign before launch), not an advisory.
 2. **Model- and effort-routing conformance & tier fit** — the script obeys the model-routing section above: every `agent()` carries an explicit `model` AND an explicit `effort`, the model mirrored on its `meta.phases[]` entry for a single-tier phase and named in that entry's `detail` for a phase that deliberately mixes tiers (a mixed phase has one metadata slot and two models — do not report the absent mirror as a violation, and do not accept a phase flattened to one tier just to produce one). `effort` has NO metadata slot at all: a mixed-effort phase names its efforts in the `detail` string, and an absent `meta.phases[].effort` is never a finding — a MISSING per-call `effort` always is, because the omitted value is inherited from whichever session launches the run. Beyond that mechanical check, this reviewer ALWAYS judges tier fit and never rubber-stamps the author's choice — but reasons per *role*, not per call (a fan-out's N identical producers are ONE role, judged once; then spot-check that no individual call deviates from its role's tier). For each role, honestly weigh the assigned model's real capability against the task as written, then apply the routing tier-list:

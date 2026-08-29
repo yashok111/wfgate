@@ -869,6 +869,20 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       condition cannot be stated is not a refusal but a deferral, and it is filed as one. The same
       discipline is what makes a HALF-taken finding legible — say which half was taken and what the
       other half asserted, because the untaken half is what the next reviewer meets first.
+- [ ] **Reproduce a finding before you fix it, and say which of three answers you got.** CONFIRMED,
+      with the command and what it printed. NOT REPRODUCED, in which case it goes through the refusal
+      record above rather than into a fix. Or NOT ENOUGH DETAIL, which is a question for the lens that
+      filed it and not a licence to guess. Measured: one review round filed a red bar that did not
+      reproduce in four runs, two of them deliberately concurrent — it had been seen while ANOTHER
+      vector held the tree mutated mid-sweep, which is this toolchain's own banked trap, so the finding
+      was true of a tree nobody was reviewing. A fix written for a defect that was never reproduced
+      lands in the artifact anyway, and the next round reviews it.
+- [ ] **There is a floor under refusing, and it is checkable.** Two consecutive rounds in which lenses
+      filed substantive findings and NOT ONE was classified as actionable is a claim about the reader,
+      not about the artifact. The failure has the same shape as the one section D measures from the
+      other side — a criterion vector that never returns zero is a loop generator, and an operator who
+      never accepts a finding is its mirror. When the count hits that floor, say so out loud in the
+      round's own record and hand the next round a lens that was NOT the one being refused.
 - [ ] **Starting a script from a gated one copies its UNFOUND defects, so re-read that gate's ROUNDS
       FILE, not its code.** Measured: an A2 script built from a shipped A1 script inherited its harness
       verbatim, including a reviewer guard that tested `findings.length` instead of "does any finding
@@ -1010,6 +1024,19 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       "not measured", never as "none".
 - [ ] **Budget rounds, not perfection.** Reviewer COUNT descends (3 → 2 → 1); the round count does not cap.
       The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. The last phase needed four.
+- [ ] **A series that stops descending is a claim about the ARTIFACT'S SIZE, and running another
+      round is not the answer to it.** This is NOT a second termination clause and it does not touch
+      the rule above: the gate still ends where that rule says and nowhere else. It is what to do while
+      the rule has not fired. Measured on two gates: one ran eight reviewed rounds with no descent
+      while the section under review grew from 23 lines to 352 and absorbed a third of all growth in
+      the document; another ran four script rounds at 9, 3, 5, 5 blockers and was halted by the
+      operator rather than by any rule. In both, the round count was measuring the surface handed to
+      each reviewer, not the defect density in it. The move is to cut the surface — and the honest half
+      is that a cut is not a fix: on the gate that made one, the round REVIEWING the cut returned 4
+      blockers and 20 findings, 17 of them defects in the cut itself, so the cut moved the loop to a
+      cheaper place rather than ending it. Two rules already here govern what happens next: a scope cut
+      is an edit like any other and is reviewed like any other, and an acceptance section states
+      observations rather than test designs, which is what made that particular surface grow.
 
 - [ ] **When a finding names a CLASS, enumerate the class before fixing a member.** "Both of the
       accumulating terms", "every copy of this rule", "each of these prompts" — fixing the members the
