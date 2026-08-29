@@ -702,6 +702,14 @@ stopped here, not discovered by a commit in the wrong tree.
   is valuable because it is short enough for every reviewer to read. The tool
   may propose a line; a human must write it in — otherwise the file becomes a
   log and stops being a checklist.
+- **`CLAUDE.md` and `WAVES.md` carry NO `[RN]` marker.** A rule is STATED in
+  `skills/workflow-gate/references/` and in `README.md`; everything here talks
+  ABOUT rules, which by the check's own note is a pointer and disagrees with
+  every statement of the id it wears. Measured 2026-08-29: 15 markers across the
+  two files, every one of them narrative, producing 3 conflicts against a manual
+  that agrees with itself. Written `R2`, never in the bracket form the check scans for. Run
+  `wf check rules` over the manual AND these two files together when in doubt —
+  it must report the manual's own 9 marked sites and nothing else.
 - **A change under `skills/` or `hooks/` bumps `version` in
   `.claude-plugin/plugin.json`.** `claude plugin update` is VERSION-keyed —
   measured: it copies nothing when the declared version is the one already
@@ -812,7 +820,7 @@ the count looks right. Read the FAIL lines.
 workspace and runs the two checks that read prose over them. It exists because
 the checks that gate other people's artifacts had never been run over this
 repository's own, and on their first run they were RED: `wf check rules`
-reported 2 conflicts — `[R2]` and `[R3]` marked on POINTERS inside one README
+reported 2 conflicts — `R2` and `R3` marked on POINTERS inside one README
 command cell, which is the class the ninth wave banked a rule against, standing
 in the manual that ships the check. The rules half is a bar; the `dup` half is
 printed as a population and never fails, because a reference quoting a rule
