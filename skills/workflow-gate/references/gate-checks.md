@@ -158,6 +158,18 @@ becomes a wrong instruction that no downstream step questions.
       there were 781 (a bad search template over structured output); "17 of these responses are 204" (16
       were, one was a 200); "13 assertions in that file" (11); "this test asserts X twice" (zero — the
       pattern had matched an unrelated identifier).
+- [ ] **A claim that CONTRADICTS a banked measurement does not overturn it — the command is re-run,
+      and whichever survives is what stands.** A verdict inherits the weaker of the two warrants
+      behind it, so a sentence nobody has re-derived cannot displace a figure a command produced,
+      however confidently it is written and whoever wrote it. The failure is not hypothetical here and
+      it is not a reviewer's — it is the AUTHOR's, and it arrives as prose that reads like a summary:
+      a feedback file restating a closed gate's totals instead of re-running `wf stats`, a report
+      calling a shipped fix a regression, a wave copying a conclusion from the wave before it. Every
+      instance on record was settled the same way, by re-running the command, and in several of them
+      the CLAIM lost. So when the two disagree, do not weigh the wordings: re-run, quote what it
+      printed, and correct whichever side was wrong — the banked one has also been the loser. A claim
+      that cannot be re-derived at all says so, and then it is not evidence against a measurement; it
+      is a question for a round that can take one.
 - [ ] **A count is meaningless without its unit.** One document was legitimately "130 operations", "114
       schema-bearing primary variants" and "419 response variants". An agent handed the wrong unit
       silently narrows its work to match the number it was given.
