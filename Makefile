@@ -91,7 +91,10 @@ check-tools: build
 	else echo "wfdry wide-schema fixture: a wide schema must not fail a mode; the corpus brackets the boundary and does not locate it"; exit 1; fi
 	@if ./wfdry testdata/clean.mjs --quiet 2>&1 | grep -q '=== schemas — .*corpus band: <=3974 ACCEPTED, >=4233 REFUSED'; then \
 		echo "wfdry schemas section: prints the corpus band on every run"; \
-	else echo "wfdry schemas section: the band the binary HOLDS is printed only when a width is already in trouble — one gate re-probed a schema it already knew was under the ceiling"; exit 1; fi
+	else echo "wfdry schemas section: either the band the binary HOLDS is printed only when a width is already in trouble (one gate re-probed a schema it already knew was under the ceiling), or SchemaAccepted/SchemaRefused moved — a corpus update is a THREE-file edit: schema.go, its by-value assertions in schema_test.go, and this bar"; exit 1; fi
+	@./wfdry testdata/cyclic-schema.mjs --quiet 2>&1 | grep -q 'NONE of which serialize, so no width was measured' \
+		&& echo "wfdry cyclic-schema fixture: the band is NOT printed over a run where no width was measured" \
+		|| { echo "wfdry cyclic-schema fixture: a corpus band printed beside a population of zero measured widths — a measured-looking figure over an empty measurement"; exit 1; }
 	@if ./wfdry testdata/dead-halt.mjs --quiet >/dev/null 2>&1; then \
 		echo "wfdry dead-halt fixture: a dead-reviews shortfall is a QUESTION — exit 0"; \
 	else echo "wfdry dead-halt fixture: the mode whose shortfall the RUNNER injects must not fail; a script that halts on a dead reviewer is doing what it is told"; exit 1; fi

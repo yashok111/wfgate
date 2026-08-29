@@ -43,7 +43,7 @@ const usage = `wf — gate harness
   wf init <name> -target <repo>   create a workspace (its own git repo)
   wf status                       manifest, round, dirty artifacts
   wf apply -f <edits>             all-or-nothing batch (JSON array or === text blocks), then commit
-  wf apply -whole <path>          adopt a file rewritten in the worktree: the diff IS the batch, and it is verified by NOTHING
+  wf apply -whole <path> [-rule RN] [-rule-ack]   adopt a file rewritten in the worktree: the diff IS the batch, and it is verified by NOTHING
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
   wf round record <file> [-round N]   fill a round's findings.md from a file (- reads stdin), validate closures, commit
@@ -254,7 +254,7 @@ func cmdApply(args []string) error {
 		return err
 	}
 	if *file == "" && *whole == "" {
-		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]\n       wf apply -whole <path> [-m msg] [-rule RN] [--dry-run]")
+		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]\n       wf apply -whole <path> [-m msg] [-rule RN] [-rule-ack] [--dry-run]")
 	}
 	// The two are different acts, not two spellings of one: `-f` plans a batch
 	// and verifies it, `-whole` records a rewrite it did not watch. Taking both
@@ -268,7 +268,7 @@ func cmdApply(args []string) error {
 		return err
 	}
 	if *whole != "" {
-		return applyWhole(w, *whole, *msg, ruleID, rulePhrase, *dry)
+		return applyWhole(w, *whole, *msg, ruleID, rulePhrase, *ruleAck, *dry)
 	}
 	var raw []byte
 	if *file == "-" {
@@ -457,34 +457,68 @@ func cmdApply(args []string) error {
 // split git will report, which is the count of separate places the file
 // changed. Anything larger would be invented and anything smaller would price a
 // restructure as one edit.
-func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, dry bool) error {
+func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, dry bool) error {
 	// The same refusal `apply` and `add` have, for the same reason: a path
 	// argument written by an agent that has confused the workspace with the
 	// repository under review must be stopped here.
+	// An absolute path is normalised rather than refused — an agent writing one
+	// is the common case, and `SafeJoin` rejects every absolute path by
+	// construction. No error branch on `Rel`: both paths are absolute (`ws.Find`
+	// absolutises the root), and `Rel` of two absolute paths cannot fail — it
+	// returns `../…`, which SafeJoin then refuses by name. A guard nothing can
+	// make fail was deleted here rather than shipped, after a mutation sweep
+	// proved it unreachable.
 	rel := arg
 	if filepath.IsAbs(arg) {
-		r, err := filepath.Rel(w.Root, arg)
-		if err != nil {
-			return fmt.Errorf("%s: not inside this workspace", arg)
-		}
+		r, _ := filepath.Rel(w.Root, arg)
 		rel = r
 	}
 	abs, key, err := apply.SafeJoin(w.Root, rel)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(abs); err != nil {
+	// Under `artifacts/`, because the number this command exists to record is a
+	// round's edits to a REVIEWED document. `wf apply -whole gate.json` is
+	// otherwise accepted and prices the workspace's own bookkeeping into the
+	// cost meter — the same boundary `wf add` draws, for the same reason.
+	if key != "artifacts" && !strings.HasPrefix(key, "artifacts"+string(filepath.Separator)) {
+		return fmt.Errorf("%s is not under artifacts/; `-whole` prices a round's edits to a reviewed artifact, and the workspace's own bookkeeping is not one", key)
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
 		return fmt.Errorf("%s: %w", key, err)
+	}
+	// ONE regular file. A directory passes every other check in this function —
+	// `ls-files -- <dir>` lists its children, `git diff HEAD -- <dir>` counts
+	// their hunks, and `Commit` stages the whole tree — so `-whole artifacts/`
+	// would adopt every artifact in the workspace under a report saying
+	// `1 file(s)`. The command's whole contract is that ONE rewritten file is
+	// being priced.
+	if !st.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file; `-whole` adopts ONE rewritten artifact, and a directory would be committed whole under a report naming one file", key)
 	}
 	// Tracked at HEAD, or this is not an adoption of a REWRITE. A file that is
 	// new to the workspace is `wf add`'s job, and routing it here would record
 	// a whole first draft as a round's edit count.
-	if tracked, _ := w.Git.Run("ls-files", "--", key); tracked == "" {
-		return fmt.Errorf("%s is untracked; `wf add` adopts a new artifact, `-whole` adopts a REWRITE of one already under review", key)
+	//
+	// `ls-tree HEAD`, never `ls-files`: the latter reads the INDEX, so an
+	// operator who had already run `git add` on a brand-new file passed this
+	// guard and had the first draft priced as a round's edits — the exact case
+	// the refusal exists for, defeated by a command the operator ran for an
+	// unrelated reason.
+	if tracked, _ := w.Git.Run("ls-tree", "HEAD", "--", key); strings.TrimSpace(tracked) == "" {
+		return fmt.Errorf("%s is not in HEAD; `wf add` adopts a new artifact, `-whole` adopts a REWRITE of one already under review", key)
 	}
 	// --unified=0 and the forced prefixes for the reason `check drift` uses
 	// them: the parse must not depend on a host diff config.
-	raw, err := w.Git.Run("-c", "core.quotePath=false", "diff", "--no-renames", "--no-ext-diff",
+	// `diff.interHunkContext` is pinned for the reason `gitx` pins the diff
+	// ALGORITHM: the edit count must not depend on what the host's `~/.gitconfig`
+	// happens to carry. Measured — two changes three lines apart report 2 hunks
+	// at the default and 1 under `interHunkContext=1`, so an operator's config
+	// would halve a round's recorded edits and nothing in the output would say
+	// so.
+	raw, err := w.Git.Run("-c", "core.quotePath=false", "-c", "diff.interHunkContext=0",
+		"diff", "--no-renames", "--no-ext-diff",
 		"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "HEAD", "--", key)
 	if err != nil {
 		return err
@@ -499,9 +533,24 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, dry bool) 
 	// replacement whose `old` equals its `new`: recording a round's edits from
 	// an unchanged file is the false green in the meter itself.
 	if hunks == 0 {
+		// A BINARY file reports `Binary files a/x and b/x differ` and no `@@`
+		// line at all, so the hunk count is zero over a file that was rewritten
+		// end to end — and the refusal used to assert it was unchanged. The
+		// direction is right and the sentence was false, which is worse than no
+		// message: an operator acts on it.
+		if strings.Contains(raw, "\nBinary files ") || strings.HasPrefix(raw, "Binary files ") {
+			return fmt.Errorf("%s is BINARY as far as git is concerned, so it has no hunks to count and this command cannot price it; gate artifacts are text by workflow rule, and a binary one is a question about the artifact, not about the adoption", key)
+		}
 		return fmt.Errorf("%s is byte-identical to HEAD — there is no rewrite to adopt, and an edit count taken from one would price a round that changed nothing", key)
 	}
-	changed := worktreeChangedLines(w, []string{key})
+	// Against HEAD, not against the INDEX. `worktreeChangedLines` is the
+	// post-write measurement `wf apply -f` takes, where the batch it just wrote
+	// is unstaged by construction; here the operator rewrote the file by hand
+	// and may well have staged it already, and then the unstaged diff is EMPTY —
+	// the round would be priced `N hunk(s), 0 changed line(s)`, with a zero
+	// denominator reaching the cost meter. Measured: after `git add`, two
+	// changed lines read as zero while the hunk count against HEAD stayed 2.
+	changed := changedLinesAgainstHead(w, key)
 	fmt.Printf("  %s: %d hunk(s), %d changed line(s) against HEAD\n", key, hunks, changed)
 	// The sentence `noteWholeArtifact` prints over a whole-file replacement,
 	// owed here for the same reason and always rather than over a threshold:
@@ -515,6 +564,26 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, dry bool) 
 	if dry {
 		fmt.Printf("\ndry run: %s would be committed as %d edit(s)\n", key, hunks)
 		return printRuleSpread(w, ruleID, rulePhrase, []string{key})
+	}
+	// The `-rule` refusal, BEFORE the commit and on the same terms as `-f`.
+	// It was a print-only note here for one revision, and a divergence in the
+	// guards two spellings of one command offer is a specification defect by
+	// this repository's own rule: the reason the refusal exists — a note
+	// arrives after the round has already spent its edit — is not weaker for a
+	// restructure, it is stronger, because a restructure is the batch most
+	// likely to move a rule.
+	if miss, err := unwrittenRuleSites(w, ruleID, []string{key}); err != nil {
+		return err
+	} else if len(miss) > 0 && !ruleAck {
+		fmt.Fprintf(os.Stderr, "\nadoption REFUSED — nothing was committed. [%s] is marked in %d file(s) this adoption does not write:\n", ruleID, len(miss))
+		for _, m := range miss {
+			fmt.Fprintf(os.Stderr, "  %s\n", m)
+		}
+		fmt.Fprintf(os.Stderr, "Visit them, or re-run with -rule-ack to say they are correct as they stand.\n")
+		if err := printRuleSpread(w, ruleID, "", []string{key}); err != nil {
+			return err
+		}
+		return errFindings
 	}
 	hist, authoringSkipped, republishedSkipped := batchHistory(w)
 	if note, warn := batchNote(hunks, changed, hist, authoringSkipped, republishedSkipped); warn {
@@ -4142,6 +4211,13 @@ const applyTrailer = "wf-apply:"
 // verified batch are the same number about two different acts.
 const applyWholeTrailer = "wf-apply-whole:"
 
+// Anchored at the start of a LINE, never a substring search over the message:
+// an adopted artifact whose own text quotes the trailer — this repository's
+// README documents it — would otherwise mark a verified batch as an adoption,
+// which is the defect `applyCommitEdits` already defends against one screen up
+// by reading the LAST match rather than the first.
+var applyWholeRe = regexp.MustCompile(`(?m)^` + applyWholeTrailer + ` `)
+
 var applySubjectRe = regexp.MustCompile(`^apply: (\d+) edit\(s\)`)
 var applyTrailerRe = regexp.MustCompile(`(?m)^` + applyTrailer + ` (\d+) edit\(s\)`)
 
@@ -4412,7 +4488,7 @@ func applyBatches(w *ws.Workspace, rng string) []applyBatch {
 			continue
 		}
 		lines, known := changedLines(w, c.SHA)
-		out = append(out, applyBatch{Edits: n, Lines: lines, Known: known, Src: src, Whole: strings.Contains(c.Msg, applyWholeTrailer+" ")})
+		out = append(out, applyBatch{Edits: n, Lines: lines, Known: known, Src: src, Whole: applyWholeRe.MatchString(c.Msg)})
 	}
 	return out
 }
@@ -4662,6 +4738,24 @@ func worktreeChangedLines(w *ws.Workspace, paths []string) int {
 	if err != nil {
 		return 0
 	}
+	return sumNumstat(out)
+}
+
+// changedLinesAgainstHead is the same quantity taken from the other end: what
+// the file holds now against what the last commit holds, staged or not. `wf
+// apply -whole` needs this one because the operator's rewrite may already be in
+// the index, and the worktree-vs-index diff is then empty.
+func changedLinesAgainstHead(w *ws.Workspace, path string) int {
+	out, err := w.Git.Run("diff", "--numstat", "HEAD", "--", path)
+	if err != nil {
+		return 0
+	}
+	return sumNumstat(out)
+}
+
+// sumNumstat is the ONE reading of `--numstat`, because two derivations of one
+// number is this project's most repeated defect class.
+func sumNumstat(out string) int {
 	n := 0
 	for _, l := range strings.Split(out, "\n") {
 		f := strings.Fields(l)

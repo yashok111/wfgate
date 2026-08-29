@@ -6,7 +6,7 @@ command reference — every flag, every report line, worked examples; go there
 first for "how do I run a round". `skills/workflow-gate/references/` is the
 OPERATING MANUAL, which is judgement and is what gate agents are briefed from;
 this repository is the mechanics. `WAVES.md` is the maintenance record for
-waves 2 to 15, and `IDEAS.md` holds the queue and the do-not-build list with the
+waves 2 to 16, and `IDEAS.md` holds the queue and the do-not-build list with the
 measurement that closed each entry.
 
 The `wf` CLI: the bookkeeping of a review gate. A gate's workspace is a git
@@ -254,7 +254,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 15 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 16 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The split
 (2026-08-29) moved the text byte-identical; nothing was rewritten, and every
@@ -486,8 +486,12 @@ over 1131 changed lines, 8.1 h by its own `wf stats -time`, median round
 19.6 min, two artifacts — a decision document gated for eight rounds at
 4 -> 1 -> 4 -> 6 -> 3 -> 2 -> 0 -> 0, then the orchestration script for five
 more at 8 -> 5 -> 1 -> 0 -> 0, both halves closed on the stop rule, and the run
-launched from `gate-r13`). It is the first gate whose script was scaffolded by
-`wf new-script` rather than copied from a previous one. Four of its numbers do
+launched from `gate-r13` — **it came back green**: 26 agents, 0 errors,
+4 h 27 min, 4.69 M subagent tokens over 1532 tool calls, `green: true` on all
+ten verdict terms, HEAD never moved, 22 files changed at +2991/-493, and every
+bar re-run BY HAND afterwards including `make smoke` at 155 PASS). It is the
+first gate whose script was scaffolded by `wf new-script` rather than copied
+from a previous one. Four of its numbers do
 not survive its own workspace and are corrected here rather than repeated: the
 feedback says 105 findings against the command's **106** (its script half is 41,
 not 40), splits the fix-induced blockers 8/4 where `wf stats` says **10/2** (the
@@ -517,12 +521,13 @@ before a line was written:
   exercised by nothing — while printing `OK` and `7/7`, because 16 agents clears
   the half-of-clean floor. It is a WARN now, not a failure, naming the phases:
   the exemption is right and silence was not. Safe to ship because it paints
-  nothing — reproduced over the seven gated scripts on disk and every OK fixture
-  in `testdata/`, `dead-reviews` reaches its baseline's phase set EXACTLY on all
-  twenty, and the only member of the corpus that produces a shortfall is the
-  revision carrying that guard (`gate-r11`, which the new WARN names as
+  nothing — re-measured 2026-08-30 over the TEN gate scripts on disk (the three
+  P2 workspaces carry one each and were missed by a first count that said seven)
+  and all fourteen `testdata/` fixtures: of those twenty-four files the only
+  shortfall is the fixture written to produce one, and the twenty-fifth reading
+  is the `gate-r11` revision carrying that guard, which the new WARN names as
   `Gate 6`, `Accept`, `Gate 7` — the three a lens found by reading the phase
-  list by hand). `testdata/dead-halt.mjs` is that shape banked at 6 agents over
+  list by hand. `testdata/dead-halt.mjs` is that shape banked at 6 agents over
   2 phases clean against 3 over 1.
 - *`wf check closure` already checks the LINE, and the finding named none* —
   the feedback reports a claimed fix that changed nothing riding through on a
@@ -538,7 +543,15 @@ before a line was written:
   into the reviewed tree gives 12 of 55, and additionally requiring the token to
   exist in the artifact before the fix gives 10 of 51, because a decision
   document QUOTES the code it is about, so a target identifier lives in both
-  trees. Nine false for one true is `dup`'s 161-groups-of-176 lesson.
+  trees. Nine false for one true is `dup`'s 161-groups-of-176 lesson. Those
+  three pairs are ONE reading of "quotes a token" — every backticked span of 3
+  to 60 characters, a row counted closed when ANY of its tokens appears in any
+  closing commit's added or removed lines — and the rule is written down because
+  a review vector re-derived four other readings, landed on none of these pairs,
+  and got 9 to 27 flagged over populations of 52 to 75. The DECISION is stable
+  across every reading (13% to 36% of rows flagged for the one real defect); the
+  numbers are not, and a measurement nobody else can re-derive is held to a
+  lower standard than this file applies to everyone else.
 - *`wf apply -whole`, because the METER lost four rounds of thirteen* — the one
   proposal that was a real gap. A structural merge of two script sections is
   forty-odd non-adjacent edits in one file; it was applied with `git commit`,
@@ -553,6 +566,85 @@ before a line was written:
   says so on every run, a second trailer records the act, and `wf stats` prints
   `(N ADOPTED whole, verified by no batch)` beside the round's ratio. A number
   that is honest about COST and silent about verification must say which it is.
+- *The run's own residue is one manual rule, and it is about an assertion
+  nothing can check* — the launch's five findings were one class, the class the
+  gate's D12.3 had deliberately WITHDRAWN from the acceptance list and handed to
+  the section gates, and the gates did find them: three real, all of them a
+  comment that survived the change it describes, filed MINOR and carried. What
+  the design does not close is that a MINOR carried out of a run is a MINOR
+  nobody fixes unless a human does. The one worth a rule is the FALSE finding:
+  the acceptance step reported that a discriminating test "does not exist
+  anywhere in" a package, and it existed — written by that same run, named after
+  exactly what it discriminates. The step is read-only and its report is the one
+  artifact nothing downstream re-executes; a property reported MET carries
+  evidence a later gate judges, and a claim that something is ABSENT carries
+  none. So `authoring.md` now requires such a finding to name the COMMAND whose
+  empty output it read. The run also fired its conditional re-measurement
+  (`remeasured: true`), which is the third consecutive launch where the
+  mechanism P3d's gate argued into existence against no evidence but the corpus
+  decided what the verdict was measured over.
+
+- *And the wave earned its review round, for the thirteenth time running, and
+  the flagship command was the whole of it* — one external model over the diff,
+  then two Opus vectors (Go correctness with a mutation sweep in an ISOLATED
+  WORKTREE, and claims/specification), against five green bars. Between them:
+  **no blocker, nine majors and eight wrong numbers**, and every code finding
+  landed on `wf apply -whole`, the one thing this wave built rather than
+  corrected. Two of them are ONE root cause through two doors: the command asked
+  git about the INDEX where it meant HEAD. `ls-files` reported a brand-new file
+  TRACKED once the operator had run `git add`, so the "that is `wf add`" refusal
+  was defeated by a command run for an unrelated reason and a first draft was
+  priced as a round's edits; and `worktreeChangedLines` — correct for `-f`,
+  which writes its own files unstaged — returns the worktree-against-index diff,
+  so a rewrite the operator had already staged read `0 changed line(s)` beside a
+  hunk count of 2, the commit body recorded that zero forever, and `batchNote`
+  went silent on the one run the command exists for. Both are read from HEAD
+  now, and `sumNumstat` is the single parse both callers share. Three more:
+  a DIRECTORY passed every check and would have been committed whole under a
+  report saying `1 file(s)`; the `Whole` marker was an unanchored
+  `strings.Contains` over a message that carries the artifact's own text, which
+  is the defect `applyCommitEdits` defends against twenty lines above and is now
+  an anchored regex; and `diff.interHunkContext` was unpinned, so a host config
+  of 3 merges two changes four lines apart into ONE hunk and halves a round's
+  recorded edits — pinned for the reason `gitx` pins the diff ALGORITHM. The
+  worst by consequence was a guard that DIVERGED between two spellings of one
+  command: `-rule` refused a batch under `-f` and merely printed under `-whole`,
+  with `-rule-ack` accepted and ignored — the reason the refusal exists is
+  stronger for a restructure, not weaker. Two smaller ones were taken as
+  written: a BINARY artifact rewritten end to end has no `@@` line, so the
+  refusal asserted it was unchanged, and the corpus band printed over a run
+  where every schema was unserialisable — a measured-looking figure beside an
+  empty measurement, in the header added to remove a different instance of it
+  (`testdata/cyclic-schema.mjs` banks it). One guard was DELETED rather than
+  shipped unproven: `filepath.Rel` of two absolute paths cannot fail, and its
+  error branch survived every mutation. **Eleven guards survived the sweep and
+  eight got the case they lacked** — the `os.Stat` refusal (without it a
+  tracked-but-DELETED artifact is adopted as its own removal), the
+  absolute-path normalisation, the cost-meter note, `-m`, the `artifacts/`
+  boundary, the binary refusal, the band's own population gate, and a by-value
+  assertion on both commit trailers, which are a WIRE FORMAT that writer and
+  reader both derive from the symbol — the sixteenth wave's banked
+  `4233 -> 4589` class, one constant over. Two of the first tests written did
+  NOT reach their own condition and were rewritten until they failed: the
+  trailer text never entered the commit MESSAGE, and the host git config the
+  interHunkContext pin defends against was blanked by the test harness itself.
+  Of the eight wrong numbers, the sharpest is P3e's commit count — this file
+  said 128 where the workspace says **131**, inherited from the wave before by
+  the very bullet whose next sentence reads "Re-count them; do not inherit the
+  number", and 128 was correct only before P3e's run round was filled. Also:
+  the maintenance record was called "waves 2 to 15" at TWO sites after the
+  sixteenth moved into it (`count: 2`, exactly); the paint denominator said
+  seven gate scripts where the disk holds TEN (the three P2 workspaces were
+  missed) and "all twenty" for what is twenty-four files; the token measurement
+  banked three pairs no independent reading reproduces, so the reading is
+  written down beside them now; P3e was still called "the newest"; and the
+  cost meter's window was blamed entirely on hand-edited rounds when two of the
+  seven are excluded by a rule no command changes. One external finding was
+  REFUTED with the code: a `dead-reviews` mode that spawned NOTHING gets no
+  phase note, and it does not need one — the zero-spawn VIOLATION already
+  refuses that run, and a second report of one fact is what the neighbouring
+  comment refuses by name.
+
 - *Three findings changed the MANUAL, not the tool* — **a section boundary is a
   COMPILATION boundary**, not a subject boundary (`section-gate.md`): one Go
   package was split across two sections two phases apart because the two
@@ -795,18 +887,22 @@ fixtures for the non-ASCII anchor detector).
   changed lines, 8.1 h, median round 19.6 min, over TWO artifacts — a decision
   document gated for eight rounds and an orchestration script for five, both
   halves closed on the stop rule, and the run launched from `gate-r13` with
-  `wfcheck` 0/0, `wfdry` 7/7 and `wf verify` clean. It is the first gate whose
-  script was scaffolded by `wf new-script`, and the skeleton was `wfcheck`-clean
+  `wfcheck` 0/0, `wfdry` 7/7 and `wf verify` clean, and the run came back GREEN
+  on all ten verdict terms — 26 agents, 0 errors, 4 h 27 min, 4.69 M tokens,
+  22 files at +2991/-493, every bar re-run by hand afterwards. It is the first
+  gate whose script was scaffolded by `wf new-script`, and the skeleton was `wfcheck`-clean
   and `wfdry` 7/7 as emitted and stayed that way — while all THREE harness edits
   its operator made were wrong on the first attempt, each caught by `wfdry` or a
   lens and none by reasoning, which is the manual's frozen-harness rule measured
   rather than argued. Its fix-induced share is 25 of 106 findings and 12 of 34
   blockers (35.3%), triangulating with P3c's 34%, P3d's 35% and P3e's 43.5%. Its
-  cost meter prices only rounds 2-8 because four rounds were applied by hand —
-  the gap `wf apply -whole` now closes. Its workspace is on disk and unpruned,
+  cost meter prices only rounds 2-8, for TWO reasons and not one: rounds 10-13
+  were applied by hand, which `wf apply -whole` now closes, and rounds 1 and 9
+  are excluded by the rule that a window ADDING an artifact prices a corpus its
+  batches did not write, which no command changes. Its workspace is on disk and unpruned,
   and it is what the `dead-reviews` phase note was validated against.
 - **TEN real gates ran entirely through `wf` before it,** and P3e
-  (`FEEDBACK-p3e.md`, `~/projects/gates/mocker-p3e-nested`) is the newest: 14
+  (`FEEDBACK-p3e.md`, `~/projects/gates/mocker-p3e-nested`) is the one before: 14
   rounds by its own `wf stats`, 193 findings, 46 blockers, 183 edits over 2535
   changed lines, over TWO artifacts — a decision document, 1323 -> 2091 lines
   over nine rounds, and an orchestration script gated for four more. Its
@@ -924,7 +1020,9 @@ fixtures for the non-ASCII anchor detector).
   `~/projects/gates/mocker-a3-cas`, `mocker-p3a-resources`,
   `mocker-p3b-resources`, `mocker-p3c-ref-recipe`, `mocker-p3d-datasnap`,
   `mocker-p3e-nested`, `mocker-p3g-deep-nesting` (153 / 203 / 247 / 82 / 173 /
-  128 / 117 commits, all counts verified 2026-08-29). This
+  131 / 117 commits, all counts re-derived 2026-08-30 — 128 stood here for one
+  wave and was the count BEFORE P3e's run round was filled, inherited by the
+  next wave from the bullet whose own next sentence says not to). This
   bullet listed three of them for three waves, which is why a census that called
   itself complete missed A3 entirely — and it then listed SIX for one more wave,
   which is why the fifteenth wave's own closure census said "six workspaces"

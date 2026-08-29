@@ -242,4 +242,13 @@ cell separator, and never put a `|` inside a regex in a table cell: GNU `grep -E
 LITERAL pipe, so the alternation matches nothing and the command prints `0` and exits 1. That is the
 dangerous half — six other rows carrying `\|` in the same table failed LOUDLY (`sed: invalid option`),
 and only the two inside a regex returned a plausible number, on an acceptance step whose whole job is
-re-deriving numbers. Put such commands in a fenced block, or write the alternation without a pipe.
+re-deriving numbers.
+
+**An acceptance finding of the form "X does not exist" must name the COMMAND whose empty output it
+read.** A property reported met carries its evidence and a later gate judges that evidence; a claim
+that something is ABSENT carries none, and the acceptance step is read-only, so its report is the one
+artifact in the pipeline nothing downstream re-executes. Measured on a green run: the step reported
+that a discriminating test "does not exist anywhere in" a package, and the test existed — written by
+that same run, named after exactly what it discriminates, stating its own mutation in its own doc
+comment. Nothing caught it, because there was nothing to catch: an absence with no command behind it
+cannot be reproduced or refuted. With the command in the finding, both are one paste away. Put such commands in a fenced block, or write the alternation without a pipe.

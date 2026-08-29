@@ -388,11 +388,13 @@ func noteCollapse(rs []Result) {
 		// Gate 7 exercised by nothing — while the mode printed `OK` and the run
 		// printed `7/7 modes completed`, because 16 agents clears the
 		// half-of-clean floor. A lens found it by reading the phase list by
-		// hand. The WARN is safe to ship because it paints nothing: across the
-		// seven gated scripts on disk and every OK fixture in testdata/,
-		// `dead-reviews` reaches its baseline's phase set EXACTLY — zero
-		// shortfalls — and the one revision carrying that abort guard is the
-		// only member of the corpus that produces one.
+		// hand. The WARN is safe to ship because it paints nothing: over the ten
+		// gate scripts on disk and all fourteen testdata/ fixtures — twenty-four
+		// files, re-counted after a first pass said seven and missed the three
+		// P2 workspaces — `dead-reviews` reaches its baseline's phase set
+		// EXACTLY everywhere but the fixture written to produce a shortfall, and
+		// the one revision carrying that abort guard is the only other reading
+		// that produces one.
 		if missing := missingPhases(basePhases, r.Phases); len(missing) > 0 {
 			if r.Mode == "dead-reviews" {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. This mode's shortfall can be the runner's own injection (a script that HALTS when a reviewer dies is doing what it is told), which is why it is not a failure; it can equally be an abort guard that ends the run wider than it meant to, and then every section behind those phases, and every gate over them, is covered by no failure mode",

@@ -222,8 +222,22 @@ modes: %s
 		// binary already knew was below the widest acceptance on record. A
 		// shipped capability the report never mentions is a capability nobody
 		// has.
-		fmt.Printf("\n=== schemas — %d distinct width(s), widest first; corpus band: <=%d ACCEPTED, >=%d REFUSED, the gap UNMEASURED ===\n",
-			len(widths), wfdry.SchemaAccepted, wfdry.SchemaRefused)
+		// The band prints only where a width was actually measured. A run whose
+		// every schema is unserialisable renders each as `does not serialize`,
+		// and a band printed over that population is a measured-looking number
+		// beside nothing measured — this project's single most repeated defect.
+		priced := 0
+		for _, w := range widths {
+			if w.Clean >= 0 && w.Widest >= 0 {
+				priced++
+			}
+		}
+		if priced > 0 {
+			fmt.Printf("\n=== schemas — %d distinct width(s), widest first; corpus band: <=%d ACCEPTED, >=%d REFUSED, the gap UNMEASURED ===\n",
+				len(widths), wfdry.SchemaAccepted, wfdry.SchemaRefused)
+		} else {
+			fmt.Printf("\n=== schemas — %d distinct width(s), NONE of which serialize, so no width was measured and the corpus band says nothing about this run ===\n", len(widths))
+		}
 		for _, w := range widths {
 			if w.Clean < 0 || w.Widest < 0 {
 				fmt.Printf("  does not serialize: %s\n", strings.Join(w.Labels, ", "))

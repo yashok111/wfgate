@@ -60,6 +60,12 @@ import (
 // tool WARNed on the widest schema of the one run in this corpus that came back
 // 44 of 44. One quantity computed, another calibrated.
 const (
+	// Updating either constant is a THREE-file edit: here, the assertions in
+	// schema_test.go that pin them by value (the sixteenth wave measured that
+	// every other test builds its fixtures from the symbols, so a mutation of
+	// the numbers survived the whole suite), and the `check-tools` bar in the
+	// Makefile that greps the band out of the printed header.
+	//
 	// SchemaAccepted is the widest CLEAN width this corpus has seen accepted.
 	// It is the HIGHEST acceptance on record and moves UP as one is measured,
 	// exactly as SchemaRefused is the LOWEST refusal and moves down.
