@@ -783,3 +783,43 @@ func TestCheckClosure_doesNotShiftWhenTheFreezeCameAfterTheFix(t *testing.T) {
 		t.Fatalf("the citation is mappable; the freeze simply moved:\n%s", out)
 	}
 }
+
+// An INVERTED span is the start line and nothing else, all the way through the
+// check and not only in the parser: widening it to cover both readings would
+// answer a question about a region the author did not write, and `check cite`
+// already reports that shape as an error of its own.
+func TestCheckClosure_anInvertedSpanIsItsStartLineAndNoMore(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	grow := filepath.Join(tmp, "grow.txt")
+	write(t, grow, "=== artifacts/decisions.md  count=1  note=a document with room in it\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"L3\nL4\nL5\nL6\nL7\nL8\nL9\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", grow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	// The commit changes line 4, which is inside the span read BACKWARDS and
+	// outside the one the check may act on.
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=line 4\n"+
+		"<<<<\nL4\n====\nL4 (fixed)\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md:8-4 states it wrongly | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	if !errors.Is(err, errFindings) {
+		t.Fatalf("want a finding, got %v\n%s", err, out)
+	}
+	mustContain(t, out, "but not line 8")
+}
