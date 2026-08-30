@@ -56,7 +56,17 @@ never edited, by anyone. `scripts/install.sh` is the one-command bootstrap
 for any machine — `make install` for what a plugin cannot carry (the three
 built binaries), `claude plugin` for the rest; it also
 removes the retired `~/.claude/skills/workflow-gate` and
-`~/.claude/workflow-*.md` symlinks. Before consolidation, 866 lines of
+`~/.claude/workflow-*.md` symlinks.
+**An installed plugin is a RAW COPY of the source tree whose only exclusion is
+`.git`** — `.gitignore` is not consulted, measured 2026-08-30 by comparing the
+cache against the clone: 33 top-level entries against 34. Because this repo's
+ROOT is the plugin, the three freshly built binaries rode into every cached
+version: 36 MB of each 39 MB directory, and `claude plugin update` keeps every
+superseded version forever, so 37 releases had accumulated **1.2 GB** for a
+skill and two hooks that weigh 300 KB. `install.sh` now runs `make clean`
+before the plugin step and prunes every cache version but the one it just
+installed. Neither is a Makefile change: `make install` is also run alone by
+somebody who wants `./wf` to stay. Before consolidation, 866 lines of
 gate-guarding tooling and both specs had no version control at all, and the
 P2e false green lived in exactly such a file. The mechanics/judgement split
 stands: this repo is the mechanics, the gate-checks reference is the

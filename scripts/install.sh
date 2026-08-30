@@ -40,6 +40,18 @@ mkdir -p "$HOME/.local/bin"
 make -C "$ROOT" install
 make -C "$ROOT" check-tools
 
+# Drop the build output BEFORE the plugin copy. An installed plugin is a raw
+# copy of the source tree with `.git` as its only exclusion — `.gitignore` is
+# not consulted — and this repository's root IS the plugin, so the three
+# freshly built binaries rode into every cached version. Measured 2026-08-30:
+# 36 MB of the 39 MB each version directory held, across 37 kept versions,
+# 1.2 GB for a skill and two shell hooks that weigh 300 KB. They have no
+# business there either way: the plugin ships the manual and the hooks, and
+# `make install` above has already put the binaries where they are run from.
+# `make build` regenerates them in seconds, and every bar that needs them
+# depends on that target.
+make -C "$ROOT" clean
+
 # The marketplace is the LOCAL CLONE, not a remote: the binary needs the clone
 # anyway, so there is exactly one checkout to keep fresh. After a `git pull`,
 # run `claude plugin marketplace update wfgate-tools` to refresh the plugin.
@@ -83,6 +95,22 @@ if drift; then
 		echo "         .claude-plugin/plugin.json and re-run: plugin update is version-keyed." >&2
 	else
 		echo "plugin: reinstalled, the manual is in step with the binary"
+	fi
+fi
+
+# Every `claude plugin update` writes a NEW version directory and keeps the old
+# one forever, so the cache grows by one copy of the tree per release. Nothing
+# reads a version the registry does not point at: keep the one just installed
+# and drop the rest. Scoped to this plugin's own cache, and it refuses to run
+# at all unless the kept directory is there, because a prune that has lost its
+# survivor is a delete-everything.
+CACHE="$HOME/.claude/plugins/cache/wfgate-tools/wfgate"
+KEEP=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/.claude-plugin/plugin.json" | head -1)
+if [ -n "$KEEP" ] && [ -d "$CACHE/$KEEP" ]; then
+	stale=$(find "$CACHE" -maxdepth 1 -mindepth 1 -type d ! -name "$KEEP" | wc -l)
+	if [ "$stale" -gt 0 ]; then
+		find "$CACHE" -maxdepth 1 -mindepth 1 -type d ! -name "$KEEP" -exec rm -rf {} +
+		echo "plugin: pruned $stale superseded cache version(s), kept $KEEP"
 	fi
 fi
 
