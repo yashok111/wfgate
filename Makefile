@@ -194,7 +194,7 @@ check-tools: build
 # the second half, because a corpus can narrow without losing a whole file.
 check-docs: build
 	@src="README.md skills/workflow-gate/SKILL.md $$(ls skills/workflow-gate/references/*.md)"; \
-	want=8; floor=9; \
+	want=11; floor=9; \
 	d=$$(mktemp -d); \
 	( cd $$d && $(CURDIR)/wf init docs -target $(CURDIR) >/dev/null ) || { echo "check-docs: could not build the scratch workspace"; rm -rf $$d; exit 1; }; \
 	cp $$src $$d/docs/artifacts/ || { echo "check-docs: could not stage the manual"; rm -rf $$d; exit 1; }; \

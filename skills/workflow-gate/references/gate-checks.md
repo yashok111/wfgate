@@ -889,7 +889,7 @@ names, `diff -u` between them, a `sha256sum -c` per artifact before launch — w
 `wf` now owns; the numbers stay here because they are what a fully-gated phase COSTS, not what its
 bookkeeping cost. Read the two anchors together rather than averaging them: the decision half of the second
 was the productive half and would have been cheap at twice the price, while its script half spent five
-of its seven rounds on a defect class a search finds in a second (see the round-discipline note in the
+of its seven rounds on a defect class a search finds in a second (see `round-discipline.md` in the
 guide). Gate the decisions to exhaustion; sweep the script mechanically before opening another round on
 it.
 
@@ -990,7 +990,7 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       `5 compared, 0 conflict(s)` over the broken artifact both before and after, because it compares
       sites carrying an id and cannot tell a statement from a pointer to one. After any fix that DELETES
       text, re-read the marked sites: the check cannot. **These documents mark their own stop rule with
-      the id R1**, at every site that STATES it here and in `pre-flight-gate.md`, because it lived at
+      the id R1**, at every site that STATES it here and in `round-discipline.md`, because it lived at
       five sites in four wordings — one of them lower-cased, which the case-erasing normaliser cannot
       see as a difference and no check then compares — and the "reviewer rounds only" half was missing
       from the canonical statement. Neither this sentence nor the quotation above carries the marker in

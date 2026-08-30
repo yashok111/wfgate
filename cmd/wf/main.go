@@ -4050,14 +4050,23 @@ func frozenLines(w *ws.Workspace, n int) (int, bool) {
 var docNames = map[string]string{
 	"authoring":    "authoring.md",
 	"routing":      "model-routing.md",
+	"interview":    "interview.md",
 	"preflight":    "pre-flight-gate.md",
+	"harness":      "gate-harness.md",
+	"rounds":       "round-discipline.md",
 	"section-gate": "section-gate.md",
 	"cost":         "cost-discipline.md",
 	"checks":       "gate-checks.md",
 }
 
-// guideOrder is the manual's reading order for the concatenated form.
-var guideOrder = []string{"authoring", "routing", "preflight", "section-gate", "cost"}
+// guideOrder is the manual's reading order for the concatenated form. It covers
+// every reference of the manual's argument, `checks` excepted — that one is a
+// reviewer's checklist rather than part of the argument, and it is served on its
+// own so `wf init` can pin it. The three references after `routing` were one
+// 1108-line file with no headings until 2026-08-30; splitting it changed which
+// text an activity loads and not which text exists, so the guide is the same
+// manual it was.
+var guideOrder = []string{"authoring", "routing", "interview", "preflight", "harness", "rounds", "section-gate", "cost"}
 
 // manualDrift compares the references EMBEDDED in this binary with the copy a
 // session actually loads — the installed plugin's cached tree — and returns the
@@ -4178,10 +4187,13 @@ func cmdDocs(args []string) error {
 	if len(args) == 0 {
 		fmt.Print(`wf docs <name> — print one reference of the operating manual
 
-  guide         the whole manual (authoring + routing + preflight + section-gate + cost)
+  guide         the whole manual, in reading order (every name below but checks)
   authoring     language rule, companions, the spawn wrapper name
   routing       model and effort routing: explicit per-agent tiers
-  preflight     the pre-flight script-review gate and the wf round loop
+  interview     step -2: grilling the decisions out before the workspace exists
+  preflight     the pre-flight script-review gate itself: wfcheck, wfdry, the vectors
+  harness       the operator's half: workspace, round, apply, freeze, verify, checks, close
+  rounds        round discipline: barrier, delta rounds, the descent, the stop rule
   section-gate  the per-section dual-review gate inside a script
   cost          cost & context discipline
   checks        the failure-mode checklist every gate reviewer reads

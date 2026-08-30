@@ -135,12 +135,34 @@ opening line.
 - `scripts/` — no longer code: the two PreToolUse hooks and `install.sh`.
 - `skills/workflow-gate/` — the operating manual as a Claude Code skill: a thin
   SKILL.md front door and the gated spec split byte-exact into `references/`
-  (authoring, model-routing, pre-flight-gate, section-gate, cost-discipline,
-  gate-checks). The split preserved the gated text verbatim — cutting at
-  headings is packaging, not rewriting, so no re-gate was owed. `embed.go` at
+  (authoring, model-routing, interview, pre-flight-gate, gate-harness,
+  round-discipline, section-gate, cost-discipline, gate-checks). The split
+  preserved the gated text verbatim — cutting at headings is packaging, not
+  rewriting, so no re-gate was owed. `embed.go` at
   the module root embeds the references into the binary; `wf docs guide`
   CONCATENATES them at runtime rather than storing a monolith — a second copy
   of a spec is this project's most-repeated defect class.
+  The nine were six until 2026-08-30, when `pre-flight-gate.md` — 1108 lines
+  under ONE heading, 40% of the whole manual — was cut along the boundaries
+  SKILL.md's routing table was already drawing in PROSE ("steps -2, -1, -1b, 0,
+  2, 2b and 4 are the operator mechanics and step 1 is the reviewer's half; the
+  file is written in step order, which is NOT the order you execute"). A table
+  that has to explain a file's structure is the structure problem admitted in
+  the front door. The four are `interview.md` (step -2, before a workspace
+  exists), `pre-flight-gate.md` (the gate itself: steps 0, 1, 2b, 3 and the
+  three vectors), `gate-harness.md` (the operator's `wf` mechanics: steps -1,
+  -1b, 2, 4, the checks, the fix protocol and the cost meter) and
+  `round-discipline.md` (barrier, delta rounds, the descent, the stop rule).
+  Verified as PACKAGING and not a rewrite by a token census over the four
+  against the original — 18 706 tokens in, every one of them out, the only loss
+  the `**Round discipline**` lead line that became a file header — plus eleven
+  cross-references re-aimed because they now cross a file (a `below` that no
+  longer has anything below it is the citation-drift class this repo built
+  `check drift` for, one layer up). What it buys is per-activity load: a
+  reviewer read 2237 lines and now reads 1667 (283 + 1129 + 255), and an
+  operator running the workspace read 1108 and now reads 558.
+  `wf docs` grew `interview`, `harness` and `rounds`, and `make check-docs`
+  went from 8 staged documents to 11.
 
 ## Why each command is the way it is
 
