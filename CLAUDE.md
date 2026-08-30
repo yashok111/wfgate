@@ -766,6 +766,22 @@ stopped here, not discovered by a commit in the wrong tree.
   the same commit (8 of that gate's 22 blockers were text-code divergences,
   and the 2026-08-21 reconciliation by the same method found the vacuous
   enforcement in freeze).
+- **A message carries the PATCH, not the diagnosis, and a target this tool
+  INFERRED is announced with the flag that overrides it.** Every place an
+  operator must then do something says what to do in the same line — `check
+  drift` prints the re-aimed range rather than reporting that a citation moved,
+  the ledger refusal names the column of the offending pipe and quotes the tail
+  it could not place, the dry run's unresolved-reference note prints the
+  pointer that would resolve, `wf round lens`'s read error says the argument is
+  a PATH. Each of those was a round paid for a message that stated the
+  diagnosis and stopped. The inference half is the same failure one layer up: a
+  note meant for round 10 was recorded into round 11 because `wf round new` had
+  advanced the counter and `-round N` stood in a freeze refusal's advice and in
+  no usage block, so `round record` and `round lens` now name the round they
+  chose — and ONLY where they chose it, because restating a number the operator
+  typed is a line that paints every run and is read on none. The reviewer-side
+  half of this rule is `gate-checks.md` §0c, which holds a finding's row to the
+  same bar.
 
 The seven below were lifted out of `WAVES.md` on 2026-08-29 because they are
 the entries an agent still has to ACT on rather than merely read. Each names

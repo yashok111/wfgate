@@ -1189,6 +1189,16 @@ func cmdRoundRecord(args []string) error {
 	if n == 0 {
 		return fmt.Errorf("no round is open; run `wf round new` first")
 	}
+	// The target round is INFERRED when the flag is absent, and an inference
+	// nothing announces is how a note meant for round 10 landed in round 11:
+	// `wf round new` had advanced the counter, `-round N` appeared in a freeze
+	// refusal's advice and in no usage block, and the ledger of a round nobody
+	// reviewed read as a round that found what the next round found. Announced
+	// only where the round was inferred — restating a number the operator just
+	// typed is a line that paints every run and is therefore read on none.
+	if *round == 0 {
+		fmt.Printf("round %d (the open one; `-round N` records into another)\n", n)
+	}
 	// `-` is stdin, matching `wf apply -f -`: a ledger assembled by a script is
 	// piped, and the alternative is a temp file the operator then has to
 	// remember to delete.

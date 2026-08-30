@@ -142,6 +142,39 @@ ratio to keep the habit and the wrong one to trust it blind.
 
 ---
 
+## 0c. What a finding must CARRY
+
+A finding is read once, later, by somebody who was not in the round that filed it — usually a fix
+agent with the artifact open and nothing else. Section 0 fixes its LEVEL and section 0b the
+QUESTIONS a round puts; this is the shape of the row itself, and two rules make its reading a fix
+rather than a second investigation.
+
+**A finding names WHERE, in the form the artifact is addressed by.** `file:line` for a script,
+`path#anchor` or the section's own heading for a document, the roster name for a prompt. "The
+acceptance section is inconsistent" hands the fixer the search the reviewer has already done, and
+hands the NEXT round a claim it cannot resolve to decide whether the fix landed. `wf check cite`
+exists to make a citation cheap to write and cheap to re-aim, and it is powerless over a finding
+that never wrote one.
+
+**A finding carries the PATCH, or names the observation that would produce it.** Not "consider
+reviewing this", not "this may be unsafe": the sentence that should stand instead, the guard that
+is missing, the term the criterion should read. This is the trade every mechanical check in the
+harness already makes — `wf check drift` prints the re-aimed range instead of reporting that a
+citation moved, `wf check stale` prints the sentences carrying retired vocabulary instead of the
+count of them, the ledger refusal names the column of the offending pipe and quotes the tail it
+could not place, and the dry run's unresolved-reference note prints the pointer that WOULD resolve.
+A reviewer's row is held to the same bar as the tool's, for the same reason: a diagnosis with no
+fix beside it is re-derived by whoever reads it, and on a delta round that is a second reviewer's
+worth of work spent re-finding what is already known.
+
+Where the patch genuinely is not knowable from the row — the fix depends on a decision the reviewer
+does not own, or on a measurement nobody has taken — the row says WHICH observation settles it and
+who owns the call. That is the refusal record of section I read from the other end, and it is a
+QUESTION, not a NOTE: a NOTE asserts there is no defect, and a row that cannot state its own fix has
+asserted nothing yet. Filing it as a NOTE is how an open question leaves the gate looking closed.
+
+---
+
 ## A. Facts and measurements in the prompt
 
 A number or a claim about the codebase that reaches an agent's prompt becomes an instruction; a wrong one

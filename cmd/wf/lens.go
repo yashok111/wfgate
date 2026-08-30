@@ -413,6 +413,15 @@ func cmdRoundLens(args []string) error {
 	if len(strings.TrimSpace(string(b))) == 0 {
 		return fmt.Errorf("%s is empty; a roster entry whose prompt is empty records that a lens ran and not what it was asked", pos[0])
 	}
+	// Same inference, same announcement as `wf round record`: the default is
+	// the OPEN round, so banking a vector after the next round was opened lands
+	// it on the wrong one, and the roster is what a later reading of the
+	// descent is made of. Printed on the banking path only — the roster branch
+	// above leads with `round N` already, and a second copy of one number is
+	// this project's most repeated defect class.
+	if *round == 0 {
+		fmt.Printf("round %d (the open one; `-round N` banks against another)\n", n)
+	}
 	slug := lensSlug(*name)
 	if slug == "" {
 		return fmt.Errorf("-name %q has no ASCII letters or digits to name a file by; gate artifacts are English by workflow rule, and this is the same boundary the anchor grammar draws", *name)
