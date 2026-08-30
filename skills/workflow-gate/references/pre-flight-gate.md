@@ -186,7 +186,8 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    kills those labels in every one of the seven, and a label that spawned in NO mode FAILS the run —
    every guard behind it ran over the empty set, and the operator typed that label; `--args <json>` replaces what the six args-carrying
    modes pass, `--budget N` sets what the script sees as `budget.total`, and `--quiet` prints
-   verdicts only. **`--prompt-diff <a>,<b>` prints the sentences one agent's prompt carries and the
+   verdicts only — the runner's own WARNs print anyway, under `--quiet` and again after the mode
+   tally, because a WARN is a verdict about a branch no mode exercised. **`--prompt-diff <a>,<b>` prints the sentences one agent's prompt carries and the
    other's does not** — see the sweep in `gate-harness.md`. It refuses two spellings of ONE
    prompt (a text does not differ from itself), refuses a label spawned with several DIFFERENT prompts
    (a per-item reviewer has a per-item briefing, so there is no single prompt to diff), and prints
@@ -195,7 +196,9 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    is `no-args` on a script that gates its body on `args`, which is correct behaviour and is noted
    instead. **ONE is not zero, so the counts are also read as a RATIO**: every mode's line carries the
    `clean` mode's agent count beside its own, and a mode reaching fewer than half of it FAILS,
-   naming both. Measured: a red-bar abort added to the first producer took five of seven modes from
+   naming both — a mode that THREW or reported violations prints its own detail instead of that
+   comparison, so the absence of a `(clean: N agents)` on a red line is the shape of a red line and
+   not a comparison the runner failed to make. Measured: a red-bar abort added to the first producer took five of seven modes from
    15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1 — six modes then at one agent, `throw-serial` included,
    which is one by construction — with the fix round, the recheck, the acceptance step and the
    final verdict exercised by nothing, and every mode still printing OK, so a reviewer banking "wfdry 7

@@ -210,7 +210,7 @@ check-docs: build
 	dup=$$(cd $$d/docs && $(CURDIR)/wf check dup 2>&1 | head -1); \
 	case "$$dup" in *"statement(s)"*) echo "$$dup";; *) echo "check-docs: `wf check dup` printed no population ($$dup) — a crashed check is not a clean one"; rm -rf $$d; exit 1;; esac; \
 	R=skills/workflow-gate/references; \
-	used=$$(cat $$R/*.md | grep -v '^## M-' | grep -oE '\[M-[0-9]+\]' | tr -d '[]' | sort -u); \
+	used=$$(cat $$(ls $$R/*.md | grep -v '/measured\.md$$') | grep -oE '\[M-[0-9]+\]' | tr -d '[]' | sort -u); \
 	def=$$(grep -hoE '^## M-[0-9]+' $$R/measured.md | sed 's/^## //' | sort -u); \
 	echo "$$used" > $$d/used.txt; echo "$$def" > $$d/def.txt; \
 	dang=$$(comm -23 $$d/used.txt $$d/def.txt); \

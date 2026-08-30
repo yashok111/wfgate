@@ -14,7 +14,10 @@ three rounds), so the *examples* lean that way while the *rules* do not — when
 it so it survives a change of language.
 
 Six facts worth knowing before reading the list. Each is a conclusion; what it was measured on is
-`measured.md`, cited by id.
+`measured.md`, cited by id. **This file is PINNED into a gate workspace by `wf init` and
+`measured.md` is not, so every `[M-nn]` below is reached with `wf docs measured`** — the citation
+would otherwise name a file a reviewer does not hold, which is this manual's own unreachable-pointer
+defect committed in the file that states it.
 
 - **Orchestration mechanics as such are not where the findings are.** Across two gates' nine rounds,
   ZERO findings concerned a `parallel()` that should have been a `pipeline()`, an unbounded loop or a
@@ -259,8 +262,9 @@ becomes a wrong instruction that no downstream step questions.
       observation nobody ATTEMPTED is not a verdict: it is an open question, and it is filed as one
       for the next round, because a third verdict that also absorbs "I did not look" is a place to
       file undone work in the register of a report. And where a claim compares a BEFORE with an
-      AFTER, capture both with the SAME command — section D
-      carries what happens when one quantity has five derivations and the verdict consumes the highest.
+      AFTER, capture both with the SAME command — section D's
+      acceptance bullet and its `[M-14]` carry what happens when one quantity has five derivations
+      and the verdict consumes the highest.
 - [ ] **An option named for a response format may not cover every method the library serves.**
       One transport flag promised plain request/response; a method registered unconditionally by
       the same library forced streaming regardless, producing exactly the long-lived response the
@@ -626,7 +630,8 @@ compiles, passes every test, and does nothing.
       seconds against a multi-hour run. Width is measurable from the script and ACCEPTANCE is
       measurable only by asking, which is the clause a gate got wrong after measuring its own width
       to the byte [M-05]. How to narrow one, and the `$defs`/`$ref` rule that makes the narrowing
-      free, are in `authoring.md`.
+      free, are AUTHOR-side and are in `authoring.md` (`wf docs authoring`), which a workspace does
+      not pin.
 
 ## F. Guard integrity
 
@@ -921,7 +926,8 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       similarity metric reaches them at all: they stay a reviewer's find unless the author MARKED the
       rule, which is the whole of what `wf check rules` can read [M-06]. Both commands, their
       populations, the `-since` narrowing for a derived artifact and what a `.mjs` prompt contributes
-      as a rule SITE are in `gate-harness.md`. These documents mark their own stop rule with the id
+      as a rule SITE are OPERATOR-side and are in `gate-harness.md` (`wf docs harness`), which a
+      workspace does not pin — a reviewer needs the duties below, not the flags. These documents mark their own stop rule with the id
       R1 at every site that STATES it, which is the shape to copy: one id, several statements, and no
       marker on a sentence that merely refers to one. The three entries below are what neither
       command can be asked.

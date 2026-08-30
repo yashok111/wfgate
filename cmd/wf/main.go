@@ -4191,7 +4191,7 @@ func cmdDocs(args []string) error {
 	if len(args) == 0 {
 		fmt.Print(`wf docs <name> — print one reference of the operating manual
 
-  guide         the whole manual, in reading order (every name below but checks)
+  guide         the manual in reading order — every name below but checks and measured
   authoring     language rule, companions, the spawn wrapper name
   routing       model and effort routing: explicit per-agent tiers
   interview     step -2: grilling the decisions out before the workspace exists

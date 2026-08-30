@@ -135,8 +135,10 @@ opening line.
 - `scripts/` — no longer code: the two PreToolUse hooks and `install.sh`.
 - `skills/workflow-gate/` — the operating manual as a Claude Code skill: a thin
   SKILL.md front door and the gated spec split byte-exact into `references/`
-  (authoring, model-routing, interview, pre-flight-gate, gate-harness,
-  round-discipline, section-gate, cost-discipline, gate-checks). The split
+  (TEN of them: authoring, model-routing, interview, pre-flight-gate,
+  gate-harness, round-discipline, section-gate, cost-discipline, gate-checks and
+  measured — re-count them against `ls skills/workflow-gate/references/`, which
+  is also what `make check-docs` stages). The split
   preserved the gated text verbatim — cutting at headings is packaging, not
   rewriting, so no re-gate was owed. `embed.go` at
   the module root embeds the references into the binary; `wf docs guide`
@@ -154,18 +156,24 @@ opening line.
   -1b, 2, 4, the checks, the fix protocol and the cost meter) and
   `round-discipline.md` (barrier, delta rounds, the descent, the stop rule).
   Verified as PACKAGING and not a rewrite by a token census over the four
-  against the original — 18 706 tokens in, every one of them out, the only loss
-  the `**Round discipline**` lead line that became a file header — plus eleven
+  against the original — **18 705** tokens in, every one of them out, the only losses the
+  `**Round discipline**` lead line and the bare `Rules:` label, both of which became file headings
+  (the census is `tr -s '[:space:]' '\n' | grep -c .`; an earlier reading of 18 706 came from a
+  different tokenizer and was banked without its command, which is the defect the manual's own
+  section A names) — plus eleven
   cross-references re-aimed because they now cross a file (a `below` that no
   longer has anything below it is the citation-drift class this repo built
   `check drift` for, one layer up). What it buys is per-activity load: a
-  reviewer read 2237 lines and now reads 1667 (283 + 1129 + 255), and an
-  operator running the workspace read 1108 and now reads 558.
+  reviewer read 2237 lines and now reads 1572 (296 + 1060 + 216), and an
+  operator running the workspace read 1108 and now reads 557 — figures re-derived after the
+  de-duplication commit below, which shrank all four files and left this line reading 1667/558 for
+  as long as it took a review round to run `wc -l`. Same class, one commit deep, for the third wave
+  running.
   `wf docs` grew `interview`, `harness` and `rounds`, and `make check-docs`
-  went from 8 staged documents to 11.
+  went from 8 staged documents to 11, and to 12 once `measured.md` landed.
   The tenth is `measured.md` (2026-08-30, the same day): the manual's PROVENANCE,
   never auto-loaded and deliberately out of `wf docs guide`. The rule the
-  twenty-first wave banked for perishable NUMBERS — a figure belongs in the
+  seventeenth wave banked for perishable NUMBERS — a figure belongs in the
   manual only if an agent CHANGES ITS BEHAVIOUR from the value — was applied to
   the STORY around them, which that pass left untouched: an agent acts on "a fix
   is the largest single source of blockers", not on which gate that was or how
@@ -191,8 +199,48 @@ opening line.
   25% is a harvest across all hundred-odd `gate-checks.md` checkboxes, which is a
   much larger edit at a much higher risk of dropping a rule; it is not done.
   `make check-docs` grew a bar for the citation scheme — it fails on an `[M-nn]`
-  with no entry and on an entry nothing cites — and both halves were proven by
-  mutation, each failing with its own message.
+  with no entry and on an entry nothing cites — and all THREE arms are proven by
+  mutation, each failing with its own message: the third is an entry citing
+  ITSELF, which used to mask its own absence because the `used` set was read from
+  every reference INCLUDING `measured.md`. Nothing was masking anything yet; the
+  guard was one edit away from being defeated by the file it guards.
+
+  *And the restructure earned its review round, which is the whole argument for
+  having one.* Three vectors against the frozen `3fd3dc0` — one external model
+  over the code half, one Opus vector asking only "did an actionable clause get
+  LOST", one over the claims — against five green bars. Between them:
+  **no blocker, six majors and nineteen findings**, and the bars had caught none
+  of them. The rule-loss vector reproduced the packaging claim independently by
+  token census and found the split clean, then found exactly two clauses the
+  REWRITE dropped, both about `wfdry`'s own output: that `--quiet` does not
+  suppress the runner's WARNs (the surviving half, "`--quiet` prints verdicts
+  only", read as its negation) and that a mode which THREW prints its own detail
+  instead of the `(clean: N agents)` comparison, so a red line's missing
+  comparison is the shape of a red line rather than a check that did not run.
+  The sharpest finding belongs to the claims vector and is a REACHABILITY
+  regression this wave introduced: `wf init` pins `gate-checks.md` into a
+  workspace and nothing else, and the de-duplication left NINE `[M-nn]`
+  citations in that pinned copy pointing at a `measured.md` no workspace holds,
+  with no command named — the manual's own unreachable-pointer defect, committed
+  inside the file that states it, and passing a new bar that proves every
+  citation resolves INSIDE THE REPO and nothing about the copy a reviewer is
+  briefed from. The remaining majors are one class: **a pointer or a number that
+  the restructure invalidated and neither commit swept.** `wf docs`'s own help
+  said the guide excludes `checks` while the code comment four lines above it
+  said `checks` and `measured`; `authoring.md` still said the guide prints "the
+  five authoring references" when `guideOrder` is eight; the `references/`
+  enumeration here was nine of ten; `make check-docs stages ... the six
+  references` was never touched by EITHER commit though both moved that number;
+  three `pre-flight-gate.md` pointers in this file named the emptied file,
+  because the eleven re-aims swept `references/` and not `CLAUDE.md`; a rule was
+  attributed to a "twenty-first wave" that does not exist; and the reviewer line
+  count banked one commit earlier went stale inside the next one and sat
+  twenty-five lines above a byte figure contradicting it. The token census was
+  banked as 18 706 without its command and does not reproduce — every
+  whitespace-split reading gives 18 705 — which is section A's own rule about a
+  count that becomes a claim, and the commit message's "`guide` now names its
+  members rather than claiming five" is INVERTED: the old help enumerated five
+  members, the new one enumerates none.
 
 ## Why each command is the way it is
 
@@ -417,7 +465,7 @@ anybody could have run, and the refutation is the more useful result:
   produces the identical two readings. **a `$ref` is anchored at the schema root — write the `$defs` there or write the
   whole pointer** and
   **a red `wfdry` mode is a fact about the script or about the fixture**, both in
-  `authoring.md`. And in `pre-flight-gate.md`: **a lens that died for a reason
+  `authoring.md`. And in `gate-harness.md`: **a lens that died for a reason
   outside the artifact is banked too, with what replaced it** — an external lens
   was quota-blocked mid-round and an opus lens carried the identical prompt, and
   banking both is the only form in which a later reading of the descent is not
@@ -702,7 +750,7 @@ before a line was written:
   package was split across two sections two phases apart because the two
   subsystems read as separate in the decision document, and the package did not
   build in the window between them. **The guard-patching signal is the SECTION,
-  not the blocker count** (`pre-flight-gate.md`): the banked form is a run of
+  not the blocker count** (`round-discipline.md`): the banked form is a run of
   rounds at exactly ONE blocker, P3g's were at 1, 4, 6 and 3 while one property
   was rewritten in all four and produced a blocker in three, so nothing fired
   and the gate took four rounds to act — and WITHDRAWING a guard in favour of a
@@ -898,7 +946,7 @@ make clean       # remove the three built binaries
 `make test` counting `ok` lines is not a green bar — one package can fail while
 the count looks right. Read the FAIL lines.
 
-`make check-docs` stages README, SKILL.md and the six references into a scratch
+`make check-docs` stages README, SKILL.md and the ten references into a scratch
 workspace and runs the two checks that read prose over them. It exists because
 the checks that gate other people's artifacts had never been run over this
 repository's own, and on their first run they were RED: `wf check rules`
@@ -1133,8 +1181,8 @@ fixtures for the non-ASCII anchor detector).
   by seven times. It is the largest block no
   round covers, and the short end is worse than it looks: those are the gates
   whose document was drafted BEFORE `wf init`, so the authoring itself falls
-  outside every measurement banked here. `pre-flight-gate.md`
-  step -2 is what now occupies that window, against a round-1 blocker baseline
+  outside every measurement banked here. `interview.md`
+  (step -2) is what now occupies that window, against a round-1 blocker baseline
   of 7, 15, 7, 13, 15, 19, 15, 13, 10, 4.
 - **The seventh wave was reviewed the same way, and the review is again why it
   is trustworthy** (2026-08-24; two Opus vectors — Go correctness with a

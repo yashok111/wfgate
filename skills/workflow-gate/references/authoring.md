@@ -3,8 +3,9 @@
 Full operating manual for the `Workflow` multi-agent orchestration tool: model routing, the
 pre-flight script-review gate, the per-section dual-review gate, and cost/context discipline. It is
 delivered as the `workflow-gate` skill; **before authoring or running any Workflow, read every
-reference the SKILL.md maps to your activity — in full.** `wf docs guide` prints the five authoring
-references; the reviewer checklist is `wf docs checks`.
+reference the SKILL.md maps to your activity — in full.** `wf docs guide` prints the manual's
+references in reading order; the reviewer checklist is `wf docs checks` and the provenance behind
+the rules is `wf docs measured`, both deliberately outside the guide.
 
 Four companions, all used by the pre-flight gate below and none auto-loaded:
 the gate-checks reference (`wf docs checks`; `wf init` writes a pinned copy into every workspace — the standing list of failure modes from previous runs — reviewers
