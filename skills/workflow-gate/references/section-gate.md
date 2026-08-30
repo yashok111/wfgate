@@ -30,6 +30,13 @@ Rules:
   `agent()` call (see `model-routing.md`); a reviewer is a step whose error nothing downstream
   re-checks, which is what `high` is for, and the fan-out effort ban does not reach it. `wfcheck`
   refuses a call with no `effort`, so a reviewer written from this section without one does not run. Opus on a reviewer is reserved for a genuine extreme case — a security-/correctness-critical section where a subtle, high-cost-if-missed defect is plausible (e.g. crypto, auth, a kill-switch, money/data-loss paths). Opus review is the rare exception, not the norm; if you can't name the specific catastrophic miss it guards against, use sonnet.
+- **A section that edits a GENERATED-CODE SOURCE is told the regeneration command in its task text.**
+  The bar that would catch it passes: measured on one slice, an edit to `api/openapi.json` type-checked
+  green under four local bars because the generated client they check against is gitignored and only a
+  separate `ui-gen` target refreshes it, and the contract change first surfaced inside the docker build
+  at the end of the slowest bar of all. The details are project-specific and the shape is not — a schema,
+  an IDL, a migration, anything other code is derived from has a regeneration step, and a section that
+  edits one without running it hands the failure to whatever bar happens to build from scratch.
 - Feed each reviewer the section's diff or output + the section's goal.
 - Collect findings, then ACT: a blocker from either vector loops that section (fix → re-review) before proceeding; advisory findings — MAJOR, MINOR or NOTE on the closed scale — are recorded and surfaced.
 - **The loop is BOUNDED, and what survives it is carried in the RETURN value.** An unbounded "loop until no blockers" does not terminate against a fix agent that keeps failing, and it has no budget guard — which is why every real script instead runs one bounded fix round and moves on. That divergence between the rule and the practice is the defect; the rule is what changes. Write the form that works: a fixed small number of fix→re-review rounds, guarded on `budget.total`, and every blocker still open when the rounds run out pushed into an explicit open-blockers list in the return value — never only into a `log()` line. A run that ends green while carrying open blockers must say so in its verdict, not in its scrollback.

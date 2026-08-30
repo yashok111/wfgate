@@ -462,6 +462,15 @@ prose kept losing: a step nobody can run is a step that gets skipped.
 7. `wfcheck`, the JS linter, `wfdry`. Then `wf round new`, `wf freeze`, and `wf verify` before
    launching.
 
+**After a run, audit the ownership map against the tree it left:**
+`wfcheck -root <repo> --owns-diff <the commit the run started from> <script>`. The script's own harness
+compares each producer's self-reported file list to its `owns`, and that catches what an agent NAMED;
+this asks the two questions a self-report cannot — a file the run wrote that no section owns, and a
+path a section owns that nobody wrote. On the run it was built for it found four unowned files beyond
+the six the harness had, and one owned path that was a typo for the file the run really wrote [M-34].
+It exits zero whatever it finds: every row is a question for a human, and a bar that failed a run on an
+incidental edit would be answered by switching it off.
+
 **Steps 4, 5 and the three checks in 7 are a list of QUESTIONS, not a dependency chain.** Every one
 of them READS the snapshot step 2 committed and none of them writes: `dup`, `stale`, `schema`,
 `closure`, `wfcheck`, the linter and `wfdry` can all run at once, and on a slow corpus that turns a

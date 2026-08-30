@@ -31,6 +31,7 @@ func main() {
 	// Empty, not "." — inside a gate workspace the right answer is the
 	// workspace's target, and the working directory is the wrong tree.
 	root := flag.String("root", "", "repository the script will run in (default: the gate workspace's target, else the working directory)")
+	ownsDiff := flag.String("owns-diff", "", "AFTER a run: compare the script's ownership map against <ref>..HEAD of -root, both directions")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `wfcheck — static check over a Workflow orchestration script
@@ -39,6 +40,7 @@ usage:
   wfcheck [-root <dir>] <script.mjs>      (-root defaults to the gate
                                            workspace's target when run inside one)
   wfcheck --freeze <script.mjs>
+  wfcheck [-root <dir>] --owns-diff <ref> <script.mjs>
 `)
 	}
 	pos, perr := cli.ParseMixed(flag.CommandLine, os.Args[1:])
@@ -65,6 +67,14 @@ usage:
 		return
 	}
 
+	if *ownsDiff != "" {
+		if err := printOwnsDiff(path, *root, *ownsDiff); err != nil {
+			fmt.Fprintln(os.Stderr, "wfcheck:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	rep, err := wfcheck.Run(path, *root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "wfcheck:", err)
@@ -78,6 +88,44 @@ usage:
 	if errs > 0 {
 		os.Exit(1)
 	}
+}
+
+// printOwnsDiff reports the ownership map against the tree the run left behind.
+//
+// It exits ZERO whatever it finds. This is an AUDIT and not a bar: every row it
+// prints is a question for a human — a file nobody owns may be a hole in the map
+// or a legitimate incidental edit, and an owned file the run never wrote may be
+// a section that skipped its task or a task that turned out not to need it. A
+// check that fails a run on either would be answered by switching it off.
+func printOwnsDiff(path, root, base string) error {
+	rep, err := wfcheck.OwnsDiff(path, root, base)
+	if err != nil {
+		return err
+	}
+	// The population first, and always: an empty map compares nothing, and a
+	// report that printed `0 unowned` over a map it failed to read would be a
+	// green line meaning the opposite.
+	fmt.Printf("=== owns vs %s..%s ===\n", rep.Base, rep.Head)
+	fmt.Printf("map: %d file(s) and %d director(y/ies) from %d gate config(s) and %d YOU OWN block(s)\n",
+		rep.OwnedFiles, rep.OwnedDirs, rep.Gates, rep.Blocks)
+	if rep.OwnedFiles+rep.OwnedDirs == 0 {
+		fmt.Println("NOT A COMPARISON: the script declares no ownership this tool could read")
+		return nil
+	}
+	fmt.Printf("the run changed %d file(s)\n", rep.Changed)
+	if rep.Changed == 0 {
+		fmt.Println("NOT A COMPARISON: that range changed nothing — is the base the commit the run started from?")
+		return nil
+	}
+	fmt.Printf("\nwritten, owned by NO section (%d):\n", len(rep.Unowned))
+	for _, p := range rep.Unowned {
+		fmt.Println("  " + p)
+	}
+	fmt.Printf("\nowned, NEVER written (%d):\n", len(rep.Untouched))
+	for _, p := range rep.Untouched {
+		fmt.Println("  " + p)
+	}
+	return nil
 }
 
 // freezeScript copies the script under .wf/gate/ named by its own hash, so the

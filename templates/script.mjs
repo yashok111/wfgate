@@ -294,6 +294,26 @@ function bank(section, result) {
   for (const f of result.advisories || []) carried.push({ section, ...f })
 }
 
+// A producer that wrote outside its declared ownership is a LOST WRITE the
+// moment another section owns the same file, so it is recorded rather than
+// logged. Measured on one real run: six majors of this shape, and every one was
+// a hole in the MAP rather than an agent exceeding it — which is the finding.
+//
+// It reads the agent's SELF-REPORT, so it sees only what the agent named, and
+// two questions are beyond it by construction: a file the run wrote that no
+// section owns at all, and a file a section owns that nobody ever wrote. Both
+// need the tree. After the run: `wfcheck -root <repo> --owns-diff <the commit
+// the run started from> <this script>`. On that same run the tree found four
+// more unowned files than the self-reports did, and one owned path that was a
+// TYPO for the file the run actually wrote.
+function ownership(section, owns, files) {
+  for (const f of files || []) {
+    if (!(owns || []).some((o) => f === o || (o.endsWith('/') && f.startsWith(o)))) {
+      carried.push({ section, severity: 'major', summary: 'wrote ' + f + ' outside its declared ownership' })
+    }
+  }
+}
+
 // Every bar failure, from every agent, in ONE place. Logging a producer's red
 // bar and then computing `green` from the acceptance step's bars alone is a
 // report that knows something it does not say.
@@ -344,6 +364,7 @@ const build = live('build', await spawn(
 ))
 
 if (build) bars('build', build.bars)
+if (build) ownership('build', ['TODO/path/one.go', 'TODO/path/two.go'], build.files)
 
 phase('Gate 1')
 bank('build', await runGate({

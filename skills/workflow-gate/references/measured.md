@@ -472,6 +472,21 @@ closed. Read both figures off a completed run's state file:
 The fan-out this argues for is bounded by the concurrency cap [M-30] and constrained by test scope
 [M-31], so expect roughly half of it back rather than all of it.
 
+## M-34 — the ownership map, checked against the tree instead of against a self-report
+
+One 30-agent run whose script already compared every producer's reported `files` list to its `owns`
+entries: that check filed **six** majors, and every one was a hole in the MAP rather than an agent
+exceeding it. Re-asked against the tree — the declared map against the 54 files the run actually
+changed — the answer is **nine** unowned files. The four the self-report missed are all test files
+(`internal/admin/admin_test.go`, `internal/admin/loopback_test.go`, `internal/mcp/mcp_resources_test.go`,
+`web/src/components/ResourcesPage.test.tsx`); nobody named them because nobody was asked. The other
+direction produced exactly one row and it explains one of the nine: the map declares `env.example`
+while the tree carries `.env.example`, a typo ten rounds of review did not see. Nine plus one over 54
+changed files is a sixth of the population. The sharpest single path is
+`internal/resources/populate.go`, where the function the whole slice moves lives: it appears in
+NEITHER artifact, so no reviewer, no static check and no self-report could have reached it. Re-derive
+with `wfcheck -root <repo> --owns-diff <base> <script>`.
+
 ---
 
 ## Appending here

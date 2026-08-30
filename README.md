@@ -534,6 +534,32 @@ default used to be the working directory always, which produced twenty-two
 "owns X, which does not exist" warnings on a correct script — a script's owned
 paths are relative to the tree under review, and the workspace is not it.
 
+### `wfcheck --owns-diff <ref>` — the ownership map against the tree, AFTER a run
+
+Everything else `wfcheck` does is static. This is the one question that needs
+the run to have happened: `wfcheck -root <repo> --owns-diff <the commit the run
+started from> <script>` reads the map from both halves (the gate configs' `owns`
+arrays and the `YOU OWN` blocks in the literals) and compares it against
+`<ref>..worktree`, reporting BOTH directions — a file the run wrote that no
+section owns, and a path a section owns that the run never wrote.
+
+It is an AUDIT, not a bar: it exits zero whatever it finds, because a file
+nobody owns may be a hole in the map or a legitimate incidental edit, and an
+owned file nobody wrote may be a section that skipped its task. The working
+TREE and not `HEAD`, because the audit happens before the slice is committed —
+on the run this was written for, 54 files were changed and HEAD had not moved,
+so a commit-to-commit diff would have compared a range that changed nothing and
+printed a clean report. Every git call carries `--no-optional-locks`: a plain
+`git diff` refreshes the index of the tree it runs in, and the target of a gate
+is read-only.
+
+Measured on that run, against a script whose own harness already compared each
+producer's SELF-REPORTED file list to its `owns`: the self-report found six,
+the tree found **nine** — four test files no self-report had named — plus one
+row in the other direction, `env.example` against the `.env.example` the run
+actually wrote, which is the TYPO that made one of the nine unowned. Nine and
+one over a 54-file diff is a sixth of the population, not a wash of paint.
+
 It also cross-references every `YOU OWN` path against the `owns` array of every
 gate config in the script: a path no gate owns is a file a reviewer can be
 briefed on and no fix agent may touch. The reach is script-wide, because a
