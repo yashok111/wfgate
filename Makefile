@@ -194,7 +194,7 @@ check-tools: build
 # the second half, because a corpus can narrow without losing a whole file.
 check-docs: build
 	@src="README.md skills/workflow-gate/SKILL.md $$(ls skills/workflow-gate/references/*.md)"; \
-	want=11; floor=9; \
+	want=12; floor=9; \
 	d=$$(mktemp -d); \
 	( cd $$d && $(CURDIR)/wf init docs -target $(CURDIR) >/dev/null ) || { echo "check-docs: could not build the scratch workspace"; rm -rf $$d; exit 1; }; \
 	cp $$src $$d/docs/artifacts/ || { echo "check-docs: could not stage the manual"; rm -rf $$d; exit 1; }; \
@@ -209,7 +209,16 @@ check-docs: build
 	[ $$rc = 0 ] || { echo "$$out"; echo "check-docs: the shipped manual disagrees with itself — see the sites above"; rm -rf $$d; exit 1; }; \
 	dup=$$(cd $$d/docs && $(CURDIR)/wf check dup 2>&1 | head -1); \
 	case "$$dup" in *"statement(s)"*) echo "$$dup";; *) echo "check-docs: `wf check dup` printed no population ($$dup) — a crashed check is not a clean one"; rm -rf $$d; exit 1;; esac; \
-	echo "check-docs: $$want document(s), $$marks marked site(s), every id compared agrees"; \
+	R=skills/workflow-gate/references; \
+	used=$$(cat $$R/*.md | grep -v '^## M-' | grep -oE '\[M-[0-9]+\]' | tr -d '[]' | sort -u); \
+	def=$$(grep -hoE '^## M-[0-9]+' $$R/measured.md | sed 's/^## //' | sort -u); \
+	echo "$$used" > $$d/used.txt; echo "$$def" > $$d/def.txt; \
+	dang=$$(comm -23 $$d/used.txt $$d/def.txt); \
+	unc=$$(comm -13 $$d/used.txt $$d/def.txt); \
+	[ -z "$$dang" ] || { echo "check-docs: dangling provenance citation(s): $$dang — a rule citing an entry that does not exist claims a measurement nobody took"; rm -rf $$d; exit 1; }; \
+	[ -z "$$unc" ] || { echo "check-docs: uncited measured.md entry(ies): $$unc — provenance nothing points at is provenance nobody reads"; rm -rf $$d; exit 1; }; \
+	nm=$$(echo "$$def" | grep -c .); \
+	echo "check-docs: $$want document(s), $$marks marked site(s), every id compared agrees; $$nm provenance entry(ies), all cited"; \
 	rm -rf $$d
 
 clean:

@@ -151,10 +151,12 @@ can drift apart from itself, and nothing here compares the copies.
    it dispatched no reviewer by declaration); a banked prompt is never rewritten, and
    `wf round lens` with no file prints the roster. It is also how a round whose vectors ran and found
    NOTHING says so: see the stop rule in `round-discipline.md`, and the refusals in `wf freeze` and `wf close`.
-   `-asks` takes the SET however you write it — `closure,fix-induced,ripple`,
-   `closure+fix-induced+ripple`, a space-separated list, or the flag repeated — because a delta round is required to ask all
-   three and one gate banked one vector per round and then hand-edited `Asks:` in the file,
-   nineteen times over ten rounds, having been refused the natural spelling.
+   `-asks` takes a CLOSED set — `orchestration, routing, alignment, facts, seams, criterion, closure,
+   fix-induced, ripple, other` — which is what lets one gate's roster be read beside another's, and
+   `other` is always there so a vector your slice needs is never refused. It takes that set however
+   you write it: `closure,fix-induced,ripple`, `closure+fix-induced+ripple`, a space-separated list,
+   or the flag repeated. A delta round is required to ask all three, so refusing the natural
+   spelling costs hand edits of the file the flag exists to write [M-03].
    **A lens that DIED for a reason outside the artifact is banked too, with what replaced it.** On one
    round an external lens was quota-blocked mid-round and produced no report; it was replaced by an
    opus lens carrying the identical prompt, and BOTH were banked. That is the only form in which a
@@ -419,59 +421,56 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
 
 ## The fix protocol, and the cost meter that sizes a batch
 
-- **The fix protocol lives in `gate-checks.md` section I.** Short version: record what the
-  round found with `wf round record <file>` BEFORE touching a fix — that file is what briefs the next
-  reviewer; apply the round's fixes as ONE `wf apply` batch, one edit per artifact per rule, each
-  declaring its own occurrence count; fill the `closed by` column with the apply commit and re-record
-  (`-round N`) — the next freeze refuses while a closed round's blocker stands open, and a record
-  naming a commit that does not exist is rejected before it writes; read the block around each edit
-  after making it; sweep with
-  `wf check dup` for copies that DRIFTED and `wf check stale` for the consumers the fix's OWN old text
-  names, then hand-check for copies that CONTRADICT, which no similarity metric reaches; on a SCRIPT,
-  add `wf check schema` where the batch touched a SCHEMA: it compares what every agent's output schema
-  obliges its agent to fill, against the previous freeze, and a DROP is the finding. ONCE so far a
-  `required` array has disappeared inside an edit whose stated purpose was WIDTH — leaving an
-  acceptance report where every property could come back without the evidence field the gate over it
-  had to read — and once a width-reduction edit left a stale band CONSTANT behind instead, which is
-  the same edit doing two jobs and saying so about one. Nothing static reaches the first where the
-  leaf is built in a `.map()` callback, and both static tools were clean over that script;
-  add `wfdry <script> --prompt-diff <a>,<b>` for each pair of agents the batch gave the same job — the
-  rule and its measurement are in `gate-checks.md` section B, "Two agents asked the SAME question";
-  run `wf check closure` before recording the closures, because it asks of every `closed by` sha the
-  question `wf round record` does not — whether that commit's diff reaches the SECTION the finding
-  cites (`D9`, `R12`: the form a ledger uses, and the only one that reaches a finding citing no line);
-  a FILE miss is a closure that did not land, a section miss is a question to re-ask, and a closure
-  carried by two commits is checked against each one's own parent rather than against a union of
-  coordinate systems; re-run `wfcheck`, the JS linter and `wfdry`; open the next round,
-  `wf freeze`, and `wf verify` before launching. Size the batch by the workspace's own cost meter:
-  `wf stats` prints each round's edits, its CHANGED LINES and the findings per 100 changed lines —
-  counted under a PINNED diff algorithm (`histogram`), so the denominator is comparable across gates
-  and across machines rather than reading whatever `diff.algorithm` the operator's gitconfig carries;
-  measured, the two readings of one gate differ by 2.8% overall and 5.3% on a round — and
-  `wf apply -rule RN` declares the rule a batch changes and NAMES the other sites carrying that
-  marker, marking the ones in files the batch wrote — the sweep the note beside the number has been
-  pointing at since the meter existed, done at the moment the fix lands. With the id form the batch is
-  **REFUSED, before anything is written**, when a marked site sits in a file the batch does not touch:
-  `-rule-ack` is the waiver for a batch that legitimately corrects one site while the others stand.
-  A note arrives after the round has already spent its edit, and the sweep it advises is then a
-  separate act of discipline — measured on one gate, four times in four consecutive rounds the fix
-  landed where the finding was READ rather than everywhere the rule ACTS, and none of the four was
-  reachable by `dup`, `stale` or `rules`, because the copies shared no wording. Those four would have
-  been caught by NONE of this refusal: that gate marked nothing, so the id form reached nothing there,
-  and three of the four are copies inside ONE file, which is behind the FILE half. It is an argument
-  for marking rather than a mechanism that caught them. A second site inside a file the batch DOES
-  write is not refused either, and the site list beside the refusal is what reaches those. **`-rule` also takes a
-  free-text rule NAME** (`-rule "bar accounting"`), which sweeps every sentence of the artifact set
-  carrying all of its words: a script gate's rules live in prompts and are marked in no document, so
-  the id form reaches nothing there — measured, the flag was refused outright and unusable for a whole
-  gate whose most valuable sweep it is. The phrase form says out loud that it is the weaker half: it
-  names the sentences that use the words, not the sites of a rule;
-  `wf apply` notes when a batch's CHANGED LINES predict a costly next round — measured, the case that
-  matters is few edits over many lines: one gate's two-edit window changed 933 lines, 931 of them in
-  a single commit, and the per-edit meter — which had seen only the other, one-line edit — called the
-  window "38.00 finding(s)/edit". The note also says the half no tool can check: if the batch
-  changed a rule, its consumers are not in the diff. Split by RULE — one rule and all its copies per batch — never
-  mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
+**The fix protocol is `gate-checks.md` section I** — WHY each step exists, and the judgement each
+one needs. What follows is the same round as a command sequence, which is the half a reference in
+prose kept losing: a step nobody can run is a step that gets skipped.
+
+1. `wf round record <file>` — BEFORE a fix is touched. That file is what `wf delta` puts in front of
+   the next reviewer, and the scaffold `wf round new` wrote is blank.
+2. `wf apply -f <edits>` — the round's fixes as ONE batch: one edit per artifact per rule, each
+   declaring its own occurrence `count`. A restructure made by hand is adopted with
+   `wf apply -whole <path>`, never with `git commit`.
+3. Read the BLOCK around every edit after making it, not just the edited line.
+4. Sweep for what the batch did not reach. `wf check dup` for copies that DRIFTED,
+   `wf check stale -since <ref>` for the consumers the fix's OWN old text names, then a hand pass for
+   copies that CONTRADICT, which no similarity metric reaches. On a SCRIPT add
+   `wf check schema -since <ref>` wherever the batch touched a schema — it compares what every
+   agent's output schema OBLIGES its agent to fill against the previous freeze, and a DROP is the
+   finding, a class nothing static reaches when the leaf is built in a `.map()` callback [M-07] —
+   and `wfdry <script> --prompt-diff <a>,<b>` for each pair of agents the batch gave the same job
+   (`gate-checks.md` section B).
+5. `wf check closure` before recording the closures. It asks of every `closed by` sha the question
+   `wf round record` does not: whether that commit's diff reaches the SECTION the finding cites
+   (`D9`, `R12` — the form a ledger uses, and the only one that reaches a finding citing no line). A
+   FILE miss is a closure that did not land; a SECTION miss is a question to re-ask. A closure
+   carried by two commits is checked against each one's own parent, never against a union of
+   coordinate systems.
+6. Fill the `closed by` column with the apply commit and re-record: `wf round record <file> -round N`.
+   The next freeze refuses while a closed round's blocker stands open, and a record naming a commit
+   that does not exist is rejected before it writes.
+7. `wfcheck`, the JS linter, `wfdry`. Then `wf round new`, `wf freeze`, and `wf verify` before
+   launching.
+
+**`wf apply -rule` declares which rule a batch changes, and it is a REFUSAL, not a note.** With the
+id form (`-rule R12`) the batch is refused before anything is written when a marked site sits in a
+file the batch does not touch, and the site list is printed; `-rule-ack` is the waiver for a batch
+that legitimately corrects one site while the others stand. A second site inside a file the batch
+DOES write is not refused, and the site list is what reaches those. **`-rule` also takes a free-text
+rule NAME** (`-rule "bar accounting"`), which sweeps every sentence of the artifact set carrying all
+of its words — a script gate's rules live in prompts and are marked in no document, so the id form
+reaches nothing there. The phrase form says out loud that it is the weaker half: it names the
+sentences that USE the words, not the sites of a rule. Neither form would have caught the class it
+argues for, which is an argument for MARKING rather than a mechanism [M-08].
+
+**Size the batch by the workspace's own cost meter.** `wf stats` prints each round's edits, its
+CHANGED LINES and the findings per 100 changed lines, counted under a PINNED diff algorithm
+(`histogram`) so the denominator is comparable across gates and across machines rather than reading
+whatever `diff.algorithm` the operator's gitconfig carries [M-09]. `wf apply` notes when a batch's
+changed lines predict a costly next round — the case that matters is FEW edits over MANY lines, and
+an edit is not a unit — and it also says the half no tool can check: if the batch changed a rule,
+its consumers are not in the diff. Split by RULE, one rule and all its copies per batch, never
+mechanically: which edits belong together is judgement, and all-or-nothing is per batch.
+
 - **What a fix costs is decided by whether it changes a RULE, not by how many edits it has.** One gate
   measured ~0.25 findings per edit and called it stable across a 12x range of batch sizes; the next
   ranged 0.15 to 1.75 over 150 edits, and batch size predicted nothing — its FOUR-edit batch produced

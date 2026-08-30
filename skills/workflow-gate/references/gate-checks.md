@@ -13,36 +13,31 @@ the rule recognisable. The corpus so far is eight multi-agent phases of one HTTP
 three rounds), so the *examples* lean that way while the *rules* do not — when you add an entry, state
 it so it survives a change of language.
 
-Six facts worth knowing before reading the list:
+Six facts worth knowing before reading the list. Each is a conclusion; what it was measured on is
+`measured.md`, cited by id.
 
-- Across the last two phases' gates (nine rounds), **zero** findings concerned orchestration mechanics as
-  such — no `parallel()` that should have been a `pipeline()`, no unbounded loop, no budget defect.
-  Everything of value fell into classes A–I below. Weight the review accordingly.
-- **Vector yield, measured** (three reviewers, one vector each, round 1): SEAMS 3 blockers, CRITERION 3
-  blockers, FACTS 0 blockers / 1 major / 12 minors — every citation and count in a 150 KB script checked
-  out. FACTS is the vector to drop first as rounds descend, but run it ONCE: its one major was an
-  invariant asserted in another reviewer's own prompt that the code did not hold.
+- **Orchestration mechanics as such are not where the findings are.** Across two gates' nine rounds,
+  ZERO findings concerned a `parallel()` that should have been a `pipeline()`, an unbounded loop or a
+  budget defect. Everything of value fell into classes A-I below. Weight the review accordingly
+  [M-13].
+- **Vector yield: SEAMS and CRITERION carry it, FACTS is the one to drop first — but run it ONCE.**
+  Over a 150 KB script every citation and count checked out, and the vector's single major was an
+  invariant asserted in another reviewer's own prompt that the code did not hold [M-13].
 - **The most expensive mistake is settled before any prompt exists, and it is usually a SCOPE or an
-  ARCHITECTURE call.** Gate the decisions first, with two lenses, one of them external. Measured on the
-  phase after this file's fifth: the two lenses independently rejected the same architectural decision in
-  round 1, which inverted the design and split the phase in half — 26 blockers over six rounds, against a
-  document that was a few tens of KB and cost minutes per round. Nothing found later in that phase came
-  close in value, and none of it would have been findable in a prompt.
-- **A fix is unreviewed code, and it is the single largest source of blockers.** One phase: half the
-  blockers of rounds 3+. The next: 5 of 11, with two consecutive rounds finding *nothing but* fix-induced
-  defects. The one after that: **9 of 9** in a single round — every BLOCKER existed only because the
-  previous round's fix created it. A round whose findings are all self-inflicted is the expected case,
-  not a malfunctioning gate. Review the delta, not the original — and see section I.
+  ARCHITECTURE call.** Gate the decisions first, with two lenses, one of them external. Nothing found
+  later comes close in value, and none of it would have been findable in a prompt [M-13].
+- **A fix is unreviewed code, and it is the single largest source of blockers.** One round on record
+  was 9 of 9 — every BLOCKER existed only because the previous round's fix created it. A round whose
+  findings are all self-inflicted is the expected case, not a malfunctioning gate. Review the delta,
+  not the original, and see section I [M-01].
 - **A guard, a tripwire and a criterion are what to attack hardest.** They are the parts that look
   identical whether they work or not.
 - **Including the tooling that guards the gate.** A static checker that comes up empty reports zero
-  findings and exits clean, which is indistinguishable from a clean script and is trusted more, because
-  a tool said it. One was measured finding one call site out of nineteen — every check it owned had been
-  passing over an empty set, silently, across several phases whose reviewer rounds then paid for exactly
-  what it was written to catch. Before crediting a tool for a layer of the gate, make it print the size
-  of the population it examined. A checker that verifies a property only where the author opted in must
-  print the count it did NOT verify, in the same line as its verdict: an empty population and a fully
-  unverified one both read as green, and the second is the commoner of the two.
+  findings and exits clean, which is indistinguishable from a clean script and is trusted MORE,
+  because a tool said it [M-13]. Before crediting a tool for a layer of the gate, make it print the
+  size of the population it examined — and a checker that verifies a property only where the author
+  opted in must print the count it did NOT verify, in the same line as its verdict: an empty
+  population and a fully unverified one both read as green, and the second is the commoner.
 
 ---
 
@@ -427,24 +422,19 @@ compiles, passes every test, and does nothing.
       can reproduce decides coverage while looking like a procedure. A section whose every clause
       defers to a run nobody has launched is a section no round can falsify, which is the bullet above
       seen from the other side.
-- [ ] **An acceptance section states OBSERVATIONS, never test designs.** Every clause names a command whose
-      exit status decides it, a number a query returns, or a property a reviewer can hold against a real
-      diff — never a test to be written later and argued about now. A clause whose only reader is a
-      reviewer IMAGINING an implementation has no floor: each round imagines a better cheat, the fix for
-      each defeat is another clause, and the section grows faster than it hardens (measured on one gate:
-      the assertion count went 51 → 69 in the round where the number carrying a named defeat went 9 → 12).
-      Verification of a property that needs a test moves to the implementing run, and the section-review
-      gate over the real diff judges whether the tests discriminate. Measured on two decision gates over
-      one product, same operator, same target: the acceptance section written as observations — "`make
-      test` and `make lint` are green", "the population literal equals the number of method+path
-      operations in `api/openapi.json`, 48, not the number of `paths` keys, 31" — produced 8 blockers,
-      went quiet after round 4, was never cut, and its gate closed on a genuine zero; the one written as
-      prose test specifications was rewritten in EVERY round of its gate and grew 23 → 352 lines while
-      the document around it grew 333 → 1319, absorbing a third of all growth, until a human cut it back
-      to 92 lines of properties. **What share of that gate's 92 blockers were its is deliberately not
-      quoted here**: five derivations of that one quantity exist, from 25 to 66, they disagree by up to
-      2.4x on individual rounds, and the one the operator acted on was the highest — a verdict must not
-      be the first consumer of a quantity nobody has agreed how to count.
+- [ ] **An acceptance section states OBSERVATIONS, never test designs.** Every clause names a command
+      whose exit status decides it, a number a query returns, or a property a reviewer can hold
+      against a real diff — never a test to be written later and argued about now. A clause whose only
+      reader is a reviewer IMAGINING an implementation has no floor: each round imagines a better
+      cheat, the fix for each defeat is another clause, and the section grows faster than it hardens.
+      Verification of a property that needs a test moves to the implementing run, and the
+      section-review gate over the real diff judges whether the tests discriminate. Measured on two
+      decision gates over one product, same operator, same target: the section written as observations
+      ("`make test` and `make lint` are green"; "the population literal equals the number of
+      method+path operations in `api/openapi.json`, not the number of `paths` keys") went quiet after
+      four rounds, was never cut, and its gate closed on a genuine zero — while the one written as
+      prose test specifications was rewritten in EVERY round of its gate, absorbed a third of the
+      document's whole growth, and had to be cut back by a human [M-14].
 - [ ] **A scope cut is an edit like any other and it is reviewed like any other.** Cutting a section back
       to its properties is the largest single edit a gate makes, and its DELETIONS are invisible to every
       check this tool has: `wf check rules` compares the SITES of a marked rule and cannot tell a
@@ -573,44 +563,16 @@ compiles, passes every test, and does nothing.
       reference, not the text you meant: it parses clean, passes the linter, and throws
       ReferenceError at launch with zero agents spawned. Escape it — and note that no static
       checker can catch this, because the reference is syntactically valid.
-- [ ] **Dry-run the script with stubbed hooks BEFORE the freeze (and again before launching):
-      `wfdry <script>`.** A dry-run defect found after freezing invalidates a freeze, and the repair
-      is `wf freeze -refreeze`, which republishes the round under a MOVED tag and records that it did
-      — reviewers handed the old tag read different bytes. Running the dry-run first costs nothing and
-      leaves nothing to republish; the round it once cost was a defect no reviewer ever saw. It must
-      complete EVERY one of the seven modes — `clean`, `blockers`, `acceptfail`, `unfixed`,
-      `throw-serial`, `dead-reviews`, `no-args` — not the three an earlier version of this entry
-      prescribed by hand. The last one runs the script with no `args`; the other six hand it a
-      representative object, which `--args <json>` replaces. Killing named agents is a flag,
-      `--dead <label>[,<label>…]`, applied inside every mode, not a mode of its own. A mode that
-      completes having spawned NO agent FAILS: every check in the runner is then a guard over the
-      empty set — **and ONE is not zero.** A mode that reaches a small fraction of the agents the
-      `clean` mode reaches proved that fraction and printed OK over the rest, so a mode under HALF
-      the happy path's agent count now FAILS, naming both counts, and every mode that COMPLETES
-      prints the happy path's count beside its own — a mode that threw or
-      reported violations prints its own detail instead. Measured: a red-bar abort added to the FIRST
-      producer took five of seven modes from 15/25/25/25/1/15/25 agents to 18/1/1/1/1/1/1 — six modes
-      then at one agent, `throw-serial` included, which is one by construction — with the fix round,
-      the recheck, the acceptance step and the final verdict exercised by nothing, and a reviewer
-      banking "wfdry 7 of 7" WOULD have credited a layer that covered a single agent. Failing rather
-      than warning was measured too: across the three correct gated scripts on disk the failure modes
-      run WIDER than the happy path (36 against 44, 18 against 30, 15 against 25), so none of them
-      trips it. `throw-serial` is exempt, and so is `no-args`, which the runner narrows on purpose.
-      The RATIO is the signal, not the absolute. **And a mode that never reached one of the happy
-      path's PHASES fails too, naming the phase.** The two are additive because they miss opposite
-      shapes: an abort that narrows to one agent inside ONE phase is invisible to a phase check, and
-      a branch that skips a whole section while keeping its agent count within half the happy path's
-      is invisible to the ratio — measured on such a shape, 13 agents against 15 and 4 phases against
-      5, so the ratio passed while neither the fifth section nor its gate ran in any mode. The
-      comparison is over distinct phase TITLES, never their count, because a mode running one phase
-      twice reaches the same count having covered less; the threshold is exact rather than a
-      tolerance, because across the five correct scripts on disk every mode but `throw-serial` reaches
-      its baseline's phase set exactly and a tolerance would be calibrated on a population with no
-      variance in it. Seconds of cost, and it evaluates every
-      template literal on every path, catching the class above plus any unreachable binding a linter
-      cannot type-check. A parse is not an execution. The clean path is the one that matters most:
-      reviewers read the failure branches, because that is where the risk looks like it lives.
-      **The stub must not leave in scope anything only the real harness provides.** A dry runner
+- [ ] **Dry-run the script with stubbed hooks BEFORE the freeze, and READ the counts, not the
+      verdict.** `wfdry <script>` must complete every one of its seven modes; a parse is not an
+      execution, and the clean path is the one that matters most, because reviewers read the failure
+      branches where the risk looks like it lives. Ordering it before the freeze is not taste: a
+      dry-run defect found after freezing costs a republished round nobody reviewed. **7/7 is not the
+      reading — the AGENT COUNT and the PHASE SET beside each mode are**, because a mode that aborts
+      early proves the fraction it reached and prints OK over the rest, and ONE is not zero. What
+      each mode is, what its floors mean and what a red one is a fact ABOUT are
+      `pre-flight-gate.md` step 2b [M-04].
+- [ ] **The stub must not leave in scope anything only the real harness provides.** A dry runner
       that kept the script's `meta` binding alive ran six modes × six rounds green over a line the
       real harness makes unexecutable (it parses `meta` OUT before the body runs); the launch died
       in 29 ms with zero agents. Anything a script touches that only the harness provides must be
@@ -658,23 +620,13 @@ compiles, passes every test, and does nothing.
 - [ ] **An agent's output SCHEMA can be too wide for the launch to accept, and the refusal kills that
       agent alone.** `blocked by safety classifier: output schema too large to classify safely` — four
       agents of one run, and on another run the FIFTEENTH and last agent, six hours in, with nothing
-      downstream to catch it. The width is not a judgement call and it is not "risk accepted": run
-      `wfdry`, which prints every schema's serialized width — the happy path's, and the wider one a
-      failure branch composes — and warns from the two ends the corpus actually measured. Then PROBE
-      the wide one: one cheap agent carrying that schema and a prompt saying to fill it with
-      placeholders answers in seconds, against a multi-hour run. Width is measurable from the script;
-      acceptance is measurable only by asking, and a gate that measured its own width to the byte and
-      wrote down that acceptance could not be measured from there was wrong on exactly that clause.
-      The next gate proved how cheap the answer is — 4,233 bytes REFUSED in 82 milliseconds at zero
-      tokens, 3,114 ACCEPTED — after two of its rounds had argued about the band from measurements of
-      SIZE alone. A schema is narrowed two ways and the corpus has used both: declaring a repeated leaf ONCE and
-      referencing it (which took two refused schemas under), and trimming the prose in the
-      descriptions (which is what took the third one under, on a schema that already carried four
-      references). The launch RESOLVES `$defs`/`$ref` and ENFORCES the `minimum`/`minLength` that
-      reach a leaf through one — the same probe, with an illegal first attempt rejected — and
-      `wfdry` resolves them too. It did not: one gate declared its bar leaf once, watched the dry
-      run lose the referenced object, and REVERTED the narrowing back over the refusal line for a
-      whole round. That cost is gone; the description trim is still the other half.
+      downstream to catch it. The width is not a judgement call and it is not "risk accepted":
+      `wfdry` prints every schema's width and carries the measured band, and a schema inside or above
+      it is PROBED — one cheap agent, that schema, a prompt saying to fill it with placeholders,
+      seconds against a multi-hour run. Width is measurable from the script and ACCEPTANCE is
+      measurable only by asking, which is the clause a gate got wrong after measuring its own width
+      to the byte [M-05]. How to narrow one, and the `$defs`/`$ref` rule that makes the narrowing
+      free, are in `authoring.md`.
 
 ## F. Guard integrity
 
@@ -961,53 +913,32 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       copy in a SECOND artifact needs its own edit in the same batch — the count cannot see across
       files, and declaring a cross-file total only rejects the batch. All-or-nothing is what then makes
       both copies move together or neither move at all.
-- [ ] **Half of that class IS mechanizable, and the half that is not is the dangerous half.** An earlier
-      note here said it was not, on the evidence of a near-duplicate detector that found nothing. That
-      was true of the detector, not of the class. Split it: copies that DRIFTED — the same sentence
-      reworded in one artifact and not the other — are found by near-duplicate matching over normalised
-      text, provided the tool also demands that the two copies were last edited in different commits
-      (measured on one phase's artifacts: 2065 sentences, 176 cross-file groups, 34 flagged, and they
-      were real drifts). Copies that CONTRADICT — two differently-worded sentences asserting opposite
-      rules — share no wording and no similarity metric reaches them; they stay a reviewer's find
-      UNLESS the author marked the rule: `[RN]` markers on every site of one rule let `wf check rules`
-      demand the sites normalise identically, which is the only mechanical reach into that class
-      (measured need: eight such contradictions on one live gate, all found by reviewers). Mark only
-      a site that STATES the rule — a sentence referring to one ("because of R2", written with the
-      marker) states nothing
-      and disagrees with every statement of it; read the `compared` count, because ids that each sit
-      at a single site are a check that reached nothing and still printed zero conflicts. **A `.mjs`
-      artifact carries markers too**: it is compared as PROSE — its comments and the literal chunks of
-      its strings, never its code — so an orchestration script's prompt restating a decision is a site
-      like any other, and marking it together with the document's statement is the only mechanical
-      comparison of what the two copies SAY (`dup` reports the pair as `sim 1.00` for a whole gate and
-      correctly declines to call it a defect: a script restating a decision IS the design). Measured on
-      mocker A3: six of round 10's twelve blockers were one decision that moved in the document during
-      round 9 and did not move in the prompt restating it, and the dearest of them carried, verbatim,
-      the document's own sentence warning that this half read alone is wrong. **And a marked
-      site can DECAY into a pointer without the marker moving.** Measured: a fix that cut a section left
-      one of the two sites of three rules reading "every one of the five routes of R1" — the marker
-      still there, the enumeration it named deleted from the document — and `wf check rules` printed
-      `5 compared, 0 conflict(s)` over the broken artifact both before and after, because it compares
-      sites carrying an id and cannot tell a statement from a pointer to one. After any fix that DELETES
-      text, re-read the marked sites: the check cannot. **These documents mark their own stop rule with
-      the id R1**, at every site that STATES it here and in `round-discipline.md`, because it lived at
-      five sites in four wordings — one of them lower-cased, which the case-erasing normaliser cannot
-      see as a difference and no check then compares — and the "reviewer rounds only" half was missing
-      from the canonical statement. Neither this sentence nor the quotation above carries the marker in
-      its bracket form: both POINT at the rule, and a marked pointer is the defect this bullet is about.
-      One of the five sites is a Go comment (`internal/ws/findings.go`) that `wf check rules` can never
-      reach, because it compares ARTIFACTS — it is kept in the same wording by hand. So sweep
-      mechanically for drift, mark the rules that repeat, and keep a human vector for the unmarked
-      contradictions. **And read what the marked check does NOT ask:** it compares the sites of one id
-      against each other, never a rule against the section that argues for it — on one gate both copies
-      of a rule agreed perfectly while both had gone FALSE against the four bullets beneath them,
-      because the fix rewrote the argument and not the rule, and `5 compared, 0 conflict(s)` was read
-      as a statement about correctness. That class is `wf check stale -since <ref>`, which mines the
-      OLD text of the fixes themselves and reports every untouched sentence still using the vocabulary
-      a fix retired. On a DERIVED artifact narrow the drift sweep with `-since gate-rN` — a context
-      document restating the decisions satisfies both DIVERGENT conditions by construction (21-25
-      flagged groups per one real contradiction, measured) — and do not let either green report stand
-      in for the human pass.
+- [ ] **Half of that class IS mechanizable, and the half that is not is the dangerous half.** An
+      earlier note here said none of it was, on the evidence of a near-duplicate detector that found
+      nothing — true of the detector, not of the class. Split it. Copies that DRIFTED, one sentence
+      reworded in one artifact and not the other, are reached by `wf check dup`. Copies that
+      CONTRADICT, two differently-worded sentences asserting opposite rules, share no wording, so no
+      similarity metric reaches them at all: they stay a reviewer's find unless the author MARKED the
+      rule, which is the whole of what `wf check rules` can read [M-06]. Both commands, their
+      populations, the `-since` narrowing for a derived artifact and what a `.mjs` prompt contributes
+      as a rule SITE are in `gate-harness.md`. These documents mark their own stop rule with the id
+      R1 at every site that STATES it, which is the shape to copy: one id, several statements, and no
+      marker on a sentence that merely refers to one. The three entries below are what neither
+      command can be asked.
+- [ ] **A marked site can DECAY into a pointer without the marker moving.** Measured: a fix that cut
+      a section left one of the two sites of three rules reading "every one of the five routes of
+      R1" — the marker still there, the enumeration it named deleted from the document — and
+      `wf check rules` printed `5 compared, 0 conflict(s)` over the broken artifact both before and
+      after, because it compares sites carrying an id and cannot tell a statement from a pointer to
+      one. After any fix that DELETES text, re-read the marked sites: the check cannot.
+- [ ] **The marked check compares the sites of one id against each other, never a rule against the
+      section that ARGUES for it.** On one gate both copies of a rule agreed perfectly while both had
+      gone FALSE against the four bullets beneath them, because the fix rewrote the argument and not
+      the rule — and `5 compared, 0 conflict(s)` was read as a statement about correctness. That
+      class is `wf check stale -since <ref>`, which mines the OLD text of the fixes themselves and
+      reports every untouched sentence still using the vocabulary a fix retired.
+- [ ] **Neither green report stands in for the human pass.** Sweep mechanically for drift, mark the
+      rules that repeat, and keep a human vector for the contradictions nobody marked.
 - [ ] **A closure names a commit; check that the commit touched what the finding NAMES.** That a sha
       exists is what `wf round record` proves, and it is the smaller half: on one live gate two
       reviewer lenses asked the larger one by hand-written prompt and reported 6 and 4 of 24 closures

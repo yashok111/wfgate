@@ -163,6 +163,36 @@ opening line.
   operator running the workspace read 1108 and now reads 558.
   `wf docs` grew `interview`, `harness` and `rounds`, and `make check-docs`
   went from 8 staged documents to 11.
+  The tenth is `measured.md` (2026-08-30, the same day): the manual's PROVENANCE,
+  never auto-loaded and deliberately out of `wf docs guide`. The rule the
+  twenty-first wave banked for perishable NUMBERS — a figure belongs in the
+  manual only if an agent CHANGES ITS BEHAVIOUR from the value — was applied to
+  the STORY around them, which that pass left untouched: an agent acts on "a fix
+  is the largest single source of blockers", not on which gate that was or how
+  its rounds split. Fourteen entries so far, cited from the rules by `[M-nn]`.
+  Six topics were also collapsed to ONE home apiece, each of which had been
+  stated at full length in two files in different words — the class `dup`
+  structurally cannot see, and this file's own most-repeated defect:
+  `wfdry`'s modes and floors to `pre-flight-gate.md` step 2b, the schema width
+  band and the fixture vocabularies to `authoring.md`, `dup`/`[RN]`/`stale` to
+  `gate-harness.md`, the fix protocol to `gate-checks.md` §I (with the operator's
+  half re-cut as a seven-step COMMAND runbook, which is what the prose blob kept
+  losing), and the delta round's three asks and the severity scale to
+  `gate-checks.md` §0b and §0. The marked sites were preserved deliberately:
+  collapsing a `[R2]` or `[R3]` statement into a pointer would drop that id to
+  one site, and `wf check rules` would then compare nothing while
+  `make check-docs`'s marker floor read the narrowing as agreement.
+  **Measured, and it is well under the estimate the plan was sold on.** The
+  loaded manual — every reference but `measured.md` — went 250 475 to 236 953
+  bytes, **-5.4%**; a reviewer's set (pre-flight + checks + rounds) 153 408 to
+  140 841, **-8.2%**. The estimate given before the work was 25-35%, and it was
+  wrong because most of a de-duplicated passage becomes a pointer plus the
+  clauses the other copy did not carry, not nothing. What would actually reach
+  25% is a harvest across all hundred-odd `gate-checks.md` checkboxes, which is a
+  much larger edit at a much higher risk of dropping a rule; it is not done.
+  `make check-docs` grew a bar for the citation scheme — it fails on an `[M-nn]`
+  with no entry and on an entry nothing cites — and both halves were proven by
+  mutation, each failing with its own message.
 
 ## Why each command is the way it is
 

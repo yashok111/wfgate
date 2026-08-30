@@ -34,6 +34,16 @@ gate itself), `gate-harness.md` (the operator's `wf` mechanics) and
 `round-discipline.md` (when the gate ends). No rule moved; only which reader
 pays for it.
 
+**A rule states the failure it answers; the gate, the counts and the round costs
+live in `references/measured.md`, cited by `[M-nn]`.** The same test the manual
+already applies to a NUMBER applies to the story behind it: an agent acts on "a
+fix is the largest single source of blockers, so later rounds review the delta",
+and not on which gate that was or how its rounds split. Provenance is kept, not
+deleted — it is what makes a rule falsifiable instead of an assertion — but it is
+read when a rule is about to be CONTRADICTED, not when it is being followed.
+`make check-docs` fails on a citation with no entry and on an entry nothing
+cites.
+
 ## Read before you act — by activity
 
 | you are about to | read first |
@@ -47,6 +57,7 @@ pays for it.
 | add per-section review gates inside a script | `references/section-gate.md` |
 | estimate or cut cost, plan fan-out width | `references/cost-discipline.md` |
 | brief a gate REVIEWER | hand them the workspace's `gate-checks.md` (written by `wf init`) |
+| CONTRADICT a rule, or propose dropping one | `references/measured.md` — what that rule was measured on, cited from its text by `[M-nn]`. Never read to FOLLOW a rule; the rule is stated where it is stated |
 
 ## Invariants that hold regardless of activity
 

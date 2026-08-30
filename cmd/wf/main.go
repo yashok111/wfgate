@@ -4057,12 +4057,16 @@ var docNames = map[string]string{
 	"section-gate": "section-gate.md",
 	"cost":         "cost-discipline.md",
 	"checks":       "gate-checks.md",
+	"measured":     "measured.md",
 }
 
 // guideOrder is the manual's reading order for the concatenated form. It covers
-// every reference of the manual's argument, `checks` excepted — that one is a
-// reviewer's checklist rather than part of the argument, and it is served on its
-// own so `wf init` can pin it. The three references after `routing` were one
+// every reference of the manual's argument; `checks` and `measured` are out of
+// it on purpose — the first is a reviewer's checklist rather than part of the
+// argument, served on its own so `wf init` can pin it, and the second is the
+// PROVENANCE of the rules, read when one is about to be contradicted and never
+// to follow one. Folding either back in would restore the whole-manual read the
+// split exists to end. The three references after `routing` were one
 // 1108-line file with no headings until 2026-08-30; splitting it changed which
 // text an activity loads and not which text exists, so the guide is the same
 // manual it was.
@@ -4197,6 +4201,7 @@ func cmdDocs(args []string) error {
   section-gate  the per-section dual-review gate inside a script
   cost          cost & context discipline
   checks        the failure-mode checklist every gate reviewer reads
+  measured      what each rule was measured on — read before contradicting one
 `)
 		return nil
 	}

@@ -2,7 +2,25 @@
 
 **HARD RULE — before you ever call the `Workflow` tool, the authored script MUST pass a pre-flight review.** This is a one-time gate on the *script source itself*, run BEFORE the workflow launches — distinct from the section-review gate (`section-gate.md`), which runs INSIDE the script after each section produces artifacts. Run it out-of-band with the `Agent` tool: spawn the reviewers (concurrently — multiple `Agent` calls emitted in one message run in parallel; sequential is fine too, order doesn't matter for a read-only gate), hand each the full script + the user's task/goal but point each at its own vector's focus, collect findings, then ACT before launching. Both this gate and the section-review gate are fixed harness procedures, NOT authored workflow logic — they are themselves exempt from review (no infinite regress; the fixes they demand are re-reviewed, the gates are not).
 
-Reviewers are **`model: 'sonnet'` — every lens of this gate AND of the decision gate in step 1.** Changed 2026-08-29, and the policy it replaces is worth naming, because its argument was right about the wrong quantity: opus on all three was justified as "the last check before launch", which prices the gate as ONE round of three reviewers. It is not one round. The ten gates that have run through `wf` spent **166 rounds** between them (13, 17, 13, 25, 13, 24, 22, 10, 15, 14, by each gate's own `wf stats`, re-derived 2026-08-29) at one to four lenses a round, so the reviewer TIER multiplies by the round count — the cost function this manual already names — and that product, not the launch, is what an operator runs out of. A gate that stops because the quota stopped is the worse outcome: the round that is never dispatched finds nothing at all, and `wf stats` cannot tell it from a round that found nothing. Depth is the axis to keep, and it is the cheaper one — a reviewer's value is in how hard it reads, and for these out-of-band `Agent` calls that comes from the reviewing session rather than from a per-call `effort` (see `model-routing.md`), so do not drop the session's effort while a round is running. **Opus on a gate reviewer is a per-round exception the operator argues for out loud**, in the round's own lens roster (`wf round lens <prompt-file> -name N -model opus -asks Q`): a security-/correctness-critical artifact where a subtle, high-cost-if-missed defect is plausible, or a single fan-in lens reconciling genuinely conflicting reports that nothing downstream re-checks. If you cannot name the specific miss it guards against, it is sonnet. Two routing-rule clarifications survive the change: (a) these are standalone out-of-band `Agent` calls, so the fan-out "producers are cheap" rule does not apply — the tier list in `model-routing.md` governs; (b) they are gate reviewers, exempt from the no-N-same-role-in-parallel ban, so running every lens of a round on one tier is intended. They run out-of-band BEFORE the workflow launches, so they do NOT draw on the script's `budget.total`; the Proportionality rule below scales the **count**, and the tier is now scaled by this paragraph. The external lens (step 1, `vcodex`) is untouched — it bills against a different quota, which is a second reason the standing instruction to alternate internal and external lenses between rounds is worth following.
+Reviewers are **`model: 'sonnet'` — every lens of this gate AND of the decision gate in step 1.** A
+reviewer's tier is paid once per ROUND, not once per gate, so the tier MULTIPLIES by the round count —
+the cost function this manual already names — and that product, not the launch, is what an operator
+runs out of. A gate that stops because the quota stopped is the worse outcome: the round that is never
+dispatched finds nothing at all, and `wf stats` cannot tell it from a round that found nothing [M-11].
+Depth is the axis to keep, and it is the cheaper one: for these out-of-band `Agent` calls a reviewer's
+depth comes from the reviewing SESSION rather than from a per-call `effort` (`model-routing.md`), so
+do not drop the session's effort while a round is running. **Opus on a gate reviewer is a per-round
+exception the operator argues for out loud**, in the round's own lens roster
+(`wf round lens <prompt-file> -name N -model opus -asks Q`): a security-/correctness-critical artifact
+where a subtle, high-cost-if-missed defect is plausible, or a single fan-in lens reconciling genuinely
+conflicting reports that nothing downstream re-checks. If you cannot name the specific miss it guards
+against, it is sonnet. Two routing-rule clarifications: (a) these are standalone out-of-band `Agent`
+calls, so the fan-out "producers are cheap" rule does not apply — the tier list in `model-routing.md`
+governs; (b) they are gate reviewers, exempt from the no-N-same-role-in-parallel ban, so running every
+lens of a round on one tier is intended. They run BEFORE the workflow launches, so they do NOT draw on
+the script's `budget.total`; the Proportionality rule below scales the COUNT, and this paragraph
+scales the tier. The external lens (step 1, `vcodex`) is untouched — it bills against a different
+quota, which is a second reason to alternate internal and external lenses between rounds.
 
 **Before you spawn a single reviewer, in this order.** The order matters and is not the order these
 paragraphs were written in — it is: GRILL the decisions into existence (-2) → open the WORKSPACE
@@ -204,18 +222,13 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    the script's tail into a file and executing it with green values by hand.
    **A red mode is a fact about the SCRIPT or about the FIXTURE, and the two read alike — so read the
    fixture BEFORE you edit the script.** `wfdry --fixture <label>` prints the object the stub handed
-   that agent, per mode, and the clean mode's own verdict violation points at it. Measured on one
-   gate: THREE of its dry-run reds were fixture-synthesis limits reported as artifact defects — a
-   `$ref` the runner could not expand (a `$defs` written on a sub-schema; the pointer is anchored at
-   the schema ROOT, and the note now names the pointer that would resolve), twenty-two booleans
-   defaulted false because names like `P8a` carry no polarity, and `finalCount === 22`, an integer
-   against a constant that no report-shaped fixture can satisfy — and each cost a reading of
-   twenty-two "unmet" rows to diagnose as ONE gap. One of the three ended with the script paying about
-   1,900 bytes of width to inline twenty-two copies of a leaf it had correctly declared once.
-   A report field whose name the fixture contract does not recognise as pass-shaped or fail-shaped is
-   FALSE in every mode, and the runner prints a WARN naming it — including under `--quiet`, and again
-   after the tally. That WARN means "no mode exercised the branch guarded by this field": act on it,
-   because a green tally standing over it is the false green this whole runner exists against. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
+   that agent, per mode, and the clean mode's own verdict violation points at it. Three of one gate's
+   dry-run reds were fixture-synthesis limits reported as artifact defects, and one of them ended
+   with a correct narrowing reverted [M-10]. What the synthesis CAN and cannot derive — the field-name
+   vocabularies that decide a boolean's and an array's polarity, `x-pass` when the name will not do,
+   and the `$defs` placement a `$ref` needs — is `authoring.md`; a WARN naming a field the contract
+   does not recognise means "no mode exercised the branch guarded by this field", and a green tally
+   standing over one is the false green this whole runner exists against. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
    template literal on every path and walks branches a parse cannot reach. **The clean path is the one
    that matters most** — reviewers read the failure branches, because that is where the risk looks like
    it lives, so the defects that survive a gate are the ones on the happy path. It is a DISTINCT dynamic
