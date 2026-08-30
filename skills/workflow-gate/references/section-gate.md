@@ -9,17 +9,20 @@ The gate = **at least 2 reviewer subagents in parallel** (a `parallel()` barrier
 - research/report → factual accuracy (verify claims) · internal consistency · completeness/gaps  (2 minimum)
 - design/plan → feasibility vs real code · risk/blockers · alignment with the goal  (2 minimum)
 
-**Two is the FLOOR, not the width, and the gate is the cheap place to widen.** Section boundaries force
-serialism and cannot be argued away — they are compile boundaries, above — but the reviewers inside one
-are read-only: they mutate nothing, share no tree state, conflict with nothing and run concurrently, so
-a third or a fourth vector costs one more sonnet read of one section diff and NO wall-clock at all.
-**Reviewer width is bounded by tokens, never by the clock.** So a section with more than one plausible
-failure surface carries a vector per surface, and only a section with one surface stops at two. What the
-extra vector buys is not a second opinion but a second QUESTION: a prompt asks what it asks and nothing
+**Two is the FLOOR, not the width, but a vector past the CONCURRENCY CAP costs a whole extra wave.**
+Section boundaries force serialism and cannot be argued away — they are compile boundaries, above — and
+the reviewers inside one are read-only, so they mutate nothing, share no tree state and conflict with
+nothing. What they do contend for is a slot: the cap is `min(16, cpus - 2)`, so on a 4-core box it is
+TWO, and a third reviewer does not run beside the other two — it waits for one of them to finish
+[M-30]. **Reviewer width is `min(the section's failure surfaces, the free slots)`.** Under the cap the
+extra vector is genuinely cheap: one more sonnet read of one section diff, finishing inside the wave
+the other reviewers are already spending. Past the cap it is a second wave, and the gate's wall-clock
+is then the two slowest reviewers rather than the one. Either way the vector must EARN it, because what
+a third one buys is not a second opinion but a second QUESTION: a prompt asks what it asks and nothing
 else, and two lenses reading the same lines, both correct and both thorough, routinely find different
-defects — the one that found the blocker was the one asked the other question [M-27]. Widening is not a
-licence to skip the vector choice: four vectors that all read "correctness" is one vector billed four
-times.
+defects — the one that found the blocker was the one asked the other question [M-27]. Four vectors that
+all read "correctness" is one vector billed four times, and on a small box it is billed over two waves.
+Run `nproc` before widening; do not reason from a remembered cap.
 
 Rules:
 - **Reviewers are `model: 'sonnet'` and `effort: 'high'` by DEFAULT.** Both axes are explicit on every

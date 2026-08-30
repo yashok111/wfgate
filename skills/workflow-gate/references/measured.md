@@ -385,7 +385,20 @@ came from, so the two explanations for that clean — the artifact was clean, th
 
 The largest agent of one live run (a 1.9 MB transcript) made **256 `Bash` calls, 64 `Edit`s and 6
 `Read`s**, and exactly five of the 256 were bars (`make lint` x3, `make test` x2). The other 251 were
-`sed -n`, `rg` and `cat`. The per-agent numbers are final — that agent had returned. The run-wide reading is a SNAPSHOT of a
+`sed -n`, `rg` and `cat`. The COST of those calls was measured later, over 1580 `Bash` calls and 413 non-`Bash` ones across four
+completed runs: `Bash` median **4.124 s**, `Read` median **0.010 s** — the 413 non-`Bash` calls cost 98
+seconds in total against 110.8 minutes for the `Bash` ones. The mechanism is NOT that a shell is slow,
+and an agent told to make shell faster will fix the wrong thing: the latency is bimodal at ~0.11 s and
+~4.4 s with structurally identical commands in both modes, and the discriminator is the PERMISSION
+path. On this box `rtk rewrite` returns exit 3 ("ask") for `grep`, `cat`, `ls`, `wc`, `tail`, `find`,
+`git`, `go` and `make`, and exit 1 (passthrough) for `sed`, `rg` and anything containing a pipe —
+measured over the 1239 navigation calls, exit 1 is median 0.10 s and exit 3 is median 4.42 s with 95%
+over a second. `ls -la` and `cat f` measured 4.6 s and 4.35 s; the hook itself runs in 0.05 s. So
+navigation shell was 48.9 min, **15.5% of those runs' wall-clock**, and up to 25.6% of a small gate
+round. Two independent fixes compose: navigate with `Read`/`Grep` (this rule), and auto-allow the
+read-only commands so the ask round-trip stops being paid at all.
+
+The per-agent numbers are final — that agent had returned. The run-wide reading is a SNAPSHOT of a
 run still in flight and says so: 2120 `Bash` calls over sixteen agents at the first reading and 2319
 over nineteen an hour later, head words led by `grep`, `sed`, `rg` and `cat` — the habit was every
 agent's, not one agent's, and the total is whatever the run has reached when you run the command. The script asked for
@@ -394,6 +407,21 @@ none of it; the launching session's own instructions say to read with `cat`/`sed
 `jq -r '..|.name? // empty' agent-*.jsonl | sort | uniq -c | sort -rn` over
 `~/.claude/projects/<project-slug>/<session-id>/subagents/workflows/<wf-id>/`, and the Bash population
 with `jq -r '..|select(type=="object" and .name=="Bash")|.input.command'` over the same files.
+
+## M-30 — the concurrency cap, measured for the first time
+
+`cost-discipline.md` has stated `min(16, cpus - 2)` for as long as it has existed; nobody had priced
+it. Over SEVEN Workflow runs on a 4-core box (`nproc` = 4, so the cap is 2), the maximum number of
+agents in flight at one moment was **2 in every run, never 3**. The proof is a ten-way `parallel()`
+fan-out whose ten agents were queued within 2 ms of each other and then started strictly two at a
+time, each new start landing 6.8-8.2 s after a predecessor's end; the last four waited 9.3, 10.9, 11.9
+and 13.5 minutes for a slot. In a run whose every gate carries exactly two reviewers the cap never
+binds — that run's parallelism is 1.13x and is its own serial shape — so the cap is invisible until
+something asks for three. Re-derive from a completed run's state file:
+`jq -r '.workflowProgress[]|select(.type=="workflow_agent")|[.startedAt,.lastProgressAt]|@tsv'
+~/.claude/projects/<slug>/workflows/wf_<id>.json` and sweep for the maximum overlap; note that the
+runner writes that file only when the run ENDS, so an in-flight run has to be reconstructed from its
+per-agent transcripts.
 
 ---
 

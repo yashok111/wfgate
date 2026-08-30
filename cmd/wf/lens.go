@@ -333,7 +333,7 @@ func cmdRoundLens(args []string) error {
 	// Required, not defaulted. "unknown" in a roster is the same claim as no
 	// roster at all, and the model is the half of the record that measured
 	// 1.76x on the gate this command comes from.
-	model := fs.String("model", "", "what ran it — the model, and whether it was external (e.g. `external gpt-5.6-sol`)")
+	model := fs.String("model", "", "what ran it — the model, and whether it was external (e.g. `external gpt-5.6-luna`)")
 	// The comparable half of the record. `-name` is the round's own label and
 	// stays free; this is what lets one gate's roster be read beside another's.
 	// Repeatable AND a list, because a flag that takes a set must accept both
