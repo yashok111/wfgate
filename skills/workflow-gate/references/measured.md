@@ -381,6 +381,18 @@ filed a MAJOR — an unowned test file with 50 call sites. Its own output carrie
 came from, so the two explanations for that clean — the artifact was clean, the reader was not whole
 — cannot be told apart afterwards.
 
+## M-29 — a producer that navigated through the shell
+
+The largest agent of one live run (a 1.9 MB transcript) made **256 `Bash` calls, 64 `Edit`s and 6
+`Read`s**, and exactly five of the 256 were bars (`make lint` x3, `make test` x2). The other 251 were
+`sed -n`, `rg` and `cat`. Run-wide over its sixteen agents: 2120 `Bash` calls, the head words led by
+`grep`, `sed`, `rg` and `cat` — the habit was every agent's, not one agent's. The script asked for
+none of it; the launching session's own instructions say to read with `cat`/`sed -n` and search with
+`grep`, and subagents inherit them. Re-derive per agent with
+`jq -r '..|.name? // empty' agent-*.jsonl | sort | uniq -c | sort -rn` over
+`~/.claude/projects/<project-slug>/<session-id>/subagents/workflows/<wf-id>/`, and the Bash population
+with `jq -r '..|select(type=="object" and .name=="Bash")|.input.command'` over the same files.
+
 ---
 
 ## Appending here

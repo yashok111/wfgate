@@ -36,6 +36,16 @@ const MAX_FIX_ROUNDS = 1
 // above and the sections below are yours.
 // ---------------------------------------------------------------------------
 
+// How every agent NAVIGATES the tree. A subagent inherits the launching
+// session's own instructions, not only its `effort`: a box whose sessions are
+// told to read with `cat`/`sed -n` and search with `grep` hands that habit to
+// every agent this script spawns, and neither the script nor its pre-flight
+// gate can see it. Measured on one live producer, the largest agent of its run:
+// 256 Bash, 64 Edit, 6 Read — and exactly five of the 256 were bars. The other
+// 251 were navigation, each a separate round-trip carrying the whole context.
+const NAV = 'NAVIGATION\n' +
+  'Read files with Read, search with Grep and Glob. Reserve Bash for the bars, for git, and for what genuinely needs a shell: a `cat` or a `sed -n` where Read would do is a round-trip that carries your entire context to fetch one file.\n'
+
 // spawn is the one wrapper every agent() call goes through. An unhandled throw
 // at a serial step aborts the whole run, so a failed agent becomes null here
 // and the caller decides what a null means. Named `spawn` by convention:
@@ -141,9 +151,12 @@ const FIX_SCHEMA = {
   },
 }
 
-// runGate is the per-section dual review: two independent vectors, then one
-// bounded fix round, then a recheck of the FIX rather than of the section. A
-// fix is unreviewed code and the largest single source of new defects.
+// runGate is the per-section review gate: two independent vectors at minimum,
+// then one bounded fix round, then a recheck of the FIX rather than of the
+// section. A fix is unreviewed code and the largest single source of new
+// defects. `reviewers` is a LIST because width is bounded by tokens and never
+// by wall-clock: they are read-only, they run concurrently, and a section with
+// more than one failure surface carries a vector per surface.
 async function runGate(cfg) {
   const reviews = await parallel(cfg.reviewers.map((rev) => async () =>
     live('review:' + cfg.slug + ':' + rev.slug, await spawn(
@@ -152,6 +165,7 @@ async function runGate(cfg) {
       'YOUR REVIEW VECTOR: ' + rev.vector + '\n\n' +
       'WHAT TO READ\n' +
       'HEAD is the commit BEFORE this run started, so the diff against HEAD is exactly what this run has produced. Read that diff first, then open only the files it touches. Do not read the whole repository.\n\n' +
+      NAV + '\n' +
       'THE SLICE GOAL\n' + GOAL + '\n\n' +
       'REPORT\n' +
       'Report only defects: no praise, no summary of what the code does, no scope beyond the section goal.\n' +
@@ -218,6 +232,7 @@ async function runGate(cfg) {
       '- If a finding is WRONG about the code, do not "fix" it: leave the code alone and say so, with the file:line that refutes it.\n' +
       '- Every bar below must be green when you are done. Run them.\n' + BARS_TEXT + '\n\n' +
       'YOU OWN\n' + cfg.owns.map((p) => '  ' + p).join('\n') + '\n\n' +
+      NAV + '\n' +
       'RETURN\n' +
       '- perFinding: one entry per blocker you were handed, each with its summary, an action of fixed or refused, and a why.\n' +
       '- bars: every bar you ran, with its command and result, and the detail when it failed or was not run.\n',
@@ -233,7 +248,8 @@ async function runGate(cfg) {
       'The fix claims to close these blockers:\n' + JSON.stringify(open, null, 2) + '\n\n' +
       'The fix agent reported:\n' + JSON.stringify(fixed, null, 2) + '\n\n' +
       'A finding the fix agent REFUSED is not automatically closed and not automatically wrong: judge the refusal against the code the same way you judge a fix.\n\n' +
-      'Read the diff against HEAD and judge ONLY whether each blocker is actually closed, and whether the fix introduced a new one. Review the DELTA, not the original section.\n' +
+      'Read the diff against HEAD and judge ONLY whether each blocker is actually closed, and whether the fix introduced a new one. Review the DELTA, not the original section.\n\n' +
+      NAV + '\n' +
       'Return one finding per blocker still open and one per NEW defect the fix introduced, each with its file, summary, failure and fix, and set verdict accordingly.\n' +
       'If everything is closed and nothing new broke, return an empty findings array and verdict pass.',
       { label: 'recheck:' + cfg.slug, phase: cfg.phase, schema: FINDINGS_SCHEMA, model: 'sonnet', effort: 'high' }
@@ -316,6 +332,7 @@ const build = live('build', await spawn(
   'DO NOT\n' +
   '  TODO/path/owned-by-another-section.go\n\n' +
   'BARS — every one must be green before you report done. Run them.\n' + BARS_TEXT + '\n\n' +
+  NAV + '\n' +
   'RETURN a summary of what you changed, the files list naming every repo-relative path you wrote, and bars: every bar you ran, with its command and result.',
   { label: 'build', phase: 'Build', schema: PRODUCER_SCHEMA, model: 'sonnet', effort: 'medium' }
 ))
@@ -368,6 +385,7 @@ const accept = live('accept', await spawn(
   'You are the acceptance step for a slice in the repository at ' + REPO + '. You are READ-ONLY: you do not edit, you do not fix, you do not commit. If something is wrong you report it.\n\n' +
   'THE SLICE GOAL\n' + GOAL + '\n\n' +
   'RUN EVERY BAR and report them in bars, each with its command and result, and the verbatim output when it fails. A bar you did not run is reported as not-run, never as passing.\n' + BARS_TEXT + '\n\n' +
+  NAV + '\n' +
   'Then set goalMet to true only if every part of the goal is demonstrably satisfied, and report a finding per part that is not, with its severity and a one-sentence summary.',
   { label: 'accept', phase: 'Accept', schema: ACCEPT_SCHEMA, model: 'sonnet', effort: 'medium' }
 ))

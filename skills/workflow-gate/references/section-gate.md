@@ -1,13 +1,25 @@
-# Workflow section-review gate (dual review)
+# Workflow section-review gate (two vectors minimum)
 
 Every Workflow **section of work** ends with a review gate **before that section is considered done** and the next one starts. This is per-SECTION, **NOT per-agent** — never gate individual `agent()` calls; gate the section boundary.
 
 A section is a **declared gate boundary**, not necessarily one `phase()`. It is also a **COMPILATION boundary**, and that constraint is not negotiable by subject: measured on one gate, a Go package was split across two sections two phases apart because the two subsystems read as separate in the decision document — one section changed `populateScoped`'s signature and the other held its second call site — so the package did not compile in the window between them, and every gate over the first section reviewed a tree that could not build. Group by what must compile together first, then by subject. Several producing phases may share one gate — that is often right, because the phases that build one seam are reviewable only together — but the grouping must be a STATED choice: the script says which phases each gate covers, in the gate agent's own prompt and in `meta`. Left unstated, a run with three producing phases and one gate is indistinguishable from a run that forgot two gates, and neither the author nor a reviewer can tell which it is.
 
-The gate = **2 reviewer subagents in parallel** (a `parallel()` barrier), each auditing that section's changes along a **different vector that is actually valid for the task**. Pick the two most relevant from:
-- code change → correctness/bugs · security · simplification/reuse/efficiency  (pick 2)
-- research/report → factual accuracy (verify claims) · internal consistency · completeness/gaps  (pick 2)
-- design/plan → feasibility vs real code · risk/blockers · alignment with the goal  (pick 2)
+The gate = **at least 2 reviewer subagents in parallel** (a `parallel()` barrier), each auditing that section's changes along a **different vector that is actually valid for the task**. Pick from:
+- code change → correctness/bugs · security · simplification/reuse/efficiency  (2 minimum)
+- research/report → factual accuracy (verify claims) · internal consistency · completeness/gaps  (2 minimum)
+- design/plan → feasibility vs real code · risk/blockers · alignment with the goal  (2 minimum)
+
+**Two is the FLOOR, not the width, and the gate is the cheap place to widen.** Section boundaries force
+serialism and cannot be argued away — they are compile boundaries, above — but the reviewers inside one
+are read-only: they mutate nothing, share no tree state, conflict with nothing and run concurrently, so
+a third or a fourth vector costs one more sonnet read of one section diff and NO wall-clock at all.
+**Reviewer width is bounded by tokens, never by the clock.** So a section with more than one plausible
+failure surface carries a vector per surface, and only a section with one surface stops at two. What the
+extra vector buys is not a second opinion but a second QUESTION: a prompt asks what it asks and nothing
+else, and two lenses reading the same lines, both correct and both thorough, routinely find different
+defects — the one that found the blocker was the one asked the other question [M-27]. Widening is not a
+licence to skip the vector choice: four vectors that all read "correctness" is one vector billed four
+times.
 
 Rules:
 - **Reviewers are `model: 'sonnet'` and `effort: 'high'` by DEFAULT.** Both axes are explicit on every

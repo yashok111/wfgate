@@ -802,6 +802,35 @@ that:
   reports the shape as an error), and `past` under `pasting` is the one wrong
   pair in 171, named where the rule is stated.
 
+- *And two more of its queue items were built from the LIVE run, while the run
+  was still in flight, because both measurements are per-agent and neither needs
+  the verdict.* **A subagent inherits the launching session's INSTRUCTIONS, not
+  only its `effort`** — the half `model-routing.md` already had. Measured on the
+  largest agent of P3h's run (a 1.9 MB transcript): **256 `Bash`, 64 `Edit`, 6
+  `Read`**, and exactly FIVE of the 256 were bars; the other 251 were `sed -n`,
+  `rg` and `cat` doing what `Read` and `Grep` are for, each a round-trip
+  carrying the agent's whole context, and run-wide it is 2120 `Bash` calls over
+  sixteen agents, so the habit is every agent's rather than one agent's. The
+  operator's own box tells its sessions to navigate through the shell and the
+  script cannot see that instruction, so the override has to be IN the script:
+  `templates/script.mjs` now carries one shared `NAV` const interpolated into
+  all five prompts that read or write the tree, and the emitted skeleton stays
+  `wfcheck`-clean and `wfdry` 7/7. The ratio AFTER the change is not measured
+  and the rule says so. And **reviewer width is bounded by tokens, never by
+  wall-clock**: section boundaries force serialism and cannot be argued away,
+  but the reviewers inside a gate are read-only, conflict with nothing and run
+  concurrently, so a section with more than one failure surface carries a vector
+  per surface. That one turned out to be an EDIT to a stated rule rather than
+  the note the queue proposed — `section-gate.md` said `The gate = 2 reviewer
+  subagents in parallel` and `(pick 2)` three times — which is why the same
+  commit reconciled its `(dual review)` title, the two `model-routing.md` sites
+  that narrowed the reviewer exemption to "TWO reviewers", `wf docs`'s own help
+  line and the `runGate` comment in the skeleton. The queue's THIRD item, an
+  acceptance fan-out over `isolation: 'worktree'`, was deliberately NOT built:
+  P3h's accept had not run, so its serial tail is the schema's shape rather than
+  an observed number, and nothing has measured whether the target's suite is
+  worktree-safe.
+
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file

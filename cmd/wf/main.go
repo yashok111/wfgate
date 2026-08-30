@@ -4289,7 +4289,7 @@ func cmdDocs(args []string) error {
   preflight     the pre-flight script-review gate itself: wfcheck, wfdry, the vectors
   harness       the operator's half: workspace, round, apply, freeze, verify, checks, close
   rounds        round discipline: barrier, delta rounds, the descent, the stop rule
-  section-gate  the per-section dual-review gate inside a script
+  section-gate  the per-section review gate inside a script
   cost          cost & context discipline
   checks        the failure-mode checklist every gate reviewer reads
   measured      what each rule was measured on — read before contradicting one

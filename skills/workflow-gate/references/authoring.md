@@ -1,7 +1,7 @@
 # Workflow orchestration guide
 
 Full operating manual for the `Workflow` multi-agent orchestration tool: model routing, the
-pre-flight script-review gate, the per-section dual-review gate, and cost/context discipline. It is
+pre-flight script-review gate, the per-section review gate, and cost/context discipline. It is
 delivered as the `workflow-gate` skill; **before authoring or running any Workflow, read every
 reference the SKILL.md maps to your activity — in full.** `wf docs guide` prints the manual's
 references in reading order; the reviewer checklist is `wf docs checks` and the provenance behind
@@ -253,3 +253,18 @@ that a discriminating test "does not exist anywhere in" a package, and the test 
 that same run, named after exactly what it discriminates, stating its own mutation in its own doc
 comment. Nothing caught it, because there was nothing to catch: an absence with no command behind it
 cannot be reproduced or refuted. With the command in the finding, both are one paste away. Put such commands in a fenced block, or write the alternation without a pipe.
+
+**A subagent inherits the LAUNCHING SESSION's instructions, not only its `effort`.** `model-routing.md`
+states the effort half of this; the other half is that every standing instruction the launching session
+carries — how to read a file, how to search, which tool to prefer — reaches every agent the script
+spawns, and neither the script nor its pre-flight gate can read it off the source it is reviewing.
+Measured on one live producer, the largest agent of its run: 256 `Bash`, 64 `Edit`, 6 `Read`, and
+exactly five of the 256 were bars; the other 251 were `sed -n`, `rg` and `cat` doing what `Read` and
+`Grep` are for, each one a separate round-trip carrying the agent's whole context [M-29]. Nothing in
+the script asked for that — the operator's box tells its own sessions to navigate through the shell,
+and the agents inherited it. So every prompt that reads or writes the tree carries a NAVIGATION line:
+read with `Read`, search with `Grep` and `Glob`, and reserve `Bash` for the bars, for git and for what
+genuinely needs a shell. `wf new-script` emits it as one shared `NAV` const interpolated into the
+producer, reviewer, fix, recheck and acceptance prompts, because an instruction that arrives from
+outside the script can only be overridden INSIDE it, and a habit stated once per prompt is a habit
+stated in none. What is NOT measured is the ratio after the change; the claim is the 256:64.

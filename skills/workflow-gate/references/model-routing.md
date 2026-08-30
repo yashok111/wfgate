@@ -28,7 +28,7 @@ SINGLE fan-in convergence agent that reads all N outputs, runs ONCE, and clears 
 mechanical merge won't). A per-item *terminal* stage runs N times → NOT that agent → sonnet. N
 same-role opus producers in parallel is banned — if you think you need it, the decomposition is wrong;
 split out one fan-in opus agent instead. (Gate reviewers are exempt from the BAN — the section-review
-gate's two reviewers AND the pre-flight gate's reviewers, each governed by its own section below. The
+gate's reviewers AND the pre-flight gate's reviewers, each governed by its own section below. The
 exemption is not a licence: both of those sections set **sonnet** as the reviewer default and make opus an
 exception that must name the miss it guards against, because a gate reviewer's tier is paid once per ROUND
 and a gate is 10-25 rounds — 148 of them over the nine gates on record.)
@@ -90,7 +90,7 @@ efforts names them in that entry's `detail` string, exactly as a mixed-tier phas
 `parallel()`/`pipeline()` are `medium`, or `low` where the item work is mechanical — never above. N
 same-role high-effort producers in parallel is the same defect as N opus producers, and it bites
 harder: effort multiplies the output tokens of every one of the N. The high-effort roles are the
-single fan-in agent that runs once and the GATE REVIEWERS — the section gate's two reviewers run in a
+single fan-in agent that runs once and the GATE REVIEWERS — the section gate's reviewers run in a
 `parallel()` barrier by design (see `section-gate.md`), and they carry the same exemption the model
 half of this document grants them. The ban is on producers, not on everything that happens to sit
 inside a `parallel()`.
