@@ -242,6 +242,89 @@ derivations of that one quantity exist, from 25 to 66; they disagree by up to 2.
 rounds, and the one the operator acted on was the highest. A verdict must not be the first consumer
 of a quantity nobody has agreed how to count.
 
+## M-15 — what the citation checks caught, and what they were blind to
+
+On one phase's round-1 artifacts: **148 citations, 16 findings — 15 an ambiguous bare filename, one
+a path resolving to no tracked file at all, and NOT ONE out of range.** That distribution is the
+argument for anchors: of the five citations that gate shipped wrong, the four later rewritten with
+anchors were all caught that way and none by the range check, because both the cited line and the
+correct line existed.
+
+The extensionless trap: a correct `Makefile:90#corepack` sat invisible in a green report of 237
+citations until a hand grep found it — a path with no extension was not recognised as a citation at
+all, so it was unchecked without being reported as unchecked.
+
+The non-ASCII anchor: 15 Cyrillic anchors dissolved into "17 unverified" on the first live run,
+hiding both that only two truly unanchored citations existed and a factually wrong anchor among the
+invisible ones.
+
+## M-16 — density, when a descent goes flat
+
+One gate's flat rounds ran at nearly TRIPLE the findings per hundred changed lines of the round
+before, on a fix that had SHRUNK — which is the opposite of a surface problem, and is why density is
+read before a section is blamed for a series that stopped descending.
+
+## M-17 — the round that reviewed a cut
+
+It returned 4 blockers and 20 findings, **17 of them defects IN the cut**, and two of them were
+design decisions that survived nowhere afterwards — one already caught by hand two minutes after the
+cut landed, which is how the class was known to exist at all. Over two gates that cut, the per-round
+structural removals `wf delta` counts run to 49 and 215, and most of them are rewrites, which is why
+it prints a count rather than a list. One measured cut replaced 28 clauses with 10 properties and
+the artifact GREW by four lines.
+
+## M-18 — the named defeat, author-side and not reviewer-side
+
+Three review rounds over one acceptance list found almost nothing while the entries were bare
+assertions; the round after each entry carried its own claim found six.
+
+The rejected reviewer version: across three rounds of one gate a canned vector required to name a
+defeating implementation per clause named a defeat on **12-18% of the clauses it was handed (8/64,
+9/51, 12/69)** and never returned zero, and each defeat it named was closed by ADDING a clause. Its
+other 82-88% is "none constructed", which nothing separates from "did not try". On the gate that ran
+it, 352 lines of acceptance section carried 2 lines naming a defeat, so the rule had never been
+applied at all.
+
+## M-19 — the cheap guard that was reverted
+
+A round-13 observation, correct on its own terms: when the acceptance gate edits the tree AND leaves
+a blocker open, re-measuring costs half an hour and a docker build at the end of a four-hour run for
+a verdict that is already red. The skip was added. What it bought, measured the next round:
+the branch was true in EVERY `wfdry` failure mode because the stub's recheck always returns
+blockers, the two newest agents became reachable by NO dry-run mode while all seven printed OK, the
+agent count fell silently **from 42 to 40**, the skip nulled the acceptance report so the run lost
+its own findings and unheld list, and a bar was filed "not reported" for an agent that had never been
+spawned. Three defects for half an hour.
+
+## M-20 — ranking prompt pairs by shared sentences was built and not shipped
+
+Over seven tracked scripts the ranking surfaces SIBLING prompts — two lenses of one gate, at 0.33 to
+0.86 shared — while the pair that produced the rule (two agents given the same question from two
+prompts, five blockers between them) ranks BELOW every one of them, at 0.07 to 0.12. A ranking whose
+top is the pair you do not need and whose bottom is the pair you do is not a ranking.
+
+## M-21 — the floor armed on its own field, four times in one script
+
+Rounds 19, 21 and 22 twice, all in one script:
+
+- `seam.allowlistCount !== 40` seeds a blocker — an integer has no "not answered yet" value, so it
+  fired on every dry fixture and made the clean mode unsatisfiable.
+- `clauseNumbers.size > 1 && size < 8` — eight rows all numbered `1` give size 1, not `> 1`, so the
+  check switched itself off AT the defect.
+- `enumSets.size !== 4` — four distinct STRINGS is not the four REQUIRED names, and a bogus fourth
+  stood in for a missing real one.
+- `expected.length !== 6` — counts slots, not members, and six copies of one name passed.
+
+## M-22 — verifying a batch by searching, and the vacuous half of it
+
+One whole gate round was spent re-finding a defect whose fix had THROWN before the write. That is
+the failure `wf apply`'s all-or-nothing answers.
+
+The verification itself then had the same shape one layer down: searching for each change ONCE
+verified every pure DELETION vacuously — `strings.Count(body, "")` is never zero — and rejected
+chained edits that had landed perfectly. It is a byte-for-byte read-back against the planned buffer
+now.
+
 ---
 
 ## Appending here

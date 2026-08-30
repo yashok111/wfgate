@@ -205,6 +205,38 @@ opening line.
   every reference INCLUDING `measured.md`. Nothing was masking anything yet; the
   guard was one edit away from being defeated by the file it guards.
 
+  *And the harvest the wave named as NOT DONE was then done* (2026-08-30): the
+  sweep across `gate-checks.md`'s 147 checkbox entries, which the wave had
+  deferred as "a much larger edit at a much higher risk of dropping a rule". It
+  found the risk was real but not where it was expected. Two of the heaviest
+  entries were not provenance at all but DUPLICATION missed by the first pass —
+  a 27-line restatement of the round loop that `gate-harness.md` already carries
+  as a seven-step runbook, and a 20-line restatement of the citation and anchor
+  mechanics — and both collapsed to the reviewer's half plus a pointer. The rest
+  of the file resisted: its entries are rule-dense because the checkbox form
+  forced brevity years ago, and in `gate-checks` the anecdote is frequently the
+  RECOGNITION SHAPE rather than the justification ("porcelain prints a status
+  code and a path, never bytes"), which is a rule and stays. Eight more
+  provenance entries came out, M-15 to M-22. `gate-checks.md` went 98 246 to
+  **87 165** bytes across the whole restructure, **-11.3%**, and the loaded
+  manual 248 166 to 233 684, **-5.8%** — the 25-35% sold at the start is still
+  not met and this is the second time it has been named as not met. The number
+  that did move is per-ACTIVITY and it moved because of the SPLIT rather than the
+  compression: a reviewer's set went 208 230 bytes to **137 466**, **-34.0%**,
+  because ~520 lines of operator `wf` mechanics stopped being loaded to review a
+  script.
+  One edit SWALLOWED a whole checkbox — a replacement whose new text omitted the
+  `- [ ]` header, merging one entry into its predecessor — caught by counting the
+  entries before and after. So `make check-docs` grew a fourth arm, a floor of
+  147 on that count, and it is proven by mutation like the other three: **an edit
+  that swallows an entry reads exactly like an edit that shortened one**, and the
+  reviewer's list IS the population, which is §F's own pinned-population rule
+  applied to the file that states it. A token census over the whole reference set
+  then confirmed the pass: of 2 992 distinct tokens in the old `gate-checks.md`,
+  33 are absent from the new manual and every one is a tense, a case or a
+  trailing-period variant of a word that survives, or an identifier re-banked in
+  `measured.md`.
+
   *And the restructure earned its review round, which is the whole argument for
   having one.* Three vectors against the frozen `3fd3dc0` — one external model
   over the code half, one Opus vector asking only "did an actionable clause get

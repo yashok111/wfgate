@@ -204,26 +204,16 @@ becomes a wrong instruction that no downstream step questions.
 - [ ] **A count is meaningless without its unit.** One document was legitimately "130 operations", "114
       schema-bearing primary variants" and "419 response variants". An agent handed the wrong unit
       silently narrows its work to match the number it was given.
-- [ ] **Every cited file:line still says what the prompt claims.** Line numbers drift between rounds.
-      `wf check cite` holds the checkable half — a path with an extension is verified, and a
-      citation-like reference to an extensionless TRACKED file is now listed as "NOT verified" on
-      every run rather than silently absent from the count (one correct `Makefile:90#corepack` sat
-      invisible in a green report of 237 until a hand grep found it).
-      What it holds: the path resolves to exactly one tracked file, the
-      cited range exists, and where the citation was written with `#anchor`, the token is present in it.
-      An anchor is an ASCII token — the artifacts are English-only — and a non-ASCII one is reported as
-      an error, not silently counted as unanchored (15 Cyrillic anchors once hid inside "17 unverified",
-      one of them factually wrong).
-      When the TARGET repository itself moves after a freeze, `wf check drift` intersects its diff with
-      the cited ranges and says which citations were EDITED (re-read the claim), which merely
-      SHIFTED (re-aim; the new range is printed), which are GONE (the file left the tree) and which
-      are UNRESOLVED (the path names no single file at the frozen revision) — the only mechanical
-      signal an unanchored citation gets, since both its lines keep existing and the range check
-      stays green forever. It refuses a target whose tracked files differ from its HEAD: "the target
-      has not moved" is a claim about HEAD, and a cited line rewritten without a commit leaves HEAD
-      where it was.
-      Whether the cited lines SAY what the sentence beside them claims is the half no tool reaches, and
-      it is the half this bullet is about; run the check to clear the mechanical noise first, then read.
+- [ ] **Every cited file:line still says what the prompt claims.** Line numbers drift between rounds,
+      and **whether the cited lines SAY what the sentence beside them claims is the half no tool
+      reaches — it is the half this bullet is about.** Run the mechanical checks first to clear the
+      noise, then READ. `wf check cite` verifies that a path resolves to exactly one tracked file,
+      that the cited range exists and, where the citation carries an `#anchor`, that the token is
+      present — and it publishes the count it did NOT verify, because a citation without an anchor
+      passes resolution and range forever while pointing at the wrong line. `wf check drift` is what
+      an unanchored citation gets once the TARGET moves, classifying each as EDITED, SHIFTED, GONE or
+      UNRESOLVED. The citation grammar, the ASCII-anchor rule and the extensionless-path trap are
+      `gate-harness.md` (`wf docs harness`) [M-15].
 - [ ] **Every symbol named in a prompt exists** with that exact name, arity and parameter order.
 - [ ] **A status measured on a bare router is not the status the service returns.** Middleware in front
       of the router answers first: a request without the media type or origin the CSRF layer demands
@@ -344,16 +334,15 @@ compiles, passes every test, and does nothing.
       claim by id, and fail the run on a claim that resolves to nothing — then normalise the claim
       (trim, strip a list marker) or an honest claim fails the run instead.
 
-- [ ] **Two agents asked the SAME question from two prompts are two copies of one briefing.** Diff the
-      instruction sets, not the code: five of one gate's script blockers were a sentence the first
-      prompt carried and the second lacked — the field definitions, the carve-out for the one item the
-      question does not fit, the discipline sentence, the severity that item earns. `dup` cannot reach
-      them (the two prompts share no rare tokens there) and `stale` cannot (nothing was retired); it
-      is found by printing the sentences one prompt has and the other does not, which is
-      `wfdry <script> --prompt-diff <label>,<label>`. Naming the two is yours: ranking every pair by
-      shared sentences was built and measured, and over seven tracked scripts it surfaces SIBLING
-      prompts — two lenses of one gate, at 0.33 to 0.86 — while the pair that produced this rule
-      ranks below every one of them, at 0.07 to 0.12.
+- [ ] **Two agents asked the SAME question from two prompts are two copies of one briefing.** Diff
+      the instruction SETS, not the code: a gate's script blockers have been a sentence the first
+      prompt carried and the second lacked — the field definitions, the carve-out for the one item
+      the question does not fit, the discipline sentence, the severity that item earns. `dup` cannot
+      reach them (the two prompts share no rare tokens there) and `stale` cannot (nothing was
+      retired); it is found by printing the sentences one prompt has and the other does not, which is
+      `wfdry <script> --prompt-diff <label>,<label>`. **Naming the two is yours** — ranking every
+      pair by shared sentences was built, measured and NOT shipped, because it surfaces SIBLING
+      prompts while the pair that produced this rule ranks below every one of them [M-20].
 
 ## C. Ownership and definition of done
 
@@ -397,19 +386,16 @@ compiles, passes every test, and does nothing.
       untestable while every test passed.
 - [ ] **The criterion is observed, not asserted.** Decode the token, don't count its characters. Validate
       the body against its schema, don't check it is non-empty.
-- [ ] **Each criterion NAMES the wrong implementation it exists to fail, in the artifact itself.** Not in
-      your head — written beside the check, as "this fails an implementation that does X". A criterion
-      that cannot name one is decoration. Measured: three review rounds over one acceptance list found
-      almost nothing while the entries were bare assertions; the round after each entry carried its own
-      claim found six, because a reviewer can audit a CLAIM and cannot audit an assertion. **This is an
-      AUTHOR-side rule and it is the whole of what survives here.** Moving it onto the reviewer — a canned
-      vector required to name a defeating implementation per clause — was measured and rejected: across
-      three rounds of one gate that vector named a defeat on 12-18% of the clauses it was handed (8/64,
-      9/51, 12/69) and never returned zero, and each defeat it named was closed by ADDING a clause, so it
-      fed the loop it appeared to detect. The mechanism is what generalises, not the percentage: a
-      reviewer asked for a per-clause verdict over a nonempty criterion returns SOMETHING, and its other
-      82-88% is "none constructed", which nothing separates from "did not try". Measured on the gate that ran it: 352 lines of acceptance section carried 2
-      lines naming a defeat, so the rule had never been applied at all.
+- [ ] **Each criterion NAMES the wrong implementation it exists to fail, in the artifact itself.** Not
+      in your head — written beside the check, as "this fails an implementation that does X". A
+      criterion that cannot name one is decoration: a reviewer can audit a CLAIM and cannot audit an
+      assertion, and rounds over a list of bare assertions find almost nothing [M-18]. **This is an
+      AUTHOR-side rule and it is the whole of what survives here.** Moving it onto the REVIEWER — a
+      canned vector required to name a defeating implementation per clause — was measured and
+      rejected, and the mechanism is what generalises rather than the percentage: a reviewer asked
+      for a per-clause verdict over a nonempty criterion returns SOMETHING and never zero, each
+      defeat it names is closed by ADDING a clause so it feeds the loop it appears to detect, and its
+      large remainder of "none constructed" is not separable from "did not try".
 - [ ] **The defeat is a CONDITION, not a label, and it REPLACES prose in the clause it belongs to.**
       The rule above shipped and, on the one gate measured for it, was never applied; its FORM is why.
       "Fails if the copy is read before the source changes" names an observation somebody can go and
@@ -439,22 +425,21 @@ compiles, passes every test, and does nothing.
       four rounds, was never cut, and its gate closed on a genuine zero — while the one written as
       prose test specifications was rewritten in EVERY round of its gate, absorbed a third of the
       document's whole growth, and had to be cut back by a human [M-14].
-- [ ] **A scope cut is an edit like any other and it is reviewed like any other.** Cutting a section back
-      to its properties is the largest single edit a gate makes, and its DELETIONS are invisible to every
-      check this tool has: `wf check rules` compares the SITES of a marked rule and cannot tell a
-      statement from a pointer to one, `dup` and `stale` read what is still written, and nothing at all
-      watches a decision that stops existing. Aim the round that reviews a cut at the deletion — diff the
-      pre-cut span against the WHOLE post-cut artifact token by token, and for every token whose count
-      went to zero ask whether the decision it carried survives anywhere. Measured: the round that did
-      this returned 4 blockers and 20 findings, 17 of them defects IN the cut, and two of them were
-      design decisions that survived nowhere afterwards — one of which had already been caught by hand
-      two minutes after the cut landed, which is how the class was known to exist at all. Two tool
-      signals aim that round and neither is a verdict: `wf delta` counts the structural leads the range
-      REMOVES (a count, deliberately not a list — over two gates that cut, the per-round removals run
-      to 49 and 215 and most of them are rewrites), and `wf check stale`'s `swept` line reads BOTH
-      ways — a retired word surviving nowhere means the fix reached every consumer, or the decision it
-      carried stopped existing with nothing in its place. Do not look for a cut in a net-negative diff:
-      one measured cut replaced 28 clauses with 10 properties and the artifact GREW by four lines.
+- [ ] **A scope cut is an edit like any other and it is reviewed like any other.** Cutting a section
+      back to its properties is the largest single edit a gate makes, and its DELETIONS are invisible
+      to every check this tool has: `wf check rules` compares the SITES of a marked rule and cannot
+      tell a statement from a pointer to one, `dup` and `stale` read what is still written, and
+      nothing at all watches a decision that stops existing. Aim the round that reviews a cut at the
+      DELETION — diff the pre-cut span against the WHOLE post-cut artifact token by token, and for
+      every token whose count went to zero ask whether the decision it carried survives anywhere. The
+      round that did this filed blockers, most of its findings were defects IN the cut, and two of
+      them were design decisions that survived nowhere afterwards [M-17]. Two tool signals aim that
+      round and neither is a verdict: `wf delta` counts the structural leads the range REMOVES (a
+      count, deliberately not a list — most removals are rewrites), and `wf check stale`'s `swept`
+      line reads BOTH ways, since a retired word surviving nowhere means the fix reached every
+      consumer OR that the decision it carried stopped existing with nothing in its place. **Do not
+      look for a cut in a net-negative diff:** one measured cut replaced 28 clauses with 10
+      properties and the artifact GREW.
 - [ ] **A criterion can be wrong in the direction of FALSE FAILURE, and that direction is worse.**
       Everyone checks whether a check is too weak. One that goes red against a CORRECT implementation
       stalls the run at the single step usually forbidden to change production code — so the agent that
@@ -647,31 +632,26 @@ passing one.
       shared "never do X" text: grep the whole artifact for X, and check that nothing the artifact
       itself instructs an agent to do is an instance of it.
 
-- [ ] **A cheap guard that suppresses coverage of the expensive path it guards is a net loss.** A
-      round-13 observation was correct on its own terms: when the acceptance gate edits the tree AND
-      leaves a blocker open, re-measuring costs half an hour and a docker build at the end of a
-      four-hour run for a verdict that is already red. The skip was added. The next round measured
-      what it bought: the stub's recheck always returns blockers, so the branch was true in EVERY
-      `wfdry` failure mode, the two newest agents in the script became reachable by NO dry-run mode
-      while all seven still printed OK, the agent count fell silently from 42 to 40, the skip nulled
-      the acceptance report so the run lost its own findings and unheld list, and a bar was filed
-      "not reported" for an agent that had never been spawned. Three defects for half an hour, and it
-      was reverted with the measurement written into the script beside the reversal. The shape to
-      recognise: an optimisation whose condition is TRUE in exactly the modes that exercise the path
-      it skips.
-
-- [ ] **A width-reduction edit is the shape that quietly drops a `required`.** Twice now: one gate
-      narrowed a schema for the classifier and left a stale band constant behind, and the next lost
-      `required: ['met','evidence']` from the leaf of a twenty-two-key acceptance report — in a hunk
-      whose own comment was entirely about width, with no warrant recorded — so ONE frozen revision
-      published a report whose every property could come back `{met: true}` with no evidence at all,
-      the only thing the gate over that report had to read. The next round's lens caught it by
-      reading; the value of the check is that it is mechanical and one line long. Nothing static reaches it where the leaf is built inside an
-      `Object.fromEntries(...map(...))` callback: both static tools were clean over that script.
-      `wf check schema -since <ref>` compares what every agent's schema OBLIGES its agent to fill,
-      between the previous freeze and now, and a DROP is the finding. Run it after any batch that
-      touched a schema, and state the warrant in the hunk when a requirement really is being removed.
-
+- [ ] **A cheap guard that suppresses coverage of the expensive path it guards is a net loss.** The
+      shape to recognise: **an optimisation whose condition is TRUE in exactly the modes that
+      exercise the path it skips.** One was correct on its own terms — re-measuring after the
+      acceptance gate edits the tree and leaves a blocker open costs half an hour for a verdict
+      already red — and the next round measured what it bought: the stub's recheck always returns
+      blockers, so the branch was true in EVERY `wfdry` failure mode, two agents became reachable by
+      NO dry-run mode while all seven still printed OK, the agent count fell silently, the skip
+      nulled the acceptance report so the run lost its own findings, and a bar was filed "not
+      reported" for an agent never spawned [M-19]. It was reverted with the measurement written into
+      the script beside the reversal, which is what stops the next round re-arguing it.
+- [ ] **A width-reduction edit is the shape that quietly drops a `required`.** Twice now, and the
+      second time ONE frozen revision published an acceptance report whose every property could come
+      back `{met: true}` with no evidence at all — the only thing the gate over that report had to
+      read — from a hunk whose own comment was entirely about width, with no warrant recorded [M-07].
+      Nothing static reaches it where the leaf is built inside an `Object.fromEntries(...map(...))`
+      callback: both static tools were clean over that script, and the next round's lens caught it by
+      READING. `wf check schema -since <ref>` is the mechanical version and it is one line long: it
+      compares what every agent's schema OBLIGES its agent to fill against the previous freeze, and a
+      DROP is the finding. Run it after any batch that touched a schema, and state the warrant in the
+      hunk when a requirement really is being removed.
 - [ ] **A presence check is not a content check, and the difference matters most on the report nobody
       re-reads.** One run's sixteen reviewer prompts were told "the diff against HEAD is exactly what
       this run has produced", and `git diff HEAD` shows no untracked file — so a section that put new
@@ -721,15 +701,12 @@ passing one.
       to turn a raise into a null, so each assertion was caught, recorded as a dead agent, and the run
       reported OK — three injected defects, three green runs. Any checker embedded in the code it
       checks must report out of band, and fail on its own record rather than on the host's reaction.
-- [ ] **A floor must be ARMED ON A DIFFERENT FIELD than the one it constrains**, or it disables itself
-      at exactly the degenerate value the defect produces. This is the corollary of asking whether
-      evidence of FAILURE is present rather than whether evidence of success is absent, and one gate
-      hit it four times in ONE script over three rounds — r19, r21 and r22 twice:
-      `seam.allowlistCount !== 40` seeds a blocker — an integer has no "not answered yet" value, so it
-      fired on every dry fixture and made the clean mode unsatisfiable; `clauseNumbers.size > 1 &&
-      size < 8` — eight rows all numbered `1` give size 1, not `> 1`, so the check switched itself off
-      at the defect; `enumSets.size !== 4` — four distinct STRINGS is not the four REQUIRED names, and
-      a bogus fourth stood in for a missing real one; `expected.length !== 6` — counts slots, not
+- [ ] **A floor must be ARMED ON A DIFFERENT FIELD than the one it constrains**, or it disables
+      itself at exactly the degenerate value the defect produces. This is the corollary of asking
+      whether evidence of FAILURE is present rather than whether evidence of success is absent, and
+      one gate hit it four times in ONE script over three rounds [M-21]. Two of the four shapes:
+      `clauseNumbers.size > 1 && size < 8` — eight rows all numbered `1` give size 1, not `> 1`, so
+      the check switched itself off AT the defect; `expected.length !== 6` — counts slots, not
       members, and six copies of one name passed. The fix each time had one shape: arm on a field the
       report cannot fake by repetition (a two-value enum, a decided-row count), then demand the
       identity in full. **An integer compared to a constant is the single easiest way to write a
@@ -956,17 +933,15 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       a closure that did not land; a LINE it did not cover is a question to re-ask, since a later batch
       in the same round shifts the numbers.
 - [ ] **Verify a batch of edits by SEARCHING for each one, not by the absence of an error.** A patch
-      script that validates as it goes reports only the edit that FAILED and silently discards the ones
-      that succeeded before it, because the write happens at the end — so a fix is reported applied,
-      never reached the file, and the next review round re-files the identical blocker. A partially
-      applied batch is worse than a rejected one, because a rejected one announces itself. `wf apply`
-      is this rule made mandatory: it validates every replacement against the evolving buffer first,
-      writes nothing if one misses, then re-reads every written file and compares it BYTE FOR BYTE with
-      the buffer it planned. (It searched for each change once, which verified every pure DELETION
-      vacuously — `strings.Count(body, "")` is never zero — and rejected chained edits that had
-      landed perfectly.)
-      A hand edit followed by `git commit` gives up both halves.
-      (Measured: one whole gate round spent re-finding a defect whose fix had thrown before the write.)
+      script that validates as it goes reports only the edit that FAILED and silently discards the
+      ones that succeeded before it, because the write happens at the end — so a fix is reported
+      applied, never reached the file, and the next round re-files the identical blocker. **A
+      partially applied batch is worse than a rejected one, because a rejected one announces
+      itself.** `wf apply` is this rule made mandatory: every replacement is validated against the
+      evolving buffer first, nothing is written if one misses, and every written file is re-read and
+      compared BYTE FOR BYTE with the buffer that was planned — searching for each change ONCE
+      verifies every pure deletion vacuously, which is how the check was first written and why it is
+      not written that way now [M-22]. A hand edit followed by `git commit` gives up both halves.
 - [ ] **The same rule living in two artifacts with different quoting is a seam.** When one prose rule
       appears both in a companion document and inside the orchestration script's own string literals,
       the two copies need DIFFERENT escaping — so a sentence moved between them by copy-paste stops
@@ -975,33 +950,20 @@ The fix is the largest single source of blockers. These are protocol, not taste.
 - [ ] **Read the block around every edit after making it**, not just the edited line. Three self-inflicted
       defects in one round were structural: a brace closed early, a field added to a schema's `required`
       without a matching instruction, a rule tightened in one consumer of six.
-- [ ] **Record the round's findings, re-run `wfcheck` and the JS linter, open the next round, and
-      re-freeze.** The
-      findings go into the closing round's own `rounds/rN/findings.md`, via `wf round record <file>`,
-      BEFORE the fixes are applied — that file is what `wf delta` puts in front of the next reviewer,
-      and the scaffold `wf round new` writes is blank. An open blocker is legal at record time; a
-      `closed by` naming a commit that does not exist is not — the record rejects before writing.
-      After the fixes, fill the `closed by` column with the apply commit and re-record (`-round N`):
-      `wf freeze` reads the findings of the round being CLOSED (the frozen round's own file is always
-      a blank scaffold) and refuses while a BLOCKER stands without a closure; a prose closure passes
-      with a "verify by hand" note. It also refuses when that round's ledger is the UNTOUCHED scaffold
-      and no lens was banked for it — and it checks EVERY closed round, not only the previous one,
-      because `wf round new` does not require the current round to be frozen and a round opened past
-      without a freeze was examined by nothing. A round nobody is recorded as having read must not
-      freeze as a round that found nothing: bank the vectors with `wf round lens <prompt-file> -name N -asks Q -model
-      M -round N`, which is also the record that makes the round's reviewers part of the corpus, and
-      which counts only where it says which vector, what ran it and what it was asked. A `-kind tool`
-      round is exempt: its opening subject already records that no reviewer was dispatched. Then `wf round new`, then `wf freeze` — which
-      refuses while any ARTIFACT is uncommitted and refuses, by default, to re-freeze a round that is
-      already tagged (`-refreeze` republishes it, moves the tag and records the supersession; it is
-      what the citation notes below are for), and records one manifest over the whole artifact set plus the reviewed repository's HEAD
-      and the `wf` version that wrote it. `wfdry` runs BEFORE that freeze — a dry-run defect found
-      after it forces a round no reviewer saw — then `wf verify` before launching, so that all three
-      copies of this loop name the same steps.
+- [ ] **Record the round's findings BEFORE applying its fixes, and re-freeze after them.** The
+      order is the point: `wf round record <file>` writes the closing round's own
+      `rounds/rN/findings.md`, which is what `wf delta` puts in front of the next reviewer, and the
+      scaffold `wf round new` wrote is blank. The full command sequence — record, apply, read the
+      block, sweep, `wf check closure`, re-record, re-check, re-freeze, verify — is
+      `gate-harness.md` (`wf docs harness`). Three refusals meet a fixer there and are worth knowing
+      before they fire: a `closed by` naming a commit that does not exist is rejected BEFORE the
+      record is written; `wf freeze` reads the findings of the round being CLOSED, never the frozen
+      round's own blank scaffold, and refuses while a BLOCKER stands without a closure; and it
+      refuses an UNTOUCHED scaffold for which no lens was banked, over EVERY closed round rather
+      than only the previous one. A prose closure passes with a counted "verify by hand" note.
       **A clean working tree is NOT the check** that what will run is what was reviewed: edits are
-      committed as they are applied, so a post-freeze edit leaves the tree exactly as clean as none at
-      all. `wf verify` is the check. The linter caught an unescaped apostrophe inside a quoted string
-      that would have failed the run at launch, for free.
+      committed as they are applied, so a post-freeze edit leaves the tree exactly as clean as none
+      at all. `wf verify` is the check.
 - [ ] **Mark fix-induced findings `[fix-induced]` in the ledger.** The share of a round's findings
       introduced by the previous round's own fix describes what THIS round found; it is a continue
       signal, never a stop signal. Measured on three gates: a 4-of-4 fix-induced round carrying one
@@ -1013,26 +975,20 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       The gate ends on a REVIEWER round that produces no BLOCKER, and on nothing else [R1]. The last phase needed four.
 - [ ] **A series that stops descending has TWO candidate causes, and the tool names one of them
       before you guess at the other.** This is NOT a second termination clause and it does not touch
-      the rule above: the gate still ends where that rule says and nowhere else. It is what to read
-      while the rule has not fired. Run `wf stats` FIRST: it prints the share of each round's blockers
-      carrying `[fix-induced]` and names the rounds where that share is a majority, and its own note
-      says why — a fix rate matching the introduction rate is, from outside, exactly what a flat
-      descent looks like. Where the flat rounds are majority fix-induced, the surface is not the
-      variable and cutting it does nothing; section 0 carries the other half of that reading, which is
-      to ask whether the remaining findings would make a fleet BUILD the wrong thing or merely tell it
-      something stale. Only where neither of those explains the series is the SURFACE the candidate —
-      an artifact that grows at every freeze while the blocker count holds is a design being
-      elaborated, and `wf freeze` records the corpus size with its delta so the growth is visible at
-      all. Then the honest half: a cut is not a fix. On the one gate that made one, the round REVIEWING
-      the cut filed blockers, most of its findings were defects IN the cut, and two deleted design
-      decisions were recovered only because that round diffed the pre-cut span token by token. Density
-      is the check on all of this — one gate's flat rounds ran at nearly triple the findings per
-      hundred changed lines of the round before, on a fix that had SHRUNK, which is the opposite of a
-      surface problem. Two rules already here govern what follows a cut: a scope cut is an edit like
-      any other and is reviewed like any other, and an acceptance section states observations rather
-      than test designs, which is what made that particular surface grow. **A zero from the round that
-      reviews a cut is the least informative zero in the gate** — nothing here watches a decision that
-      stopped existing except that round.
+      the stop rule: the gate still ends where that rule says and nowhere else. It is what to read
+      while the rule has not fired. Run `wf stats` FIRST — it names the rounds whose blockers are a
+      majority `[fix-induced]`, and a fix rate matching the introduction rate is, from outside,
+      exactly what a flat descent looks like. Where the flat rounds are majority fix-induced the
+      SURFACE is not the variable and cutting it does nothing; section 0 carries the other half of
+      that reading, which is whether the remaining findings would make a fleet BUILD the wrong thing.
+      Only where neither explains the series is the surface the candidate — an artifact that grows at
+      every freeze while the blocker count holds is a design being ELABORATED, and `wf freeze` records
+      the corpus size with its delta so the growth is visible at all. Density is the check on all of
+      it: flat rounds running at several times the findings per hundred changed lines of the round
+      before, on a fix that SHRANK, are the opposite of a surface problem [M-16]. Then the honest
+      half: **a cut is not a fix**, and **a zero from the round that reviews a cut is the least
+      informative zero in the gate** — nothing watches a decision that stopped existing except that
+      round.
 - [ ] **When a finding names a CLASS, enumerate the class before fixing a member.** "Both of the
       accumulating terms", "every copy of this rule", "each of these prompts" — fixing the members the
       finding happened to list is the same defect one round later, and it reads as closed in the
