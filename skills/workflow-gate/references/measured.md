@@ -446,6 +446,19 @@ scripts re-deriving one constraint, and the scaffold carried none of it. Re-deri
 `free -g` and `nproc`, and read the target's own build file before fanning out anything that runs
 its bars.
 
+## M-32 — a whole-tree bar is twenty times a package one, and the corpus mostly already knew
+
+Over the 1799 `Bash` calls of one completed 30-agent run: whole-tree test runs (`make test`,
+`go test ./...`) were **21 calls, 31.6 min, median 124.9 s**; package-scoped runs
+(`go test ./internal/<pkg>/...`) were **193 calls, 24.7 min, median 6.2 s**. Eleven of the thirty
+agents ran a whole-tree bar at all, and only one ran it five times, spending 7.4 minutes there. So the
+recoverable slice is the repeats — roughly ten runs, part of which is a fix agent legitimately
+re-running after a correction — and it is single-digit percent of a 407-minute run, not the tens of
+minutes a pooled four-run estimate suggested. Banked at its real size deliberately: the rule earns its
+place as the precondition for a mutation fan-out, where the same command is not slow but fatal
+[M-31], not as a wall-clock win on its own. Re-derive by pairing each `tool_use` with its
+`tool_result` timestamp in the run's `agent-*.jsonl` and classifying the command.
+
 ---
 
 ## Appending here

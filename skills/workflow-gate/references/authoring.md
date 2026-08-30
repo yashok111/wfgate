@@ -254,6 +254,16 @@ that same run, named after exactly what it discriminates, stating its own mutati
 comment. Nothing caught it, because there was nothing to catch: an absence with no command behind it
 cannot be reproduced or refuted. With the command in the finding, both are one paste away. Put such commands in a fenced block, or write the alternation without a pipe.
 
+**A producer iterates on the PACKAGE-scoped bar and runs the whole-tree one once, before it reports
+done.** Measured over one 30-agent run: a whole-tree test is a median 125 seconds and a package-scoped
+one 6.2 seconds, twenty times cheaper, and the agents already knew — 193 package runs against 21
+whole-tree ones. So this rule mostly writes down what the corpus does, and its own size is small and
+stated: 11 agents ran the whole-tree bar and it ran 21 times, so about ten of those runs are repeats,
+one agent alone spending 7.4 minutes on five of them [M-32]. What makes it worth a rule anyway is that
+it is the SAME rule a fan-out needs one paragraph down, and the failure it prevents there is not slow,
+it is fatal. Write it into the prompt beside the bar list: iterate on your own package, run the full
+set once when you believe you are finished, and report THAT run.
+
 **A fan-out that verifies by MUTATION scopes its test command to the package the property names.**
 The shape is right — N properties, each applying its own mutation and watching a named test go red,
 are independent in everything but the tree they share, which is what `isolation: 'worktree'` exists
