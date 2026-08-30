@@ -417,7 +417,12 @@ fan-out whose ten agents were queued within 2 ms of each other and then started 
 time, each new start landing 6.8-8.2 s after a predecessor's end; the last four waited 9.3, 10.9, 11.9
 and 13.5 minutes for a slot. In a run whose every gate carries exactly two reviewers the cap never
 binds — that run's parallelism is 1.13x and is its own serial shape — so the cap is invisible until
-something asks for three. Re-derive from a completed run's state file:
+something asks for three. **What it costs when something does is now measured too.** A 30-agent run
+that completed later the same day held max concurrency 2 again (parallelism 1.10x, 3.2 min idle over
+a 407-minute span), and exactly one of its eight gates carried THREE reviewers: that third lens
+waited **437 seconds** for a slot, against 6 to 8 seconds of spawn latency for every other agent in
+the run. A third vector is not free and it is not a whole gate either — it is one queued wave, and
+on that run it was 7.3 minutes. Re-derive from a completed run's state file:
 `jq -r '.workflowProgress[]|select(.type=="workflow_agent")|[.startedAt,.lastProgressAt]|@tsv'
 ~/.claude/projects/<slug>/workflows/wf_<id>.json` and sweep for the maximum overlap; note that the
 runner writes that file only when the run ENDS, so an in-flight run has to be reconstructed from its

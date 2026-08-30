@@ -1075,8 +1075,15 @@ fixtures for the non-ASCII anchor detector).
   (5.1 h in the banked scaffold, which is the closing commits landing after the
   write-up), median round 30.5 min, over TWO artifacts — a decision document
   gated for three rounds alone and an orchestration script added at round 4,
-  both closing together on two consecutive rounds with no blocker. It has NOT
-  launched. Its fix-induced share is 10 of 73 findings and 2 of 17 blockers, and
+  both closing together on two consecutive rounds with no blocker. **It
+  LAUNCHED, and came back `green: false` on exactly one term** — 30 agents,
+  407 min, 2239 tool calls, 5.99 M tokens, 0 dead, 0 bar failures, 0
+  inconsistent, `finalBarsGreen` and `goalMet` true, the conditional
+  re-measurement fired — and TWO open blockers of one section that the bounded
+  fix round did not close, the second of them a recheck refuting the fix's own
+  claim that a missing test was "covered incidentally", proved by mutation. The
+  run is also the corpus's baseline for the navigation rule: it predates `NAV`,
+  so its 30 agents are the last measurement of the old behaviour. Its fix-induced share is 10 of 73 findings and 2 of 17 blockers, and
   `wf stats` says why that is a lower bound rather than a measurement: four
   rounds with findings carry no `[fix-induced]` marker at all. Its cost meter
   prices rounds 2-3 and 5-9 — 1 and 4 excluded as artifact-adding windows, 10

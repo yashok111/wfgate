@@ -17,7 +17,8 @@ TWO, and a third reviewer does not run beside the other two — it waits for one
 [M-30]. **Reviewer width is `min(the section's failure surfaces, the free slots)`.** Under the cap the
 extra vector is genuinely cheap: one more sonnet read of one section diff, finishing inside the wave
 the other reviewers are already spending. Past the cap it is a second wave, and the gate's wall-clock
-is then the two slowest reviewers rather than the one. Either way the vector must EARN it, because what
+is then the two slowest reviewers rather than the one — measured at 437 seconds of slot wait for the
+one three-reviewer gate of a 30-agent run, where every other agent waited 6 to 8 seconds [M-30]. Either way the vector must EARN it, because what
 a third one buys is not a second opinion but a second QUESTION: a prompt asks what it asks and nothing
 else, and two lenses reading the same lines, both correct and both thorough, routinely find different
 defects — the one that found the blocker was the one asked the other question [M-27]. Four vectors that
