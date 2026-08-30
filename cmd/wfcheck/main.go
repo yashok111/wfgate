@@ -31,7 +31,7 @@ func main() {
 	// Empty, not "." — inside a gate workspace the right answer is the
 	// workspace's target, and the working directory is the wrong tree.
 	root := flag.String("root", "", "repository the script will run in (default: the gate workspace's target, else the working directory)")
-	ownsDiff := flag.String("owns-diff", "", "AFTER a run: compare the script's ownership map against <ref>..HEAD of -root, both directions")
+	ownsDiff := flag.String("owns-diff", "", "AFTER a run: compare the script's ownership map against <ref>..WORKING TREE of -root, both directions")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `wfcheck — static check over a Workflow orchestration script

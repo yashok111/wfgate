@@ -296,16 +296,16 @@ function bank(section, result) {
 
 // A producer that wrote outside its declared ownership is a LOST WRITE the
 // moment another section owns the same file, so it is recorded rather than
-// logged. Measured on one real run: six majors of this shape, and every one was
-// a hole in the MAP rather than an agent exceeding it — which is the finding.
+// logged. Measured on one real run: six majors of this shape, four of them a
+// hole in the MAP rather than an agent exceeding it, and two a section writing a
+// file another section had declared — which is the case this check is for.
 //
 // It reads the agent's SELF-REPORT, so it sees only what the agent named, and
 // two questions are beyond it by construction: a file the run wrote that no
 // section owns at all, and a file a section owns that nobody ever wrote. Both
 // need the tree. After the run: `wfcheck -root <repo> --owns-diff <the commit
 // the run started from> <this script>`. On that same run the tree found four
-// more unowned files than the self-reports did, and one owned path that was a
-// TYPO for the file the run actually wrote.
+// more unowned files than the self-reports did.
 function ownership(section, owns, files) {
   // An `owns` entry is a SENTENCE about a path — `internal/x.go (the D7 comment
   // only)` is the prescribed form — so the path is its first token. `wfcheck`
@@ -431,11 +431,11 @@ const accept = live('accept', await spawn(
 // (1) The step above is ONE agent walking N properties in series. Where those
 // properties are independent MUTATIONS — apply the mutation, run the test it
 // names, watch the red, revert — they are the most parallelisable work in the
-// whole run: measured at 45.4 min of a 407-minute run, and its re-measurement
-// another 49.2, so 23% of the run in one serial walk. `isolation: 'worktree'`
-// is what makes them safe to run at once. Scope each agent's test command to
-// the package its property names FIRST; a fan-out of whole-tree test runs is
-// not slow, it is an OOM. See `wf docs authoring`.
+// whole run, and on the corpus this step plus its re-measurement is about a
+// fifth of a run's wall-clock. `isolation: 'worktree'` is what makes them safe
+// to run at once. Scope each agent's test command to the package its property
+// names FIRST; a fan-out of whole-tree test runs is not slow, it is an OOM.
+// See `wf docs authoring`.
 //
 // (2) A fix landed by a gate AFTER this step invalidates what the step
 // measured. A conditional RE-MEASUREMENT re-runs it over the edited tree when

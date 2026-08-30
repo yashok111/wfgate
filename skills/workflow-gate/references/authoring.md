@@ -259,47 +259,44 @@ of the same step.** Two rules, one place, because doing either without the other
 than removing it. FIRST: where an acceptance property is a MUTATION — apply what the property names,
 run the test it names, watch the red, revert — the properties are independent in everything but the
 tree, which is what `isolation: 'worktree'` exists for, and one agent walking them in series is the
-largest single wall-clock item this corpus has measured: 45.4 minutes of a 407-minute run [M-33].
+largest single RECOVERABLE wall-clock item this corpus has measured — one run spent a fifth of itself
+in that step and its re-measurement, both walking their properties in series [M-33].
 Scope each agent's command by the paragraph below before fanning anything out. SECOND: a fix landed by
 a gate AFTER the acceptance step invalidates what that step measured, so the run re-measures
 conditionally over the edited tree — without it a launch reports an acceptance verdict frozen at its
 pre-fix value, which is not hypothetical: one run returned red over a tree whose hole its own gate had
-just closed. That re-measurement costs the same as the step it repeats (49.2 min against 45.4 on the
-same run), so it fans out the same way or it becomes the new serial tail. `wf new-script` emits both
+just closed. That re-measurement costs about what the step it repeats costs, so it fans out the same way or it
+becomes the new serial tail. `wf new-script` emits both
 as a TODO beside the acceptance step rather than as code: the shape is the author's, the constraint is
 not.
 
 **A producer iterates on the PACKAGE-scoped bar and runs the whole-tree one once, before it reports
-done.** Measured over one 30-agent run: a whole-tree test is a median 125 seconds and a package-scoped
-one 6.2 seconds, twenty times cheaper, and the agents already knew — 193 package runs against 21
-whole-tree ones. So this rule mostly writes down what the corpus does, and its own size is small and
-stated: 11 agents ran the whole-tree bar and it ran 21 times, so about ten of those runs are repeats,
-one agent alone spending 7.4 minutes on five of them [M-32]. What makes it worth a rule anyway is that
-it is the SAME rule a fan-out needs one paragraph down, and the failure it prevents there is not slow,
-it is fatal. Write it into the prompt beside the bar list: iterate on your own package, run the full
-set once when you believe you are finished, and report THAT run.
+done.** A whole-tree test costs roughly twenty times a package-scoped one, and most agents already
+work this way, so the rule's own saving is small and it is banked at that size rather than sold larger
+[M-32]. What makes it worth stating is that it is the SAME rule a fan-out needs one paragraph down,
+where the failure is not slow but fatal. Write it into the prompt beside the bar list: iterate on your
+own package, run the full set once when you believe you are finished, and report THAT run.
 
 **A fan-out that verifies by MUTATION scopes its test command to the package the property names.**
 The shape is right — N properties, each applying its own mutation and watching a named test go red,
 are independent in everything but the tree they share, which is what `isolation: 'worktree'` exists
-for. What kills it is the BAR each agent then runs. Measured on one target: a single package under
-`-race` peaks at ~650 MB RSS, `go test ./...` runs up to GOMAXPROCS package binaries at once
-(~2.6 GB on a 4-core box), and two such runs at once had the kernel OOM killer wipe the whole user
-slice twice in one day [M-31]. So the discriminator is the SCOPE of the command, not the number of
-worktrees: `go test ./internal/<pkg>/... -race` twice over is ~1.3 GB and safe, `make test` twice
-over is ~5.2 GB on a 7 GB box and is the documented failure. A whole-tree bar, and anything that
-goes through docker or a shared daemon, stays in the single-tree half of the step. Size the fan-out
-against the concurrency cap rather than the property count — the cap decides how many of the N
-actually run at once [M-30] — and if a property cannot be observed by a package-scoped command, that
-property belongs in the single-tree half too.
+for. What kills it is the BAR each agent then runs: an unbounded whole-tree test run holds gigabytes,
+and concurrent ones are what an OOM killer resolves by wiping the session [M-31]. So the discriminator
+is the SCOPE of the command, not the number of worktrees — read the target's OWN build file for what
+its bar actually invokes, because a bar that is already narrowed or memory-capped is a different
+argument from `go test ./...`, and one wave of package-scoped runs is a different number from one wave
+of whole-tree ones. A whole-tree bar, and anything through docker or a shared daemon, stays in the
+single-tree half of the step. Size the fan-out against the concurrency cap rather than the property
+count — the cap decides how many of the N actually run at once [M-30] — and if a property cannot be
+observed by a package-scoped command, that property belongs in the single-tree half too.
 
 **A subagent inherits the LAUNCHING SESSION's instructions, not only its `effort`.** `model-routing.md`
 states the effort half of this; the other half is that every standing instruction the launching session
 carries — how to read a file, how to search, which tool to prefer — reaches every agent the script
 spawns, and neither the script nor its pre-flight gate can read it off the source it is reviewing.
-Measured on one live producer, the largest agent of its run: 256 `Bash`, 64 `Edit`, 6 `Read`, and
-exactly five of the 256 were bars; the other 251 were `sed -n`, `rg` and `cat` doing what `Read` and
-`Grep` are for, each one a separate round-trip carrying the agent's whole context [M-29]. Nothing in
+Measured on one live producer, the largest agent of its run: 256 `Bash`, 64 `Edit`, 6 `Read` — and
+186 of the 256 are navigation alone, `sed -n`, `rg`, `cat` and `grep` doing what `Read` and `Grep` are
+for, each one a separate round-trip carrying the agent's whole context [M-29]. Nothing in
 the script asked for that — the operator's box tells its own sessions to navigate through the shell,
 and the agents inherited it. So every prompt that reads or writes the tree carries a NAVIGATION line:
 read with `Read`, search with `Grep` and `Glob`, and reserve `Bash` for the bars, for git and for what

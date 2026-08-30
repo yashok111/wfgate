@@ -126,7 +126,16 @@ func ownsTargets(entry string) (files, dirs []string) {
 		return r == ' ' || r == '\t' || r == '\n' || r == ',' || r == '(' || r == ')'
 	})
 	for _, tok := range fields {
-		tok = strings.Trim(tok, "`'\"“”.;:*")
+		// The LEADING dot is not punctuation to trim: `.env.example`,
+		// `.gitignore` and `.github/workflows/ci.yml` are paths, and trimming
+		// it produced a map entry (`env.example`) that matches no file in the
+		// tree — so the declared file printed as owned by nobody AND as never
+		// written, two false rows from one strip, banked in this project's own
+		// record for a day as a typo in somebody else's script. Trailing
+		// punctuation is still trimmed, and a `./` prefix is normalised away.
+		tok = strings.TrimRight(tok, "`'\"“”.;:*")
+		tok = strings.TrimLeft(tok, "`'\"“”;:*")
+		tok = strings.TrimPrefix(tok, "./")
 		if tok == "" {
 			continue
 		}

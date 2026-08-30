@@ -384,8 +384,11 @@ came from, so the two explanations for that clean — the artifact was clean, th
 ## M-29 — a producer that navigated through the shell
 
 The largest agent of one live run (a 1.9 MB transcript) made **256 `Bash` calls, 64 `Edit`s and 6
-`Read`s**, and exactly five of the 256 were bars (`make lint` x3, `make test` x2). The other 251 were
-`sed -n`, `rg` and `cat`. The COST of those calls was measured later, over 1580 `Bash` calls and 413 non-`Bash` ones across four
+`Read`s**. Of the 256, **56 carry a build, test, lint or format command** — five of them the whole-tree
+`make` bars, the rest package-scoped `go test`, `go build`, `go vet` and `gofmt` — and **186 are
+navigation alone**, `sed -n`, `rg`, `cat`, `grep`, `head`, `tail`. A first reading of this entry said
+"five bars, the other 251 navigation", which counted every `go build` as navigation and contradicted
+[M-32] two entries later; the ratio the rule rests on is 186 against 6 `Read`s. The COST of those calls was measured later, over 1580 `Bash` calls and 413 non-`Bash` ones across four
 completed runs: `Bash` median **4.124 s**, `Read` median **0.010 s** — the 413 non-`Bash` calls cost 98
 seconds in total against 110.8 minutes for the `Bash` ones. The mechanism is NOT that a shell is slow,
 and an agent told to make shell faster will fix the wrong thing: the latency is bimodal at ~0.11 s and
@@ -398,10 +401,12 @@ navigation shell was 48.9 min, **15.5% of those runs' wall-clock**, and up to 25
 round. Two independent fixes compose: navigate with `Read`/`Grep` (this rule), and auto-allow the
 read-only commands so the ask round-trip stops being paid at all.
 
-The per-agent numbers are final — that agent had returned. The run-wide reading is a SNAPSHOT of a
-run still in flight and says so: 2120 `Bash` calls over sixteen agents at the first reading and 2319
-over nineteen an hour later, head words led by `grep`, `sed`, `rg` and `cat` — the habit was every
-agent's, not one agent's, and the total is whatever the run has reached when you run the command. The script asked for
+Run-wide, over the finished run: **1799 `Bash` calls across all 30 agents**, of which 383 carry a bar
+and 1206 are navigation alone — the habit is every agent's, not one agent's. Two earlier readings of
+this line (2120 over sixteen agents, 2319 over nineteen) were taken while the run was still in flight
+AND were wrong in kind: they counted LINES of multi-line commands rather than calls, which is why they
+exceed the finished run's own total. Count calls by pairing `tool_use` entries, never by piping
+command text to `wc -l`. The script asked for
 none of it; the launching session's own instructions say to read with `cat`/`sed -n` and search with
 `grep`, and subagents inherit them. Re-derive per agent with
 `jq -r '..|.name? // empty' agent-*.jsonl | sort | uniq -c | sort -rn` over
@@ -411,17 +416,19 @@ with `jq -r '..|select(type=="object" and .name=="Bash")|.input.command'` over t
 ## M-30 — the concurrency cap, measured for the first time
 
 `cost-discipline.md` has stated `min(16, cpus - 2)` for as long as it has existed; nobody had priced
-it. Over SEVEN Workflow runs on a 4-core box (`nproc` = 4, so the cap is 2), the maximum number of
-agents in flight at one moment was **2 in every run, never 3**. The proof is a ten-way `parallel()`
+it. Over the FIVE multi-agent Workflow runs of one box (`nproc` = 4, so the cap is 2), the maximum number
+of agents in flight at one moment was **2 in every one, never 3**; two further runs in that session
+are single-agent schema probes and max at 1. The proof is a ten-way `parallel()`
 fan-out whose ten agents were queued within 2 ms of each other and then started strictly two at a
-time, each new start landing 6.8-8.2 s after a predecessor's end; the last four waited 9.3, 10.9, 11.9
+time, each new start landing 6.8-8.3 s after a predecessor's end; the last four waited 9.3, 10.9, 11.9
 and 13.5 minutes for a slot. In a run whose every gate carries exactly two reviewers the cap never
-binds — that run's parallelism is 1.13x and is its own serial shape — so the cap is invisible until
+binds — that run's parallelism is 1.13x — the reading is the sum of agent durations over the span MINUS the
+idle between agents, and the other two readings give 1.11 and 1.13 — and is its own serial shape — so the cap is invisible until
 something asks for three. **What it costs when something does is now measured too.** A 30-agent run
 that completed later the same day held max concurrency 2 again (parallelism 1.10x, 3.2 min idle over
 a 407-minute span), and exactly one of its eight gates carried THREE reviewers: that third lens
-waited **437 seconds** for a slot, against 6 to 8 seconds of spawn latency for every other agent in
-the run. A third vector is not free and it is not a whole gate either — it is one queued wave, and
+waited **437 seconds** for a slot, against a spawn latency of 4.3 to 7.7 seconds (median 4.9) for
+every other agent in the run. A third vector is not free and it is not a whole gate either — it is one queued wave, and
 on that run it was 7.3 minutes. **The formula was read from the binary rather than inherited**, because this project's own manual had
 carried it for months in a form missing its floor: it is
 `Math.min(16, Math.max(2, cpus - 2))`, evaluated once at module load from `os.availableParallelism()`,
@@ -439,8 +446,13 @@ per-agent transcripts.
 The target repository's own `Makefile` documents it in a comment above its memory-cap helper: one
 package under `-race` peaks at ~650 MB RSS, `go test ./...` runs up to GOMAXPROCS package binaries
 at once (~2.6 GB on 4 cores), a `docker build` compiles the same module again inside BuildKit, and
-"the kernel OOM killer resolved that twice in one day by wiping the whole user slice". The box has
-7 GB. Every orchestration script written against that repository since carries the same rule in its
+"the kernel OOM killer resolved that twice in one day by wiping the whole user slice" — the file
+attributes that to a test run AND a concurrent docker build AND the editor and agent processes, not to
+two test runs alone. It calls the machine an 8 GB dev box; `free -g` reports 7 usable. Read the whole
+comment rather than the sentence: that Makefile's own `test` target is
+`go test ./cmd/... ./internal/... -race -count=1 -p 2` under a `systemd-run --scope -p MemoryMax=3G`,
+so the target a run's agents actually invoke is already both narrowed and capped, and a fan-out that
+re-derives "make test is unbounded" is reasoning from the wrong command. Every orchestration script written against that repository since carries the same rule in its
 own prompts — "run bars ONE AT A TIME: two at once has twice taken this box down" — which is four
 scripts re-deriving one constraint, and the scaffold carried none of it. Re-derive the headroom with
 `free -g` and `nproc`, and read the target's own build file before fanning out anything that runs
@@ -475,16 +487,23 @@ The fan-out this argues for is bounded by the concurrency cap [M-30] and constra
 ## M-34 — the ownership map, checked against the tree instead of against a self-report
 
 One 30-agent run whose script already compared every producer's reported `files` list to its `owns`
-entries: that check filed **six** majors, and every one was a hole in the MAP rather than an agent
-exceeding it. Re-asked against the tree — the declared map against the 54 files the run actually
-changed — the answer is **nine** unowned files. The four the self-report missed are all test files
-(`internal/admin/admin_test.go`, `internal/admin/loopback_test.go`, `internal/mcp/mcp_resources_test.go`,
-`web/src/components/ResourcesPage.test.tsx`); nobody named them because nobody was asked. The other
-direction produced exactly one row and it explains one of the nine: the map declares `env.example`
-while the tree carries `.env.example`, a typo ten rounds of review did not see. Nine plus one over 54
-changed files is a sixth of the population. The map itself was read from the gate configs alone —
-that script composes its prompts in a factory, so the textual half read zero `YOU OWN` blocks and the
-report says `PARTIAL MAP`; the nine rows were checked against the run's own six regardless. The sharpest single path is
+entries: that check filed **six** majors. FOUR are holes in the map; the other two — `.env.example`
+and `README.md`, written by the `seam` section and declared in `close`'s list — are a section writing
+across a boundary, which is the case that check exists to catch, and a first reading of this entry
+denied it. Re-asked against the tree — the declared map against the 54 files the run changed — the
+answer is **eight** unowned files and **none** in the other direction. The four the self-report missed
+are all test files (`internal/admin/admin_test.go`, `internal/admin/loopback_test.go`,
+`internal/mcp/mcp_resources_test.go`, `web/src/components/ResourcesPage.test.tsx`); nobody named them
+because nobody was asked.
+
+**The first reading of this measurement said NINE and one, and the extra pair was this tool's own
+defect.** It reported that the script declared `env.example` against a tree carrying `.env.example` —
+a typo ten rounds of review had missed. The script declares `.env.example`, twice; `ownsTargets`
+trimmed the leading dot as punctuation, so one strip produced both a false unowned row and a false
+untouched one, and they were banked as a finding about somebody else's artifact for a day. A dotfile
+is a path, the strip is fixed, and the case is pinned by a test. The map itself was read from the gate
+configs alone — that script composes its prompts in a factory, so the textual half read zero `YOU OWN`
+blocks and the report says `PARTIAL MAP`. The sharpest single path is
 `internal/resources/populate.go`, where the function the whole slice moves lives: it appears in
 NEITHER artifact, so no reviewer, no static check and no self-report could have reached it. Re-derive
 with `wfcheck -root <repo> --owns-diff <base> <script>`.

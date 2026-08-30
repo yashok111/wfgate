@@ -44,7 +44,10 @@ recovery has three parts, in order:
 The concurrency cap is `Math.min(16, Math.max(2, cpus - 2))`, computed ONCE from
 `os.availableParallelism()` — so on a 4-core box a "parallel" phase of three runs two and queues one,
 worth knowing both for wall-clock estimates and because it bounds what a kill can lose. **There is no
-knob**: no settings key, no environment variable, no per-call option. `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
+knob**, and the reading is: the formula sits at the cap site with no environment variable beside it
+(`grep -aoE "CLAUDE_CODE_[A-Z_]*" <the claude binary>` lists every one it reads, and none is a workflow
+concurrency), the settings schema carries none (`/config`, or the schema the `update-config` skill
+prints), and `agent()`'s own options carry none. `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
 (default 20) governs the Agent tool and does NOT reach a workflow, and `availableParallelism()` cannot be
 inflated above the machine's real cores — affinity and cgroup limits only lower it. The floor of 2 is why
 a two-reviewer gate never queues anywhere, and the only lever is the machine [M-30].

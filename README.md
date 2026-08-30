@@ -565,11 +565,14 @@ could not join — the P3h script is exactly that case, and its nine rows are tr
 anyway, verified against the run's own six.
 
 Measured on that run, against a script whose own harness already compared each
-producer's SELF-REPORTED file list to its `owns`: the self-report found six,
-the tree found **nine** — four test files no self-report had named — plus one
-row in the other direction, `env.example` against the `.env.example` the run
-actually wrote, which is the TYPO that made one of the nine unowned. Nine and
-one over a 54-file diff is a sixth of the population, not a wash of paint.
+producer's SELF-REPORTED file list to its `owns`: the self-report found six, the
+tree found **eight** — four of them test files no self-report had named — and
+nothing in the other direction. A first run of this command reported nine and
+one, and the extra pair was this tool's own path grammar: `ownsTargets` trimmed
+the leading dot off a declared `.env.example`, which produced a false row in each
+direction from one strip and was banked for a day as a typo in the script being
+audited. Eight over a 54-file diff is a seventh of the population, not a wash of
+paint.
 
 It also cross-references every `YOU OWN` path against the `owns` array of every
 gate config in the script: a path no gate owns is a file a reviewer can be

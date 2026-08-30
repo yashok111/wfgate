@@ -14,8 +14,8 @@ import (
 //
 // A script's own harness compares each producer's REPORTED `files` list against
 // its `owns` entries, and that check works — on one real run it filed six
-// majors, every one of them a hole in the map rather than an agent exceeding
-// it. What it cannot ask is the other direction, because a self-report only
+// majors: four holes in the map, and two a section writing a file another
+// section had declared, which is the case it exists for. What it cannot ask is the other direction, because a self-report only
 // contains what the agent chose to name: a file the run wrote that NO section
 // owns, and a file a section owns that the run never touched. Measured on that
 // same run: `internal/resources/populate.go`, where the function the whole
@@ -114,7 +114,7 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 	// The WORKING TREE, not HEAD, and `--no-optional-locks` on every call.
 	//
 	// Two measured reasons, both from the run this check was written for. The
-	// audit happens before the slice is committed — that run left 22 changed
+	// audit happens before the slice is committed — that run left 54 changed
 	// files uncommitted and HEAD still at the commit it started from, so a
 	// commit-to-commit diff compares a range that changed nothing and the
 	// report reads green. And the target of a gate is READ-ONLY by this

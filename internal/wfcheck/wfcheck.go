@@ -525,7 +525,7 @@ func schemaRequired(s *wfscript.Script, e ast.Expression) []string {
 // ALPHABETIC extension of at least two — because the loose form matches `e.g`
 // and `i.e`, and a check that reports "every blocker in this run cites e.g" is
 // worse than one that misses a file.
-var pathRe = regexp.MustCompile(`[\w.@{}-]+(?:/[\w.@{}-]+)+\.\w{1,8}|\b(?:Makefile|Dockerfile|README\.md|go\.mod|go\.sum|package\.json|compose\.yaml|docker-compose\.yml)\b|\b[\w@{}-]{2,}\.[A-Za-z]{2,8}\b`)
+var pathRe = regexp.MustCompile(`\.?[\w.@{}-]+(?:/[\w.@{}-]+)+\.\w{1,8}|\b(?:Makefile|Dockerfile|README\.md|go\.mod|go\.sum|package\.json|compose\.yaml|docker-compose\.yml)\b|\.?\b[\w@{}-]{2,}\.[A-Za-z]{2,8}\b`)
 var citationRe = regexp.MustCompile(`^[\w./-]+\.\w+:\d+`)
 var shoutyRe = regexp.MustCompile(`^[A-Z][A-Z0-9 ,'()-]{8,}$`)
 var proseRe = regexp.MustCompile(`(?i)[—:]|\s(and|for|the|from|via|see|read)\s`)

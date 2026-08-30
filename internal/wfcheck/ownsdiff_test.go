@@ -530,3 +530,27 @@ func TestOwnsDiffOutputIsSorted(t *testing.T) {
 		t.Errorf("unowned is unsorted: %v", rep.Unowned)
 	}
 }
+
+// A DOTFILE is a path. Trimming the leading dot as punctuation turned a
+// declared `.env.example` into a map entry named `env.example`, which matches
+// nothing in the tree — so the file printed as owned by nobody AND as never
+// written, and this repository banked those two rows as a typo in the script it
+// was auditing. Both directions here, because one strip produced both rows.
+func TestOwnsDiffDotfilesAreOwned(t *testing.T) {
+	dir, base := mkRunRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, ".env.example"), []byte("X=1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := mkOwnsScript(t, ".env.example — the one variable this section corrects", "internal/router/router.go")
+
+	rep, err := OwnsDiff(script, dir, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasPath(rep.Unowned, ".env.example") {
+		t.Errorf("a declared dotfile the run wrote reads as owned by no section: %v", rep.Unowned)
+	}
+	if hasPath(rep.Untouched, "env.example") || hasPath(rep.Untouched, ".env.example") {
+		t.Errorf("the declared dotfile reads as never written: %v", rep.Untouched)
+	}
+}

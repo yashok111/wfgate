@@ -12,7 +12,7 @@ The gate = **at least 2 reviewer subagents in parallel** (a `parallel()` barrier
 **Two is the FLOOR, not the width, but a vector past the CONCURRENCY CAP costs a whole extra wave.**
 Section boundaries force serialism and cannot be argued away — they are compile boundaries, above — and
 the reviewers inside one are read-only, so they mutate nothing, share no tree state and conflict with
-nothing. What they do contend for is a slot: the cap is `min(16, cpus - 2)`, so on a 4-core box it is
+nothing. What they do contend for is a slot: the cap is `min(16, max(2, cpus - 2))`, so on a 4-core box it is
 TWO, and a third reviewer does not run beside the other two — it waits for one of them to finish
 [M-30]. **Reviewer width is `min(the section's failure surfaces, the free slots)`.** Under the cap the
 extra vector is genuinely cheap: one more sonnet read of one section diff, finishing inside the wave

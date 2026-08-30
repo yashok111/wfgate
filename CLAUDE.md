@@ -807,13 +807,15 @@ that:
   the verdict.* **A subagent inherits the launching session's INSTRUCTIONS, not
   only its `effort`** — the half `model-routing.md` already had. Measured on the
   largest agent of P3h's run (a 1.9 MB transcript): **256 `Bash`, 64 `Edit`, 6
-  `Read`**, and exactly FIVE of the 256 were bars; the other 251 were `sed -n`,
-  `rg` and `cat` doing what `Read` and `Grep` are for, each a round-trip
-  carrying the agent's whole context. That agent had returned, so those three
-  numbers are final; the run-wide reading is a SNAPSHOT of a run still in flight
-  and is banked as one — 2120 `Bash` calls over sixteen agents, and 2319 over
-  nineteen an hour later — which is enough to say the habit is every agent's
-  rather than one agent's and not enough to be quoted as a total. The
+  `Read`**, of which 186 are navigation alone — `sed -n`, `rg`, `cat`, `grep` —
+  doing what `Read` and `Grep` are for, each a round-trip
+  carrying the agent's whole context — 186 of the 256 are navigation alone and 56
+  carry a build, test or lint command, which corrects a first reading that called
+  251 of them navigation and counted every `go build` as one. Run-wide over the
+  finished run: 1799 `Bash` calls across 30 agents, 1206 navigation. Two earlier
+  readings of that line (2120 over sixteen agents, 2319 over nineteen) were wrong
+  in KIND — they counted lines of multi-line commands rather than calls, which is
+  how a snapshot came out larger than the finished run's own total. The
   operator's own box tells its sessions to navigate through the shell and the
   script cannot see that instruction, so the override has to be IN the script:
   `templates/script.mjs` now carries one shared `NAV` const interpolated into

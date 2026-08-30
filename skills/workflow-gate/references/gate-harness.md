@@ -467,7 +467,7 @@ prose kept losing: a step nobody can run is a step that gets skipped.
 compares each producer's self-reported file list to its `owns`, and that catches what an agent NAMED;
 this asks the two questions a self-report cannot — a file the run wrote that no section owns, and a
 path a section owns that nobody wrote. On the run it was built for it found four unowned files beyond
-the six the harness had, and one owned path that was a typo for the file the run really wrote [M-34].
+the ones the harness had named, and nothing in the other direction [M-34].
 It exits zero whatever it finds: every row is a question for a human, and a bar that failed a run on an
 incidental edit would be answered by switching it off.
 
