@@ -184,10 +184,10 @@ func TestPathsNamed(t *testing.T) {
 	if len(amb) != 0 {
 		t.Fatalf("nothing here is ambiguous: %v", amb)
 	}
-	if lines, ok := got["artifacts/decisions.md"]; !ok || len(lines) != 1 || lines[0] != 120 {
+	if lines, ok := got["artifacts/decisions.md"]; !ok || len(lines) != 1 || lines[0] != [2]int{120, 120} {
 		t.Fatalf("want decisions.md at line 120: %+v", got)
 	}
-	if lines, ok := got["artifacts/context.md"]; !ok || lines[0] != 0 {
+	if lines, ok := got["artifacts/context.md"]; !ok || lines[0] != [2]int{} {
 		t.Fatalf("a path named without a line is still named: %+v", got)
 	}
 	if n, _ := PathsNamed("no path here at all", arts); len(n) != 0 {
@@ -231,7 +231,7 @@ func TestPathsNamed_ambiguousSpellingIsRefusedNotGuessed(t *testing.T) {
 func TestPathsNamed_pathWithASpace(t *testing.T) {
 	arts := []string{"artifacts/design notes.md"}
 	got, _ := PathsNamed("the claim in `design notes.md:12` is stale", arts)
-	if lines, ok := got["artifacts/design notes.md"]; !ok || lines[0] != 12 {
+	if lines, ok := got["artifacts/design notes.md"]; !ok || lines[0] != [2]int{12, 12} {
 		t.Fatalf("want the spaced path at line 12: %+v", got)
 	}
 }
@@ -476,5 +476,134 @@ diff --git a/artifacts/old.md b/artifacts/old.md
 	}
 	if rep.Touched == 0 {
 		t.Fatalf("and its sentences must be counted as written by the range: %+v", rep)
+	}
+}
+
+// A citation is a SPAN and the closure check asks about the span: over the
+// eleven gate workspaces on disk, 295 closure citations carry a `:120-134` and
+// every one of them writes an ASCII hyphen. An INVERTED span keeps the start
+// alone rather than being widened to cover both readings — `check cite` reports
+// that shape as an error, and repairing it silently here would answer a question
+// about a region the author did not write.
+func TestPathsNamed_readsTheSpanAndRefusesAnInvertedOne(t *testing.T) {
+	arts := []string{"artifacts/p3h.mjs"}
+	got, _ := PathsNamed("EXTERNAL. `artifacts/p3h.mjs:454-459` — the index join", arts)
+	if len(got["artifacts/p3h.mjs"]) != 1 || got["artifacts/p3h.mjs"][0] != [2]int{454, 459} {
+		t.Fatalf("want the whole span 454-459: %+v", got)
+	}
+	got, _ = PathsNamed("see artifacts/p3h.mjs:459-454 for the rest", arts)
+	if got["artifacts/p3h.mjs"][0] != [2]int{459, 459} {
+		t.Fatalf("an inverted span is the start alone: %+v", got)
+	}
+	// A trailing hyphen with no second number is a line, not an open-ended span.
+	got, _ = PathsNamed("see artifacts/p3h.mjs:120- and nothing else", arts)
+	if got["artifacts/p3h.mjs"][0] != [2]int{120, 120} {
+		t.Fatalf("a dangling hyphen leaves a line: %+v", got)
+	}
+}
+
+// A word the fix INFLECTED is not a word the fix retired, and the five-rune
+// stem cannot see that for a token shorter than five. Measured on a live gate:
+// a fix rewrote "consumers work" as "consumer works", the bare `work` left the
+// text, and the check reported four untouched sentences that merely use a common
+// English verb. Over that gate all 8 of its survivor reports were this class.
+func TestFindStale_aShortWordTheFixOnlyInflectedIsNotRetired(t *testing.T) {
+	_, sts := corpus(t, map[string]string{
+		"artifacts/a.md": "# A\n\nThe literal matcher works under a parameterised base path.\n",
+		"artifacts/b.md": "# B\n\nEvery downstream matcher must work the same way here.\n",
+	})
+	// ONE token changes, so the count below is about this token and no other.
+	diff := `diff --git a/artifacts/a.md b/artifacts/a.md
+--- a/artifacts/a.md
++++ b/artifacts/a.md
+@@ -3,1 +3,1 @@
+-The literal matcher work under a parameterised base path.
++The literal matcher works under a parameterised base path.
+`
+	rep := FindStale(sts, diff, 8)
+	for _, h := range rep.Hits {
+		t.Fatalf("an inflection is not a retirement: %+v (retired %v)", h, rep.Retired)
+	}
+	// And the narrowing is COUNTED, the way the common-token one is: a
+	// population dropped in silence is a population nobody can argue with.
+	if rep.Reinflected != 1 {
+		t.Fatalf("the one token dropped as an inflection must be counted: %d", rep.Reinflected)
+	}
+	// And the same the other way round: the fix wrote the SHORTER form.
+	_, sts2 := corpus(t, map[string]string{
+		"artifacts/a.md": "# A\n\nThe literal matcher work under a parameterised base path.\n",
+		"artifacts/b.md": "# B\n\nEvery downstream matcher still works the same way here.\n",
+	})
+	diff2 := `diff --git a/artifacts/a.md b/artifacts/a.md
+--- a/artifacts/a.md
++++ b/artifacts/a.md
+@@ -3,1 +3,1 @@
+-The literal matcher works under a parameterised base path.
++The literal matcher work under a parameterised base path.
+`
+	if rep2 := FindStale(sts2, diff2, 8); len(rep2.Hits) != 0 {
+		t.Fatalf("nor in the other direction: %+v (retired %v)", rep2.Hits, rep2.Retired)
+	}
+}
+
+// The five-rune stem drops its own share of the same class, and it is counted
+// too: the report names ONE narrowing, so both halves have to reach it.
+func TestFindStale_theStemSuppressionIsCountedAsWell(t *testing.T) {
+	_, sts := corpus(t, map[string]string{
+		"artifacts/a.md": "# A\n\nEvery consumer of the rule reads the frozen revision.\n",
+		"artifacts/b.md": "# B\n\nThe consumers of that rule were never re-read at all.\n",
+	})
+	diff := `diff --git a/artifacts/a.md b/artifacts/a.md
+--- a/artifacts/a.md
++++ b/artifacts/a.md
+@@ -3,1 +3,1 @@
+-Every consumers of the rule reads the frozen revision.
++Every consumer of the rule reads the frozen revision.
+`
+	rep := FindStale(sts, diff, 8)
+	if rep.Reinflected != 1 || len(rep.Hits) != 0 {
+		t.Fatalf("consumers/consumer is one word, dropped and counted: %d %+v", rep.Reinflected, rep.Hits)
+	}
+}
+
+// The suppression is a WHITELIST of endings and not a length bound, because a
+// bound alone pairs words that are not related: over the eleven gate workspaces
+// the bound alone matched `within` under `with`, `someone` under `some` and
+// `formula` under `form`. A retirement it swallows is a consumer nobody reports.
+func TestFindStale_aLongerWordThatIsNotAnInflectionStillRetires(t *testing.T) {
+	_, sts := corpus(t, map[string]string{
+		"artifacts/a.md": "# A\n\nThe reviewer stands within the frozen revision it reads.\n",
+		"artifacts/b.md": "# B\n\nEvery reviewer runs with the frozen artifacts and nothing else.\n",
+	})
+	diff := `diff --git a/artifacts/a.md b/artifacts/a.md
+--- a/artifacts/a.md
++++ b/artifacts/a.md
+@@ -3,1 +3,1 @@
+-The reviewer stands with the frozen revision it reads.
++The reviewer stands within the frozen revision it reads.
+`
+	rep := FindStale(sts, diff, 8)
+	if len(rep.Hits) != 1 || !strings.Contains(strings.Join(rep.Hits[0].Tokens, " "), "with") {
+		t.Fatalf("`within` is not an inflection of `with`: %+v (retired %v)", rep.Hits, rep.Retired)
+	}
+}
+
+// English doubles the final consonant before some of those endings, and a plain
+// suffix test misses every one of them — `stop`/`stopped`, `bump`/`bumping`,
+// `gzip`/`gzipped` are one word each.
+func TestFindStale_aDoubledConsonantIsStillOneWord(t *testing.T) {
+	_, sts := corpus(t, map[string]string{
+		"artifacts/a.md": "# A\n\nThe guard stopped the run before the second gate could ever begin.\n",
+		"artifacts/b.md": "# B\n\nNothing here can stop a run that has already been dispatched.\n",
+	})
+	diff := `diff --git a/artifacts/a.md b/artifacts/a.md
+--- a/artifacts/a.md
++++ b/artifacts/a.md
+@@ -3,1 +3,1 @@
+-The guard can stop the run before the second gate could ever begin.
++The guard stopped the run before the second gate could ever begin.
+`
+	if rep := FindStale(sts, diff, 8); len(rep.Hits) != 0 {
+		t.Fatalf("stop/stopped is one word: %+v (retired %v)", rep.Hits, rep.Retired)
 	}
 }

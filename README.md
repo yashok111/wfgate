@@ -327,6 +327,21 @@ Measured on a live decision gate, roughly a fifth to a quarter of every round's
 claimed closures were incomplete and almost always for this reason — the fix
 corrected one copy of a rule and left another standing.
 
+**A word the fix only INFLECTED is not a word the fix retired.** Tokens are compared by a fixed
+five-rune prefix, which is no stem at all for anything shorter, so `work` and `works` never met: on a
+live gate a fix rewrote "consumers work" as "consumer works", the bare token left the text, and the
+check reported four untouched sentences reusing a common English verb — all 8 of that gate's survivor
+reports were this class. A removed token is now also dropped when the range put the same word back
+with one of a closed list of English endings (`-s`, `-es`, `-ed`, `-d`, `-er`, `-r`, `-en`, `-n`,
+`-est`, `-st`, `-ly`, `-ing`), including the doubled final consonant English writes before some of
+them (`stop`/`stopped`). The list is a WHITELIST and not a length bound because a bound alone paired
+`within` under `with`, `someone` under `some` and `formula` under `form`: over the eleven workspaces
+the bound matched 169 pairs and about a dozen were wrong, the list matches 148 and exactly one is
+(`past` under `pasting`). Corpus-wide, retired tokens fell 556 to 484 and reported sentences 768 to
+663 over 160 ranges, and no range got noisier. **Both narrowings are counted in the report** — the
+common-token one and this one — because a candidate population dropped in silence is one nobody can
+argue with.
+
 The mechanism is crude on purpose: rare tokens, a tenth of a second, and the
 tokens themselves printed beside every hit so the judgement takes seconds. Two
 populations are always printed — the retired vocabulary that was dropped as too
@@ -408,6 +423,18 @@ Each closing commit is read in ITS OWN coordinates — a commit's old-side line 
 only against its own parent, so a closure carried by two commits is checked against each one's
 sections and the claims are ORed, never unioned across parents. One verdict per closure, however many
 paths and sections it names.
+
+**A citation is a RANGE and the LINE half asks about the range.** Measured over the eleven gate
+workspaces on disk, 295 closure citations carry a `:120-134` span and every one writes an ASCII
+hyphen; reading only the first number asks whether the fix touched the FIRST line of a region the
+finding drew. On one gate ALL FOUR of its line-level misses were that — `p3h.mjs:454-459` reported
+not closed by a commit whose hunks covered 450-453 and 455-457, because 454 is the one unchanged line
+inside the span and `--unified=0` splits a region there — and every one was closed. An edit anywhere
+inside the cited span closes it, the row names the SPAN the finding wrote rather than the line the
+check reduced it to, and an INVERTED span (`:459-454`) keeps its start alone rather than being
+widened to cover both readings: `check cite` reports that shape as an error, and repairing it
+silently here would answer a question about a region nobody wrote. Corpus-wide the change removed 16
+line-miss rows of 78 and added none.
 
 A FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is
 a question, not a verdict. Findings that cite neither a section nor a line are counted and named as

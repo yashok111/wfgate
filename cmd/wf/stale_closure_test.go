@@ -515,3 +515,84 @@ func TestCheckClosure_anUnreadableLedgerIsAbsentNotEmpty(t *testing.T) {
 	noErr(t, err, "check closure")
 	mustContain(t, out, "1 round(s) have no readable findings.md (1)", "ABSENT measurement, not a measured zero")
 }
+
+// A finding cites a RANGE and the check has to ask about the range. Measured on
+// a live gate: all FOUR of its line-level closure misses were one citation
+// spelling — `p3h.mjs:454-459` reported not closed by a commit whose own hunks
+// covered 450-453 and 455-457, because 454 is the one unchanged line inside the
+// span the finding drew, and `--unified=0` splits a region there. Each cost a
+// hand verification against `git show --unified=0` and every one of them was
+// closed. The shape below is that shape: the fix lands inside the cited span but
+// not on its first line.
+func TestCheckClosure_readsTheCitedSpanNotOnlyItsFirstLine(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	grow := filepath.Join(tmp, "grow.txt")
+	write(t, grow, "=== artifacts/decisions.md  count=1  note=a document with room in it\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"L3\nL4\nL5\nL6\nL7\nL8\nL9\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", grow); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two edits, one commit, with line 6 untouched BETWEEN them: at
+	// --unified=0 that is two hunks and a gap, which is what defeated the
+	// first-line reading.
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=the first half\n"+
+		"<<<<\nL5\n====\nL5 (fixed)\n>>>>\n"+
+		"=== artifacts/decisions.md  count=1  note=the second half\n"+
+		"<<<<\nL7\n====\nL7 (fixed)\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	// The span 6-8 contains line 7, which the commit changed; line 6, which it
+	// did not, is where the citation starts.
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md:6-8 states it wrongly | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	if strings.Contains(out, "but not line") || strings.Contains(out, "but not lines") {
+		t.Fatalf("an edit inside the cited span closes it:\n%s", out)
+	}
+}
+
+// And the miss it still reports names the SPAN the finding cited, not the line
+// the check reduced it to: a row reading `not line 454` over a citation of
+// `454-459` sends its reader to the wrong evidence.
+func TestCheckClosure_aSpanMissNamesTheSpan(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	grow := filepath.Join(tmp, "grow.txt")
+	write(t, grow, "=== artifacts/decisions.md  count=1  note=a document with room in it\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"L3\nL4\nL5\nL6\nL7\nL8\nL9\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", grow); err != nil {
+		t.Fatal(err)
+	}
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=somewhere else entirely\n"+
+		"<<<<\nL9\n====\nL9 (fixed)\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md:4-6 states it wrongly | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	if !errors.Is(err, errFindings) {
+		t.Fatalf("want a finding, got %v\n%s", err, out)
+	}
+	mustContain(t, out, "but not lines 4-6")
+}

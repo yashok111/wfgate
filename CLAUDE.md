@@ -396,7 +396,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 16 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 17 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The split
 (2026-08-29) moved the text byte-identical; nothing was rewritten, and every
@@ -422,205 +422,7 @@ on the do-not-build list. Its index:
 | 14 | The five-vector brainstorm | Nothing here is slow anywhere that matters (a closed hypothesis); `make check-docs`; the `dead-reviews` mode that discriminated nothing; phase-set collapse; the moved freeze tag derived from GIT |
 | 15 | P3c, the launch-killer (`FEEDBACK-p3c.md`) | The schema-width band measured in the RUNNER; factory-composed `YOU OWN` blocks; `-rule` as a refusal; two closure reports saying NOT A PASS; `check cite -at frozen` |
 | 16 | P3d, a probe instead of an argument (`FEEDBACK-p3d.md`) | The mis-split batch that verified itself byte-for-byte; `$defs`/`$ref` resolved in `wfdry`; the refusal floor at 4,233 probed for 82 ms; the ledger refusal naming a CHARACTER; `x-pass` on arrays |
-
-**The seventeenth wave — P3e, and the two findings that were the tool already
-saying it** (`FEEDBACK-p3e.md`; 14 rounds, 186 findings, 46 blockers, 183 edits
-over 2535 changed lines, two artifacts — a decision document gated for nine
-rounds at 10 -> 8 -> 7 -> 2 -> 2 -> 1 -> **3** -> 1 -> 0, then the
-orchestration script for four more at 8 -> 3 -> 1 -> 0, then a `run` round whose
-scaffold is still unfilled, which `wf close` refuses and `wf stats` names). The
-feedback was written with the run in flight and says so, so it carries no number
-from the other side of a launch. Its own headline was REFUTED by a measurement
-anybody could have run, and the refutation is the more useful result:
-
-- *The flagship item was a REGRESSION REPORT against a shipped fix, and there is
-  no regression* — "`wfdry` still does not fill a `$ref`'d leaf". Reproduced
-  here in two spellings before a line was written: a `$defs` at the SCHEMA ROOT
-  referenced from twenty-two keys built by `Object.fromEntries(...map(...))`
-  fills in every mode and always did — the computed keys defeat nothing, which
-  was one of the two hypotheses the file offered — while a `$defs` written on a
-  SUB-schema does not, because `#/$defs/x` is a pointer into the document the
-  schema IS. That is the shape the gate wrote, and it is a wrong pointer rather
-  than a runner bug. **The runner already said so by name**, in the violation
-  block and again at the tail. That WARN shipped in `effd928`; the
-  boolean-polarity WARN the file's §1.2 asks for has shipped since `b143864`
-  (2026-08-22), `effd928` only editing its text — both ancestors of the
-  `54bd9b2` every freeze in that workspace stamps. So two of three headline tool findings
-  were the tool saying the thing and nobody reading it. What was actually owed
-  is the PATCH: the note now names where a `$defs` declaring that name IS and
-  prints the pointer that WOULD resolve — the trade `check drift` makes when it
-  prints the re-aimed range rather than saying a citation moved. The gate
-  reverted a correct narrowing over this and paid about 1,900 bytes of width
-  against a classifier with a measured refusal at 4,233.
-  `testdata/nested-defs.mjs` is that shape, banked.
-- *`wfdry --fixture <label>`, because what failed was the READING* — a fourth
-  message about a fixture limit would have been the third one nobody read.
-  THREE of that gate's dry-run reds were fixture-synthesis limits reported as
-  artifact defects — the `$ref` above, twenty-two booleans defaulted false
-  because names like `P8a` carry no polarity, and `finalCount === 22`, an
-  integer against a constant no report-shaped fixture can satisfy — and each
-  cost a reading of twenty-two "unmet" rows to diagnose as ONE gap. The flag
-  prints the object the stub actually returned, which separates the three in one
-  look, and the clean mode's verdict violation points at it. A label no mode
-  composed is refused with the labels the run did compose: the `--dead` typo
-  class, one flag over.
-- *The `required` census, and `wf check schema -since <ref>`* — the one item
-  where the tool held the data and never asked. P3e lost
-  `required: ['met','evidence']` from an acceptance leaf inside a hunk whose own
-  comment was entirely about width, with no warrant recorded, and ONE frozen
-  revision published a report whose every property could come back `{met: true}`
-  with no evidence at all — the only
-  thing the gate's own evidence reviewer had to read. Nothing static reaches it:
-  the leaf is built inside an `Object.fromEntries(...map(...))` callback, so
-  `wfcheck` sees no literal, and both static tools were clean over that script.
-  Every schema line now prints how many keys the schema requires over every
-  object node and how many nodes declare `properties` and require none — the
-  second population is 1 object on three of the six GATE scripts (p3c, p3d, p3e),
-  0 on the other three, and 0 on all six of the tracked orchestration scripts
-  this file also calls a corpus, so it does not paint — and `wf check schema` compares the two revisions
-  and NAMES a drop. Validated on that workspace's own history: `accept` goes 74
-  required keys and 1 such object at the round-10 freeze to 33 and 23 at round
-  11, at a width that FELL from 3,869 to 3,314, so the drop would have been
-  named the round it happened. The census is taken over the EXPANDED schema
-  (the obligation is per USE, and pricing the two spellings differently would
-  move a number on an edit that is only about narrowing) and is NOT taken at all
-  over a schema that does not serialize, nor over one carrying a `$ref` that did
-  not expand — the honest unserialisable case is a cycle, and a census walking
-  one does not return; an unexpanded reference leaves the referenced leaf a
-  placeholder, so its `required` is not in the walk and the count is short by
-  exactly the amount the author cares about (the banked fixture reports 4
-  against 10 declared); `-1` is unmeasured, which is a different claim from
-  zero.
-- *`wf new-script` writes into `artifacts/`* — it landed in the working
-  directory, which is the workspace ROOT when the operator is standing in it,
-  and a stray file there is exactly what `wf verify` refuses: the command
-  created the state the next command objects to, and the `wf add`, copy and
-  delete were paid by hand. It also says the file is UNTRACKED until `wf add`
-  adopts it.
-- *Three findings changed the MANUAL, not the tool* — **a presence check is not
-  a content check**, in `gate-checks.md` §F with both of its rounds: sixteen
-  reviewer prompts were told "the diff against HEAD is exactly what this run has
-  produced" while `git diff HEAD` shows no untracked file, and the fix
-  (`git status --porcelain -uall`) was demonstrated VACUOUS by the next round
-  running it — porcelain prints a status code and a path, never bytes, and every
-  file the mutations touch already reads `" M"`, so a mutation left in place
-  produces the identical two readings. **a `$ref` is anchored at the schema root — write the `$defs` there or write the
-  whole pointer** and
-  **a red `wfdry` mode is a fact about the script or about the fixture**, both in
-  `authoring.md`. And in `gate-harness.md`: **a lens that died for a reason
-  outside the artifact is banked too, with what replaced it** — an external lens
-  was quota-blocked mid-round and an opus lens carried the identical prompt, and
-  banking both is the only form in which a later reading of the descent is not
-  confounded with a billing decision.
-- *And the wave earned its review round, for the twelfth time running, and this
-  one ran THREE vectors* — one external model over the diff, then two Opus
-  vectors (Go correctness with a 71-mutation sweep, and claims/specification),
-  against five green bars. Between them: **one BLOCKER, ten MAJOR, eight
-  external findings and sixteen unproven guards of fifty-six.** The correctness
-  vector ran in an ISOLATED WORKTREE, which is this project's own banked trap
-  applied on purpose — a concurrent reader of a mutation sweep reads a poisoned
-  file, and one wave already filed a red bar that did not reproduce because of
-  it.
-  The BLOCKER was in the wave's own flagship: `vm.ToValue` hands goja a
-  WRITE-THROUGH view of the synthesised map, so every assignment the script made
-  to an agent's result landed in the object `--fixture` prints — the flag built
-  to separate "a fixture-synthesis limit" from "a script defect" was showing the
-  SCRIPT's own writes under the heading "the object the stub returned", and the
-  second, clean spawn then deduped against the first's pre-mutation bytes so the
-  real fixture appeared nowhere. It is deep-copied at record now.
-  Three more in `wf check schema`, each a false green: the no-required DROP arm
-  sat AFTER both required-total comparisons and was therefore unreachable
-  whenever the total moved, so an edit stripping `required` from every leaf while
-  the root's own list grew printed `rose` at exit 0 — the exact shape the check
-  exists for, arranged so the total does not fall; `censusOf` consulted only
-  `Err` and not `OK()`, so a script whose clean run VIOLATED had every label it
-  never reached reported as a deliberate GONE at exit 0; and a label composed by
-  NO clean mode had its failure-branch census printed under the clean heading,
-  typographically identical, on a mode the corpus band was never measured on.
-  The rest was the map the eleventh wave already drew: every guard in the
-  COUNTING logic was killed by a test and almost every guard around the
-  UNMEASURED values was unproven. Those got tests — including two the reviewer
-  proved live on a banked fixture — three dead guards were deleted, and two
-  Makefile bars that passed on ANY non-zero exit now grep the message they claim
-  to pin. One test that SKIPPED was rewritten to assert its own premise: a
-  skipping test proves nothing.
-  The external vector had found eight, all real, four HIGH.
-  **Asked afterwards whether every blocker and major was actually fixed, the
-  audit found four MINORs still open and one of the wave's own doc fixes gone
-  STALE from the wave's own later code change** — the README said `check schema`
-  reports the no-required population "only where the required COUNT is
-  unchanged", which stopped being true the moment that MAJOR was fixed to judge
-  the two independently. Its own named class, one commit deep. Of the four:
-  three unproven guards got the case they lacked (the clean-width fallback, a
-  `$defs` entry that is not an OBJECT, and a runtime throw's own text), and one
-  reviewer finding was REFUTED with a reproduction — the second `expanded ==
-  nil` is LIVE, and `$defs: { prop: 'not an object' }` is the schema that
-  reaches it. Two of the three needed the guard RESTRUCTURED before a mutation
-  could reach them: `rs[0].Err != nil` was unreachable for a parse failure (which
-  `wfdry.Run` reports as its own error) and produced identical text for
-  everything else, so the two branches are one now and what the distinction buys
-  is the MESSAGE — a runtime throw leaves an empty violation list, and its own
-  text is the difference between a fix and a hunt. A flag refusal also no longer
-  exits BEFORE the mode tally and the tail WARNs: an operator's typo in
-  `--fixture` used to suppress the one line an operator reads. The worst was the wave's own named class
-  committed inside the fix for it: `requiredCensus` expanded `$ref`s with the
-  failure map DISCARDED, so a schema whose reference did not resolve produced a
-  partial count printed as a measurement — the banked `nested-defs.mjs` reported
-  4 required keys against 10 declared. It is UNMEASURED now, like the
-  unserialisable case. Three more in `wf check schema`: a typo in `-since`
-  failed `ShowFile` per artifact and printed "no comparable copy at <ref>",
-  which is the message for a script ADDED since the reference — so a bad ref
-  read exactly like a first review of everything, the `check closure -round 999`
-  class, and the ref is resolved ONCE up front now and refused; only the CURRENT
-  artifacts were enumerated, so a script DELETED since the reference was
-  invisible; and the census kept the FIRST spawn of a label, so a label composing
-  a per-item schema in a loop compared whichever ordinal ran first against
-  whichever ran first at the reference — it is named UNMEASURED, the ambiguity
-  class `check cite` reports and `--prompt-diff` refuses, in a third place.
-  `--fixture` had the same root and hid every later shape of a reused label.
-  Two smaller ones were taken as written: `findDefs` stopped at ARRAYS, so a
-  `$defs` under `allOf`/`anyOf` got no hint, and the emitted pointer was not
-  RFC 6901-escaped, which hands the author a pointer that does not resolve —
-  worse than no hint, because the whole value of the hint is that it is a patch.
-  One finding was taken by HALF: "every NOT A PASS path exits 0" is the SHIPPED
-  convention here — `rules`, `stale` and `closure` all print NOT A PASS and
-  return zero, because the claim belongs in the report and the exit code is for
-  findings — so only the unresolvable REF became a refusal. And one was a
-  genuine over-claim in the manual: "a `$defs` goes at the schema root" is too
-  strong, since a nested one is legal and the tool's own hint prints the pointer
-  that reaches it; the rule is now about the ROOT-ANCHORED spelling.
-- *The MANUAL stopped carrying perishable numbers, and that is a rule about
-  where a measurement lives* — asked by a human as "why are these constantly
-  updating figures in the manual at all; what does an agent do with them?", and
-  the answer is measured. The references are 2490 lines and **228 of them carried
-  a multi-digit number**, `pre-flight-gate.md` worst at 127 of 1029 — and that
-  file is loaded into every gate agent's context on every run. The class
-  "a stale number in the manual" is the DOMINANT finding of every claims vector
-  this project has run: nine in the seventh wave, ten in the thirteenth, six in
-  the eleventh, ten in the sixteenth, and eleven of fourteen in this one. That
-  same file was carrying **three separate copies of the round-cost median**, all
-  stale, plus a fourth of the authoring window and a fifth of the closure census.
-  The test that separates them: **a number belongs in the manual only if an agent
-  CHANGES ITS BEHAVIOUR from the value and cannot get it from a command at the
-  moment it needs it.** Cost medians, per-gate rosters and round counts fail both
-  halves — they are operator-planning data and `wf stats -time` prints them; the
-  schema-width band fails the second, because the two constants live in the
-  BINARY and `wfdry` prints them in the warning, so a document restating them is
-  a second copy of one thing. What survives is the rule, the failure it answers,
-  the command that re-derives the number, and an order of magnitude where the
-  magnitude IS the point ("a round is tens of minutes"), which does not go stale.
-  The measurements themselves stay HERE, in this file, where they are a
-  maintenance record rather than something an agent acts on. `cost-discipline.md`
-  was left alone deliberately: its numbers are thresholds an agent applies by
-  hand (`~10-20 KB`, `~15-20 tool calls`, `min(16, cpus-2)`), which pass the
-  test.
-- *`wf launch` was DEFERRED with its reason written down* — the freeze is
-  currently enforced by the operator remembering to `sha256sum` a copy, because
-  the Workflow tool would not take the frozen artifact's absolute path. But the
-  thing refusing the path is that tool, not this repository, and a command that
-  copies-and-hashes is a workaround pinned to a behaviour nobody here controls.
-  Build it when a SECOND gate pays for the hand hash, or when a copy is shown to
-  have gone wrong once.
+| 17 | P3e, and the two findings that were the tool already saying it (`FEEDBACK-p3e.md`) | A regression report against a shipped fix with no regression; `wfdry --fixture`; the `required` census and `wf check schema -since`; `wf new-script` writing into `artifacts/`; the manual stopped carrying perishable NUMBERS |
 
 **The eighteenth wave — P3g, and the two proposals the tool had already
 answered** (`FEEDBACK-p3g.md`; 13 rounds, 106 findings, 34 blockers, 86 edits
@@ -805,6 +607,112 @@ before a line was written:
   site that STATES a rule, never on one that points at it** — said where the
   author reads before marking, because `wf check rules` names the cause under
   its output, which is one round too late to save the markup pass.
+
+**The nineteenth wave — P3h, and the miss whose DIAGNOSIS was wrong in the
+direction that made the fix cheaper** (`close/feedback.md` in
+`~/projects/gates/mocker-p3h-basepath` — the first gate whose write-up is the
+`wf close` scaffold rather than a hand-authored `FEEDBACK-*.md` in this
+repository; 10 rounds, 73 findings, 17 blockers, 129 edits over 822 changed
+lines, median round 30.5 min, two artifacts — a decision document gated for
+three rounds before the script was added at round 4, then both together for six
+more, closing on two consecutive rounds with no blocker). Every claim below was
+reproduced before a line was written, and three of the five did not survive
+that:
+
+- *`wf check closure` reported four line misses and the two-batch explanation is
+  not why* — the feedback says a second apply batch in the same round shifts the
+  numbers the finding text names, which is a real mechanism and was not this
+  one: the first miss's closing commit has the round's own FREEZE as its parent,
+  so nothing had shifted. The cause is one line in `PathsNamed` — `lineAfter`
+  read the `:454` of `p3h.mjs:454-459` and dropped the rest — so the check asked
+  whether the fix touched the FIRST line of a region the finding drew. All four
+  of that gate's line misses are that shape, and the sharpest is the one that
+  named it: hunks covering 450-453 and 455-457, with 454 the single unchanged
+  line inside the span, because `--unified=0` splits a region exactly there.
+  Every one was closed. The citation is a RANGE now and the question is overlap;
+  the row names the SPAN the finding wrote rather than the line the check reduced
+  it to, and an INVERTED span keeps its start alone rather than being widened to
+  cover both readings — `check cite` reports that shape as an error and repairing
+  it here would answer a question about a region nobody wrote. Measured over the
+  eleven unpruned workspaces: 295 span citations, every one an ASCII hyphen, and
+  the report goes from 78 line-miss rows to 62 with none added. Sections were
+  already resolved in each commit's own pre-image; only the line half was not.
+- *`wf check stale` retires a word the fix only INFLECTED, and the case-fold half
+  of that finding is refuted* — the feedback reports two misses, one blamed on a
+  `TWENTY-TWO`/`twenty-two` case mismatch. The normaliser has lower-cased since
+  `dup` shipped, so case is folded before anything is compared; that citation was
+  invisible because the fix wrote `twenty-four`, which returns the token `twenty`
+  to the added set, and `two` is three characters and below the candidate floor.
+  The other half is real and is the flagship: the stem is a fixed FIVE-rune
+  prefix, which is no stem at all below five characters, so `work` and `works`
+  never met — a fix rewriting "consumers work" as "consumer works" retired the
+  bare verb and reported four untouched sentences that merely use it. Over that
+  gate ALL 8 survivor reports across four rounds were this class, and its round 5
+  now reports nothing at all. What ships is a closed WHITELIST of English endings
+  (`-s`, `-es`, `-ed`, `-d`, `-er`, `-r`, `-en`, `-n`, `-est`, `-st`, `-ly`,
+  `-ing`) plus the doubled final consonant English writes before some of them,
+  and the whitelist rather than a length bound is the measured part: enumerated
+  over the eleven workspaces, "any added token up to three runes longer" pairs
+  169 removals with about a dozen wrong (`within` under `with`, `someone` under
+  `some`, `formula` under `form`, `userid` under `user`), the list pairs 148 with
+  exactly ONE (`past` under `pasting`). Corpus-wide the retired vocabulary falls
+  556 to 484 and the reported sentences 768 to 663 over 160 ranges, and no range
+  got noisier. **Both narrowings are counted in the report now** — the
+  common-token one always was, this one and the pre-existing five-rune stem were
+  not — because a candidate population dropped in silence is one nobody can
+  argue with, and that count is the `dup -since` rule applied to the other end of
+  the same command.
+- *Two of the five proposals were the tool and the manual already saying it,
+  which is this project's own most-repeated finding class* — `-asks` prints its
+  closed set in `wf round lens -h` AND names it in the refusal, so the asked-for
+  hint has shipped since the flag did; and the schema-width probe is not merely
+  in the manual but is `authoring.md`'s longest rule, carrying the recipe (one
+  throwaway agent, the schema, placeholder prompt), both prices (four agents on
+  one run, the fifteenth and last on another) and the instruction not to reason
+  from a remembered number. What was true is REACHABILITY and not absence:
+  `pre-flight-gate.md` step 2b, which is what an operator actually reads while
+  running `wfdry`, never named the band or the probe at all, so the rule sat one
+  file away from every reader of it. That is one pointer, and it is the same
+  defect the wave before this one committed with nine `[M-nn]` citations pointing
+  at a file no workspace holds.
+- *Four findings changed the MANUAL, not the tool, and all four are about reading
+  a round rather than writing one* — **a fix that says it closed a CLASS is
+  re-read for the class, and the SENTENCE claiming the closure is the thing to
+  distrust** (`gate-checks.md` §0b: one round closed an ownership hole and wrote
+  that the task "now names every test file the arity change reaches"; the next
+  found the same hole one level up, and it is the statement rather than the gap
+  that stops the next round looking); **a zero from a lens set MISSING the vector
+  that has been finding the blockers is not the same zero** (`round-discipline.md`,
+  the stop rule: a zero read as the document closing, then six blockers from the
+  first round carrying the external lens); **a guard is closed by ENUMERATING its
+  inputs, not by fixing the direction the last reviewer looked from** (three
+  consecutive rounds at one blocker each on one ledger guard, ended by a fourth
+  round asking a lens to CONSTRUCT the shapes its input can take — roughly 1.5
+  hours of a 5.1-hour gate, and the question was available in the first of them);
+  and **keep one lens whose instruction is deliberately UNDER-specified beside
+  the ones the round's findings aim** (two lenses over the same lines, the aimed
+  one right and thorough, the blocker from the one that asked what the prompt had
+  not). Two more went to `gate-harness.md`: **a `clean` from a lens that
+  COMPACTED its context is weaker evidence than one from a whole read**, banked in
+  the roster because nothing else records which kind of read a report came from,
+  and the stop rule now POINTS at section 4's "an edit after the gate closes is
+  still an edit" — the closing round's own fix is the one edit nothing reviews,
+  and this gate ran a tenth round only because that section was read for
+  `wf close`'s flags and it found a false arithmetic comparison stated identically
+  in both artifacts. Six provenance entries, M-23 to M-28.
+- *And its own numbers move under the command, in the class the corpus already
+  banks* — the gate is 5.3 h re-run today against the 5.1 h its feedback records,
+  because the span is last commit minus first and the closing commits land after
+  the write-up, which is P3d's 9.1-against-9.2 one gate over. The workspace is 95
+  commits; `mocker-p3g-deep-nesting` re-counts at 123 against the 117 banked one
+  wave ago. **Re-pooled over the ELEVEN unpruned workspaces: 148 round spans of
+  165 under two hours, median 24.0 min, middle half 17.6-31.5** — the reading is
+  every `  round` line carrying a `; N min` span, run rounds included, spans of
+  two hours and over dropped as breaks, and it is `bash` over `wf stats -time`,
+  `grep -oE '; [0-9]+\.[0-9] min'` and `sort -n`. Per-gate medians re-derive at
+  13.8, 24.3, 19.1, 45.3, 21.9, 29.1, 39.8, 32.3, 21.8, 19.8, 28.6 and three of
+  them move by up to 0.8 against the reading banked one wave ago, which is the
+  file's own standing instruction to re-derive rather than inherit.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
@@ -1037,9 +945,25 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-29 — read before trusting
+## State as of 2026-08-30 — read before trusting
 
-- **ELEVEN real gates have now run entirely through `wf`,** and P3g
+- **TWELVE real gates have now run entirely through `wf`,** and P3h
+  (`close/feedback.md` in `~/projects/gates/mocker-p3h-basepath` — the first
+  write-up that is the `wf close` scaffold rather than a hand-authored
+  `FEEDBACK-*.md` here) is the newest: 10 rounds by its own `wf stats`, 73
+  findings, 17 blockers, 129 edits over 822 changed lines, 5.3 h re-run today
+  (5.1 h in the banked scaffold, which is the closing commits landing after the
+  write-up), median round 30.5 min, over TWO artifacts — a decision document
+  gated for three rounds alone and an orchestration script added at round 4,
+  both closing together on two consecutive rounds with no blocker. It has NOT
+  launched. Its fix-induced share is 10 of 73 findings and 2 of 17 blockers, and
+  `wf stats` says why that is a lower bound rather than a measurement: four
+  rounds with findings carry no `[fix-induced]` marker at all. Its cost meter
+  prices rounds 2-3 and 5-9 — 1 and 4 excluded as artifact-adding windows, 10
+  because its tag MOVED over that round's own repairs. It is the gate that
+  produced the citation-span and inflection fixes, and its own round 1 filed 2
+  blockers. Its workspace is on disk and unpruned.
+- **ELEVEN real gates ran entirely through `wf` before it,** and P3g
   (`FEEDBACK-p3g.md`, `~/projects/gates/mocker-p3g-deep-nesting`) is the newest:
   13 rounds by its own `wf stats`, 106 findings, 34 blockers, 86 edits over 1131
   changed lines, 8.1 h, median round 19.6 min, over TWO artifacts — a decision
@@ -1059,7 +983,7 @@ fixtures for the non-ASCII anchor detector).
   are excluded by the rule that a window ADDING an artifact prices a corpus its
   batches did not write, which no command changes. Its workspace is on disk and unpruned,
   and it is what the `dead-reviews` phase note was validated against.
-- **TEN real gates ran entirely through `wf` before it,** and P3e
+- **TEN real gates ran entirely through `wf` before those,** and P3e
   (`FEEDBACK-p3e.md`, `~/projects/gates/mocker-p3e-nested`) is the one before: 14
   rounds by its own `wf stats`, 193 findings, 46 blockers, 183 edits over 2535
   changed lines, over TWO artifacts — a decision document, 1323 -> 2091 lines
@@ -1172,23 +1096,25 @@ fixtures for the non-ASCII anchor detector).
   `check drift` is STILL unexercised live.
 - **The validation corpus DOES survive, and it is the best evidence this
   repository has.** The claim that it did not was stale and cost an
-  investigation an hour of archaeology before it was checked: **TEN** gate
+  investigation an hour of archaeology before it was checked: **ELEVEN** gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
   `~/gates/p2f` (82 / 102 / 87 commits), and
   `~/projects/gates/mocker-a3-cas`, `mocker-p3a-resources`,
   `mocker-p3b-resources`, `mocker-p3c-ref-recipe`, `mocker-p3d-datasnap`,
-  `mocker-p3e-nested`, `mocker-p3g-deep-nesting` (153 / 203 / 247 / 82 / 173 /
-  131 / 117 commits, all counts re-derived 2026-08-30 — 128 stood here for one
-  wave and was the count BEFORE P3e's run round was filled, inherited by the
-  next wave from the bullet whose own next sentence says not to). This
+  `mocker-p3e-nested`, `mocker-p3g-deep-nesting`, `mocker-p3h-basepath`
+  (153 / 203 / 247 / 82 / 173 / 131 / 123 / 95 commits, all counts re-derived
+  2026-08-30 with `git rev-list --count HEAD` — 128 stood here for one wave and
+  was the count BEFORE P3e's run round was filled, inherited by the next wave
+  from the bullet whose own next sentence says not to, and 117 for P3g lasted
+  exactly one wave the same way). This
   bullet listed three of them for three waves, which is why a census that called
   itself complete missed A3 entirely — and it then listed SIX for one more wave,
   which is why the fifteenth wave's own closure census said "six workspaces"
-  while running over seven. Re-count them; do not inherit the number. `~/projects/gates/mocker-a-mcp`, the
-  eleventh, has been CLOSED AND PRUNED: no `.git`, no
+  while running over seven. Re-count them; do not inherit the number. `~/projects/gates/mocker-a-mcp` has been CLOSED AND PRUNED: no `.git`, no
   `artifacts/`, no `rounds/` — its numbers survive only in `close/stats.txt`,
   `close/history.tsv`, `close/freezes.tsv` and `close/rounds/`, and `wf stats`
-  cannot be run there. Read the banked file; do not try to re-derive them. The six tracked orchestration scripts are in
+  cannot be run there. Read the banked file; do not try to re-derive them. `~/projects/gates/mocker-a-mcp` is the TWELFTH gate and the only pruned one, so
+  the count of workspaces and the count of gates are two different numbers. The six tracked orchestration scripts are in
   `~/projects/mocker/.claude/workflows/` (769-2658 lines each, 10 823 total; a
   live gate's own script sits there untracked while it runs). Run `wf stats
   -time` inside a workspace before reasoning about cost; the commit timestamps
@@ -1196,36 +1122,40 @@ fixtures for the non-ASCII anchor detector).
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
   workspace over any set of documents.
 - **The cost of a gate is now measured by the tool, and the answer moved the
-  work.** `wf stats -time`, re-pooled 2026-08-29 over the TEN unpruned
-  workspaces with the current binary, over the 138 round spans of 154 that are
-  under two hours: **median 23.4 min, middle half 17.2-30.8**, the review segment
-  a median 90% of a round and the bookkeeping tail a median 2.9%. The other
-  sixteen are breaks (the longest 637.9 min) and none of them is a round length.
-  That denominator is NOT the same population as the nine-workspace pooling one
-  day earlier (119 of 129): this one counts every round line carrying a span,
-  run rounds included. Re-derive it with the command and say which population
-  the number came from.
+  work.** `wf stats -time`, re-pooled 2026-08-30 over the ELEVEN unpruned
+  workspaces with the current binary, over the 148 round spans of 165 that are
+  under two hours: **median 24.0 min, middle half 17.6-31.5**, the review segment
+  a median 88% of a round and the bookkeeping tail a median 3.1%. The other
+  seventeen are breaks (the longest 637.9 min) and none of them is a round
+  length. State the READING with the number, because two of them disagree by a
+  round: this one is every `  round` line carrying a `; N min` span, run rounds
+  included, piped through `grep -oE '; [0-9]+\.[0-9] min'` and `sort -n`, where
+  the ten-workspace pooling one day earlier gave 138 of 154 and a
+  nine-workspace one 119 of 129. Re-derive it with the command and say which
+  population the number came from.
   The old figures — "10-40 minutes, pooled median 15.5, review 70-87%" — were
   three gates and are not wrong so much as SMALL: per-gate medians run 13.8,
-  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 19.6, so the round got longer
-  as the gates got bigger, and a number banked from the first three under-prices
-  every gate since. Three of those per-gate medians differ from the eight-workspace
-  pooling one day earlier (13.8 against 14.2, 19.1 against 19.5, and 45.3
-  against 37.6) — re-derive them with the command rather than inheriting them.
+  24.3, 19.1, 45.3, 21.9, 29.1, 39.8, 32.3, 21.8, 19.8, 28.6, so the round got
+  longer as the gates got bigger, and a number banked from the first three
+  under-prices every gate since. FIVE of those move against the pooling one day
+  earlier (21.9 against 21.5, 29.1 against 29.4, 39.8 against 39.0, 21.8 against
+  21.4, 19.8 against 19.6) and three moved against the one before that (13.8
+  against 14.2, 19.1 against 19.5, 45.3 against 37.6) — re-derive them with the
+  command rather than inheriting them.
   So the ROUND COUNT is the cost function, the ~9-command sequence is not worth
   compressing (1.4 minutes across p2d's eleven rounds), and the largest measured
   saving in the whole investigation is a DOCUMENT change already in the manual:
   running the decision gate to exhaustion before the script exists took one gate
   from 10+6 rounds to 8+3, about an hour. The authoring window — init to the
   first artifact — is **0.3 to 76.5 min (9.9, 31.7, 42.2, 4.3, 5.0, 39.2, 2.2,
-  20.9, 76.5, 0.3; median 15.4)**, and this file quoted only its two largest for
+  20.9, 76.5, 0.3, 10.7; median 10.7)**, and this file quoted only its two largest for
   three waves before quoting a ceiling P3e then doubled and a floor P3g then cut
   by seven times. It is the largest block no
   round covers, and the short end is worse than it looks: those are the gates
   whose document was drafted BEFORE `wf init`, so the authoring itself falls
   outside every measurement banked here. `interview.md`
   (step -2) is what now occupies that window, against a round-1 blocker baseline
-  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 4.
+  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 4, 2.
 - **The seventh wave was reviewed the same way, and the review is again why it
   is trustworthy** (2026-08-24; two Opus vectors — Go correctness with a
   mutation sweep, and the claims/specification — plus one external model on the

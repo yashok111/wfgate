@@ -163,6 +163,14 @@ can drift apart from itself, and nothing here compares the copies.
    later reading of the descent is not confounded with a billing decision — which is the same
    confounding the roster exists to remove, arriving through a different door. A round whose vector
    simply vanished from the roster reads as a round that never had it.
+   **A `clean` from a lens that COMPACTED its context is weaker evidence than a clean from a whole
+   read, and the roster is where that goes [M-28].** A long external read that printed
+   `context compacted` mid-run returned nothing on a round where an internal lens, over the same
+   artifact, filed a MAJOR — the first such inversion after several rounds of that external vector
+   finding the round's hardest defect. Nothing in the workspace records which kind of read a report
+   came from, so write it into the banked prompt's own header (the file is yours below the `---`) and
+   into the findings row that reports the clean. An empty report is a measurement like any other and
+   it has to say what it was taken with.
    `wf round record` prints a note when the round it just recorded banks no lens, because recording
    the findings is the step that feels like the work: measured on mocker A3, eleven of thirteen rounds
    banked none, and for rounds 1-10 the findings are in the ledger while the prompts that produced
@@ -186,7 +194,10 @@ can drift apart from itself, and nothing here compares the copies.
    closure ("deferred, see decision D-7") passes the freeze with a counted "verify by hand" note — a
    deliberate escape, not a verified commit. A hex-looking English word is not read as a sha: a commit
    claim needs at least one digit. A comma-separated list of shas is fine, and case does not matter.
-   **Write the artifact path into the finding text while you are writing it.** `wf check closure` asks
+   **Write the artifact path into the finding text while you are writing it, and cite the SPAN you
+   mean.** `wf check closure` reads `file.md:120-134` as the range it is — an edit anywhere inside it
+   closes the claim — so a span costs nothing and a first line alone asks a narrower question than the
+   finding did. `wf check closure` asks
    whether a closing commit's diff reaches what the finding NAMES, and a finding naming no artifact
    path cannot be reached at all: `wf round record` counts those and says so at the moment they are
    still cheap to fix. Measured on one gate — 0 of 350 claims checkable on the first record, 26 of 26

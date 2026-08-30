@@ -2879,6 +2879,14 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 		// that must read this line the other way.
 		fmt.Printf("  swept: %d of %d retired token(s) survive NOWHERE in the untouched corpus — either that fix reached its consumers, or the decision those words carried stopped existing and nothing replaced it. A round that CUT reads this line the second way\n", rep.Swept, rep.Mined)
 	}
+	if rep.Reinflected > 0 {
+		// The other narrowing, and it is silent otherwise. A fix that writes
+		// "consumer works" for "consumers work" retired nothing — the rule still
+		// owns the word — and the check drops such a token before the corpus is
+		// consulted, which is a population the report has to name for the same
+		// reason it names the common one.
+		fmt.Printf("  note: %d removed token(s) are the same word this range re-wrote in another form (work/works) and are not retirements at all\n", rep.Reinflected)
+	}
 	if rep.Common > 0 {
 		fmt.Printf("  note: %d retired token(s) are used all over the corpus and were dropped rather than reported — the OUTPUT is narrowed, never the check; lower -max-df (now %d) to see them\n", rep.Common, maxDF)
 	}
@@ -2989,7 +2997,7 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 				// A one-artifact workspace: the finding names the only document
 				// there is, and requiring it to say so out loud would make the
 				// check unreachable on exactly the gates that need it most.
-				named = map[string][]int{arts[0]: {0}}
+				named = map[string][][2]int{arts[0]: {{0, 0}}}
 				implied++
 			}
 			if len(named) == 0 {
@@ -3063,20 +3071,25 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 					}
 					continue
 				}
-				// No section: fall back to the line, where the finding cites one.
-				for _, ln := range named[p] {
-					if ln == 0 {
+				// No section: fall back to the lines, where the finding cites
+				// them. A citation is a RANGE and the question is overlap, not
+				// the first line: `p3h.mjs:454-459` was reported not closed by a
+				// commit whose hunks covered 450-453 and 455-457, because 454 is
+				// the one unchanged line inside the span the finding drew. All
+				// four line misses of that gate were that shape.
+				for _, rng := range named[p] {
+					if rng[0] == 0 {
 						continue
 					}
 					sawLine = true
 					covered := false
 					for _, sha := range r.Shas() {
-						if check.RangesCover(ranges(sha)[p], ln) {
+						if overlaps(ranges(sha)[p], rng) {
 							covered = true
 						}
 					}
 					if !covered {
-						why = append(why, fmt.Sprintf("changed %s but not line %d", p, ln))
+						why = append(why, fmt.Sprintf("changed %s but not %s", p, lineSpan(rng)))
 					}
 				}
 			}
@@ -3183,6 +3196,16 @@ func overlaps(rs [][2]int, r [2]int) bool {
 	return false
 }
 
+// lineSpan names what the finding cited, not what the check normalised it to: a
+// row reading "not line 454" over a citation of `454-459` sends its reader to
+// the wrong evidence, and the message is the patch here as everywhere.
+func lineSpan(r [2]int) string {
+	if r[0] == r[1] {
+		return fmt.Sprintf("line %d", r[0])
+	}
+	return fmt.Sprintf("lines %d-%d", r[0], r[1])
+}
+
 // trimList caps a printed population and says so, rather than printing a
 // hundred tokens nobody reads.
 func trimList(xs []string, n int) []string {
@@ -3192,7 +3215,7 @@ func trimList(xs []string, n int) []string {
 	return append(append([]string{}, xs[:n]...), fmt.Sprintf("... +%d more", len(xs)-n))
 }
 
-func sortedKeys(m map[string][]int) []string {
+func sortedKeys(m map[string][][2]int) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

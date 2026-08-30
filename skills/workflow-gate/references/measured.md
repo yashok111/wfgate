@@ -325,6 +325,62 @@ verified every pure DELETION vacuously — `strings.Count(body, "")` is never ze
 chained edits that had landed perfectly. It is a byte-for-byte read-back against the planned buffer
 now.
 
+## M-23 — the class a fix DECLARED closed
+
+Round 8 of one gate closed an ownership hole in a package's test files and its own closing sentence
+said the task "now names every test file the arity change reaches". Round 9 found the same hole one
+level up: the section also widens a second function whose unowned test file carries 50 call sites.
+The statement was true of the half the fix had touched and false of the section, and the round in
+between had read it and stopped looking. Round 10 was asked the question directly — was the CLASS
+closed or only the instance — and swept every remaining reshaped function; it found none, which is
+what the sweep is for.
+
+## M-24 — the zero that was a property of the lens set
+
+Round 2 of one gate returned ZERO blockers and was read as the decision document closing. Round 3 —
+the first round carrying the external lens — returned six. The document had not closed; the round
+that said so had not run the vector that finds those defects. By then the gate had added its second
+artifact, and the cost showed up six rounds later as one decision written in three places with two
+of them left behind: 3 rounds on the document alone against 16, 17 and 5 on the gates that ran the
+document to exhaustion first.
+
+## M-25 — the closing round's own fix
+
+The gate that measured this ran one round past its close only because `gate-harness.md` section 4
+was read for `wf close`'s flags, and that round found a real defect in the closing round's fix: a
+false arithmetic comparison ("more than the other three together", 50 against 62) stated identically
+in both artifacts. It would have ridden into the run and been repeated by whoever read it. The
+warning it reproduces was itself measured on four "text-only" major fixes applied after a clean
+closing round, which broke the artifact outright.
+
+## M-26 — three rounds of one guard, and the question that ended it
+
+Rounds 6, 7 and 8 of one gate produced exactly one blocker each and every one was the same recheck
+closure ledger: a recheck clearing blockers it never mentioned, then the summary join collapsing two
+blockers into one, then the index join trusting the field over the position. Four harness edits in
+four rounds, each finding individually correct and each fix individually closing a real escape.
+Round 9's lens was asked instead to CONSTRUCT the ledgers a real agent produces — one entry short,
+one extra at the front, one index off by one, a single-blocker ledger — and check each against the
+code; all four fail safe, and the run ended. Cost of the three patching rounds: roughly 1.5 hours of
+a 5.1-hour gate.
+
+## M-27 — two lenses on the same lines, one blocker
+
+Round 8's prompt asked, in as many words, whether two recheck guards could DISAGREE with each other.
+The delta lens answered exactly that, correctly and thoroughly: they cannot, because the
+contradiction guard breaks before the index join executes. The external lens asked something the
+prompt had not — whether an entry's position and its `index` field, two carriers of one fact, are
+checked against each other at all — and that was the round's blocker.
+
+## M-28 — a clean report from a compacted read
+
+The external lens of one gate found the hardest defect of rounds 3, 5, 6, 7 and 8, usually the
+round's only blocker. In round 9 it returned clean while an internal sonnet lens, the same round,
+filed a MAJOR — an unowned test file with 50 call sites. Its own output carries the reason:
+`context compacted` printed mid-run. Nothing in the workspace records which kind of read a report
+came from, so the two explanations for that clean — the artifact was clean, the reader was not whole
+— cannot be told apart afterwards.
+
 ---
 
 ## Appending here

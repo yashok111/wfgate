@@ -130,6 +130,15 @@ of a gate — and no report can see that, because `wf stats` and `-asks` enforce
 roster name and nothing reads the framing. Say it in every round, or the descent is partly a
 measurement of the prompt.
 
+**A fix that says it closed a CLASS is re-read for the class, and the SENTENCE claiming the closure
+is the thing to distrust [M-23].** A closing note reading "the task now names every test file the
+arity change reaches" is a claim about a population, written by whoever had just finished the one
+instance in front of them; the next round reads it and stops looking, so it is the statement rather
+than the remaining gap that does the damage. Ask it as its own question — *was the CLASS closed or
+only the instance the finding named* — and answer it by sweeping the population, not by re-reading
+the fix. Where the round's own findings name no such claim there is nothing to sweep and the
+question costs a sentence.
+
 **A banked verification is a claim like any other, and a delta round SAMPLES the previous round's
 rather than inheriting them.** The habit is worth keeping — a NOTE row saying "verified, recorded so
 a later round does not re-derive it" saves real work — and it failed checkably: one round banked

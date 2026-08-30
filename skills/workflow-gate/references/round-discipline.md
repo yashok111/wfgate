@@ -29,6 +29,14 @@ sequence is `pre-flight-gate.md`.
   the same words in every round of the gate. The sentence, and why the round it first appears in
   changes what the whole descent MEANS, are in `gate-checks.md` section 0b.
 
+- **Keep one lens whose instruction is deliberately UNDER-specified, beside the ones the round's own
+  findings aim [M-27].** A narrow prompt is a statement about where the author already believes the
+  defect is, and a lens that answers it exactly will not volunteer the question next to it. Measured:
+  two lenses read the same lines of one round, the aimed one answered the prompt's question correctly
+  and thoroughly, and the round's blocker came from the other one asking something the prompt had not
+  — a verified absence of one failure mode over a set of lines is not evidence about a second one over
+  the same lines. Bank it as `-asks other`, which is what that value is for.
+
 ## Later rounds are DELTA rounds
 
 - **Later rounds are DELTA rounds.** A fix is unreviewed code — in one phase, *half* the blockers of
@@ -162,6 +170,19 @@ sequence is `pre-flight-gate.md`.
   same line says an artifact was added and NO reviewer was dispatched — that round reviewed nothing by
   declaration, and claiming a first review for it would be this bullet's own defect committed in the
   fix for it.
+- **A zero from a lens set that is MISSING the vector which has been finding the blockers is not the
+  same zero [M-24].** The rule ends the gate on a reviewer round with no blocker; a round is evidence
+  about the ARTIFACT only in as much as it ran the vectors that have been producing defects. Measured:
+  a round returning zero blockers was read as the document closing, the next round — the first to
+  carry the external lens — returned six, and by then the gate had already moved on and paid for it.
+  Before reading a zero, read the round's own roster (`wf round lens` with no file prints it, and
+  `wf stats` prints it per round): if a vector that has been filing blockers did not run, the zero is
+  a statement about the set, and the cheap answer is one more round with it.
+- **The closing round's own FIX is unreviewed, and what governs it is `gate-harness.md` section 4 —
+  "an edit after the gate closes is still an edit" [M-25].** The stop rule is about the findings a
+  round LEAVES; it says nothing about the code that closes the ones it does not leave, and those
+  edits are the last thing anybody writes and the first thing nobody reads. That section states the
+  rule and the measurement; read it before you close, not after.
 - **An UNFILLED findings scaffold is not a measured zero.** A round opened, frozen and never
   dispatched leaves the ledger `wf round new` wrote, which prints as `0 finding(s), 0 blocker(s)` —
   the same line the round that ENDS a gate prints, and under this rule a legal close. `wf stats` marks
@@ -204,6 +225,16 @@ sequence is `pre-flight-gate.md`.
   the round totals are. A later gate's rounds ran at 1, 4, 6 and 3 while one property was rewritten
   in every one of them and produced a blocker in three, so nothing matching "a run of ones" fired and
   the gate took four rounds to act on a signal that had been true since the second.
+
+  **A guard is closed by ENUMERATING its inputs, not by fixing the direction the last reviewer looked
+  from [M-26].** Each round of such a run files a finding that is individually correct and a fix that
+  individually closes a real escape, which is exactly why the run continues: a reviewer aimed at the
+  guard reports the hole it happens to face. The move that ends it is to hand one lens the guard and
+  the SHAPES its input can take — one entry short, one extra at the front, an index off by one, the
+  single-member case — and ask it to check each against the code. Measured: three consecutive rounds
+  at one blocker each on one ledger guard, then a fourth round asking that question found the
+  remaining forms all fail safe and closed it. The enumerating question was available in the first of
+  those rounds.
 
   **Withdrawing the guard is one of the legitimate answers, and often the cheapest.** A property
   whose subject is better read by an agent HOLDING THE DIFF belongs in the section gates, not in a

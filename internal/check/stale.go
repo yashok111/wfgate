@@ -36,6 +36,66 @@ import (
 // together while leaving "version"/"versus" apart.
 const stemLen = 5
 
+// inflectionSuffixes is the closed set of English endings a fix may add while
+// keeping the rule it states. It is a WHITELIST rather than a length bound
+// because a bound alone reaches words that are not related at all: over the
+// eleven gate workspaces on disk, "any added token up to three runes longer"
+// paired 169 removals, and about a dozen of them were `within` under `with`,
+// `someone` under `some`, `userid` under `user`, `formula` under `form`.
+// Filtered through this list the population is 148 pairs and exactly ONE is
+// wrong (`past` under `pasting`), which is the direction to be wrong in: a
+// suppression the check gets wrong is a consumer it never reports.
+var inflectionSuffixes = map[string]bool{
+	"s": true, "es": true, "d": true, "ed": true, "r": true, "er": true,
+	"n": true, "en": true, "st": true, "est": true, "ly": true, "ing": true,
+}
+
+// inflectedInto says whether long is short plus one of those endings, with the
+// doubled final consonant English writes before some of them — `stop`/`stopped`,
+// `bump`/`bumping`, `gzip`/`gzipped` are one word each and a plain suffix test
+// misses all three.
+func inflectedInto(short, long string) bool {
+	if !strings.HasPrefix(long, short) || len(short) == 0 {
+		return false
+	}
+	rest := long[len(short):]
+	if inflectionSuffixes[rest] {
+		return true
+	}
+	return len(rest) > 1 && rest[0] == short[len(short)-1] && inflectionSuffixes[rest[1:]]
+}
+
+// inflected says whether the fix put this token back in another form, for the
+// pairs the fixed-prefix stem above cannot see: one side shorter than stemLen,
+// which gets no stem at all.
+//
+// Measured need: on a live gate a fix rewrote "consumers work" as "consumer
+// works", the bare token `work` vanished from the new text, and the check
+// retired it and reported four untouched sentences that merely reuse a common
+// English verb. Over that gate it produced 8 survivor reports across four rounds
+// and every one was a false positive of this class.
+func inflected(t string, added map[string]bool) bool {
+	rt := []rune(t)
+	if len(rt) < stemLen {
+		// The fix wrote the LONGER form. A scan, because the ending cannot be
+		// enumerated from the token.
+		for a := range added {
+			if len(a) > len(t) && inflectedInto(t, a) {
+				return true
+			}
+		}
+		return false
+	}
+	// The fix wrote the SHORTER one. Only a form BELOW stemLen escapes the stem
+	// comparison, and the candidate list of `cand` already drops anything under
+	// four runes, so there is exactly one length to ask about.
+	if len(rt) <= stemLen+2 {
+		short := string(rt[:4])
+		return added[short] && inflectedInto(short, t)
+	}
+	return false
+}
+
 // stemOf cuts a token at stemLen RUNES, not bytes: the artifacts are English by
 // workflow rule, but Cyrillic is legal as quoted data and a byte cut would
 // split a rune and compare halves of characters.
@@ -88,6 +148,12 @@ type StaleReport struct {
 	Touched int
 	// Scanned is how many sentences the check actually compared.
 	Scanned int
+	// Reinflected is how many removed tokens were dropped because the fix put
+	// the SAME word back in another form. It is printed for the reason `Common`
+	// is: this check narrows its candidate population in two places, and a
+	// narrowing nobody can see is one nobody can argue with. On a live gate the
+	// short-token half of it was the whole of that gate's false positives.
+	Reinflected int
 }
 
 // FindStale mines retired vocabulary out of a unified diff (produced with
@@ -150,6 +216,7 @@ func FindStale(sts []Statement, diff string, maxDF int) StaleReport {
 			addedStem[st] = true
 		}
 	}
+	rep := StaleReport{}
 	var cand []string
 	for t := range removed {
 		// A token with no letter is a line number, a count or a version — the
@@ -159,13 +226,18 @@ func FindStale(sts []Statement, diff string, maxDF int) StaleReport {
 			continue
 		}
 		if st, ok := stemOf(t); ok && addedStem[st] {
+			rep.Reinflected++
+			continue
+		}
+		// The same question for the pairs a five-rune prefix cannot answer.
+		if inflected(t, added) {
+			rep.Reinflected++
 			continue
 		}
 		cand = append(cand, t)
 	}
 	sort.Strings(cand)
 
-	rep := StaleReport{}
 	// Document frequency over the UNTOUCHED corpus only: a token the fix wrote
 	// into twenty new sentences is not common, it is the new rule.
 	df := map[string]int{}
@@ -284,9 +356,17 @@ func inRanges(rs [][2]int, line int) bool {
 	return false
 }
 
-// PathsNamed returns the artifacts a finding's text names, with the line each
-// mention cites (0 for none), and separately the spellings that matched MORE
-// than one artifact.
+// PathsNamed returns the artifacts a finding's text names, with the line RANGE
+// each mention cites ({0,0} for none), and separately the spellings that matched
+// MORE than one artifact.
+//
+// A range and not a line, because a finding cites one: measured over the eleven
+// gate workspaces on disk, 295 closure citations carry a `:120-134` span and not
+// one of them uses anything but an ASCII hyphen. Reading only the first number
+// asks whether the fix touched the FIRST line of a region the finding drew, and
+// on a live gate all four of its line-level closure misses were exactly that —
+// `p3h.mjs:454-459` against a commit whose hunks covered 450-453 and 455-457, so
+// the one line the check asked about is the one unchanged line inside the span.
 //
 // It searches for the KNOWN artifact paths inside the text rather than cutting
 // the text into whitespace tokens. Two reasons, both measured elsewhere in this
@@ -298,8 +378,8 @@ func inRanges(rs [][2]int, line int) bool {
 // matching two tracked files. Returning the first match would report a closure
 // as landed against a file nobody named — and a check that guesses is worse
 // than one that says it could not tell.
-func PathsNamed(text string, arts []string) (named map[string][]int, ambiguous []string) {
-	named = map[string][]int{}
+func PathsNamed(text string, arts []string) (named map[string][][2]int, ambiguous []string) {
+	named = map[string][][2]int{}
 	// Every spelling that could name an artifact: the full path and every
 	// suffix of it that begins at a path segment.
 	spellings := map[string][]string{} // spelling -> artifacts it could mean
@@ -326,34 +406,55 @@ func PathsNamed(text string, arts []string) (named map[string][]int, ambiguous [
 				}
 				continue
 			}
-			named[owners[0]] = append(named[owners[0]], lineAfter(text, at+len(sp)))
+			named[owners[0]] = append(named[owners[0]], rangeAfter(text, at+len(sp)))
 		}
 	}
 	for a := range named {
-		named[a] = uniqueInts(named[a])
+		named[a] = uniqueRanges(named[a])
 	}
 	sort.Strings(ambiguous)
 	return named, ambiguous
 }
 
-// lineAfter reads the `:120` a citation may carry, ignoring an `#anchor`
-// between the path and the number. The anchor is cut FIRST: reading the line
-// number before it left `:12#rule` as the number, which parses as none, so the
-// whole citation was read as a path and matched nothing.
-func lineAfter(text string, i int) int {
+// rangeAfter reads the `:120` or `:120-134` a citation may carry, ignoring an
+// `#anchor` between the path and the number. The anchor is cut FIRST: reading the
+// line number before it left `:12#rule` as the number, which parses as none, so
+// the whole citation was read as a path and matched nothing.
+//
+// An INVERTED span (`:459-454`) keeps the start alone rather than being widened
+// to cover both readings: `check cite` reports that shape as an error, and a
+// check that silently repaired it here would answer a question about a region
+// the author did not write. A trailing hyphen with no second number is the same
+// case — `:120-` is a line, not a span.
+func rangeAfter(text string, i int) [2]int {
 	if i < len(text) && text[i] == '#' {
 		for i < len(text) && !isBoundary(text[i]) && text[i] != ':' {
 			i++
 		}
 	}
 	if i >= len(text) || text[i] != ':' {
-		return 0
+		return [2]int{}
 	}
 	j := i + 1
 	for j < len(text) && text[j] >= '0' && text[j] <= '9' {
 		j++
 	}
-	return atoiSafe(text[i+1 : j])
+	start := atoiSafe(text[i+1 : j])
+	if start == 0 {
+		return [2]int{}
+	}
+	if j >= len(text) || text[j] != '-' {
+		return [2]int{start, start}
+	}
+	k := j + 1
+	for k < len(text) && text[k] >= '0' && text[k] <= '9' {
+		k++
+	}
+	end := atoiSafe(text[j+1 : k])
+	if end < start {
+		return [2]int{start, start}
+	}
+	return [2]int{start, end}
 }
 
 func indexAll(hay, needle string) []int {
@@ -380,16 +481,21 @@ func isBoundary(c byte) bool {
 	return true
 }
 
-func uniqueInts(xs []int) []int {
-	seen := map[int]bool{}
-	var out []int
+func uniqueRanges(xs [][2]int) [][2]int {
+	seen := map[[2]int]bool{}
+	var out [][2]int
 	for _, x := range xs {
 		if !seen[x] {
 			seen[x] = true
 			out = append(out, x)
 		}
 	}
-	sort.Ints(out)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i][0] != out[j][0] {
+			return out[i][0] < out[j][0]
+		}
+		return out[i][1] < out[j][1]
+	})
 	return out
 }
 

@@ -239,6 +239,13 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    differently: `wfcheck` reads text and reports lines, `wfdry` executes and reports a mode. Seven
    throwaway harnesses were hand-written across two runs before this was written down.
 
+   **It also prints every schema's serialized WIDTH, with the corpus band in the header, and being
+   inside that band is not the same as being safe.** The band's ceiling is the widest width the corpus
+   has seen ACCEPTED by the launch's safety classifier and its floor the lowest seen REFUSED; the gap
+   between them is UNMEASURED. What to do about a schema in or above it — probe it with one throwaway
+   agent rather than reason about the number, and how to narrow one — is `authoring.md`, and that rule
+   was paid for twice by gates that measured their own width, wrote the risk down and launched anyway.
+
    Note what it does NOT do: its assertions cannot be signalled by throwing, because your script is
    required to wrap the spawn call and turn a throw into null — it would swallow them and report a dead
    agent instead (measured: three injected defects, three green runs). It reports violations out of band
