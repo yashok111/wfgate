@@ -809,8 +809,11 @@ that:
   largest agent of P3h's run (a 1.9 MB transcript): **256 `Bash`, 64 `Edit`, 6
   `Read`**, and exactly FIVE of the 256 were bars; the other 251 were `sed -n`,
   `rg` and `cat` doing what `Read` and `Grep` are for, each a round-trip
-  carrying the agent's whole context, and run-wide it is 2120 `Bash` calls over
-  sixteen agents, so the habit is every agent's rather than one agent's. The
+  carrying the agent's whole context. That agent had returned, so those three
+  numbers are final; the run-wide reading is a SNAPSHOT of a run still in flight
+  and is banked as one — 2120 `Bash` calls over sixteen agents, and 2319 over
+  nineteen an hour later — which is enough to say the habit is every agent's
+  rather than one agent's and not enough to be quoted as a total. The
   operator's own box tells its sessions to navigate through the shell and the
   script cannot see that instruction, so the override has to be IN the script:
   `templates/script.mjs` now carries one shared `NAV` const interpolated into

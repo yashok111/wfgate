@@ -385,8 +385,10 @@ came from, so the two explanations for that clean — the artifact was clean, th
 
 The largest agent of one live run (a 1.9 MB transcript) made **256 `Bash` calls, 64 `Edit`s and 6
 `Read`s**, and exactly five of the 256 were bars (`make lint` x3, `make test` x2). The other 251 were
-`sed -n`, `rg` and `cat`. Run-wide over its sixteen agents: 2120 `Bash` calls, the head words led by
-`grep`, `sed`, `rg` and `cat` — the habit was every agent's, not one agent's. The script asked for
+`sed -n`, `rg` and `cat`. The per-agent numbers are final — that agent had returned. The run-wide reading is a SNAPSHOT of a
+run still in flight and says so: 2120 `Bash` calls over sixteen agents at the first reading and 2319
+over nineteen an hour later, head words led by `grep`, `sed`, `rg` and `cat` — the habit was every
+agent's, not one agent's, and the total is whatever the run has reached when you run the command. The script asked for
 none of it; the launching session's own instructions say to read with `cat`/`sed -n` and search with
 `grep`, and subagents inherit them. Re-derive per agent with
 `jq -r '..|.name? // empty' agent-*.jsonl | sort | uniq -c | sort -rn` over

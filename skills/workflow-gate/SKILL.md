@@ -68,7 +68,7 @@ cites.
   written in the script. Producers inside a fan-out are cheap on both axes;
   opus and `high`+ are the exceptions that must argue for themselves.
 - Gate REVIEWERS are **sonnet** — every lens of the pre-flight gate and of the
-  decision gate before it, and both section-gate reviewers. Opus on a reviewer
+  decision gate before it, and every section-gate reviewer. Opus on a reviewer
   is a per-round exception that NAMES the miss it guards against and is banked
   in the round's roster (`wf round lens -model`). A reviewer's tier is paid once
   per ROUND, not once per gate: the ten gates on record spent 166 rounds, and
