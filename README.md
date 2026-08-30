@@ -334,17 +334,20 @@ check reported four untouched sentences reusing a common English verb — all 8 
 reports were this class. A removed token is now also dropped when the range put the same word back
 with one of a closed list of English endings (`-s`, `-es`, `-ed`, `-d`, `-er`, `-r`, `-en`, `-n`,
 `-est`, `-st`, `-ly`, `-ing`), including the doubled final consonant English writes before some of
-them (`stop`/`stopped`). The list is a WHITELIST and not a length bound because a bound alone paired
-`within` under `with`, `someone` under `some` and `formula` under `form`: over the eleven workspaces
-the bound matched 169 pairs and about a dozen were wrong, the list matches 148 and exactly one is
-(`past` under `pasting`). Corpus-wide, retired tokens fell 556 to 484 and reported sentences 768 to
-663 over 160 ranges, and no range got noisier. **Both narrowings are counted in the report** — the
-common-token one and this one — because a candidate population dropped in silence is one nobody can
-argue with.
+them (`stop`/`stopped`, `run`/`running`), in either direction and with the shorter side down to three
+runes (`box`/`boxes`). The list is a WHITELIST and not a length bound because a bound alone pairs
+`within` under `with`, `someone` under `some` and `formula` under `form`: over the 160 ranges of those
+eleven workspaces the shipped predicate suppresses 171 removed tokens and a bare bound 203, the 40 it
+reaches alone are a different word every time, and eight run the other way (`running`, `putting` and
+their kin, four runes of growth). That count is a banked probe, not a hand reading —
+`WF_PROBE=1 go test ./internal/check/ -run TestCorpusInflectionPairs`. Corpus-wide, retired tokens
+fell 556 to 484 and reported sentences 768 to 663 over 160 ranges, and no range got noisier. **The
+narrowing is counted in the report** — this suppression and the five-rune stem's own, which was
+silent before — because a candidate population dropped in silence is one nobody can argue with.
 
 The mechanism is crude on purpose: rare tokens, a tenth of a second, and the
-tokens themselves printed beside every hit so the judgement takes seconds. Two
-populations are always printed — the retired vocabulary that was dropped as too
+tokens themselves printed beside every hit so the judgement takes seconds. Three
+populations are printed — the retired vocabulary that was dropped as too
 common (`-max-df`, default 3 — calibrated on a live gate's fix range, where 8 gave 26 hits carrying
 "were", "right" and "stays" and 3 gives 8 hits over 5 retired tokens: the OUTPUT is narrowed, never
 the check, and the dropped count is printed) and the
@@ -421,11 +424,12 @@ and that fallback is printed.
 
 Each closing commit is read in ITS OWN coordinates — a commit's old-side line numbers mean something
 only against its own parent, so a closure carried by two commits is checked against each one's
-sections and the claims are ORed, never unioned across parents. One verdict per closure, however many
+sections and its own mapping of the cited span, and the claims are ORed, never unioned across parents. One verdict per closure, however many
 paths and sections it names.
 
 **A citation is a RANGE and the LINE half asks about the range.** Measured over the eleven gate
-workspaces on disk, 295 closure citations carry a `:120-134` span and every one writes an ASCII
+workspaces on disk, 96 closure citations carry a `:120-134` span against an artifact-shaped path (62
+of them written with the `artifacts/` prefix, the widest 52 lines) and every one writes an ASCII
 hyphen; reading only the first number asks whether the fix touched the FIRST line of a region the
 finding drew. On one gate ALL FOUR of its line-level misses were that — `p3h.mjs:454-459` reported
 not closed by a commit whose hunks covered 450-453 and 455-457, because 454 is the one unchanged line
@@ -433,8 +437,21 @@ inside the span and `--unified=0` splits a region there — and every one was cl
 inside the cited span closes it, the row names the SPAN the finding wrote rather than the line the
 check reduced it to, and an INVERTED span (`:459-454`) keeps its start alone rather than being
 widened to cover both readings: `check cite` reports that shape as an error, and repairing it
-silently here would answer a question about a region nobody wrote. Corpus-wide the change removed 16
-line-miss rows of 78 and added none.
+silently here would answer a question about a region nobody wrote.
+
+**And the span is MAPPED into each commit's own coordinates before it is compared.** A finding's line
+numbers are written against the round's FREEZE; a commit's old-side ranges are written against its
+PARENT, and measured over those eleven workspaces **643 of the 661 closures that cite a line name a
+commit whose parent is not the freeze** — a round applies several batches with ledger and lens commits
+between them, so the mismatch is the norm rather than the exception. The insertions and deletions
+between the two revisions are summed and the citation moves by that much, the same arithmetic
+`check drift` does one layer up. Two preconditions, both of which cost a false report before they
+were checked: the freeze must actually PRECEDE the commit (`wf freeze -refreeze` moves a tag, and a
+round republished after its own fix landed makes that a REVERSE diff, which subtracts what the fix
+added), and the cited lines must not themselves have been rewritten in between — where they were, the
+numbers mean nothing in that commit's coordinates and the closure is COUNTED and named rather than
+judged either way. Corpus-wide the two changes together took the line-miss rows from 78 to 28, with 2
+closures named as unmappable.
 
 A FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is
 a question, not a verdict. Findings that cite neither a section nor a line are counted and named as

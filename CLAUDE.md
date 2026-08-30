@@ -6,7 +6,7 @@ command reference — every flag, every report line, worked examples; go there
 first for "how do I run a round". `skills/workflow-gate/references/` is the
 OPERATING MANUAL, which is judgement and is what gate agents are briefed from;
 this repository is the mechanics. `WAVES.md` is the maintenance record for
-waves 2 to 16, and `IDEAS.md` holds the queue and the do-not-build list with the
+waves 2 to 17, and `IDEAS.md` holds the queue and the do-not-build list with the
 measurement that closed each entry.
 
 The `wf` CLI: the bookkeeping of a review gate. A gate's workspace is a git
@@ -187,7 +187,9 @@ opening line.
   manual only if an agent CHANGES ITS BEHAVIOUR from the value — was applied to
   the STORY around them, which that pass left untouched: an agent acts on "a fix
   is the largest single source of blockers", not on which gate that was or how
-  its rounds split. Fourteen entries so far, cited from the rules by `[M-nn]`.
+  its rounds split. The entries are cited from the rules by `[M-nn]`, and
+  `make check-docs` prints how many there are — it fails on a citation with no
+  entry, on an entry nothing cites, and on an entry citing itself.
   Six topics were also collapsed to ONE home apiece, each of which had been
   stated at full length in two files in different words — the class `dup`
   structurally cannot see, and this file's own most-repeated defect:
@@ -425,8 +427,9 @@ on the do-not-build list. Its index:
 | 17 | P3e, and the two findings that were the tool already saying it (`FEEDBACK-p3e.md`) | A regression report against a shipped fix with no regression; `wfdry --fixture`; the `required` census and `wf check schema -since`; `wf new-script` writing into `artifacts/`; the manual stopped carrying perishable NUMBERS |
 
 **The eighteenth wave — P3g, and the two proposals the tool had already
-answered** (`FEEDBACK-p3g.md`; 13 rounds, 106 findings, 34 blockers, 86 edits
-over 1131 changed lines, 8.1 h by its own `wf stats -time`, median round
+answered** (`FEEDBACK-p3g.md`; 13 REVIEW rounds when it was written, 14 with the
+run round filled since — 112 findings, 34 blockers, 86 edits over 1131 changed
+lines, 14.9 h by its own `wf stats -time`, median round
 19.6 min, two artifacts — a decision document gated for eight rounds at
 4 -> 1 -> 4 -> 6 -> 3 -> 2 -> 0 -> 0, then the orchestration script for five
 more at 8 -> 5 -> 1 -> 0 -> 0, both halves closed on the stop rule, and the run
@@ -614,7 +617,7 @@ direction that made the fix cheaper** (`close/feedback.md` in
 `wf close` scaffold rather than a hand-authored `FEEDBACK-*.md` in this
 repository; 10 rounds, 73 findings, 17 blockers, 129 edits over 822 changed
 lines, median round 30.5 min, two artifacts — a decision document gated for
-three rounds before the script was added at round 4, then both together for six
+three rounds before the script was added at round 4, then both together for seven
 more, closing on two consecutive rounds with no blocker). Every claim below was
 reproduced before a line was written, and three of the five did not survive
 that:
@@ -634,9 +637,33 @@ that:
   it to, and an INVERTED span keeps its start alone rather than being widened to
   cover both readings — `check cite` reports that shape as an error and repairing
   it here would answer a question about a region nobody wrote. Measured over the
-  eleven unpruned workspaces: 295 span citations, every one an ASCII hyphen, and
-  the report goes from 78 line-miss rows to 62 with none added. Sections were
-  already resolved in each commit's own pre-image; only the line half was not.
+  eleven unpruned workspaces — `grep -ohE '[A-Za-z0-9_./-]+\.(md|mjs):[0-9]+-[0-9]+'`
+  over every `rounds/*/findings.md`, which is the reading, and it is written down
+  because the first one was not and counted `.go:` citations into the reviewed
+  TREE that `PathsNamed` never sees: **96 spans against an artifact-shaped path**,
+  62 of them written with the `artifacts/` prefix, every one an ASCII hyphen and
+  the widest 52 lines. The report goes from 78 line-miss rows to 62.
+- *And the feedback's own explanation, wrong for P3h, is right about the corpus —
+  so the citation is MAPPED into each commit's coordinates* — "a later batch in
+  the same round shifts the numbers" explains none of P3h's four misses and
+  describes the NORM everywhere else: measured over the eleven workspaces, **643
+  of the 661 closures that cite a line name a commit whose parent is not the
+  round's freeze**, because a round applies several batches with ledger and lens
+  commits between them. The finding's numbers are freeze coordinates and the
+  commit's old-side ranges are its parent's, so the check was comparing two
+  documents — the arithmetic the SECTION half had avoided since it started
+  resolving section ids at `sha^`. `check.ShiftSpan` sums the insertions and
+  deletions between the two revisions and moves the citation by that much, which
+  is `check drift`'s own algorithm one layer up. Two preconditions, and both cost
+  a false report in the measurement before they were added: the freeze must
+  PRECEDE the commit — `wf freeze -refreeze` moves a tag, and a round republished
+  after its own fix makes `tag..sha^` a REVERSE diff that subtracts what the fix
+  added, which is five spurious rows — and the cited lines must not themselves
+  have been rewritten in between, where the numbers mean nothing and the closure
+  is COUNTED and named rather than judged (2 corpus-wide, so it paints nothing).
+  Line-miss rows corpus-wide: **78 before the wave, 62 with the span, 28 with the
+  map**, and the three that APPEARED are true misses the old check passed by
+  numeric coincidence.
 - *`wf check stale` retires a word the fix only INFLECTED, and the case-fold half
   of that finding is refuted* — the feedback reports two misses, one blamed on a
   `TWENTY-TWO`/`twenty-two` case mismatch. The normaliser has lower-cased since
@@ -651,15 +678,21 @@ that:
   now reports nothing at all. What ships is a closed WHITELIST of English endings
   (`-s`, `-es`, `-ed`, `-d`, `-er`, `-r`, `-en`, `-n`, `-est`, `-st`, `-ly`,
   `-ing`) plus the doubled final consonant English writes before some of them,
-  and the whitelist rather than a length bound is the measured part: enumerated
-  over the eleven workspaces, "any added token up to three runes longer" pairs
-  169 removals with about a dozen wrong (`within` under `with`, `someone` under
-  `some`, `formula` under `form`, `userid` under `user`), the list pairs 148 with
-  exactly ONE (`past` under `pasting`). Corpus-wide the retired vocabulary falls
+  and the whitelist rather than a length bound is the measured part, by a probe
+  that now ships beside the code (`WF_PROBE=1 go test ./internal/check/ -run
+  TestCorpusInflectionPairs`, which reads the gate workspaces on this box and
+  skips without them — the first reading of these numbers was banked without its
+  command and did not reproduce): over the 160 ranges of the eleven workspaces
+  the shipped predicate suppresses **171** removed tokens and a bare length bound
+  **203**, and the 40 the bound reaches alone are a different word every time
+  (`within` under `with`, `someone` under `some`, `formula` under `form`,
+  `userid` under `user`, and two Cyrillic fragments quoted as data). Eight run
+  the other way — `running`, `putting`, `mapping` and their kin, which the bound
+  misses because a doubled consonant plus `ing` is four runes of growth. Corpus-wide the retired vocabulary falls
   556 to 484 and the reported sentences 768 to 663 over 160 ranges, and no range
   got noisier. **Both narrowings are counted in the report now** — the
   common-token one always was, this one and the pre-existing five-rune stem were
-  not — because a candidate population dropped in silence is one nobody can
+  not, and the counter covers BOTH — because a candidate population dropped in silence is one nobody can
   argue with, and that count is the `dup -since` rule applied to the other end of
   the same command.
 - *Two of the five proposals were the tool and the manual already saying it,
@@ -692,11 +725,12 @@ that:
   and **keep one lens whose instruction is deliberately UNDER-specified beside
   the ones the round's findings aim** (two lenses over the same lines, the aimed
   one right and thorough, the blocker from the one that asked what the prompt had
-  not). Two more went to `gate-harness.md`: **a `clean` from a lens that
-  COMPACTED its context is weaker evidence than one from a whole read**, banked in
-  the roster because nothing else records which kind of read a report came from,
-  and the stop rule now POINTS at section 4's "an edit after the gate closes is
-  still an edit" — the closing round's own fix is the one edit nothing reviews,
+  not). SIX manual edits in all: the compacted-read rule went to
+  `gate-harness.md` — **a `clean` from a lens that COMPACTED its context is
+  weaker evidence than one from a whole read**, banked in the roster because
+  nothing else records which kind of read a report came from — and the stop rule
+  in `round-discipline.md` now POINTS at `gate-harness.md` section 4's "an edit
+  after the gate closes is still an edit" — the closing round's own fix is the one edit nothing reviews,
   and this gate ran a tenth round only because that section was read for
   `wf close`'s flags and it found a false arithmetic comparison stated identically
   in both artifacts. Six provenance entries, M-23 to M-28.
@@ -708,11 +742,65 @@ that:
   wave ago. **Re-pooled over the ELEVEN unpruned workspaces: 148 round spans of
   165 under two hours, median 24.0 min, middle half 17.6-31.5** — the reading is
   every `  round` line carrying a `; N min` span, run rounds included, spans of
-  two hours and over dropped as breaks, and it is `bash` over `wf stats -time`,
-  `grep -oE '; [0-9]+\.[0-9] min'` and `sort -n`. Per-gate medians re-derive at
-  13.8, 24.3, 19.1, 45.3, 21.9, 29.1, 39.8, 32.3, 21.8, 19.8, 28.6 and three of
-  them move by up to 0.8 against the reading banked one wave ago, which is the
-  file's own standing instruction to re-derive rather than inherit.
+  two hours and over dropped as breaks, quartiles by the rank `int(n*0.25)+1`,
+  and it is `bash` over `wf stats -time`, `grep -oE '; [0-9]+\.[0-9] min'` and
+  `sort -n`. The PER-GATE medians are not pooled at all — `wf stats -time` prints
+  one per workspace and they are 13.8, 24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3,
+  21.4, 19.6, 30.5, unchanged by this wave except for the eleventh, which is new.
+  A first reading of this bullet re-derived them by hand instead of reading the
+  line the command prints, moved five of them, and contradicted P3h's own entry
+  twenty rows above: the command's number is the number.
+
+- *And the wave earned its review round, for the fourteenth time running, and
+  the review is again why it is trustworthy* — one external model over the diff,
+  then two Opus vectors (Go correctness with a mutation sweep in an ISOLATED
+  WORKTREE, and claims/specification), against five green bars. Between them:
+  **no blocker, six majors in the record and three in the code, and one guard
+  the diff had introduced with no case at all.**
+  The claims vector's sharpest finding is a number this file INVENTED: the
+  per-gate median list was re-derived by hand under an unstated reading, moved
+  five of the eleven values, and contradicted P3h's own entry twenty rows above
+  — while `wf stats -time` prints one median per workspace and none of them had
+  moved. The command's number is the number, and a hand pooling of the same
+  spans is a different measurement wearing its clothes. It also found P3g's
+  headline numbers stale IN the commit that noticed P3g's workspace had grown
+  (13 rounds and 106 findings against the 14 and 112 the run round left behind —
+  the diff read the new state for the pooling and not for the bullet), the
+  maintenance record called "waves 2 to 16" at a SECOND site after the seventeenth
+  moved into it (the eighteenth wave's own named `count: 2` defect, one wave
+  later), a `measured.md` entry count stated as fourteen against 28, P3g still
+  called "the newest", and "295 span citations" reproducing under no reading —
+  the first count globbed eight workspaces of eleven and matched `.go:` citations
+  into the reviewed TREE that `PathsNamed` never sees. The artifact-shaped count
+  is 96, and the reading is now written beside it.
+  The correctness vector ran 28 mutations, 16 killed and 12 survived, and three
+  of the survivors were real: the reverse inflection bound was one rune too
+  narrow, so `stop`/`stopped` was suppressed and `stop`/`stopping` reported —
+  the same word pair answered two ways; TEN of the twelve whitelist endings were
+  exercised by nothing, so the wave's central design decision was defended by a
+  test that only required `-in` to be ABSENT; and `RangesCover` became dead
+  production code carrying a comment naming the caller this commit removed, with
+  a second comment in `main.go` contrasting the new helper against it. Deleted.
+  Four more guards got the case they lacked — the end-of-string bounds test in
+  `rangeAfter`, which PANICS without it on a finding whose text ends with its
+  citation; `uniqueRanges`'s dedup and its two-key order; and the report line
+  that makes the new narrowing visible, which is the wave's own argument for
+  counting it. Two of the new tests were hardened rather than trusted: the span
+  test asserted only the ABSENCE of a miss row, which an unreachable closure also
+  produces, and the reverse-inflection test asserted no hit without asserting the
+  count.
+  The external vector found the two the others did not. A branch in the citation
+  parser that has never worked — `path#anchor:12` returned NO line, because `#`
+  is itself a boundary character and the loop written to skip the anchor exited
+  on its first test, in a function whose comment says it skips it (this project's
+  "suspect the COMMENT first" class, shipped years before this wave and found by
+  reading the code against its own prose). And the doc claim that each closing
+  commit is read in its own coordinates, which was true of the SECTION half and
+  false of the LINE half — the finding that became the coordinate map above.
+  Two of its reds were REFUSED with the code: an inverted span is not a false
+  pass (keeping the start asks a NARROWER question, and `check cite` already
+  reports the shape as an error), and `past` under `pasting` is the one wrong
+  pair in 171, named where the rule is stated.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
@@ -964,9 +1052,11 @@ fixtures for the non-ASCII anchor detector).
   produced the citation-span and inflection fixes, and its own round 1 filed 2
   blockers. Its workspace is on disk and unpruned.
 - **ELEVEN real gates ran entirely through `wf` before it,** and P3g
-  (`FEEDBACK-p3g.md`, `~/projects/gates/mocker-p3g-deep-nesting`) is the newest:
-  13 rounds by its own `wf stats`, 106 findings, 34 blockers, 86 edits over 1131
-  changed lines, 8.1 h, median round 19.6 min, over TWO artifacts — a decision
+  (`FEEDBACK-p3g.md`, `~/projects/gates/mocker-p3g-deep-nesting`) is the one
+  before it — and its own numbers moved after its wave was written, because its
+  run round was filled since:
+  14 rounds by its own `wf stats` today, 112 findings, 34 blockers, 86 edits over
+  1131 changed lines, 14.9 h, median round 19.6 min, over TWO artifacts — a decision
   document gated for eight rounds and an orchestration script for five, both
   halves closed on the stop rule, and the run launched from `gate-r13` with
   `wfcheck` 0/0, `wfdry` 7/7 and `wf verify` clean, and the run came back GREEN
@@ -976,7 +1066,7 @@ fixtures for the non-ASCII anchor detector).
   and `wfdry` 7/7 as emitted and stayed that way — while all THREE harness edits
   its operator made were wrong on the first attempt, each caught by `wfdry` or a
   lens and none by reasoning, which is the manual's frozen-harness rule measured
-  rather than argued. Its fix-induced share is 25 of 106 findings and 12 of 34
+  rather than argued. Its fix-induced share is 25 of 112 findings and 12 of 34
   blockers (35.3%), triangulating with P3c's 34%, P3d's 35% and P3e's 43.5%. Its
   cost meter prices only rounds 2-8, for TWO reasons and not one: rounds 10-13
   were applied by hand, which `wf apply -whole` now closes, and rounds 1 and 9
@@ -1124,9 +1214,12 @@ fixtures for the non-ASCII anchor detector).
 - **The cost of a gate is now measured by the tool, and the answer moved the
   work.** `wf stats -time`, re-pooled 2026-08-30 over the ELEVEN unpruned
   workspaces with the current binary, over the 148 round spans of 165 that are
-  under two hours: **median 24.0 min, middle half 17.6-31.5**, the review segment
-  a median 88% of a round and the bookkeeping tail a median 3.1%. The other
-  seventeen are breaks (the longest 637.9 min) and none of them is a round
+  under two hours: **median 24.0 min, middle half 17.6-31.5** (quartiles by the
+  rank `int(n*0.25)+1`). The review segment is a median 88% of a round and the
+  bookkeeping tail 3.1%, over the 137 of those spans that carry a
+  `(review, fix, tail)` breakdown at all — a different population from the 148,
+  and named because this file's own rule is to name it. The other
+  seventeen spans are breaks (the longest 637.9 min) and none is a round
   length. State the READING with the number, because two of them disagree by a
   round: this one is every `  round` line carrying a `; N min` span, run rounds
   included, piped through `grep -oE '; [0-9]+\.[0-9] min'` and `sort -n`, where
@@ -1135,13 +1228,13 @@ fixtures for the non-ASCII anchor detector).
   population the number came from.
   The old figures — "10-40 minutes, pooled median 15.5, review 70-87%" — were
   three gates and are not wrong so much as SMALL: per-gate medians run 13.8,
-  24.3, 19.1, 45.3, 21.9, 29.1, 39.8, 32.3, 21.8, 19.8, 28.6, so the round got
+  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 19.6, 30.5, so the round got
   longer as the gates got bigger, and a number banked from the first three
-  under-prices every gate since. FIVE of those move against the pooling one day
-  earlier (21.9 against 21.5, 29.1 against 29.4, 39.8 against 39.0, 21.8 against
-  21.4, 19.8 against 19.6) and three moved against the one before that (13.8
-  against 14.2, 19.1 against 19.5, 45.3 against 37.6) — re-derive them with the
-  command rather than inheriting them.
+  under-prices every gate since. Read them off `wf stats -time`, one line per
+  workspace, rather than re-deriving them: a hand pooling of the same spans moved
+  five of these by up to 0.8 and was wrong, while three DID move against a
+  reading two waves ago (13.8 against 14.2, 19.1 against 19.5, 45.3 against
+  37.6) because the population itself changed.
   So the ROUND COUNT is the cost function, the ~9-command sequence is not worth
   compressing (1.4 minutes across p2d's eleven rounds), and the largest measured
   saving in the whole investigation is a DOCUMENT change already in the manual:

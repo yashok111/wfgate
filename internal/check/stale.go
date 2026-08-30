@@ -52,8 +52,8 @@ var inflectionSuffixes = map[string]bool{
 
 // inflectedInto says whether long is short plus one of those endings, with the
 // doubled final consonant English writes before some of them — `stop`/`stopped`,
-// `bump`/`bumping`, `gzip`/`gzipped` are one word each and a plain suffix test
-// misses all three.
+// `stop`/`stopping`, `gzip`/`gzipped` are one word each and the plain suffix
+// test above misses every one of them.
 func inflectedInto(short, long string) bool {
 	if !strings.HasPrefix(long, short) || len(short) == 0 {
 		return false
@@ -62,7 +62,10 @@ func inflectedInto(short, long string) bool {
 	if inflectionSuffixes[rest] {
 		return true
 	}
-	return len(rest) > 1 && rest[0] == short[len(short)-1] && inflectionSuffixes[rest[1:]]
+	// `rest` is EMPTY when the two spellings are the same word — the caller
+	// scans a whole added set and reaches that — so the length test is the guard
+	// in front of `rest[0]` and not a shortcut.
+	return len(rest) > 0 && rest[0] == short[len(short)-1] && inflectionSuffixes[rest[1:]]
 }
 
 // inflected says whether the fix put this token back in another form, for the
@@ -79,19 +82,38 @@ func inflected(t string, added map[string]bool) bool {
 	if len(rt) < stemLen {
 		// The fix wrote the LONGER form. A scan, because the ending cannot be
 		// enumerated from the token.
+		// Lengths are compared in BYTES here and the prefix test is byte-wise,
+		// which is exact for the ASCII whitelist and simply never matches a
+		// multi-byte word — the safe direction: a Cyrillic token quoted as data
+		// is reported, never silently suppressed.
 		for a := range added {
-			if len(a) > len(t) && inflectedInto(t, a) {
+			if inflectedInto(t, a) {
 				return true
 			}
 		}
 		return false
 	}
 	// The fix wrote the SHORTER one. Only a form BELOW stemLen escapes the stem
-	// comparison, and the candidate list of `cand` already drops anything under
-	// four runes, so there is exactly one length to ask about.
-	if len(rt) <= stemLen+2 {
-		short := string(rt[:4])
-		return added[short] && inflectedInto(short, t)
+	// comparison, and `cand` already drops anything under four runes, so there is
+	// exactly one length to ask about — but the LONG side can run to four runes
+	// plus a doubled consonant plus the widest ending, which is `stopping` at
+	// eight. A bound of seven suppressed `stop`/`stopped` and reported
+	// `stop`/`stopping`, which is the same word pair answered two ways.
+	if len(rt) <= stemLen+3 {
+		// Every prefix that is itself below stemLen, not just the four-rune one:
+		// `boxes`/`box` and `buses`/`bus` are the same word and the shorter side
+		// is three runes. Three is the floor because `cand` never asks about a
+		// removed token below four, and a two-rune prefix of an English word is
+		// not evidence of anything.
+		for n := 4; n >= 3; n-- {
+			if len(rt) <= n {
+				continue
+			}
+			short := string(rt[:n])
+			if added[short] && inflectedInto(short, t) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -428,6 +450,13 @@ func PathsNamed(text string, arts []string) (named map[string][][2]int, ambiguou
 // case — `:120-` is a line, not a span.
 func rangeAfter(text string, i int) [2]int {
 	if i < len(text) && text[i] == '#' {
+		// Step OFF the `#` before scanning: it is itself a boundary character,
+		// so the loop below exited on its first test and the whole anchored
+		// citation read as a path with no line — the branch existed, said so in
+		// this comment, and did nothing. `path:12#anchor` is the shipped
+		// spelling (`check cite`'s grammar puts the anchor last) and was never
+		// affected; `path#anchor:12` is the one this handles.
+		i++
 		for i < len(text) && !isBoundary(text[i]) && text[i] != ':' {
 			i++
 		}
@@ -512,11 +541,6 @@ func atoiSafe(s string) int {
 	}
 	return n
 }
-
-// RangesCover is inRanges for callers outside this package — `wf check closure`
-// asks whether a claimed closing commit's change covers the line a finding
-// cites.
-func RangesCover(rs [][2]int, line int) bool { return inRanges(rs, line) }
 
 // sectionIDRe is the shape a gate artifact gives its own sections: a short
 // uppercase tag and a number — `D9`, `R12`, `A3`. Findings cite those, not line

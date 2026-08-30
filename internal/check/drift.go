@@ -136,6 +136,49 @@ func FindDrift(target, frozenRef string, cits []Citation) ([]Drift, int, error) 
 	return out, clean, nil
 }
 
+// ShiftSpan maps a line span from the coordinates of one revision into those of
+// another, given the unified diff between them (`--unified=0`, old side = the
+// revision the span was written against).
+//
+// `wf check closure` needs it because a finding's line numbers are written
+// against the round's FREEZE while each closing commit's own old-side ranges are
+// written against that commit's parent — and measured over the eleven gate
+// workspaces, 643 of the 661 closures that cite a line name a commit whose
+// parent is NOT the freeze, because a round routinely applies several batches
+// with ledger and lens commits between them. The mismatch is the norm here, not
+// the exception.
+//
+// `edited` says the span's own lines changed in that window, which is a
+// different fact from a shift: the coordinates are then not merely offset, and
+// the caller has to say so rather than compare a number it invented.
+func ShiftSpan(raw, path string, span [2]int) (out [2]int, edited bool) {
+	fd := parseUnified(raw)[path]
+	if fd == nil {
+		return span, false
+	}
+	if fd.deleted {
+		return span, true
+	}
+	delta := 0
+	for _, h := range fd.hunks {
+		switch {
+		case h.oldCount == 0:
+			// An insertion after old line oldStart: inside the span it splices
+			// the passage, above it only moves the numbers.
+			if h.oldStart >= span[0] && h.oldStart < span[1] {
+				return span, true
+			} else if h.oldStart < span[0] {
+				delta += h.newCount
+			}
+		case h.oldStart <= span[1] && h.oldStart+h.oldCount-1 >= span[0]:
+			return span, true
+		case h.oldStart+h.oldCount-1 < span[0]:
+			delta += h.newCount - h.oldCount
+		}
+	}
+	return [2]int{span[0] + delta, span[1] + delta}, false
+}
+
 func rangeStr(start, end int) string {
 	if start == end {
 		return strconv.Itoa(start)

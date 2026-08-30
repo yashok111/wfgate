@@ -362,7 +362,7 @@ four rounds, each finding individually correct and each fix individually closing
 Round 9's lens was asked instead to CONSTRUCT the ledgers a real agent produces — one entry short,
 one extra at the front, one index off by one, a single-blocker ledger — and check each against the
 code; all four fail safe, and the run ended. Cost of the three patching rounds: roughly 1.5 hours of
-a 5.1-hour gate.
+a gate the command prices at 5.3.
 
 ## M-27 — two lenses on the same lines, one blocker
 

@@ -161,16 +161,16 @@ diff --git a/artifacts/gone.md b/artifacts/gone.md
 -b
 `
 	got := TouchedRanges(diff)
-	if !RangesCover(got["artifacts/a.md"], 12) {
+	if !inRanges(got["artifacts/a.md"], 12) {
 		t.Fatalf("the replaced region must be covered: %+v", got)
 	}
-	if RangesCover(got["artifacts/a.md"], 20) {
+	if inRanges(got["artifacts/a.md"], 20) {
 		t.Fatalf("an untouched line must not be covered: %+v", got)
 	}
-	if !RangesCover(got["artifacts/a.md"], 40) {
+	if !inRanges(got["artifacts/a.md"], 40) {
 		t.Fatalf("the insertion seam must be covered: %+v", got)
 	}
-	if !RangesCover(got["artifacts/gone.md"], 999) {
+	if !inRanges(got["artifacts/gone.md"], 999) {
 		t.Fatalf("a deleted file was touched everywhere: %+v", got)
 	}
 }
@@ -196,6 +196,12 @@ func TestPathsNamed(t *testing.T) {
 	// An anchor is part of a citation, not part of the path.
 	if n, _ := PathsNamed("see artifacts/decisions.md:12#rule", arts); len(n["artifacts/decisions.md"]) == 0 {
 		t.Fatal("an anchored citation names its file")
+	}
+	// And with the anchor written BEFORE the line, which the parser claimed to
+	// handle and did not: `#` is itself a boundary, so the scan that skips the
+	// anchor stopped on its first character and the citation lost its line.
+	if n, _ := PathsNamed("see artifacts/decisions.md#rule:12 there", arts); n["artifacts/decisions.md"][0] != [2]int{12, 12} {
+		t.Fatalf("an anchor before the line is still skipped: %+v", n)
 	}
 	// A path is a mention only when it stands on its own: an artifact named
 	// notes.md must not be found inside release-notes.md.
@@ -359,7 +365,7 @@ diff --git a/artifacts/old.md b/artifacts/old.md
 	if _, ok := got["artifacts/new.md"]; !ok {
 		t.Fatalf("the created file must be a touched path: %+v", got)
 	}
-	if !RangesCover(got["artifacts/new.md"], 42) {
+	if !inRanges(got["artifacts/new.md"], 42) {
 		t.Fatalf("a file this commit created was touched everywhere: %+v", got)
 	}
 }
@@ -376,7 +382,7 @@ new mode 100755
 	if _, ok := got["artifacts/a.md"]; !ok {
 		t.Fatalf("a mode-only change still touched the file: %+v", got)
 	}
-	if RangesCover(got["artifacts/a.md"], 5) {
+	if inRanges(got["artifacts/a.md"], 5) {
 		t.Fatalf("but it covers no LINE: %+v", got)
 	}
 }
@@ -500,6 +506,72 @@ func TestPathsNamed_readsTheSpanAndRefusesAnInvertedOne(t *testing.T) {
 	if got["artifacts/p3h.mjs"][0] != [2]int{120, 120} {
 		t.Fatalf("a dangling hyphen leaves a line: %+v", got)
 	}
+	// A finding whose text ENDS with the citation: the scan for the hyphen runs
+	// off the end of the string, and without its bounds test this panics rather
+	// than returning a line.
+	got, _ = PathsNamed("the rule is stated at artifacts/p3h.mjs:12", arts)
+	if got["artifacts/p3h.mjs"][0] != [2]int{12, 12} {
+		t.Fatalf("a citation at end of text is still a line: %+v", got)
+	}
+	// A hyphen where the number should be is not a citation at all, and the
+	// contract is {0,0} — "this mention carries no line" — not a span from zero.
+	got, _ = PathsNamed("see artifacts/p3h.mjs:-5 somewhere", arts)
+	if len(got["artifacts/p3h.mjs"]) != 1 || got["artifacts/p3h.mjs"][0] != [2]int{} {
+		t.Fatalf("a citation with no number carries no line: %+v", got)
+	}
+}
+
+// The spans of ONE path are deduplicated and ordered, because they are printed
+// in that order when a finding cites its artifact several times and the row
+// names each span it did not reach.
+func TestPathsNamed_spansAreDeduplicatedAndOrdered(t *testing.T) {
+	arts := []string{"artifacts/p3h.mjs"}
+	got, _ := PathsNamed("artifacts/p3h.mjs:454-459, artifacts/p3h.mjs:12, "+
+		"artifacts/p3h.mjs:454-459 again, and artifacts/p3h.mjs:454-455", arts)
+	want := [][2]int{{12, 12}, {454, 455}, {454, 459}}
+	spans := got["artifacts/p3h.mjs"]
+	if len(spans) != len(want) {
+		t.Fatalf("three distinct spans of four mentions: %+v", spans)
+	}
+	for i := range want {
+		if spans[i] != want[i] {
+			t.Fatalf("ordered by start then end: %+v", spans)
+		}
+	}
+}
+
+// Every ending of the whitelist is a claim, and a whitelist nothing exercises is
+// a length bound with extra words. The pairs below are the two halves of the
+// same table: the endings that MUST suppress, and the bound-only pairs the
+// whitelist exists to refuse — each one measured over the corpus as a real
+// removed/added pair the length bound alone matched.
+func TestInflectedInto_everyEndingAndTheBoundOnlyPairs(t *testing.T) {
+	for _, c := range [][2]string{
+		{"work", "works"}, {"miss", "misses"}, {"live", "lived"}, {"look", "looked"},
+		{"fake", "faker"}, {"hard", "harder"}, {"know", "known"}, {"take", "taken"},
+		{"late", "latest"}, {"high", "highest"}, {"most", "mostly"}, {"look", "looking"},
+		// the doubled final consonant, both endings that reach it
+		{"stop", "stopped"}, {"stop", "stopping"}, {"gzip", "gzipped"},
+	} {
+		if !inflectedInto(c[0], c[1]) {
+			t.Errorf("%q is %q inflected", c[1], c[0])
+		}
+	}
+	// The same word twice: the caller scans a whole added set, so `long == short`
+	// is reachable and leaves an EMPTY remainder to index.
+	if inflectedInto("work", "work") {
+		t.Error("a word is not an inflection of itself")
+	}
+	for _, c := range [][2]string{
+		{"with", "within"}, {"with", "without"}, {"some", "someone"},
+		{"form", "formula"}, {"user", "userid"}, {"read", "readyz"},
+		{"trip", "triple"}, {"sign", "signal"}, {"cont", "contain"},
+		{"dist", "disturb"}, {"flat", "flatmap"},
+	} {
+		if inflectedInto(c[0], c[1]) {
+			t.Errorf("%q is a different word from %q, not an inflection of it", c[1], c[0])
+		}
+	}
 }
 
 // A word the fix INFLECTED is not a word the fix retired, and the five-rune
@@ -541,8 +613,9 @@ func TestFindStale_aShortWordTheFixOnlyInflectedIsNotRetired(t *testing.T) {
 -The literal matcher works under a parameterised base path.
 +The literal matcher work under a parameterised base path.
 `
-	if rep2 := FindStale(sts2, diff2, 8); len(rep2.Hits) != 0 {
-		t.Fatalf("nor in the other direction: %+v (retired %v)", rep2.Hits, rep2.Retired)
+	rep2 := FindStale(sts2, diff2, 8)
+	if len(rep2.Hits) != 0 || rep2.Reinflected != 1 {
+		t.Fatalf("nor in the other direction: %+v %d (retired %v)", rep2.Hits, rep2.Reinflected, rep2.Retired)
 	}
 }
 
@@ -563,6 +636,24 @@ func TestFindStale_theStemSuppressionIsCountedAsWell(t *testing.T) {
 	rep := FindStale(sts, diff, 8)
 	if rep.Reinflected != 1 || len(rep.Hits) != 0 {
 		t.Fatalf("consumers/consumer is one word, dropped and counted: %d %+v", rep.Reinflected, rep.Hits)
+	}
+}
+
+// The shorter side of a pair is not always four runes: `boxes`/`box` is one
+// word and the fix wrote the three-rune form, which a single four-rune prefix
+// never asks about.
+func TestInflected_theShorterFormMayBeThreeRunes(t *testing.T) {
+	if !inflected("boxes", map[string]bool{"box": true}) {
+		t.Error("boxes is box inflected")
+	}
+	if !inflected("buses", map[string]bool{"bus": true}) {
+		t.Error("buses is bus inflected")
+	}
+	// Two runes is not evidence, and the whitelist alone does not stop it:
+	// `being` is `be` plus a legal ending, and pairing them would suppress a
+	// retirement on the strength of two characters.
+	if inflected("being", map[string]bool{"be": true}) {
+		t.Error("a two-rune prefix is not a word this check may pair")
 	}
 }
 
@@ -605,5 +696,23 @@ func TestFindStale_aDoubledConsonantIsStillOneWord(t *testing.T) {
 `
 	if rep := FindStale(sts, diff, 8); len(rep.Hits) != 0 {
 		t.Fatalf("stop/stopped is one word: %+v (retired %v)", rep.Hits, rep.Retired)
+	}
+	// And the other direction, which is where the reverse bound was one rune too
+	// narrow: `stopping` is four runes plus a doubled consonant plus the widest
+	// ending, so a bound of seven answered this pair the opposite way from the
+	// one above.
+	_, sts2 := corpus(t, map[string]string{
+		"artifacts/a.md": "# A\n\nThe guard can stop the run before the second gate could ever begin.\n",
+		"artifacts/b.md": "# B\n\nNothing here is stopping a run that has already been dispatched.\n",
+	})
+	diff2 := `diff --git a/artifacts/a.md b/artifacts/a.md
+--- a/artifacts/a.md
++++ b/artifacts/a.md
+@@ -3,1 +3,1 @@
+-The guard is stopping the run before the second gate could ever begin.
++The guard can stop the run before the second gate could ever begin.
+`
+	if rep := FindStale(sts2, diff2, 8); len(rep.Hits) != 0 || rep.Reinflected != 1 {
+		t.Fatalf("stop/stopping is one word too: %+v %d (retired %v)", rep.Hits, rep.Reinflected, rep.Retired)
 	}
 }

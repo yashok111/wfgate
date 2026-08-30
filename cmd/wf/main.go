@@ -2952,6 +2952,57 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	}
 	claims, checked, unnamed, unreadable, implied, fileOnly := 0, 0, 0, 0, 0, 0
 	ambiguous, noLedger := 0, []int{}
+	// A finding's line numbers are written against the round's FREEZE; a
+	// commit's own old-side ranges are written against ITS PARENT. Measured over
+	// the eleven gate workspaces, 643 of the 661 closures citing a line name a
+	// commit whose parent is not the freeze — a round applies several batches
+	// with ledger and lens commits between them — so comparing the two directly
+	// is arithmetic over two documents, which is the defect the SECTION half
+	// already avoids by resolving section ids at `sha^`.
+	shiftDiff := map[string]string{}
+	shifted := func(round int, sha, path string, span [2]int) ([2]int, bool, bool) {
+		tag := ws.RoundTag(round)
+		key := tag + "\x00" + sha
+		raw, ok := shiftDiff[key]
+		if !ok {
+			if _, err := w.Git.Run("rev-parse", "--verify", tag+"^{commit}"); err != nil {
+				// The round was never frozen (the open one): there is no
+				// coordinate system to map from, so the numbers stand as written.
+				shiftDiff[key] = ""
+				return span, false, false
+			}
+			// And the freeze must actually PRECEDE the commit. `wf freeze
+			// -refreeze` moves a tag, and a round whose tag was published after
+			// its own fix landed makes `tag..sha^` a REVERSE diff — the shift
+			// then subtracts what the fix added and lands the span in a region
+			// nobody cited. Measured: five closures of one gate were reported as
+			// missed for exactly that reason before this check existed. Where
+			// the order does not hold, the numbers stand as written, which is
+			// what the check did for every closure before the map.
+			if _, err := w.Git.Run("merge-base", "--is-ancestor", tag+"^{commit}", sha+"^"); err != nil {
+				shiftDiff[key] = ""
+				return span, false, false
+			}
+			out, err := w.Git.Run("-c", "core.quotePath=false", "diff", "--no-renames", "--no-ext-diff",
+				"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", tag, sha+"^")
+			if err != nil {
+				shiftDiff[key] = ""
+				return span, false, false
+			}
+			raw = out
+			shiftDiff[key] = raw
+		}
+		if raw == "" {
+			return span, false, false
+		}
+		out, edited := check.ShiftSpan(raw, path, span)
+		return out, edited, true
+	}
+	// Closures whose cited lines had already been rewritten between the freeze
+	// and the named commit. They are counted rather than judged: the span has no
+	// meaning in that commit's coordinates, and inventing one is the arithmetic
+	// this map exists to refuse.
+	preEdited := 0
 	// The artifact as it stood BEFORE a commit, which is the coordinate system
 	// that commit's own old-side ranges are in. Keyed by BOTH, because a
 	// closure naming two commits has two coordinate systems and comparing one
@@ -3082,13 +3133,27 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 						continue
 					}
 					sawLine = true
-					covered := false
+					covered, unmappable := false, false
 					for _, sha := range r.Shas() {
-						if overlaps(ranges(sha)[p], rng) {
+						at, edited, moved := shifted(n, sha, p, rng)
+						if edited {
+							// The cited lines were rewritten before this commit
+							// ran. Whatever did that is inside the round's own
+							// fix window, and no number here means what the
+							// finding wrote.
+							unmappable = true
+							continue
+						}
+						if overlaps(ranges(sha)[p], at) {
 							covered = true
 						}
+						_ = moved
 					}
-					if !covered {
+					switch {
+					case covered:
+					case unmappable:
+						preEdited++
+					default:
 						why = append(why, fmt.Sprintf("changed %s but not %s", p, lineSpan(rng)))
 					}
 				}
@@ -3140,6 +3205,9 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 		// than one that touched the section the finding cites.
 		fmt.Printf("  note: %d closure(s) cite neither a section this artifact heads nor a line, so they were checked only at FILE level — a commit that touched the document anywhere passes that. Cite the section id (D9) or the line and the check reaches the claim\n", fileOnly)
 	}
+	if preEdited > 0 {
+		fmt.Printf("  note: %d closure(s) cite lines that had already been rewritten between the round's freeze and the commit they name, so the citation's numbers mean nothing in that commit's coordinates and they were NOT judged either way — the round's own earlier batch reached those lines\n", preEdited)
+	}
 	if unnamed > 0 {
 		fmt.Printf("  note: %d closure(s) name no artifact path in the finding text and were NOT checked — write the path (and the line) into the finding and they become checkable\n", unnamed)
 	}
@@ -3156,7 +3224,7 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 		fmt.Println("  " + l)
 	}
 	if len(bad) > 0 {
-		fmt.Printf("  note: a FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is a question to re-ask, not a verdict: the fix may have landed in the section that PRODUCES the defect rather than the one the finding cites, and a later batch in the same round shifts the numbers. Verified by hand on a live gate — 12 of 127, and the first three read that way\n")
+		fmt.Printf("  note: a FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is a question to re-ask, not a verdict: the fix may have landed in the section that PRODUCES the defect rather than the one the finding cites. A citation is read as a SPAN and mapped into each commit's own coordinates first, so a later batch in the same round no longer moves it out from under the check. Verified by hand on a live gate — 12 of 127, and the first three read that way\n")
 	}
 	return len(bad) > 0, nil
 }
@@ -3185,8 +3253,8 @@ func uniqueStrings(xs []string) []string {
 	return out
 }
 
-// overlaps is range-vs-range, where RangesCover is range-vs-line: a fix inside
-// a section rarely starts on the heading.
+// overlaps is range-vs-range: a fix inside a section rarely starts on the
+// heading, and a finding cites a SPAN rather than the first line of one.
 func overlaps(rs [][2]int, r [2]int) bool {
 	for _, a := range rs {
 		if a[0] <= r[1] && a[1] >= r[0] {

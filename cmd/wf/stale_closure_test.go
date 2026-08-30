@@ -162,6 +162,37 @@ func TestCheckClosure_lineMissIsReportedAsAQuestion(t *testing.T) {
 	mustContain(t, out, "but not line 3", "SECTION or LINE miss is a question to re-ask")
 }
 
+// The report NAMES the population it narrowed away. `check stale` drops a
+// removed token when the fix put the same word back in another form, and the
+// argument for counting it is the argument `dup -since` settled: a candidate
+// population dropped in silence is one nobody can argue with.
+func TestCheckStale_namesTheInflectionsItDropped(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	grow := filepath.Join(tmp, "grow.txt")
+	write(t, grow, "=== artifacts/decisions.md  count=1  note=a rule and its consumer\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"The literal matcher work under a parameterised base path.\n"+
+		"\nEvery downstream matcher must handle the parameterised base path.\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", grow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=one word, inflected\n"+
+		"<<<<\nThe literal matcher work under a parameterised base path.\n====\n"+
+		"The literal matcher works under a parameterised base path.\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", fix); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "stale", "-since", "gate-r1")
+	noErr(t, err, "check stale")
+	mustContain(t, out, "removed token(s) are the same word this range re-wrote in another form")
+}
+
 // `check rules` compares copies of one id against each other and nothing else.
 // Measured: `10 marker(s), 5 id(s), 5 compared, 0 conflict(s)` was true about
 // copy agreement and was read as a statement about correctness, while both
@@ -558,6 +589,10 @@ func TestCheckClosure_readsTheCitedSpanNotOnlyItsFirstLine(t *testing.T) {
 	}
 	out, err := runWF(t, wsDir, "check", "closure")
 	noErr(t, err, "check closure")
+	// The positive half FIRST: a row that vanished because the closure went
+	// UNCHECKED — an unnamed path, an unreadable sha, an ambiguous spelling —
+	// prints no "but not line" either, and this test would read that as a pass.
+	mustContain(t, out, "1 checked against the artifact they name")
 	if strings.Contains(out, "but not line") || strings.Contains(out, "but not lines") {
 		t.Fatalf("an edit inside the cited span closes it:\n%s", out)
 	}
@@ -595,4 +630,156 @@ func TestCheckClosure_aSpanMissNamesTheSpan(t *testing.T) {
 		t.Fatalf("want a finding, got %v\n%s", err, out)
 	}
 	mustContain(t, out, "but not lines 4-6")
+}
+
+// The coordinate system a finding's line numbers live in is the round's FREEZE;
+// each closing commit's own old-side ranges live in ITS PARENT. Measured over the
+// eleven gate workspaces, 643 of the 661 closures citing a line name a commit
+// whose parent is NOT the freeze — a round applies several batches with ledger
+// and lens commits between them — so a second batch that fixes exactly what the
+// finding cites was reported as having missed it, at the offset the first batch
+// introduced.
+func TestCheckClosure_mapsTheCitedSpanIntoTheCommitsOwnCoordinates(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	grow := filepath.Join(tmp, "grow.txt")
+	write(t, grow, "=== artifacts/decisions.md  count=1  note=a document with room in it\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"L3\nL4\nL5\nTHE CITED CLAIM\nL7\nL8\nL9\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", grow); err != nil {
+		t.Fatal(err)
+	}
+	// The freeze is the coordinate system the reviewer read: the claim is line 6.
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Batch ONE, far above the citation, inserting four lines.
+	first := filepath.Join(tmp, "first.txt")
+	write(t, first, "=== artifacts/decisions.md  count=1  note=an unrelated fix above\n"+
+		"<<<<\nL3\n====\nL3\nL3a\nL3b\nL3c\nL3d\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", first); err != nil {
+		t.Fatal(err)
+	}
+	// Batch TWO fixes the cited claim, which now stands four lines lower.
+	second := filepath.Join(tmp, "second.txt")
+	write(t, second, "=== artifacts/decisions.md  count=1  note=the fix the finding asked for\n"+
+		"<<<<\nTHE CITED CLAIM\n====\nTHE CITED CLAIM, corrected\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md:6 states it wrongly | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "1 checked against the artifact they name")
+	if strings.Contains(out, "but not line") {
+		t.Fatalf("the second batch fixed the cited line at its new number:\n%s", out)
+	}
+}
+
+// And where the round's own EARLIER batch rewrote the cited lines themselves,
+// there is no offset to apply: the numbers mean nothing in the named commit's
+// coordinates, so the closure is counted and NOT judged either way rather than
+// compared against a number the check invented.
+func TestCheckClosure_saysWhenTheCitedLinesMovedBeforeTheNamedCommit(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	grow := filepath.Join(tmp, "grow.txt")
+	write(t, grow, "=== artifacts/decisions.md  count=1  note=a document with room in it\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"L3\nL4\nTHE CITED CLAIM\nL6\nL7\nL8\nL9\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", grow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	first := filepath.Join(tmp, "first.txt")
+	write(t, first, "=== artifacts/decisions.md  count=1  note=the earlier batch rewrites the cited line\n"+
+		"<<<<\nTHE CITED CLAIM\n====\nTHE CITED CLAIM, rewritten by the earlier batch\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", first); err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(tmp, "second.txt")
+	write(t, second, "=== artifacts/decisions.md  count=1  note=the named commit, elsewhere\n"+
+		"<<<<\nL9\n====\nL9 (fixed)\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md:5 states it wrongly | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "already been rewritten between the round's freeze and the commit they name")
+	if strings.Contains(out, "but not line") {
+		t.Fatalf("an unmappable citation is counted, not judged:\n%s", out)
+	}
+}
+
+// The map runs only where the freeze actually PRECEDES the commit. `wf freeze
+// -refreeze` moves a tag, and a round republished after its own fix landed makes
+// `tag..sha^` a REVERSE diff: the shift then subtracts what the fix added and
+// lands the span in a region nobody cited. Measured: five closures of one gate
+// were reported missed for exactly that reason before this precondition was
+// checked.
+func TestCheckClosure_doesNotShiftWhenTheFreezeCameAfterTheFix(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	grow := filepath.Join(tmp, "grow.txt")
+	write(t, grow, "=== artifacts/decisions.md  count=1  note=a document with room in it\n"+
+		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
+		"L3\nL4\nL5\nTHE CITED CLAIM\nL7\nL8\nL9\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", grow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	// One commit that BOTH inserts above the citation and fixes it.
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=insert above\n"+
+		"<<<<\nL3\n====\nL3\nL3a\nL3b\nL3c\nL3d\n>>>>\n"+
+		"=== artifacts/decisions.md  count=1  note=and the cited claim itself\n"+
+		"<<<<\nTHE CITED CLAIM\n====\nTHE CITED CLAIM, corrected\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+	// The round is republished AFTER the fix, so the tag no longer names the
+	// bytes the citation was written against.
+	if _, err := runWF(t, wsDir, "freeze", "-refreeze"); err != nil {
+		t.Fatal(err)
+	}
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md:6 states it wrongly | "+sha+" fixed |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "1 checked against the artifact they name")
+	if strings.Contains(out, "but not line") {
+		t.Fatalf("a reverse diff must not move the citation:\n%s", out)
+	}
+	// Nor may it read as unmappable: a reverse diff reports the citation's own
+	// lines as changed, which would file this closure under a population it does
+	// not belong to and take it out of the judged count in silence.
+	if strings.Contains(out, "already been rewritten") {
+		t.Fatalf("the citation is mappable; the freeze simply moved:\n%s", out)
+	}
 }
