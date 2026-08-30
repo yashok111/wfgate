@@ -254,6 +254,21 @@ that same run, named after exactly what it discriminates, stating its own mutati
 comment. Nothing caught it, because there was nothing to catch: an absence with no command behind it
 cannot be reproduced or refuted. With the command in the finding, both are one paste away. Put such commands in a fenced block, or write the alternation without a pipe.
 
+**The acceptance step is the run's most parallelisable work, and its re-measurement is the other half
+of the same step.** Two rules, one place, because doing either without the other moves the cost rather
+than removing it. FIRST: where an acceptance property is a MUTATION — apply what the property names,
+run the test it names, watch the red, revert — the properties are independent in everything but the
+tree, which is what `isolation: 'worktree'` exists for, and one agent walking them in series is the
+largest single wall-clock item this corpus has measured: 45.4 minutes of a 407-minute run [M-33].
+Scope each agent's command by the paragraph below before fanning anything out. SECOND: a fix landed by
+a gate AFTER the acceptance step invalidates what that step measured, so the run re-measures
+conditionally over the edited tree — without it a launch reports an acceptance verdict frozen at its
+pre-fix value, which is not hypothetical: one run returned red over a tree whose hole its own gate had
+just closed. That re-measurement costs the same as the step it repeats (49.2 min against 45.4 on the
+same run), so it fans out the same way or it becomes the new serial tail. `wf new-script` emits both
+as a TODO beside the acceptance step rather than as code: the shape is the author's, the constraint is
+not.
+
 **A producer iterates on the PACKAGE-scoped bar and runs the whole-tree one once, before it reports
 done.** Measured over one 30-agent run: a whole-tree test is a median 125 seconds and a package-scoped
 one 6.2 seconds, twenty times cheaper, and the agents already knew — 193 package runs against 21

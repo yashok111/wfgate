@@ -459,6 +459,19 @@ place as the precondition for a mutation fan-out, where the same command is not 
 [M-31], not as a wall-clock win on its own. Re-derive by pairing each `tool_use` with its
 `tool_result` timestamp in the run's `agent-*.jsonl` and classifying the command.
 
+## M-33 — the acceptance tail is 23% of a run, and it is paid twice
+
+One completed 30-agent run, 407 minutes: the acceptance step ran **45.4 minutes over 263 tool calls**
+and its conditional re-measurement **49.2 minutes over 252**, together **94.7 minutes — 23.2% of the
+whole run**. Both are one agent walking 25 properties in series, 21 of them mutation properties. The
+re-measurement fired because a gate after the acceptance step had landed a fix (`remeasured: true` in
+that run's verdict), which is the mechanism working as designed — an earlier launch on this corpus
+returned an acceptance verdict frozen at its PRE-fix value, red over a tree whose hole had just been
+closed. Read both figures off a completed run's state file:
+`jq -r '.workflowProgress[]|select(.label=="accept" or .label=="remeasure")|[.label,(.durationMs/60000),.toolCalls]|@tsv'`.
+The fan-out this argues for is bounded by the concurrency cap [M-30] and constrained by test scope
+[M-31], so expect roughly half of it back rather than all of it.
+
 ---
 
 ## Appending here

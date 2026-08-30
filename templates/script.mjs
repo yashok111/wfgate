@@ -396,6 +396,23 @@ const accept = live('accept', await spawn(
   { label: 'accept', phase: 'Accept', schema: ACCEPT_SCHEMA, model: 'sonnet', effort: 'medium' }
 ))
 
+// TODO: two things this skeleton does NOT do, both measured on real runs.
+//
+// (1) The step above is ONE agent walking N properties in series. Where those
+// properties are independent MUTATIONS — apply the mutation, run the test it
+// names, watch the red, revert — they are the most parallelisable work in the
+// whole run: measured at 45.4 min of a 407-minute run, and its re-measurement
+// another 49.2, so 23% of the run in one serial walk. `isolation: 'worktree'`
+// is what makes them safe to run at once. Scope each agent's test command to
+// the package its property names FIRST; a fan-out of whole-tree test runs is
+// not slow, it is an OOM. See `wf docs authoring`.
+//
+// (2) A fix landed by a gate AFTER this step invalidates what the step
+// measured. A conditional RE-MEASUREMENT re-runs it over the edited tree when
+// anything changed; without one, a run reports an acceptance result frozen at
+// its pre-fix value — one real launch did exactly that, red over a tree whose
+// hole had just been closed. Re-measure the same shape you accept with,
+// fan-out included, or the serial tail simply moves.
 if (accept) bars('accept', accept.bars)
 const acceptBlockers = accept ? (accept.findings || []).filter((f) => f.severity === 'blocker') : []
 // The acceptance step files one finding per part of the goal that is NOT
