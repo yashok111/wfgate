@@ -482,7 +482,9 @@ changed — the answer is **nine** unowned files. The four the self-report misse
 `web/src/components/ResourcesPage.test.tsx`); nobody named them because nobody was asked. The other
 direction produced exactly one row and it explains one of the nine: the map declares `env.example`
 while the tree carries `.env.example`, a typo ten rounds of review did not see. Nine plus one over 54
-changed files is a sixth of the population. The sharpest single path is
+changed files is a sixth of the population. The map itself was read from the gate configs alone —
+that script composes its prompts in a factory, so the textual half read zero `YOU OWN` blocks and the
+report says `PARTIAL MAP`; the nine rows were checked against the run's own six regardless. The sharpest single path is
 `internal/resources/populate.go`, where the function the whole slice moves lives: it appears in
 NEITHER artifact, so no reviewer, no static check and no self-report could have reached it. Re-derive
 with `wfcheck -root <repo> --owns-diff <base> <script>`.

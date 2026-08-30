@@ -2,7 +2,6 @@ package wfcheck
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -27,13 +26,21 @@ import (
 // the run actually produced.
 type OwnsDiffReport struct {
 	Base, Head string
-	Gates      int // gate-shaped configs whose `owns` was read
-	Blocks     int // `YOU OWN` blocks read out of the string literals
+	Root       string
+	RootNote   string // set when -root was INFERRED rather than given
+	Gates      int    // gate-shaped configs whose `owns` was read
+	Blocks     int    // `YOU OWN` blocks read out of the string literals
 	OwnedFiles int
 	OwnedDirs  int
 	Changed    int
-	Unowned    []string // the run wrote it, no section declared it
-	Untouched  []string // a section declared it, the run never wrote it
+	// Partial is true when a gate's `owns` array could not be read in full.
+	// It is the difference between "no section owns this file" and "this tool
+	// could not read the section that does", and printing the first while
+	// meaning the second is this project's most repeated defect: an absent
+	// measurement in the register of a measured one.
+	Partial   bool
+	Unowned   []string // the run wrote it, no section declared it
+	Untouched []string // a section declared it, the run never wrote it
 }
 
 // OwnsDiff compares the ownership map a script DECLARES against the files a run
@@ -51,22 +58,31 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 	if err != nil {
 		return rep, err
 	}
-	src, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return rep, err
-	}
-	root, _ = resolveRoot(root)
+	// The source is already in memory: a second read adds an I/O error path and
+	// a window in which the two copies disagree.
+	root, rootNote := resolveRoot(root)
+	rep.Root, rep.RootNote = root, rootNote
 
 	files := map[string]bool{}
 	var dirs []string
 	for _, g := range gateConfigs(s) {
 		rep.Gates++
+		if !g.OwnsComplete {
+			rep.Partial = true
+		}
 		for p := range g.Files {
 			files[p] = true
 		}
 		dirs = append(dirs, g.Dirs...)
 	}
-	blocks, textual := ownsFromLiterals(string(src))
+	blocks, textual := ownsFromLiterals(s.Src)
+	// A script that WRITES `YOU OWN` and whose blocks this tool read none of is
+	// the same partial map by another door — the header and its paths can live
+	// in separate concatenated literals, which the textual reader does not
+	// join.
+	if blocks == 0 && strings.Contains(s.Src, "YOU OWN") {
+		rep.Partial = true
+	}
 	rep.Blocks = blocks
 	for _, t := range textual {
 		fs, ds := ownsTargets(t.Path)
@@ -79,6 +95,12 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 	rep.OwnedFiles, rep.OwnedDirs = len(files), len(dirs)
 
 	repo := gitx.Repo{Dir: root}
+	// Which argument was wrong. Without this, a -root that is not a repository
+	// at all is reported as a bad BASE, because the base is what the next call
+	// happens to name.
+	if _, err := repo.Run("rev-parse", "--git-dir"); err != nil {
+		return rep, fmt.Errorf("%s is not a git repository — pass the repository the run wrote into with -root: %w", root, err)
+	}
 	// A ref that does not resolve fails the diff below too, so this branch is
 	// not what stops the run — it is what says WHICH argument was wrong. git's
 	// own message for the diff is "ambiguous argument", which names neither the
@@ -99,15 +121,26 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 	// project's first rule, while a plain `git diff` REFRESHES THE INDEX of the
 	// tree it runs in — a write, into a repository another agent may be working
 	// in this second. `--no-optional-locks` is git's own way of saying do not.
-	out, err := repo.Run("--no-optional-locks", "diff", "--name-only", "--no-renames", base, "--")
+	// `-z` on both commands: without it git QUOTES any path that is not plain
+	// ASCII — `"a/w\303\251ird.go"` — and the quotes and octal escapes travel
+	// into the comparison, so the path matches no entry, prints as unowned, and
+	// names a file that exists nowhere.
+	out, err := repo.Run("--no-optional-locks", "diff", "--name-only", "-z", "--no-renames", base, "--")
 	if err != nil {
 		return rep, err
 	}
+	// Two things this range cannot do, both stated rather than hidden. It
+	// cannot separate THIS run's edits from edits already sitting uncommitted
+	// when the run started — nothing records what was dirty at the base — so
+	// the report says so on every run. And a dirty SUBMODULE surfaces as its
+	// gitlink path rather than as the files inside it, so it reads as one
+	// unowned entry named after the directory.
+	//
 	// Untracked files are the half `diff` cannot see and the half that matters
 	// most here: a file the run CREATED is exactly the shape the map misses —
 	// on the run this was written for, a mandatory `TestMain` a package had
 	// never needed before.
-	untracked, err := repo.Run("--no-optional-locks", "status", "--porcelain", "-uall")
+	untracked, err := repo.Run("--no-optional-locks", "status", "--porcelain", "-z", "-uall")
 	if err != nil {
 		return rep, err
 	}
@@ -124,12 +157,28 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 			rep.Unowned = append(rep.Unowned, p)
 		}
 	}
-	for _, line := range strings.Split(out, "\n") {
-		add(line)
+	for _, p := range strings.Split(out, "\x00") {
+		add(p)
 	}
-	for _, line := range strings.Split(untracked, "\n") {
-		if strings.HasPrefix(line, "?? ") {
-			add(strings.Trim(strings.TrimPrefix(line, "?? "), "\""))
+	// Under `-z` a status entry is `XY path`, and a RENAME spends a second
+	// field on the old path with no status of its own — skip it rather than
+	// let a path that happens to carry a space in its third column read as a
+	// status code.
+	skipNext := false
+	for _, entry := range strings.Split(untracked, "\x00") {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if len(entry) < 4 || entry[2] != ' ' {
+			continue
+		}
+		if entry[0] == 'R' || entry[0] == 'C' {
+			skipNext = true
+			continue
+		}
+		if entry[0] == '?' && entry[1] == '?' {
+			add(entry[3:])
 		}
 	}
 	for p := range files {

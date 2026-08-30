@@ -553,6 +553,17 @@ printed a clean report. Every git call carries `--no-optional-locks`: a plain
 `git diff` refreshes the index of the tree it runs in, and the target of a gate
 is read-only.
 
+Two limits it states rather than hides. The range is `base..working tree`, and
+nothing records what was already dirty when the run started, so an edit that was
+sitting there is counted as the run's — the report prints that line on every run.
+And a map read in PART is worse than one read not at all: a `owns` array built at
+runtime, or a `YOU OWN` block split across concatenated literals, leaves paths the
+tool cannot see, and those print as "owned by no section" while meaning "not
+read". So the report prints `PARTIAL MAP` whenever a gate's `owns` did not
+resolve statically or the script writes `YOU OWN` in blocks the textual reader
+could not join — the P3h script is exactly that case, and its nine rows are true
+anyway, verified against the run's own six.
+
 Measured on that run, against a script whose own harness already compared each
 producer's SELF-REPORTED file list to its `owns`: the self-report found six,
 the tree found **nine** — four test files no self-report had named — plus one

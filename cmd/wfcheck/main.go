@@ -106,25 +106,41 @@ func printOwnsDiff(path, root, base string) error {
 	// report that printed `0 unowned` over a map it failed to read would be a
 	// green line meaning the opposite.
 	fmt.Printf("=== owns vs %s..%s ===\n", rep.Base, rep.Head)
+	if rep.RootNote != "" {
+		fmt.Printf("%s (override with -root)\n", rep.RootNote)
+	}
 	fmt.Printf("map: %d file(s) and %d director(y/ies) from %d gate config(s) and %d YOU OWN block(s)\n",
 		rep.OwnedFiles, rep.OwnedDirs, rep.Gates, rep.Blocks)
 	if rep.OwnedFiles+rep.OwnedDirs == 0 {
 		fmt.Println("NOT A COMPARISON: the script declares no ownership this tool could read")
 		return nil
 	}
-	fmt.Printf("the run changed %d file(s)\n", rep.Changed)
-	if rep.Changed == 0 {
-		fmt.Println("NOT A COMPARISON: that range changed nothing — is the base the commit the run started from?")
-		return nil
+	// A map read in PART is the difference between "no section owns this" and
+	// "this tool could not read the section that does", and the second printed
+	// in the register of the first is a false finding rather than a missed one.
+	if rep.Partial {
+		fmt.Println("PARTIAL MAP: an `owns` array or a YOU OWN block did not resolve statically — rows below may be FALSE")
 	}
-	fmt.Printf("\nwritten, owned by NO section (%d):\n", len(rep.Unowned))
-	for _, p := range rep.Unowned {
-		fmt.Println("  " + p)
+	fmt.Printf("the run changed %d file(s)\n", rep.Changed)
+	if rep.Changed > 0 {
+		fmt.Printf("\nwritten, owned by NO section (%d):\n", len(rep.Unowned))
+		for _, p := range rep.Unowned {
+			fmt.Println("  " + p)
+		}
+	} else {
+		// The other direction is still an answer, and the loudest one: every
+		// owned path is untouched, which is either a wrong base or a run that
+		// did nothing.
+		fmt.Println("NOT A COMPARISON in that direction: the range changed nothing — is the base the commit the run started from?")
 	}
 	fmt.Printf("\nowned, NEVER written (%d):\n", len(rep.Untouched))
 	for _, p := range rep.Untouched {
 		fmt.Println("  " + p)
 	}
+	// The audit cannot tell THIS run's edits from edits that were already
+	// sitting in the tree when it started: it compares a base to the working
+	// tree, and nothing records what was dirty at the base.
+	fmt.Println("\nnote: the range is base..WORKING TREE, so anything already uncommitted when the run started is counted as the run's")
 	return nil
 }
 

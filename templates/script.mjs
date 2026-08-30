@@ -307,8 +307,13 @@ function bank(section, result) {
 // more unowned files than the self-reports did, and one owned path that was a
 // TYPO for the file the run actually wrote.
 function ownership(section, owns, files) {
+  // An `owns` entry is a SENTENCE about a path — `internal/x.go (the D7 comment
+  // only)` is the prescribed form — so the path is its first token. `wfcheck`
+  // reads entries with that same grammar, and two ends of one comparison that
+  // disagree about what a path is would report every file as unowned.
+  const pathOf = (o) => String(o).split(/[\s(]/)[0]
   for (const f of files || []) {
-    if (!(owns || []).some((o) => f === o || (o.endsWith('/') && f.startsWith(o)))) {
+    if (!(owns || []).map(pathOf).some((o) => f === o || (o.endsWith('/') && f.startsWith(o)))) {
       carried.push({ section, severity: 'major', summary: 'wrote ' + f + ' outside its declared ownership' })
     }
   }
@@ -348,13 +353,17 @@ function bars(section, reported) {
 
 phase('Build')
 
+// ONE list, read by three things: the prompt block below, the run-time check
+// after it, and the gate's own `owns`. Written out three times — which is what
+// this file did for one commit — an author who edits the gate silently leaves
+// the run-time check comparing against a stale map.
+const OWNS_BUILD = ['TODO/path/one.go', 'TODO/path/two.go']
+
 const build = live('build', await spawn(
   'You are implementing one section of a slice in the repository at ' + REPO + '.\n\n' +
   'THE SLICE GOAL\n' + GOAL + '\n\n' +
   'TODO: the task, the named files to read for context, and the contract this section must satisfy.\n\n' +
-  'YOU OWN\n' +
-  '  TODO/path/one.go — what you own in it\n' +
-  '  TODO/path/two.go\n\n' +
+  'YOU OWN\n' + OWNS_BUILD.map((p) => '  ' + p).join('\n') + '\n\n' +
   'DO NOT\n' +
   '  TODO/path/owned-by-another-section.go\n\n' +
   'BARS — every one must be green before you report done. Run them.\n' + BARS_TEXT + '\n\n' +
@@ -364,14 +373,14 @@ const build = live('build', await spawn(
 ))
 
 if (build) bars('build', build.bars)
-if (build) ownership('build', ['TODO/path/one.go', 'TODO/path/two.go'], build.files)
+if (build) ownership('build', OWNS_BUILD, build.files)
 
 phase('Gate 1')
 bank('build', await runGate({
   slug: 'gate1',
   phase: 'Gate 1',
   goal: 'TODO: what section 1 had to achieve.',
-  owns: ['TODO/path/one.go', 'TODO/path/two.go'],
+  owns: OWNS_BUILD,
   reviewers: [
     { slug: 'correctness', vector: 'Correctness against the real code: wrong behaviour, missed cases, broken contracts.', model: 'sonnet' },
     { slug: 'reuse', vector: 'Reuse and simplification: duplicated logic, a helper that already exists, needless indirection.', model: 'sonnet' },
