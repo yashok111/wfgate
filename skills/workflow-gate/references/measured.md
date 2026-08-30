@@ -423,6 +423,18 @@ something asks for three. Re-derive from a completed run's state file:
 runner writes that file only when the run ENDS, so an in-flight run has to be reconstructed from its
 per-agent transcripts.
 
+## M-31 — two full test suites at once took the box down, twice in one day
+
+The target repository's own `Makefile` documents it in a comment above its memory-cap helper: one
+package under `-race` peaks at ~650 MB RSS, `go test ./...` runs up to GOMAXPROCS package binaries
+at once (~2.6 GB on 4 cores), a `docker build` compiles the same module again inside BuildKit, and
+"the kernel OOM killer resolved that twice in one day by wiping the whole user slice". The box has
+7 GB. Every orchestration script written against that repository since carries the same rule in its
+own prompts — "run bars ONE AT A TIME: two at once has twice taken this box down" — which is four
+scripts re-deriving one constraint, and the scaffold carried none of it. Re-derive the headroom with
+`free -g` and `nproc`, and read the target's own build file before fanning out anything that runs
+its bars.
+
 ---
 
 ## Appending here

@@ -21,6 +21,12 @@ const REPO = 'TARGET_REPO'
 // A LIST, not a paragraph: a bar nobody ran and a bar nobody reported look the
 // same in a prose blob, and the tally below checks that every one of these came
 // back by name.
+//
+// TODO: if these bars are memory-heavy, say so IN the prompt — "run them one at
+// a time". A whole-repo test run under a race detector can hold gigabytes, and
+// two of them at once is what an OOM killer resolves by wiping the session. Four
+// scripts on one target re-derived that sentence by hand; it belongs beside the
+// list it constrains, and it is a precondition for fanning any of this out.
 const BARS = [
   'TODO make test',
   'TODO make lint',

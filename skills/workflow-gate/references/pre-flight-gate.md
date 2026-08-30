@@ -31,7 +31,9 @@ whole set (2) → hand reviewers the frozen paths (3) → and when the gate is d
 (`wf freeze -refreeze`) means reviewers handed the old tag read different bytes; before the flag
 existed it forced a whole round for a defect no reviewer ever saw (measured, P2e r12) — the
 dry-run reads the working copy, and the freeze exists to pin what REVIEWERS read, so it comes after
-the set executes clean. Each delta round repeats: collect the
+the set executes clean. Between 0 and 2b themselves there is no dependency: both READ that same
+working copy and neither writes it, so run them concurrently and require BOTH green before the
+freeze. The barrier is the freeze, not the arrow. Each delta round repeats: collect the
 round's findings and record them with `wf round record` → bank the vectors that produced them with
 `wf round lens` → fix with `wf apply` → fill the closed-by
 column and re-record (`wf round record <file> -round N`) → static check → re-dry-run → open

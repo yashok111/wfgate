@@ -254,6 +254,20 @@ that same run, named after exactly what it discriminates, stating its own mutati
 comment. Nothing caught it, because there was nothing to catch: an absence with no command behind it
 cannot be reproduced or refuted. With the command in the finding, both are one paste away. Put such commands in a fenced block, or write the alternation without a pipe.
 
+**A fan-out that verifies by MUTATION scopes its test command to the package the property names.**
+The shape is right — N properties, each applying its own mutation and watching a named test go red,
+are independent in everything but the tree they share, which is what `isolation: 'worktree'` exists
+for. What kills it is the BAR each agent then runs. Measured on one target: a single package under
+`-race` peaks at ~650 MB RSS, `go test ./...` runs up to GOMAXPROCS package binaries at once
+(~2.6 GB on a 4-core box), and two such runs at once had the kernel OOM killer wipe the whole user
+slice twice in one day [M-31]. So the discriminator is the SCOPE of the command, not the number of
+worktrees: `go test ./internal/<pkg>/... -race` twice over is ~1.3 GB and safe, `make test` twice
+over is ~5.2 GB on a 7 GB box and is the documented failure. A whole-tree bar, and anything that
+goes through docker or a shared daemon, stays in the single-tree half of the step. Size the fan-out
+against the concurrency cap rather than the property count — the cap decides how many of the N
+actually run at once [M-30] — and if a property cannot be observed by a package-scoped command, that
+property belongs in the single-tree half too.
+
 **A subagent inherits the LAUNCHING SESSION's instructions, not only its `effort`.** `model-routing.md`
 states the effort half of this; the other half is that every standing instruction the launching session
 carries — how to read a file, how to search, which tool to prefer — reaches every agent the script

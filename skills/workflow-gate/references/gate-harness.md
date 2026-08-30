@@ -462,6 +462,15 @@ prose kept losing: a step nobody can run is a step that gets skipped.
 7. `wfcheck`, the JS linter, `wfdry`. Then `wf round new`, `wf freeze`, and `wf verify` before
    launching.
 
+**Steps 4, 5 and the three checks in 7 are a list of QUESTIONS, not a dependency chain.** Every one
+of them READS the snapshot step 2 committed and none of them writes: `dup`, `stale`, `schema`,
+`closure`, `wfcheck`, the linter and `wfdry` can all run at once, and on a slow corpus that turns a
+sum of latencies into the longest one. The barriers are real and there are two: step 6 WRITES the
+ledger, so every check whose answer belongs in it lands first, and the freeze after it pins what
+reviewers read, so nothing may still be running when it happens. Read every report before recording
+— a check run concurrently and read afterwards is the same check; a check whose output scrolled past
+is not.
+
 **`wf apply -rule` declares which rule a batch changes, and it is a REFUSAL, not a note.** With the
 id form (`-rule R12`) the batch is refused before anything is written when a marked site sits in a
 file the batch does not touch, and the site list is printed; `-rule-ack` is the waiver for a batch
