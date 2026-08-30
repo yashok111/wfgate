@@ -422,7 +422,13 @@ that completed later the same day held max concurrency 2 again (parallelism 1.10
 a 407-minute span), and exactly one of its eight gates carried THREE reviewers: that third lens
 waited **437 seconds** for a slot, against 6 to 8 seconds of spawn latency for every other agent in
 the run. A third vector is not free and it is not a whole gate either — it is one queued wave, and
-on that run it was 7.3 minutes. Re-derive from a completed run's state file:
+on that run it was 7.3 minutes. **The formula was read from the binary rather than inherited**, because this project's own manual had
+carried it for months in a form missing its floor: it is
+`Math.min(16, Math.max(2, cpus - 2))`, evaluated once at module load from `os.availableParallelism()`,
+in the same chunk that carries the `Workflow harness` strings. The two forms agree from 4 cores up and
+disagree below — the written one gives 1 on three cores and 0 on two, the real one never goes under 2.
+No environment variable is read there; `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20) is the Agent
+tool's limiter and a different code path. Re-derive from a completed run's state file:
 `jq -r '.workflowProgress[]|select(.type=="workflow_agent")|[.startedAt,.lastProgressAt]|@tsv'
 ~/.claude/projects/<slug>/workflows/wf_<id>.json` and sweep for the maximum overlap; note that the
 runner writes that file only when the run ENDS, so an in-flight run has to be reconstructed from its

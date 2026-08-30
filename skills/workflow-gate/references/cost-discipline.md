@@ -41,8 +41,13 @@ recovery has three parts, in order:
   is the previous phase, so this diff is exactly what this run produced". Moving HEAD mid-run makes the
   completed phases invisible to every reviewer that follows.
 
-The concurrency cap is `min(16, cpus - 2)`, so on a 4-core box a "parallel" phase of three runs two and
-queues one — worth knowing both for wall-clock estimates and because it bounds what a kill can lose.
+The concurrency cap is `Math.min(16, Math.max(2, cpus - 2))`, computed ONCE from
+`os.availableParallelism()` — so on a 4-core box a "parallel" phase of three runs two and queues one,
+worth knowing both for wall-clock estimates and because it bounds what a kill can lose. **There is no
+knob**: no settings key, no environment variable, no per-call option. `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
+(default 20) governs the Agent tool and does NOT reach a workflow, and `availableParallelism()` cannot be
+inflated above the machine's real cores — affinity and cgroup limits only lower it. The floor of 2 is why
+a two-reviewer gate never queues anywhere, and the only lever is the machine [M-30].
 
 **5. Fan-out does NOT save a shared budget.** Under a constrained window (the 5-hour usage limit),
 parallel fan-out spends the SAME quota FASTER, not cheaper — it buys wall-clock, not tokens. For
