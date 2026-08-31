@@ -409,25 +409,25 @@ on the do-not-build list. Its index:
 
 | Wave | Gate / source | What it answered |
 |---|---|---|
-| 2 | P2d live run (`FEEDBACK-p2d.md`) | The first ten rounds run entirely through `wf`: extensionless citations, `check rules` and `[RN]`, `dup -since`, the anchor ratchet, `-kind full\|delta`, `wf stats`, `wf add` adopting a draft, bookkeeping dirt in `verify` |
+| 2 | P2d live run (`docs/feedbacks/FEEDBACK-p2d.md`) | The first ten rounds run entirely through `wf`: extensionless citations, `check rules` and `[RN]`, `dup -since`, the anchor ratchet, `-kind full\|delta`, `wf stats`, `wf add` adopting a draft, bookkeeping dirt in `verify` |
 | 3 | The residue P2d named | `apply.ParseText` (the plain-text batch format), `delta -save`, `[fix-induced]` in stats |
-| 4 | P2e, the first SCRIPT gate (`FEEDBACK-p2e.md`) | Hard-wrap unwrapping in `dup`, `NUMERIC` conflicts, `-kind tool`, dry-run BEFORE freeze, the batch-size cost meter |
+| 4 | P2e, the first SCRIPT gate (`docs/feedbacks/FEEDBACK-p2e.md`) | Hard-wrap unwrapping in `dup`, `NUMERIC` conflicts, `-kind tool`, dry-run BEFORE freeze, the batch-size cost meter |
 | 5 | The five-reviewer audit of this repo | The tool committing the class it exists to catch: freeze writing before refusing, vacuous open-blocker checks, one pipe carrying a BLOCKER past a freeze, `strings.Count(body, "")`, `dup` losing recall as a rule spread, the text scanner replaced by a parsed program |
-| 6 | P2f, both gates in ONE workspace (`FEEDBACK-p2f.md`) | `wfcheck`'s unclearable backstop ERROR, `wf stats` reading ZERO apply batches over 27, `wfdry`'s fixture deciding which branch ran, the sentence-terminator defect in `check rules` |
-| 7 | mocker slice A, THREE gates (`FEEDBACK-a-mcp.md`) | Four ways the OPERATOR drifted out of the tool in silence; freeze resolving citations; the per-node depth budget; `wfcheck -root`; the pre-flight sequence as a smoke test, not a gate |
+| 6 | P2f, both gates in ONE workspace (`docs/feedbacks/FEEDBACK-p2f.md`) | `wfcheck`'s unclearable backstop ERROR, `wf stats` reading ZERO apply batches over 27, `wfdry`'s fixture deciding which branch ran, the sentence-terminator defect in `check rules` |
+| 7 | mocker slice A, THREE gates (`docs/feedbacks/FEEDBACK-a-mcp.md`) | Four ways the OPERATOR drifted out of the tool in silence; freeze resolving citations; the per-node depth budget; `wfcheck -root`; the pre-flight sequence as a smoke test, not a gate |
 | 8 | mocker A3, queue filed while open | `wf check stale -since`, `wf check closure`, the cost meter calibrated on the wrong regime, the corpus SIZE in `freeze.json` |
 | 9 | The A3 loop — measured and NOT built | Four proposals rejected on measurement (the do-not-build list); acceptance sections state OBSERVATIONS; `wf round lens`; the stop rule unified at five sites; a scope cut is reviewed like any other edit |
-| 10 | mocker A3 closed, the script RAN (`FEEDBACK-a3.md`) | `[RN]` markers inside a `.mjs` (already shipped, never said); FIRST REVIEW leading the stats line; `wf apply -rule RN`; `-kind run` |
+| 10 | mocker A3 closed, the script RAN (`docs/feedbacks/FEEDBACK-a3.md`) | `[RN]` markers inside a `.mjs` (already shipped, never said); FIRST REVIEW leading the stats line; `wf apply -rule RN`; `-kind run` |
 | 11 | The two things every agent invented | The severity scale closed to BLOCKER/MAJOR/MINOR/NOTE across four drifted vocabularies; `-asks` and the three questions a delta round may never drop |
-| 12 | P3a, first workspace gated TWICE (`FEEDBACK-p3a.md`) | `--mode dead-reviews` matching a SUBSTRING; `--prompt-diff`; the aged `gate-checks.md` pin; JS escapes reaching the comparison undecoded; `-rule` as free text |
-| 13 | P3b, the gate that STOPPED (`FEEDBACK-p3b.md`) | Blockers split by ORIGIN, not only findings; the strongest queue entry REFUSED on measurement; the agent-count ratio; `wf freeze -refreeze`; the frozen harness |
+| 12 | P3a, first workspace gated TWICE (`docs/feedbacks/FEEDBACK-p3a.md`) | `--mode dead-reviews` matching a SUBSTRING; `--prompt-diff`; the aged `gate-checks.md` pin; JS escapes reaching the comparison undecoded; `-rule` as free text |
+| 13 | P3b, the gate that STOPPED (`docs/feedbacks/FEEDBACK-p3b.md`) | Blockers split by ORIGIN, not only findings; the strongest queue entry REFUSED on measurement; the agent-count ratio; `wf freeze -refreeze`; the frozen harness |
 | 14 | The five-vector brainstorm | Nothing here is slow anywhere that matters (a closed hypothesis); `make check-docs`; the `dead-reviews` mode that discriminated nothing; phase-set collapse; the moved freeze tag derived from GIT |
-| 15 | P3c, the launch-killer (`FEEDBACK-p3c.md`) | The schema-width band measured in the RUNNER; factory-composed `YOU OWN` blocks; `-rule` as a refusal; two closure reports saying NOT A PASS; `check cite -at frozen` |
-| 16 | P3d, a probe instead of an argument (`FEEDBACK-p3d.md`) | The mis-split batch that verified itself byte-for-byte; `$defs`/`$ref` resolved in `wfdry`; the refusal floor at 4,233 probed for 82 ms; the ledger refusal naming a CHARACTER; `x-pass` on arrays |
-| 17 | P3e, and the two findings that were the tool already saying it (`FEEDBACK-p3e.md`) | A regression report against a shipped fix with no regression; `wfdry --fixture`; the `required` census and `wf check schema -since`; `wf new-script` writing into `artifacts/`; the manual stopped carrying perishable NUMBERS |
+| 15 | P3c, the launch-killer (`docs/feedbacks/FEEDBACK-p3c.md`) | The schema-width band measured in the RUNNER; factory-composed `YOU OWN` blocks; `-rule` as a refusal; two closure reports saying NOT A PASS; `check cite -at frozen` |
+| 16 | P3d, a probe instead of an argument (`docs/feedbacks/FEEDBACK-p3d.md`) | The mis-split batch that verified itself byte-for-byte; `$defs`/`$ref` resolved in `wfdry`; the refusal floor at 4,233 probed for 82 ms; the ledger refusal naming a CHARACTER; `x-pass` on arrays |
+| 17 | P3e, and the two findings that were the tool already saying it (`docs/feedbacks/FEEDBACK-p3e.md`) | A regression report against a shipped fix with no regression; `wfdry --fixture`; the `required` census and `wf check schema -since`; `wf new-script` writing into `artifacts/`; the manual stopped carrying perishable NUMBERS |
 
 **The eighteenth wave — P3g, and the two proposals the tool had already
-answered** (`FEEDBACK-p3g.md`; 13 REVIEW rounds when it was written, 14 with the
+answered** (`docs/feedbacks/FEEDBACK-p3g.md`; 13 REVIEW rounds when it was written, 14 with the
 run round filled since — 112 findings, 34 blockers, 86 edits over 1131 changed
 lines, 14.9 h by its own `wf stats -time`, median round
 19.6 min, two artifacts — a decision document gated for eight rounds at
@@ -614,7 +614,7 @@ before a line was written:
 **The nineteenth wave — P3h, and the miss whose DIAGNOSIS was wrong in the
 direction that made the fix cheaper** (`close/feedback.md` in
 `~/projects/gates/mocker-p3h-basepath` — the first gate whose write-up is the
-`wf close` scaffold rather than a hand-authored `FEEDBACK-*.md` in this
+`wf close` scaffold rather than a hand-authored `docs/feedbacks/FEEDBACK-*.md` in this
 repository; 10 rounds, 73 findings, 17 blockers, 129 edits over 822 changed
 lines, median round 30.5 min, two artifacts — a decision document gated for
 three rounds before the script was added at round 4, then both together for seven
@@ -837,7 +837,7 @@ that:
   worktree-safe.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
-gates were written up by hand into `FEEDBACK-p2*.md`, each inventing its own
+gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
 structure, each landing in this repository by a manual commit — the p2d file
 ends "*the commit is yours*". The section that turned out to be the most
 valuable is called "One observation about the process, not the tool" in two of
@@ -1072,7 +1072,7 @@ fixtures for the non-ASCII anchor detector).
 - **TWELVE real gates have now run entirely through `wf`,** and P3h
   (`close/feedback.md` in `~/projects/gates/mocker-p3h-basepath` — the first
   write-up that is the `wf close` scaffold rather than a hand-authored
-  `FEEDBACK-*.md` here) is the newest: 10 rounds by its own `wf stats`, 73
+  `docs/feedbacks/FEEDBACK-*.md` here) is the newest: 10 rounds by its own `wf stats`, 73
   findings, 17 blockers, 129 edits over 822 changed lines, 5.3 h re-run today
   (5.1 h in the banked scaffold, which is the closing commits landing after the
   write-up), median round 30.5 min, over TWO artifacts — a decision document
@@ -1093,7 +1093,7 @@ fixtures for the non-ASCII anchor detector).
   produced the citation-span and inflection fixes, and its own round 1 filed 2
   blockers. Its workspace is on disk and unpruned.
 - **ELEVEN real gates ran entirely through `wf` before it,** and P3g
-  (`FEEDBACK-p3g.md`, `~/projects/gates/mocker-p3g-deep-nesting`) is the one
+  (`docs/feedbacks/FEEDBACK-p3g.md`, `~/projects/gates/mocker-p3g-deep-nesting`) is the one
   before it — and its own numbers moved after its wave was written, because its
   run round was filled since:
   14 rounds by its own `wf stats` today, 112 findings, 34 blockers, 86 edits over
@@ -1115,7 +1115,7 @@ fixtures for the non-ASCII anchor detector).
   batches did not write, which no command changes. Its workspace is on disk and unpruned,
   and it is what the `dead-reviews` phase note was validated against.
 - **TEN real gates ran entirely through `wf` before those,** and P3e
-  (`FEEDBACK-p3e.md`, `~/projects/gates/mocker-p3e-nested`) is the one before: 14
+  (`docs/feedbacks/FEEDBACK-p3e.md`, `~/projects/gates/mocker-p3e-nested`) is the one before: 14
   rounds by its own `wf stats`, 193 findings, 46 blockers, 183 edits over 2535
   changed lines, over TWO artifacts — a decision document, 1323 -> 2091 lines
   over nine rounds, and an orchestration script gated for four more. Its
@@ -1139,7 +1139,7 @@ fixtures for the non-ASCII anchor detector).
   is the corpus the `$ref`-pointer note, the `required` census and
   `wf check schema` were all validated against.
 - **Nine real gates ran entirely through `wf` before it,** and P3d
-  (`FEEDBACK-p3d.md`, `~/projects/gates/mocker-p3d-datasnap`) is the one before: **15
+  (`docs/feedbacks/FEEDBACK-p3d.md`, `~/projects/gates/mocker-p3d-datasnap`) is the one before: **15
   rounds by its own `wf stats` today, 319 findings, 85 blockers**, 446 edits over
   3933 changed lines, median round 32.3 min, over TWO artifacts — a decision document
   that went 752 -> 1481 lines in eight rounds, one undispatched round nobody
@@ -1172,7 +1172,7 @@ fixtures for the non-ASCII anchor detector).
   through one. Its workspace is on disk and unpruned, and it is what the `$ref`
   fixture support was validated against.
 - **Eight real gates ran entirely through `wf` before it,** and P3c
-  (`FEEDBACK-p3c.md`, `~/projects/gates/mocker-p3c-ref-recipe`) is the first
+  (`docs/feedbacks/FEEDBACK-p3c.md`, `~/projects/gates/mocker-p3c-ref-recipe`) is the first
   where BOTH halves closed on the stop rule: 10 rounds by its own `wf stats`
   (nine plus the run round), 153 findings, 61 blockers, 20 apply batches over 43
   edits and 2408 changed lines. The decision gate ran five rounds at 15 -> 7 ->
@@ -1184,7 +1184,7 @@ fixtures for the non-ASCII anchor detector).
   seconds. The relaunch after narrowing ran 15 of 15. Its workspace is on disk
   and unpruned, and it is the calibration corpus for the schema-width meter.
 - **Seven real gates ran entirely through `wf` before those,** and P3b
-  (`FEEDBACK-p3b.md`, `~/projects/gates/mocker-p3b-resources`) is the first that
+  (`docs/feedbacks/FEEDBACK-p3b.md`, `~/projects/gates/mocker-p3b-resources`) is the first that
   **stopped instead of closing**: 22 rounds by its own `wf stats`, 588 findings,
   177 blockers, 451 edits over 8388 changed lines, 25.7 h, median round 29.4 min.
   Its document half closed on the rule at 19 -> 0 over seventeen rounds; its
@@ -1192,7 +1192,7 @@ fixtures for the non-ASCII anchor detector).
   workspace is on disk and unpruned, and it is now the calibration corpus for the
   blocker-origin split and for the closure check that was REFUSED on it.
 - **Six real gates ran entirely through `wf` before those,** and P3a
-  (`FEEDBACK-p3a.md`, `~/projects/gates/mocker-p3a-resources`) is the first
+  (`docs/feedbacks/FEEDBACK-p3a.md`, `~/projects/gates/mocker-p3a-resources`) is the first
   workspace gated TWICE — sixteen rounds over a decision document, closed, then
   the orchestration script added as a SECOND artifact to the same workspace and
   gated for more rounds plus a tooling round. **Its numbers here were wrong for
@@ -1205,11 +1205,11 @@ fixtures for the non-ASCII anchor detector).
   the prompt-diff feature be validated against the revision before its own
   closing commit.
 - **Four real gates ran entirely through `wf` before those.** P2d (10 rounds, 98
-  findings — `FEEDBACK-p2d.md`), P2e, the first over a workflow SCRIPT
-  (17 rounds, 234 findings — `FEEDBACK-p2e.md` says 235, and its own `wf stats` says 234; the
+  findings — `docs/feedbacks/FEEDBACK-p2d.md`), P2e, the first over a workflow SCRIPT
+  (17 rounds, 234 findings — `docs/feedbacks/FEEDBACK-p2e.md` says 235, and its own `wf stats` says 234; the
   hand-count is the one that is wrong — 293 KB of artifacts), and P2f,
   the first carrying both gates in one workspace (13 rounds, 111 findings, 180
-  KB over three artifacts — `FEEDBACK-p2f.md`; its implementing run then
+  KB over three artifacts — `docs/feedbacks/FEEDBACK-p2f.md`; its implementing run then
   executed 20 agents over 149 minutes and came back green). P2e
   confirmed live: the anchor check turning a wrong citation into a patch, the
   ratchet firing on a real regression, record rejecting a placeholder sha,
@@ -1218,7 +1218,7 @@ fixtures for the non-ASCII anchor detector).
   it found a divergence across the derived pair on its FIRST run, which is the
   case the feature was built for — plus eight mis-aimed anchors and three
   citations that resolved, sat inside the file and pointed at the wrong lines.
-  And mocker slice A (`FEEDBACK-a-mcp.md`, `~/projects/gates/mocker-a-mcp`): 25
+  And mocker slice A (`docs/feedbacks/FEEDBACK-a-mcp.md`, `~/projects/gates/mocker-a-mcp`): 25
   rounds, 196 findings, 58 blockers, THREE gates in one workspace — a decision
   gate and one script gate per shipped slice — 262 KB over four artifacts, both
   slices shipped with every bar green. It is the first run whose report is
