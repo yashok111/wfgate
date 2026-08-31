@@ -30,6 +30,10 @@ can drift apart from itself, and nothing here compares the copies.
    under its `artifacts/` and `rounds/`, and the workspace is its own git repository. It is NOT inside
    the repository under review: the run's own agents diff that tree against its HEAD, and the rule that
    the tree stays untouched while a run is live does not survive the orchestration committing into it.
+   **The command REFUSES a workspace root that resolves under `-target`** and names a `-dir` outside
+   it, because the operator's natural working directory IS the target and the mistake is silent from
+   there: the workspace lands at `<target>/<name>`, and the first thing that says so is `?? <name>/`
+   in the target's OWN `git status`, which nobody is reading at that moment.
 
    **Seed it with `wf add <file>...`**, which copies an authored file in and commits it. That is the
    one commit `wf apply` cannot make — every edit must match text that already exists — and without it
@@ -47,7 +51,10 @@ can drift apart from itself, and nothing here compares the copies.
 
    The batch is written either as a JSON array or as the plain-text block format — `=== <file>
    [count=N] [note=...]`, then `<<<<` old `====` new `>>>>`, everything between markers taken
-   VERBATIM. **Each replacement block carries its own header**: `count=` is scoped to that one
+   VERBATIM. **The square brackets on that line mean OPTIONAL and are not typed** — a literal header
+   reads `=== artifacts/doc.md count=2 note=why` — which is worth a sentence because the format's
+   other delimiters ARE literal, an operator read the line the other way and paid a round-trip, and
+   the `note=` half of that mistake used to be accepted silently with the bracket inside the note. **Each replacement block carries its own header**: `count=` is scoped to that one
    replacement, never to the file — fifteen replacements in one file are fifteen headers (the shape
    one header + fifteen blocks was the first thing a live operator reached for, and the parser now
    names the rule when it sees it). Prefer the text form for anything with multi-line or quote-bearing `old` strings:
@@ -91,6 +98,15 @@ can drift apart from itself, and nothing here compares the copies.
    Measured: one gate applied a structural merge of two script sections by hand, four of its thirteen
    rounds then contributed no edit count, and the cost meter every later round was handed came from
    the rounds that used the block format.
+
+   **For a SCRIPT artifact this is the normal shape, not the exceptional one, and the
+   hand-verification it forfeits is a budgeted part of the round.** A document is edited textually
+   and a script under review is edited structurally: one gate's last two rounds moved 24 and 50
+   hunks, where authoring block batches would have consumed a large share of the round and bought no
+   guarantee the tool can give over a rewrite it did not watch. So plan the round with the
+   verification pass in it — `git diff <the commit before the adoption>` read against the findings,
+   one row at a time — rather than treating `-whole` as a lapse. `wf check closure` now names which
+   closures rest on an adoption, and that list is the pass's work-list.
 
    Each replacement also declares how many occurrences it expects, and **that `count` is scoped to ONE
    file**: it catches a rule you believed appeared once in an artifact and that appears there twice. It
@@ -190,7 +206,12 @@ can drift apart from itself, and nothing here compares the copies.
    time: `wf freeze` reads the findings of the round being CLOSED (the previous round — the frozen
    round's own file is always a blank scaffold, so checking only it would pass vacuously forever) as
    well as the open one, and refuses while a BLOCKER row stands without a `closed by`. So after the
-   fixes land, fill the column with the apply commit's sha and re-record with `-round N`. A prose
+   fixes land, fill the column — **`wf round close <finding#> <commit> [-round N]`, one row at a
+   time, and never a field-splitting tool.** The table escapes a literal pipe as `\|` and `awk -F'|'`
+   splits on the escape too, which is how one gate wrote a commit id into the middle of a finding's
+   text TWICE; the command rewrites the cell in place, validates the sha before touching the file,
+   reads the row back, and refuses to overwrite a closure that already stands without `-replace`.
+   Re-recording the whole ledger with `-round N` remains the way to change anything else. A prose
    closure ("deferred, see decision D-7") passes the freeze with a counted "verify by hand" note — a
    deliberate escape, not a verified commit. A hex-looking English word is not read as a sha: a commit
    claim needs at least one digit. A comma-separated list of shas is fine, and case does not matter.
@@ -455,8 +476,13 @@ prose kept losing: a step nobody can run is a step that gets skipped.
    (`D9`, `R12` — the form a ledger uses, and the only one that reaches a finding citing no line). A
    FILE miss is a closure that did not land; a SECTION miss is a question to re-ask. A closure
    carried by two commits is checked against each one's own parent, never against a union of
-   coordinate systems.
-6. Fill the `closed by` column with the apply commit and re-record: `wf round record <file> -round N`.
+   coordinate systems. Read its two population notes as part of the report, not as trivia: the rows
+   it did NOT examine (an empty closure cell, or one carrying prose) — because `wf round record`
+   says `open 1` about exactly those rows and a reader holding both reports once concluded the gate
+   was clean while the freeze was about to refuse — and the closures resting on an ADOPTION, which
+   is the work-list for the hand verification `wf apply -whole` forfeits.
+6. Fill the `closed by` column with the apply commit — `wf round close <finding#> <commit>` per row,
+   or re-record the whole ledger with `wf round record <file> -round N`.
    The next freeze refuses while a closed round's blocker stands open, and a record naming a commit
    that does not exist is rejected before it writes.
 7. `wfcheck`, the JS linter, `wfdry`. Then `wf round new`, `wf freeze`, and `wf verify` before

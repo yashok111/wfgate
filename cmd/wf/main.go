@@ -47,6 +47,7 @@ const usage = `wf — gate harness
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
   wf round record <file> [-round N]   fill a round's findings.md from a file (- reads stdin), validate closures, commit
+  wf round close <finding#> <commit> [-round N] [-replace]   fill one finding's closure cell without splitting the row on its pipes
   wf round lens <prompt-file> -name N -model M -asks Q [-round N]   bank a reviewer vector against the round (no argument: print the roster)
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
@@ -180,6 +181,9 @@ func cmdInit(args []string) error {
 	root := *dir
 	if root == "" {
 		root = name
+	}
+	if err := refuseInsideTarget(root, *target, name); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
@@ -967,8 +971,11 @@ func cmdRound(args []string) error {
 	if len(args) > 0 && args[0] == "lens" {
 		return cmdRoundLens(args[1:])
 	}
+	if len(args) > 0 && args[0] == "close" {
+		return cmdRoundClose(args[1:])
+	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> [-round N] | wf round lens <prompt-file> -name N -model M -asks Q [-round N]")
+		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> [-round N] | wf round close <finding#> <commit> [-round N] | wf round lens <prompt-file> -name N -model M -asks Q [-round N]")
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
@@ -1043,12 +1050,16 @@ reads [R2]. The scale is closed — wf round record refuses anything else:
   would take to close.
 - **NOTE** — not a defect: an observation or a question with no failure attached.
 
-Two rules about this table, both of which cost a live gate something. The finding
+Three rules about this table, all of which cost a live gate something. The finding
 text NAMES the artifact path it is about — wf check closure reaches a closure only
-through that path, and a row without one is a claim nothing can check. And a
+through that path, and a row without one is a claim nothing can check. A
 pipe inside a cell is written \| , because the row is split on unescaped pipes:
 a finding quoting a shell pipeline is the usual way to learn that at the moment
-the record is refused.
+the record is refused (wf round close fills the last column without splitting the
+row, which is what a hand awk -F'|' does wrong). And a finding the PREVIOUS
+round's own fix introduced carries [fix-induced] in its text — the marker is the
+only way that share is ever measured, it is opt-in, and the usual way a gate
+loses it is that nobody remembered while writing the row.
 
 | # | level | finding | closed by |
 |---|-------|---------|-----------|
@@ -2952,6 +2963,23 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	}
 	claims, checked, unnamed, unreadable, implied, fileOnly := 0, 0, 0, 0, 0, 0
 	ambiguous, noLedger := 0, []int{}
+	// The rows this check is NOT about. Measured on the first gate outside
+	// mocker: `wf round record` reported `open 1` while this command reported
+	// "1 closure claiming a commit, 1 checked, 0 not closed by that commit" on
+	// the same round — both true, over two different populations, and read
+	// together the command called `closure` says everything checks out while
+	// the freeze is about to refuse. A row with an empty closure cell is not a
+	// failing closure; it is no closure at all, and naming it is the same
+	// print-your-population discipline every other note here follows.
+	openRows, proseRows := 0, 0
+	// Closures whose commit was an ADOPTION (`wf apply -whole`), where the tool
+	// watched nothing being made. `wf stats` already draws this distinction per
+	// ROUND; the closure the operator has to trust is per ROW. Measured on P3f:
+	// one closure of that gate was banked in the ledger and never written into
+	// the code, this check passed it correctly by its own rules, and the fact
+	// that separates it from its neighbours — the commit carried no verified
+	// batch — was in git the whole time.
+	adopted := []string{}
 	// A finding's line numbers are written against the round's FREEZE; a
 	// commit's own old-side ranges are written against ITS PARENT. Measured over
 	// the eleven gate workspaces, 643 of the 661 closures citing a line name a
@@ -3032,10 +3060,28 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 			continue
 		}
 		for _, r := range ws.ParseFindings(b) {
-			if r.Malformed || r.Placeholder() || len(r.Shas()) == 0 {
+			if r.Malformed || r.Placeholder() {
+				continue
+			}
+			if len(r.Shas()) == 0 {
+				// Two different rows, counted apart, because they are two
+				// different things to do next: an EMPTY cell is a finding
+				// nobody has closed, and a cell carrying prose is a closure
+				// claim this check cannot follow to a commit. `wf round record`
+				// already reports them as `open` and `by prose`, and a report
+				// that merged them here would disagree with the command the
+				// operator ran one line earlier.
+				if strings.TrimSpace(r.ClosedBy) == "" {
+					openRows++
+				} else {
+					proseRows++
+				}
 				continue
 			}
 			claims++
+			if isAdoption(w, r.Shas()) {
+				adopted = append(adopted, fmt.Sprintf("r%d#%s", n, r.Num))
+			}
 			named, amb := check.PathsNamed(r.Text, arts)
 			if len(amb) > 0 {
 				// The `check cite` precedent: a path matching two artifacts
@@ -3195,6 +3241,18 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	fmt.Println(hdr)
 	if claims > 0 && checked == 0 {
 		fmt.Printf("  note: NOT A PASS — no closure could be checked. `wf round record` proves the sha EXISTS; this check proves the commit touched what the finding names, and it reaches a finding only where the finding names an artifact path\n")
+	}
+	if openRows > 0 || proseRows > 0 {
+		// The population this check never had, printed in the same breath as
+		// the one it did — the two commands disagreed in the operator's hands
+		// because only one of them said what it was counting.
+		fmt.Printf("  note: %d finding(s) name no commit and are not a population this check examines (%d with an empty closure cell, %d closed by prose) — `wf round record` reports them as open and by prose, and `wf freeze` refuses on an open BLOCKER\n", openRows+proseRows, openRows, proseRows)
+	}
+	if len(adopted) > 0 {
+		// Not a failure and never counted into `bad`: an adoption that landed
+		// is a closure like any other. What the operator cannot reconstruct
+		// without git archaeology is WHICH rows rest on one.
+		fmt.Printf("  note: %d closure(s) rest on an ADOPTION (`wf apply -whole`), where no replacement was matched and no declared count checked, so the only evidence they landed is this ledger: %s. Byte-verify each against the pre-fix artifact — `wf stats` prices those rounds `(N ADOPTED whole, verified by no batch)` for the same reason\n", len(adopted), strings.Join(adopted, ", "))
 	}
 	if implied > 0 {
 		fmt.Printf("  note: %d closure(s) name no path and were checked against %s, the workspace's only artifact\n", implied, arts[0])
@@ -5060,3 +5118,104 @@ func sharedPath(texts []string) string {
 // e.g — one region`. `i.e` and a version number `1.2` are the same class. The
 // rule is the one `internal/check/cite.go` already applies to a citation.
 var citePathRe = regexp.MustCompile(`\b([\w./-]*[\w-]{2,}\.[A-Za-z]{2,8})(?::\d+)?\b`)
+
+// refuseInsideTarget stops a workspace whose root resolves inside the
+// repository under review, BEFORE the directory is created.
+//
+// Measured on the first gate run against a target other than mocker: the
+// operator's natural working directory IS the target, so `wf init <name>
+// -target <that same path>` from there put the workspace at `<target>/<name>`
+// and printed nothing about it. It surfaced one command later as
+// `?? <name>/` in the TARGET's own `git status` — had the operator not been
+// reading that output, every agent of the run would have seen an untracked
+// directory the run did not create, inside the tree the gate's whole method
+// requires to stay untouched. `gate-harness.md` step -1 spends a paragraph
+// forbidding this, which is the half a document can do.
+//
+// A refusal and not a warning: there is no case where this is what the
+// operator meant, and a warning at init is read once and scrolls away, while
+// the tree it dirties is read by every agent of the run.
+func refuseInsideTarget(root, target, name string) error {
+	rp, err1 := resolveDir(root)
+	tp, err2 := resolveDir(target)
+	if err1 != nil || err2 != nil {
+		// A path that cannot be resolved is not a path known to be inside.
+		// Refusing here would refuse a legitimate init over an unreadable
+		// mount, and the target is re-read by every freeze anyway.
+		return nil
+	}
+	rel, err := filepath.Rel(tp, rp)
+	if err != nil {
+		return nil
+	}
+	// Separator-aware, never a `..` prefix test: a directory legitimately named
+	// `..bak` under the target gives rel `..bak`, and a textual prefix would
+	// read the one shape this refusal exists for as outside.
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil
+	}
+	outside := filepath.Join(filepath.Dir(tp), name)
+	if rel == "." {
+		return fmt.Errorf("workspace root %s IS the target %s — the gate's artifacts would be committed into the tree under review. Run `wf init` from outside the target, or pass `-dir %s`", rp, tp, outside)
+	}
+	return fmt.Errorf("workspace root %s resolves INSIDE the target %s (at %s) — the gate's agents diff that tree against its own HEAD, and a workspace there shows up in the TARGET's `git status` as an untracked directory the run did not create. Run `wf init` from outside the target, or pass `-dir %s`", rp, tp, rel, outside)
+}
+
+// resolveDir makes a path absolute and follows symlinks, including for a
+// directory that does not exist yet — which the workspace root never does at
+// init. The nearest EXISTING ancestor is resolved and the missing tail put
+// back: without that, a target reached through a symlinked parent (/tmp on a
+// mac) compares unequal to a workspace root under the same real directory, and
+// the refusal misses exactly the operator whose box has one.
+func resolveDir(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	rest := ""
+	cur := abs
+	for {
+		if r, err := filepath.EvalSymlinks(cur); err == nil {
+			if rest == "" {
+				return r, nil
+			}
+			return filepath.Join(r, rest), nil
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Nothing on the path exists: the absolute form is all there is,
+			// and it is still a usable answer for the comparison.
+			return abs, nil
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
+}
+
+// isAdoption reports whether every commit a closure names was written by
+// `wf apply -whole` — an artifact adopted as it lies, where no replacement was
+// matched and no declared count was checked.
+//
+// EVERY commit, not any: a closure carried by a verified batch and an adoption
+// together rests on a batch the tool did watch, and calling that unverified
+// would paint rows the operator has receipts for. The two-commit closure is a
+// real shape — `wf check closure` ORs the shas for exactly that reason.
+//
+// A commit git cannot read here is not an adoption: the message is the whole
+// evidence, and an absent message is an absent measurement.
+//
+// The trailer itself dates from 2026-08-30, so an adoption in a workspace older
+// than that carries none and is invisible to this. That is why the report says
+// nothing when the count is zero: a silent report is honest about a corpus
+// where the fact was never recorded, and a printed `0 rest on an adoption`
+// would be this project's own most-repeated defect — an absent measurement in
+// the register of a measured one.
+func isAdoption(w *ws.Workspace, shas []string) bool {
+	for _, sha := range shas {
+		msg, err := w.Git.Run("show", "-s", "--format=%B", sha)
+		if err != nil || !applyWholeRe.MatchString(msg) {
+			return false
+		}
+	}
+	return len(shas) > 0
+}

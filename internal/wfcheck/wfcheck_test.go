@@ -224,7 +224,7 @@ func TestEveryFindingFires(t *testing.T) {
 		{"a contract that reaches no prompt", ERROR, "reaches NO prompt", head + wrap + "const CONTRACT = `SIGNATURE CONTRACT\\nline two of a block that no prompt ever interpolates`\nlog(CONTRACT)\nphase('P')\n" + call + "return {}"},
 		{"a drifted Go test name", WARN, "no *_test.go in this tree declares", head + wrap + "phase('P')\nawait spawn(`Make TestThisNameDoesNotExistAnywhere pass`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
 		{"a gofmt lister used as a gate", ERROR, "gofmt -l X", head + wrap + "phase('P')\nawait spawn(`Run: gofmt -l internal && go test ./...`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
-		{"a placeholder in a fenced command", WARN, "placeholder inside a fenced command", head + wrap + "phase('P')\nawait spawn(`Run it:\\n    git show <sha> > /tmp/x.diff\\n`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
+		{"a placeholder in a fenced command", WARN, "no reading under which the agent fills it in", head + wrap + "phase('P')\nawait spawn(`Run it:\\n    git show <sha> > /tmp/x.diff\\n`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
 		{"a direct agent() call", WARN, "straight to agent()", head + "const S = { type: 'object' }\nphase('P')\nawait agent(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\nreturn {}"},
 		{"a schema that cannot be read", INFO, "could not be read statically", head + wrap + "phase('P')\nawait spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: someGlobalSchema })\nreturn {}"},
 		{"a computed phase title", INFO, "computed at run time", head + wrap + "phase(String('P'))\n" + call + "return {}"},
@@ -890,5 +890,64 @@ return { done: true }`)
 		if has(r, WARN, "is not marked NEW") {
 			t.Fatalf("one declaration marks it NEW, in either order:\n%s", dump(r))
 		}
+	}
+}
+
+// A `<placeholder>` inside a command a prompt hands to an agent.
+//
+// The predecessor required a FENCED line — four leading spaces and a command
+// from a seven-word list — and over 73 frozen script revisions across ten gates
+// it fired ZERO times, including on the three revisions of one gate that were
+// filing this exact shape as a BLOCKER at the time. Both halves of the
+// enumeration defeated it: the command was `sed`, and the line was two spaces
+// of a numbered list rather than four of a fence.
+func TestPlaceholderInsideACommand(t *testing.T) {
+	// The exact line one gate filed two blockers for, `sed` and all.
+	r := run(t, preamble+`phase('P')
+await spawn(`+"`Read the property with `+\"`sed -n '/^\\\\*\\\\*<its id> /,/^\\\\*\\\\*/p' doc.md`\"+`.`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`)
+	if !has(r, INFO, "a <placeholder> inside a command") {
+		t.Fatalf("want an INFO about the placeholder, got:\n%s", dump(r))
+	}
+	// The level is the measured half: over those same 73 revisions the shape
+	// occurs 14 times and only three were the defect, the rest templates an
+	// agent is meant to substitute. An ERROR or a WARN on that ratio is the
+	// check nobody keeps switched on.
+	if errs, warns, _ := r.Counts(); errs > 0 || warns > 0 {
+		t.Fatalf("the wide shape must not raise the exit code, got:\n%s", dump(r))
+	}
+}
+
+// The narrower shape the predecessor looked for, kept because it is stronger
+// evidence: a command on its own indented line is meant to be run as written,
+// so there is no reading under which the placeholder is the agent's to fill.
+func TestPlaceholderOnAFencedCommandLineIsAWarn(t *testing.T) {
+	r := run(t, preamble+`phase('P')
+await spawn(`+"`Run this:\n\n    sed -n '/^<the id>/p' doc.md\n`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`)
+	if !has(r, WARN, "no reading under which the agent fills it in") {
+		t.Fatalf("want a WARN for the fenced form, got:\n%s", dump(r))
+	}
+	// One report per site and never two: the fenced shape is a NARROWING of
+	// the wide one, so a rule for each would print twice about one line.
+	n := 0
+	for _, f := range r.Findings {
+		if strings.Contains(f.Msg, "<placeholder> inside a command") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("one line must produce one report, got %d:\n%s", n, dump(r))
+	}
+}
+
+// A prompt with no placeholder says nothing. Without this the check could
+// match on the command alone and paint every script in the corpus.
+func TestNoPlaceholderNoReport(t *testing.T) {
+	r := run(t, preamble+`phase('P')
+await spawn(`+"`Run `+\"`sed -n '1,20p' doc.md`\"+` and report.`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`)
+	if has(r, INFO, "<placeholder> inside a command") || has(r, WARN, "<placeholder> inside a command") {
+		t.Fatalf("a command with no placeholder must produce no report, got:\n%s", dump(r))
 	}
 }

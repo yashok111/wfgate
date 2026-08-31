@@ -218,7 +218,7 @@ check-docs: build
 	[ -z "$$dang" ] || { echo "check-docs: dangling provenance citation(s): $$dang — a rule citing an entry that does not exist claims a measurement nobody took"; rm -rf $$d; exit 1; }; \
 	[ -z "$$unc" ] || { echo "check-docs: uncited measured.md entry(ies): $$unc — provenance nothing points at is provenance nobody reads"; rm -rf $$d; exit 1; }; \
 	nm=$$(echo "$$def" | grep -c .); \
-	boxes=$$(grep -c '^- \[ \]' $$R/gate-checks.md); cbfloor=147; \
+	boxes=$$(grep -c '^- \[ \]' $$R/gate-checks.md); cbfloor=148; \
 	[ "$$boxes" -ge "$$cbfloor" ] 2>/dev/null || { echo "check-docs: gate-checks.md carries $$boxes checkbox entries against a floor of $$cbfloor — an edit that swallows an entry reads exactly like an edit that shortened one, and the reviewer's list is the population"; rm -rf $$d; exit 1; }; \
 	echo "check-docs: $$want document(s), $$marks marked site(s), every id compared agrees; $$nm provenance entry(ies), all cited, $$boxes checkbox entries"; \
 	rm -rf $$d

@@ -57,6 +57,18 @@ func ParseText(b []byte) ([]Edit, error) {
 		}
 		e := Edit{}
 		rest := strings.TrimSpace(line[len("=== "):])
+		// The manual renders this header as `=== <file> [count=N] [note=...]`,
+		// where the brackets mean OPTIONAL — inside a format whose other
+		// delimiters (`<<<<`, `====`, `>>>>`) are literal. Measured on the P3f
+		// gate: the operator wrote the brackets, which is one of the two
+		// defensible readings of that line, and paid a round-trip. Both halves
+		// of the class are closed here, and they fail differently without it:
+		// `[count=1]` was refused as an unknown field, naming the correct
+		// spelling but not the mistake, while `[note=x]` was accepted SILENTLY
+		// with the closing bracket inside the note. The refusal names the patch.
+		if err := refuseBracketedFields(rest, i+1); err != nil {
+			return nil, err
+		}
 		// note= swallows the rest of the line, so it may contain spaces and
 		// even a stray count= — parse it off first.
 		if k := strings.Index(rest, "note="); k >= 0 {
@@ -176,4 +188,26 @@ func openerOf(half string) string {
 		return "<<<<"
 	}
 	return "===="
+}
+
+// refuseBracketedFields catches a header written with the manual's optionality
+// brackets around a real field. Only the part of the line BEFORE `note=` is
+// scanned: a note swallows the rest of the line and is free text, so a note
+// that quotes `[count=2]` is prose about a batch, not a malformed header.
+func refuseBracketedFields(rest string, line int) error {
+	head := rest
+	if k := strings.Index(rest, "note="); k >= 0 {
+		if k > 0 && rest[k-1] == '[' {
+			return bracketError(line, "note=...")
+		}
+		head = rest[:k]
+	}
+	if strings.Contains(head, "[count=") {
+		return bracketError(line, "count=N")
+	}
+	return nil
+}
+
+func bracketError(line int, field string) error {
+	return fmt.Errorf("line %d: header field %s is written inside square brackets. The manual writes `=== <file> [count=N] [note=...]` and there the brackets mark the field OPTIONAL — they are not part of the syntax, unlike `<<<<`, `====` and `>>>>`, which are literal. Drop them: `=== artifacts/doc.md count=2 note=why`", line, field)
 }

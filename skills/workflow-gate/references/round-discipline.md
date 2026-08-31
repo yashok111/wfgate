@@ -178,6 +178,12 @@ sequence is `pre-flight-gate.md`.
   Before reading a zero, read the round's own roster (`wf round lens` with no file prints it, and
   `wf stats` prints it per round): if a vector that has been filing blockers did not run, the zero is
   a statement about the set, and the cheap answer is one more round with it.
+- **A closing edit costs the round its MEASUREMENT, and you find out afterwards.** Applying the last
+  round's majors after that round has already ended the gate means re-publishing it with
+  `wf freeze -refreeze`, and `wf stats` then drops the round from the cost meter's prediction basis
+  because the tag moved over the round's own repairs. That is correct and it is not a cost anybody
+  expects, so choose it knowingly: either the fixes ride into the next gate's first round, or the
+  round stops being a priced one. Neither is wrong; being surprised by it is.
 - **The closing round's own FIX is unreviewed, and what governs it is `gate-harness.md` section 4 —
   "an edit after the gate closes is still an edit" [M-25].** The stop rule is about the findings a
   round LEAVES; it says nothing about the code that closes the ones it does not leave, and those
@@ -236,6 +242,22 @@ sequence is `pre-flight-gate.md`.
   remaining forms all fail safe and closed it. The enumerating question was available in the first of
   those rounds.
 
+  **ENUMERATE by COMMAND when a round's findings keep having the same SHAPE.** The rule above is
+  about one guard; this is about the round's whole yield. When two or more consecutive rounds file a
+  blocker of the form "X is missing from a set that already has N members", stop sampling: give a
+  lens the set, the COMMAND that enumerates it, and the instruction to report a COMPLETE table with
+  member counts. A guard covering its whole class is then a NOTE saying so with the count, and a
+  missing member is a finding. Measured on the longest gate in this corpus, where five reviewer
+  rounds had each found one instance of that shape — two spawn sites without a guard ten siblings
+  carried, one acceptance property with no route into `incomplete` that twenty-four siblings had, two
+  commands with an unfilled hole. The round that was told to build three complete tables closed two
+  of those questions PERMANENTLY and found the sixth instance as its only blocker; the round after it
+  generalised the shape rather than the instance ("a guard written for a CLASS of agents, applied to
+  a SUBSET"), swept the file, and returned three classes complete with member counts plus one gap.
+  Those two rounds were the cheapest of the gate per defect closed, and they were cheap BECAUSE the
+  lens was asked to count rather than to judge. A reviewer asked to read and judge finds one member
+  per round; a reviewer asked to count finds all of them or proves there are none.
+
   **Withdrawing the guard is one of the legitimate answers, and often the cheapest.** A property
   whose subject is better read by an agent HOLDING THE DIFF belongs in the section gates, not in a
   guard over the final report. Measured: that same property was a comment-freshness check, and it
@@ -245,3 +267,27 @@ sequence is `pre-flight-gate.md`.
   over-complete against the same tree.** Those two `rg` commands missed the two claims the slice most
   obviously falsified and printed two hits about nothing, and both halves were found by different
   lenses in one round.
+
+## What the gate does NOT bound
+
+- **The gate is a bound on what an unsupervised RUN can get wrong. It is not a bound on what the
+  FEATURE can get wrong.** For a backend slice those two nearly coincide, which is why the
+  distinction went unstated for a corpus of them. Measured on the first UI slice in this corpus: four
+  rounds and 55 findings hardened the script, the run came back green on every bar with zero
+  ownership violations and one violated acceptance clause that was genuinely right — and then a human
+  opened the page and found two defects reachable from neither artifact. A tab indicator drawn 7px
+  beside an 8px sibling, correct in isolation and wrong next to its neighbour; and a one-frame radio
+  flicker caused by a third-party table clearing its own selection state on every data push, a
+  mechanism living in `node_modules` and named in no artifact. Both are visual, and section D's own
+  rule — an acceptance clause asserts what a COMMAND can observe — correctly forbids writing a clause
+  for either. So the class is uncovered BY CONSTRUCTION, not by oversight.
+- **Say which of the two you are buying, before the run.** A slice whose failures are visual or
+  interactive needs a pass the gate does not contain, and the honest plan names it as a separate step
+  with an owner rather than hoping the acceptance section reaches it. What the gate still buys there
+  is real and was measured on the same slice: two round-2 blockers were ownership holes — a section
+  required to edit a file it did not own — which would have wasted the whole run.
+- **And the window AFTER the gate closes is where that pass's own fixes land, which is the window
+  this file's stop rule already warns about.** On that same slice the fix for the flicker introduced a
+  fourth defect — two rules for one question, in two places — which is the artifact-drifts-from-its-
+  own-specification class the gate had spent a round on, committed by the operator once nobody was
+  reviewing.

@@ -143,6 +143,28 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    reviewers: it is the one step of a round whose wall clock does not have to be serialized against
    them, and a lens that returns nothing has still spent the round.
 
+   **Its failure mode is not a bad finding; it is NO finding, arriving as exit 0 — so the prompt
+   carries an output CONTRACT, not a report format.** The bound above is about how much it reads; this
+   is about what it owes when it stops. Measured on the first gate outside mocker: round 1's external
+   lens returned exit 0 with 15 700 lines of exploration trace and no FINDINGS section at all, having
+   spent its budget reading — it did not hang, it simply never concluded. What fixed it, and held for
+   every later round: *"Spend at most half your effort reading, then WRITE THE REPORT. An empty report
+   is a failure. End with a section headed FINDINGS … then a single line VERDICT."* Two further
+   clauses stopped the two ways a contract like that is satisfied dishonestly — *"repeating an
+   already-fixed finding is a failure"* and *"an empty FINDINGS section with VERDICT: pass is a
+   legitimate outcome"* — and neither round that carried them produced a padded finding. Treat an exit
+   0 with no FINDINGS section as a vector that DIED, and bank it that way (`gate-harness.md`): a
+   report-shaped nothing counted as a clean round is the same defect as a missing vector nobody
+   recorded.
+
+   **Restate the severity scale WHERE the verdict is asked for.** It is in every reviewer's brief
+   already, and the VERDICT line is requested at the end, far from it — measured over about a dozen
+   reports on one gate, FIVE said `VERDICT: blockers` over findings that were all MAJOR or below.
+   Three internal lenses did it and two corrected themselves when the scale was restated; the external
+   lens did it twice and never corrected. An operator reading verdicts rather than severities would
+   have looped a gate that had already closed. One line beside the ask — *"blockers only if a row
+   below is BLOCKER"* — costs nothing.
+
    **Ask an external lens to RUN what the artifact claims, not to read it — that is where its edge
    is.** Measured over one script gate's nineteen blockers: the two lenses agreed on three and neither
    dominated, and every one the external lens found alone came from executing rather than reading — it
@@ -240,6 +262,15 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    runner rather than a flag on the static checker because the two answer different questions and fail
    differently: `wfcheck` reads text and reports lines, `wfdry` executes and reports a mode. Seven
    throwaway harnesses were hand-written across two runs before this was written down.
+
+   **The POSITIVE form of that fixture limit: the strongest gating shape a fixture cannot defeat is a
+   reviewer's FINDINGS ARRAY, because the runner empties it in its passing modes.** The limits above
+   say what a fixture cannot satisfy; this says what to gate on instead, and it was rediscovered three
+   times in one gate — on three separate rounds, each asking for a per-property-id completeness check
+   and each finding that no report-shaped fixture echoes a literal property id back, so a term
+   requiring one is a term no clean run can ever satisfy. The answer was identical all three times:
+   REPORT the id, and route it to a reviewer whose findings gate through a schema the runner empties
+   on the happy path. The third occurrence is where this should have stopped being a rediscovery.
 
    **It also prints every schema's serialized WIDTH, with the corpus band in the header, and being
    inside that band is not the same as being safe.** The band's ceiling is the widest width the corpus

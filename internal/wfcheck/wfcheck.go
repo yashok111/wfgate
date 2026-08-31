@@ -693,9 +693,37 @@ var footguns = []footgun{
 		"git add -N <paths> && … : a pathspec matching nothing exits 128 having added nothing, and && then suppresses the diff entirely — reviewers approve an empty diff. Use `git add -N . ; git diff HEAD -- <paths>`"},
 	{regexp.MustCompile(`gofmt -l (?:[^.\s][^\s]*)\s*&&`), ERROR,
 		`gofmt -l X && … never fires: gofmt -l exits 0 whether or not it printed. Use test -z "$(gofmt -l .)"`},
-	{regexp.MustCompile(`(?m)^\s{4,}(?:git|go|make|ls|docker|curl|test)\b[^\n]*<[^\n>]+>`), WARN,
-		"a placeholder inside a fenced command line gets pasted into a shell verbatim — move it into the prose"},
 }
+
+// A `<placeholder>` inside a command a prompt hands to an agent.
+//
+// The predecessor required a FENCED line — four leading spaces and a command
+// from a seven-word list — and over the whole corpus it fired ZERO times: 73
+// frozen script revisions across ten gates, including the three revisions of
+// one gate that were filing this exact defect as a BLOCKER at the time. Both
+// halves of the enumeration defeated it. The command was `sed`, which was not
+// on the list, and the line read `  3. Run ONLY the named test: go test … -run
+// '<the test name>'`, which is two spaces of a numbered list and not four of a
+// fence — the class this project banks as "a hand-written enumeration cannot be
+// complete, and a fixed pattern is both incomplete and over-complete against
+// the same tree".
+//
+// So the shape is the COMMAND plus a placeholder on the same line, anywhere in
+// the prompt. Measured before shipping, over those same 73 revisions: 14
+// distinct occurrences, about 0.6 per revision — three of them the blockers one
+// gate filed, the rest ordinary templates an agent is meant to substitute
+// (`git diff HEAD -- <path>`). That ratio is why the level is INFO and not
+// WARN: which of the two a line is depends on whether the receiving agent
+// substitutes, and that is not in the text. What IS in the text is worth one
+// line of output — an unsubstituted selector makes the command exit 0 having
+// matched nothing, and an agent cannot tell that from a section that says
+// nothing.
+var placeholderCmdRe = regexp.MustCompile("\\b(?:sed|rg|grep|awk|jq|git|go|make|npm|yarn|node|python|docker|curl|ls|cat|test)\\s+[^\n`]{0,120}?<[^<>\n]{1,40}>")
+
+// The narrower shape the predecessor looked for, kept because it is stronger
+// evidence: a command on its own indented line is meant to be run as written,
+// so there is no reading under which the placeholder is the agent's to fill.
+var placeholderFencedRe = regexp.MustCompile(`(?m)^\s{4,}[a-z][a-z0-9_.-]*\s`)
 
 // checkPromptFootguns scans PROMPT TEXT, not the source file. The predecessor
 // scanned the raw source, so a comment WARNING against a footgun — the natural
@@ -711,7 +739,48 @@ func checkPromptFootguns(r *Report, calls []wfscript.AgentCall) {
 				r.add(f.level, c.Line, "agent %s: %s\n        → %s", c.Label, f.msg, line)
 			}
 		}
+		checkPromptPlaceholders(r, c)
 	}
+}
+
+// checkPromptPlaceholders reports one line per placeholder-bearing command, at
+// the level the line's own shape earns. One report per site and never two: the
+// fenced case is a NARROWING of the wide one, so a rule for each would print
+// twice about a single line.
+func checkPromptPlaceholders(r *Report, c wfscript.AgentCall) {
+	for _, m := range placeholderCmdRe.FindAllStringIndex(c.Prompt, -1) {
+		line := lineAround(c.Prompt, m[0])
+		level, why := INFO, "if the agent is meant to substitute it, this is fine; if it is meant to run the line as written, the command exits 0 having matched nothing and prints NOTHING, which the receiving agent cannot tell from a real empty result"
+		if placeholderFencedRe.MatchString(line) {
+			level, why = WARN, "it sits on its own indented command line, so there is no reading under which the agent fills it in — the command gets pasted into a shell verbatim, exits 0 having matched nothing, and prints NOTHING"
+		}
+		r.add(level, c.Line, "agent %s: a <placeholder> inside a command this prompt hands over — %s\n        → %s",
+			c.Label, why, clip(strings.TrimSpace(line), 120))
+	}
+}
+
+// clip bounds a quoted line, in RUNES: a prompt quoting a Russian product
+// string as data would otherwise be cut mid-character and printed as a
+// replacement glyph, which reads as corruption in the tool rather than a long
+// line in the artifact.
+func clip(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "\u2026"
+}
+
+// lineAround returns the whole line containing byte offset i. The MATCH is not
+// enough: the fenced test is about how the line STARTS, and the match begins at
+// the command word, which is exactly the part after the indent.
+func lineAround(s string, i int) string {
+	start := strings.LastIndexByte(s[:i], '\n') + 1
+	end := strings.IndexByte(s[i:], '\n')
+	if end < 0 {
+		return s[start:]
+	}
+	return s[start : i+end]
 }
 
 // ------------------------------------------------------- 7. result safety --

@@ -236,3 +236,82 @@ func TestScaffoldOnlySeparatesAnEmptyFormFromEverythingElse(t *testing.T) {
 }
 
 const head = "# Findings\n\n| # | level | finding | closed by |\n|---|-------|---------|-----------|\n"
+
+// SetClosedBy exists because a hand `awk -F'|'` corrupted a live gate's ledger
+// twice: the table escapes a literal pipe as `\|` and every field-splitting
+// tool splits on the escape too, writing the commit id into a finding's text.
+func TestSetClosedBy(t *testing.T) {
+	for _, tc := range []struct {
+		name, row, val, want string
+		ok                   bool
+	}{
+		{
+			name: "an escaped pipe in the text is not a cell boundary",
+			row:  `| 1 | MAJOR | the doc says ` + "`rg --max-columns=200 --max-columns-preview x \\| head`" + ` |  |`,
+			val:  "abc1234",
+			want: `| 1 | MAJOR | the doc says ` + "`rg --max-columns=200 --max-columns-preview x \\| head`" + ` | abc1234 |`,
+			ok:   true,
+		},
+		{
+			name: "an existing value is replaced, not appended",
+			row:  "| 2 | MAJOR | a finding | old9999 |",
+			val:  "new1111",
+			want: "| 2 | MAJOR | a finding | new1111 |",
+			ok:   true,
+		},
+		{
+			// The trailing pipe is optional in markdown and both spellings are
+			// in the corpus. Whatever the row had is what it keeps.
+			name: "a row with no trailing pipe keeps having none",
+			row:  "| 3 | MAJOR | a finding | ",
+			val:  "abc1234",
+			want: "| 3 | MAJOR | a finding | abc1234 ",
+			ok:   true,
+		},
+		{
+			name: "an emptied cell keeps the table's shape",
+			row:  "| 4 | MAJOR | a finding | abc1234 |",
+			val:  "",
+			want: "| 4 | MAJOR | a finding |  |",
+			ok:   true,
+		},
+		{
+			name: "a row without four unescaped pipes is refused, not repaired",
+			row:  "| 5 | MAJOR | a finding with no closure cell",
+			val:  "abc1234",
+			want: "| 5 | MAJOR | a finding with no closure cell",
+			ok:   false,
+		},
+		{
+			// The whole point: a row whose text carries THREE escaped pipes
+			// still has its fourth real pipe where the parser says it is.
+			name: "escapes never advance the pipe count",
+			row:  `| 6 | MAJOR | a \| b \| c \| d |  |`,
+			val:  "abc1234",
+			want: `| 6 | MAJOR | a \| b \| c \| d | abc1234 |`,
+			ok:   true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := SetClosedBy(tc.row, tc.val)
+			if ok != tc.ok {
+				t.Fatalf("ok = %v, want %v", ok, tc.ok)
+			}
+			if got != tc.want {
+				t.Fatalf("got  %q\nwant %q", got, tc.want)
+			}
+			if !tc.ok {
+				return
+			}
+			// The row must still parse into the four cells it claims, with the
+			// closure where it was put — the read-back the command does.
+			rows := ParseFindings([]byte("| # | level | finding | closed by |\n|---|---|---|---|\n" + got + "\n"))
+			if len(rows) != 1 || rows[0].Malformed {
+				t.Fatalf("the rewritten row no longer parses: %+v", rows)
+			}
+			if rows[0].ClosedBy != tc.val {
+				t.Fatalf("closure reads back as %q, want %q", rows[0].ClosedBy, tc.val)
+			}
+		})
+	}
+}

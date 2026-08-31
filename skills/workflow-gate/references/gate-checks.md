@@ -395,6 +395,18 @@ compiles, passes every test, and does nothing.
       untestable while every test passed.
 - [ ] **The criterion is observed, not asserted.** Decode the token, don't count its characters. Validate
       the body against its schema, don't check it is non-empty.
+- [ ] **The bars are MEASURED on the untouched tree before any clause is written, and a clause says
+      "no worse than the recorded number" rather than "green".** An acceptance section over an
+      existing codebase compares against what that codebase does TODAY, and what it does today is not
+      what its own documentation says. Measured on the first gate outside mocker: the target's
+      `CLAUDE.md` states the type-checker is clean on a clean tree and it has five errors, and the
+      root test command is a chain that stops at the first failing workspace — which is red at the
+      branch point, so the command never reaches the package the slice changes and a report resting
+      on it measures nothing about the new code. Both would have become clauses comparing against a
+      false zero, and the run would have been sent to reach a state that does not exist. Twenty
+      minutes of measuring changed the shape of the whole document: the observations became a table,
+      every clause compares against it, and not one of the run's agents tried to repair a
+      pre-existing failure.
 - [ ] **Each criterion NAMES the wrong implementation it exists to fail, in the artifact itself.** Not
       in your head — written beside the check, as "this fails an implementation that does X". A
       criterion that cannot name one is decoration: a reviewer can audit a CLAIM and cannot audit an

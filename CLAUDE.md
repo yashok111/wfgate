@@ -6,7 +6,7 @@ command reference — every flag, every report line, worked examples; go there
 first for "how do I run a round". `skills/workflow-gate/references/` is the
 OPERATING MANUAL, which is judgement and is what gate agents are briefed from;
 this repository is the mechanics. `WAVES.md` is the maintenance record for
-waves 2 to 17, and `IDEAS.md` holds the queue and the do-not-build list with the
+waves 2 to 18, and `IDEAS.md` holds the queue and the do-not-build list with the
 measurement that closed each entry.
 
 The `wf` CLI: the bookkeeping of a review gate. A gate's workspace is a git
@@ -398,7 +398,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 17 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 18 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The split
 (2026-08-29) moved the text byte-identical; nothing was rewritten, and every
@@ -425,191 +425,7 @@ on the do-not-build list. Its index:
 | 15 | P3c, the launch-killer (`docs/feedbacks/FEEDBACK-p3c.md`) | The schema-width band measured in the RUNNER; factory-composed `YOU OWN` blocks; `-rule` as a refusal; two closure reports saying NOT A PASS; `check cite -at frozen` |
 | 16 | P3d, a probe instead of an argument (`docs/feedbacks/FEEDBACK-p3d.md`) | The mis-split batch that verified itself byte-for-byte; `$defs`/`$ref` resolved in `wfdry`; the refusal floor at 4,233 probed for 82 ms; the ledger refusal naming a CHARACTER; `x-pass` on arrays |
 | 17 | P3e, and the two findings that were the tool already saying it (`docs/feedbacks/FEEDBACK-p3e.md`) | A regression report against a shipped fix with no regression; `wfdry --fixture`; the `required` census and `wf check schema -since`; `wf new-script` writing into `artifacts/`; the manual stopped carrying perishable NUMBERS |
-
-**The eighteenth wave — P3g, and the two proposals the tool had already
-answered** (`docs/feedbacks/FEEDBACK-p3g.md`; 13 REVIEW rounds when it was written, 14 with the
-run round filled since — 112 findings, 34 blockers, 86 edits over 1131 changed
-lines, 14.9 h by its own `wf stats -time`, median round
-19.6 min, two artifacts — a decision document gated for eight rounds at
-4 -> 1 -> 4 -> 6 -> 3 -> 2 -> 0 -> 0, then the orchestration script for five
-more at 8 -> 5 -> 1 -> 0 -> 0, both halves closed on the stop rule, and the run
-launched from `gate-r13` — **it came back green**: 26 agents, 0 errors,
-4 h 27 min, 4.69 M subagent tokens over 1532 tool calls, `green: true` on all
-ten verdict terms, HEAD never moved, 22 files changed at +2991/-493, and every
-bar re-run BY HAND afterwards including `make smoke` at 155 PASS). It is the
-first gate whose script was scaffolded by `wf new-script` rather than copied
-from a previous one. Four of its numbers do
-not survive its own workspace and are corrected here rather than repeated: the
-feedback says 105 findings against the command's **106** (its script half is 41,
-not 40), splits the fix-induced blockers 8/4 where `wf stats` says **10/2** (the
-total of 12 is right), and prices the gate at 9.3 findings per 100 changed lines
-against **9.4**. Its authoring window is **0.3 min**, the shortest in this
-corpus by an order of magnitude and a number that measures nothing but the
-document having been drafted before `wf init`. Every claim below was reproduced
-before a line was written:
-
-- *The schema probe measured a width the binary already knew was safe* — the
-  feedback's headline says 3,705 bytes landed "inside the band this corpus had
-  never measured (3378 widest known ACCEPTED)" and that the ceiling moves to
-  3,705. `SchemaAccepted` has been **3,974** since the seventeenth wave, the
-  installed binary was at that revision, and 3,705 is below it: nothing moved,
-  and the 24 seconds and 64k tokens bought a number already on record. The
-  residue is the tool's, and it is this project's own named class — the two
-  constants live in the binary and printed only inside the WARN, so an operator
-  under the ceiling read SILENCE and could not tell "measured safe" from "not
-  checked". The band is in the `=== schemas ===` header now, on every run.
-- *The phase floor already fails a mode that loses a section, and P3g hit the one
-  mode exempted from it* — the runner has compared phase TITLES since the
-  fourteenth wave and NAMES what a mode never reached, but `dead-reviews` is
-  exempt with a written reason: that mode's shortfall is INJECTED by the runner,
-  and a script that HALTS on a dead reviewer is doing what the sibling check
-  demands. P3g's abort guard ended the run on any dead PRODUCER, so the mode
-  reached 11 of 14 phases — a gate, the acceptance step and the last gate
-  exercised by nothing — while printing `OK` and `7/7`, because 16 agents clears
-  the half-of-clean floor. It is a WARN now, not a failure, naming the phases:
-  the exemption is right and silence was not. Safe to ship because it paints
-  nothing — re-measured 2026-08-30 over the TEN gate scripts on disk (the three
-  P2 workspaces carry one each and were missed by a first count that said seven)
-  and all fourteen `testdata/` fixtures: of those twenty-four files the only
-  shortfall is the fixture written to produce one, and the twenty-fifth reading
-  is the `gate-r11` revision carrying that guard, which the new WARN names as
-  `Gate 6`, `Accept`, `Gate 7` — the three a lens found by reading the phase
-  list by hand. `testdata/dead-halt.mjs` is that shape banked at 6 agents over
-  2 phases clean against 3 over 1.
-- *`wf check closure` already checks the LINE, and the finding named none* —
-  the feedback reports a claimed fix that changed nothing riding through on a
-  file-level match, and says "the finding text named the lines". It did not: the
-  round-11 row names `artifacts/p3g.mjs` and no line and no section, so it fell
-  into the 41 closures the check reports as FILE-level with the note that says
-  cite the section or the line and the check reaches the claim. Over the whole
-  gate it checked 89 of 102 and found the one real miss. The proposal's other
-  half — check the token a finding QUOTES — is on the do-not-build list, and it
-  was re-measured on the gate that asked for it rather than inherited: of 68
-  rows quoting a token, **20 would be flagged** and one of them is the real
-  defect. Two narrowings were tried and neither rescues it — excluding citations
-  into the reviewed tree gives 12 of 55, and additionally requiring the token to
-  exist in the artifact before the fix gives 10 of 51, because a decision
-  document QUOTES the code it is about, so a target identifier lives in both
-  trees. Nine false for one true is `dup`'s 161-groups-of-176 lesson. Those
-  three pairs are ONE reading of "quotes a token" — every backticked span of 3
-  to 60 characters, a row counted closed when ANY of its tokens appears in any
-  closing commit's added or removed lines — and the rule is written down because
-  a review vector re-derived four other readings, landed on none of these pairs,
-  and got 9 to 27 flagged over populations of 52 to 75. The DECISION is stable
-  across every reading (13% to 36% of rows flagged for the one real defect); the
-  numbers are not, and a measurement nobody else can re-derive is held to a
-  lower standard than this file applies to everyone else.
-- *`wf apply -whole`, because the METER lost four rounds of thirteen* — the one
-  proposal that was a real gap. A structural merge of two script sections is
-  forty-odd non-adjacent edits in one file; it was applied with `git commit`,
-  `wf freeze` correctly reported the hand-edited rounds, and the cost meter then
-  priced the gate on rounds 2-8 alone (5.1 per 100 against the gate's own 9.4).
-  The command adopts the file as it lies, prices the round from the diff's HUNKS
-  at `--unified=0` — the maximal split git reports, so nothing is invented and a
-  restructure is not priced as one edit — and refuses an unchanged file, an
-  untracked one (that is `wf add`), a path escaping the workspace, and `-f`
-  beside it. It does NOT claim to be a batch: all-or-nothing and the declared
-  `count` are unavailable over a rewrite nothing watched being made, so the note
-  says so on every run, a second trailer records the act, and `wf stats` prints
-  `(N ADOPTED whole, verified by no batch)` beside the round's ratio. A number
-  that is honest about COST and silent about verification must say which it is.
-- *The run's own residue is one manual rule, and it is about an assertion
-  nothing can check* — the launch's five findings were one class, the class the
-  gate's D12.3 had deliberately WITHDRAWN from the acceptance list and handed to
-  the section gates, and the gates did find them: three real, all of them a
-  comment that survived the change it describes, filed MINOR and carried. What
-  the design does not close is that a MINOR carried out of a run is a MINOR
-  nobody fixes unless a human does. The one worth a rule is the FALSE finding:
-  the acceptance step reported that a discriminating test "does not exist
-  anywhere in" a package, and it existed — written by that same run, named after
-  exactly what it discriminates. The step is read-only and its report is the one
-  artifact nothing downstream re-executes; a property reported MET carries
-  evidence a later gate judges, and a claim that something is ABSENT carries
-  none. So `authoring.md` now requires such a finding to name the COMMAND whose
-  empty output it read. The run also fired its conditional re-measurement
-  (`remeasured: true`), which is the third consecutive launch where the
-  mechanism P3d's gate argued into existence against no evidence but the corpus
-  decided what the verdict was measured over.
-
-- *And the wave earned its review round, for the thirteenth time running, and
-  the flagship command was the whole of it* — one external model over the diff,
-  then two Opus vectors (Go correctness with a mutation sweep in an ISOLATED
-  WORKTREE, and claims/specification), against five green bars. Between them:
-  **no blocker, nine majors and eight wrong numbers**, and every code finding
-  landed on `wf apply -whole`, the one thing this wave built rather than
-  corrected. Two of them are ONE root cause through two doors: the command asked
-  git about the INDEX where it meant HEAD. `ls-files` reported a brand-new file
-  TRACKED once the operator had run `git add`, so the "that is `wf add`" refusal
-  was defeated by a command run for an unrelated reason and a first draft was
-  priced as a round's edits; and `worktreeChangedLines` — correct for `-f`,
-  which writes its own files unstaged — returns the worktree-against-index diff,
-  so a rewrite the operator had already staged read `0 changed line(s)` beside a
-  hunk count of 2, the commit body recorded that zero forever, and `batchNote`
-  went silent on the one run the command exists for. Both are read from HEAD
-  now, and `sumNumstat` is the single parse both callers share. Three more:
-  a DIRECTORY passed every check and would have been committed whole under a
-  report saying `1 file(s)`; the `Whole` marker was an unanchored
-  `strings.Contains` over a message that carries the artifact's own text, which
-  is the defect `applyCommitEdits` defends against twenty lines above and is now
-  an anchored regex; and `diff.interHunkContext` was unpinned, so a host config
-  of 3 merges two changes four lines apart into ONE hunk and halves a round's
-  recorded edits — pinned for the reason `gitx` pins the diff ALGORITHM. The
-  worst by consequence was a guard that DIVERGED between two spellings of one
-  command: `-rule` refused a batch under `-f` and merely printed under `-whole`,
-  with `-rule-ack` accepted and ignored — the reason the refusal exists is
-  stronger for a restructure, not weaker. Two smaller ones were taken as
-  written: a BINARY artifact rewritten end to end has no `@@` line, so the
-  refusal asserted it was unchanged, and the corpus band printed over a run
-  where every schema was unserialisable — a measured-looking figure beside an
-  empty measurement, in the header added to remove a different instance of it
-  (`testdata/cyclic-schema.mjs` banks it). One guard was DELETED rather than
-  shipped unproven: `filepath.Rel` of two absolute paths cannot fail, and its
-  error branch survived every mutation. **Eleven guards survived the sweep and
-  eight got the case they lacked** — the `os.Stat` refusal (without it a
-  tracked-but-DELETED artifact is adopted as its own removal), the
-  absolute-path normalisation, the cost-meter note, `-m`, the `artifacts/`
-  boundary, the binary refusal, the band's own population gate, and a by-value
-  assertion on both commit trailers, which are a WIRE FORMAT that writer and
-  reader both derive from the symbol — the sixteenth wave's banked
-  `4233 -> 4589` class, one constant over. Two of the first tests written did
-  NOT reach their own condition and were rewritten until they failed: the
-  trailer text never entered the commit MESSAGE, and the host git config the
-  interHunkContext pin defends against was blanked by the test harness itself.
-  Of the eight wrong numbers, the sharpest is P3e's commit count — this file
-  said 128 where the workspace says **131**, inherited from the wave before by
-  the very bullet whose next sentence reads "Re-count them; do not inherit the
-  number", and 128 was correct only before P3e's run round was filled. Also:
-  the maintenance record was called "waves 2 to 15" at TWO sites after the
-  sixteenth moved into it (`count: 2`, exactly); the paint denominator said
-  seven gate scripts where the disk holds TEN (the three P2 workspaces were
-  missed) and "all twenty" for what is twenty-four files; the token measurement
-  banked three pairs no independent reading reproduces, so the reading is
-  written down beside them now; P3e was still called "the newest"; and the
-  cost meter's window was blamed entirely on hand-edited rounds when two of the
-  seven are excluded by a rule no command changes. One external finding was
-  REFUTED with the code: a `dead-reviews` mode that spawned NOTHING gets no
-  phase note, and it does not need one — the zero-spawn VIOLATION already
-  refuses that run, and a second report of one fact is what the neighbouring
-  comment refuses by name.
-
-- *Three findings changed the MANUAL, not the tool* — **a section boundary is a
-  COMPILATION boundary**, not a subject boundary (`section-gate.md`): one Go
-  package was split across two sections two phases apart because the two
-  subsystems read as separate in the decision document, and the package did not
-  build in the window between them. **The guard-patching signal is the SECTION,
-  not the blocker count** (`round-discipline.md`): the banked form is a run of
-  rounds at exactly ONE blocker, P3g's were at 1, 4, 6 and 3 while one property
-  was rewritten in all four and produced a blocker in three, so nothing fired
-  and the gate took four rounds to act — and WITHDRAWING a guard in favour of a
-  reader who holds the diff is now named as a legitimate answer, with the
-  reusable half of why its two intermediate forms failed: **a hand-written
-  enumeration cannot be complete, and a fixed pattern is both incomplete and
-  over-complete against the same tree** (the two `rg` commands missed the two
-  claims the slice most obviously falsified and printed two hits about nothing,
-  both halves found by different lenses in one round). And **a marker goes on a
-  site that STATES a rule, never on one that points at it** — said where the
-  author reads before marking, because `wf check rules` names the cause under
-  its output, which is one round too late to save the markup pass.
+| 18 | P3g, and the two proposals the tool had already answered (`docs/feedbacks/FEEDBACK-p3g.md`) | `wf apply -whole`, the adoption that prices a round nothing watched; the schema band printed in the header; the `dead-reviews` phase WARN; a section boundary is a COMPILATION boundary; reviewer width is bounded by tokens; `NAV` in the emitted skeleton |
 
 **The nineteenth wave — P3h, and the miss whose DIAGNOSIS was wrong in the
 direction that made the fix cheaper** (`close/feedback.md` in
@@ -835,6 +651,187 @@ that:
   P3h's accept had not run, so its serial tail is the schema's shape rather than
   an observed number, and nothing has measured whether the target's suite is
   worktree-safe.
+
+**The twentieth wave — P3f and nova, the first gate outside `mocker`, and the
+two proposals that were REFUSED on measurement** (`docs/feedbacks/FEEDBACK-p3f.md`
+and `docs/feedbacks/FEEDBACK-nova-budget-panel-batch.md`). P3f is the longest
+gate in this corpus by rounds — 17 rounds, 128 findings, 58 blockers, 212 edits
+over 1962 changed lines, 9.1 h, median round 28.8 min, authoring 4.6 min, over
+TWO artifacts, a decision document for eight rounds at 11 -> 4 -> 2 -> 5 -> 2 ->
+1 -> 1 -> 0 and the orchestration script for nine more at 5 -> 5 -> 7 -> 3 -> 4
+-> 2 -> 5 -> 1 -> 0, both halves closed on the stop rule — and it is the gate
+whose SECOND artifact cost more than its first: 67 findings and 32 blockers
+against 61 and 26, more rounds and a bumpier descent, on an artifact the first
+gate's own closure implicitly said was ready to be written. Every one of its
+numbers reproduces under `wf stats` today, including the 26 of 58 fix-induced
+blockers and the 5.3-per-100 prediction basis against a gate actual of 6.5; its
+workspace also carries `post-gate — 1 apply batch after gate-r17, 8 edit(s); in
+the gate total, reviewed by no round`, which is the closing-edit class this wave
+writes into the manual, printed by the tool one line under the totals. nova is
+FOUR rounds, 55 findings, 17 blockers, 106 edits over 790 changed lines, 2.2 h,
+and it is the first gate against a target other than `mocker` and the first
+whose launched run was then exercised by a human in a browser — **its numbers
+are quoted from its write-up and are NOT re-derivable here**, because that gate
+ran on another machine and no workspace for it exists on this box.
+
+- *Two of the seven proposals were REFUSED, and one of the refusals is a claim
+  that did not reproduce at all.* The write-up reports `wf freeze` refusing while
+  an untracked scratch file sat in the workspace ROOT, with a message reading as
+  though an artifact were dirty. Reproduced step by step, it does not: `wf freeze`
+  reads `Dirty("artifacts")` and froze that workspace cleanly. What DOES speak is
+  `wf verify`, which reads the whole tree, and it says the right thing — the file
+  is listed as `uncommitted`, and the note under it reads "the artifacts match
+  the freeze — every mismatch above is uncommitted round bookkeeping. Commit it;
+  do not re-freeze." The wave banks the reproduction rather than the report. The
+  second refusal is `wfcheck` measuring a schema's serialized WIDTH statically.
+  It can read the literals, and that is not the objection: `wfdry` measures the
+  width with `JSON.stringify` on the SAME engine the script runs on, which is
+  exact, while a static walk would answer with Go's marshaller — a second
+  measurement of one quantity, differing by the escapes, on a band whose whole
+  window is 259 bytes. This project has never shipped two answers to one number.
+  What was real in that finding was REACHABILITY, so `authoring.md` now says a
+  schema edit is a `wfdry`-worthy event and carries nova's own measurement of
+  what the shape costs: one bar report turned into a required-keyed object took
+  three composed schemas to 4663, 4658 and **5312** bytes, all above the corpus's
+  measured refusal, because an inline leaf serializes once per key; referencing
+  it brought the same three to 1662, 1657 and 2311.
+- *`wf init` refuses a workspace that resolves under `-target`, and the mistake
+  it closes is silent from the only directory an operator is standing in.*
+  Reproduced verbatim: `cd <target> && wf init <name> -target <target>` created
+  `<target>/<name>`, printed the normal five-line summary and exited 0. The
+  refusal resolves BOTH sides through symlinks and through the nearest EXISTING
+  ancestor of a root that does not exist yet — without that, a target reached
+  through a symlinked parent compares unequal to a workspace under the same real
+  directory and the check misses exactly the operator whose box has one — tests
+  the relation with `filepath.Rel` and a separator-aware `..` test rather than a
+  string prefix (a directory named `..bak` under the target gives rel `..bak`,
+  and a prefix test reads the one shape this exists for as outside), and fires
+  BEFORE `MkdirAll`, because a refusal that leaves the tree dirty has committed
+  the thing it refused.
+- *The batch header's brackets, and the half of that defect nobody had noticed.*
+  `gate-harness.md` renders the header `=== <file> [count=N] [note=...]`, where
+  the brackets mean OPTIONAL inside a format whose other delimiters are literal;
+  P3f's operator wrote them and paid a round-trip. Reproducing it found the
+  count half exactly as reported — `unknown header field "[count=1]"`, which
+  names the right spelling and not the mistake — and found that the NOTE half
+  was accepted SILENTLY, with the closing bracket inside the note and a wrong
+  value written into the commit. Both are refused now by one message that says
+  to drop them, scanned only BEFORE the `note=` index so a note whose free text
+  quotes the bracketed form still parses, and the manual and README gained the
+  literal spelling.
+- *`wf check closure` names the two populations it is not about.* Reproduced:
+  `wf round record` printed `open 1` and the check printed "1 closure(s)
+  claiming a commit, 1 checked, 0 not closed by that commit" over the same
+  round — both true, over different populations, and read together the command
+  called `closure` says everything checks out while the freeze is about to
+  refuse. The rows carrying no commit are counted and split the way `record`
+  splits them (empty cell / closed by prose), so the two commands cannot
+  disagree in the operator's hands again. And the closures whose commits were an
+  ADOPTION are named BY ROW, which is P3f's real finding: one of its closures
+  was banked in the ledger and never written into the code, this check passed it
+  correctly by its own rules, and the fact separating it from its neighbours —
+  the commit carried no verified batch — was in git all along. Every sha of a
+  closure must carry the trailer, never any, or a row resting half on a verified
+  batch would be called unverified. Both lines are silent on an empty
+  population: the `-whole` trailer is one wave old, so a printed `0 rest on an
+  adoption` over an older workspace would be this project's own most-repeated
+  defect.
+- *`wf round close <finding#> <commit>` — the one bookkeeping step of the round
+  loop with no command behind it, and the gap corrupted a live ledger twice.*
+  Both times it was the operator's own `awk -F'|'`: the table escapes a literal
+  pipe as `\|` — the escape exists because an unescaped one once scored an open
+  BLOCKER as "closed by prose" and froze the round — and every field-splitting
+  tool splits on the escape too, writing the commit id into the middle of a
+  finding's text. `ws.SetClosedBy` rewrites the cell between the fourth and
+  fifth UNESCAPED pipes and returns everything else byte-identical; the command
+  validates the sha as a workspace commit before touching the file, re-parses
+  the bytes it is about to write and refuses if the number, the text or the
+  closure reads back differently, refuses the scaffold's empty row as a form
+  rather than a claim, refuses a duplicate finding number as ambiguous, and
+  refuses an already-closed cell without `-replace`. Its own first test found
+  the last refusal missing: `-replace` naming the SAME commit writes identical
+  bytes and died on git's `nothing staged`, a git-shaped error for an
+  operator-shaped mistake. One branch was DELETED rather than shipped — the
+  empty-value special case in `SetClosedBy`, which was both unreachable from the
+  command and wrong, writing `| |` where the general path already writes the
+  scaffold's own `|  |`.
+- *`wfcheck`'s placeholder check fired ZERO times over the corpus, including on
+  the gate that was filing it as a BLOCKER.* Measured over 73 frozen script
+  revisions across ten gates: the predecessor required a FENCED line — four
+  leading spaces and a command from a seven-word list — and both halves of that
+  enumeration defeated it. P3f's command was `sed`, which was not on the list,
+  and its other instance read `  3. Run ONLY the named test: go test … -run
+  '<the test name>'`, which is two spaces of a numbered list and not four of a
+  fence. This is the wave-18 rule measured again: a hand-written enumeration
+  cannot be complete. The shape is now the command plus a placeholder on the
+  same line, anywhere in the prompt, and it was NARROWED BEFORE it shipped
+  rather than after: over those same 73 revisions it matches 14 distinct
+  occurrences, about 0.6 per revision, of which three were the defect and the
+  rest are ordinary templates an agent is meant to substitute (`git diff HEAD --
+  <path>`). Which of the two a line is depends on whether the receiving agent
+  substitutes, and that is not in the text — so the wide shape is an INFO that
+  does not move the exit code, and the fenced shape stays a WARN because a
+  command on its own indented line has no reading under which the agent fills it
+  in. One report per site, never two. It catches ONE of P3f's three instances on
+  the revision that carried them, and that is the honest number: the other two
+  live in prompts composed at run time, which `wfcheck` already reports as
+  outside its reach.
+- *The scaffold now asks for the `[fix-induced]` marker, where the operator is
+  when the row is written.* nova marked not a single finding and `wf stats` said
+  so plainly — after the gate — while at least two of its findings were the
+  previous round's own repairs. The marker is opt-in and is the only way that
+  share is ever measured; the paragraph above the table went from two rules to
+  three, and a test asserts the count in the sentence matches the list under it,
+  because "a count that became a claim" is this file's own most-banked class.
+- *TEN edits changed the MANUAL, and the two largest are about a script's SHAPE
+  rather than its contents.* **No phase that can WRITE may run after a phase
+  that MEASURES** (`authoring.md`): P3f's last fix-bearing gate ran after its
+  acceptance phase, so all eight measured terms were stale-able, and rounds 9,
+  10, 11, 12 and 13 each found exactly one of them — five rounds, one defect,
+  with the sibling guard rule silent throughout because nothing was being
+  weakened; each fix was locally correct, one accumulator at a time, forever.
+  Reordering deleted 149 lines and all five classes at once for the price of one
+  new phase. **ENUMERATE by COMMAND when a round's findings keep having the same
+  SHAPE** (`round-discipline.md`): the rounds that ended that gate were the two
+  that told a lens to build COMPLETE tables by command instead of reading and
+  judging — two questions closed permanently, the sixth instance of a five-round
+  shape found as one round's only blocker, and they were the cheapest rounds of
+  the gate per defect closed. Beside them: the auditor regress and what ends it
+  (split the verdict's terms into MECHANICAL and JUDGEMENT, and gate the
+  judgements on STRUCTURE, never on whether an answer was true); the POSITIVE
+  form of the fixture limit, rediscovered on three separate rounds of one gate —
+  the strongest gating shape a fixture cannot defeat is a reviewer's findings
+  ARRAY, because the runner empties it; **measure the bars on the untouched tree
+  before writing the criterion** (`gate-checks.md` §D), where nova found its
+  target's own `CLAUDE.md` claiming a green type-checker over five errors and a
+  root test command that never reaches the package the slice changes; the
+  external lens's failure mode is NO finding arriving as exit 0, so its brief
+  carries an output CONTRACT (nova's round 1: 15 700 lines of trace, no FINDINGS
+  section, exit 0); the severity scale restated WHERE the verdict is asked, after
+  five of about a dozen reports said `VERDICT: blockers` over findings that were
+  all MAJOR or below; a closing edit costs the round its MEASUREMENT, because
+  `wf freeze -refreeze` drops it from the cost meter's prediction basis; and
+  `-whole` is the NORMAL shape for a script artifact rather than a lapse, with
+  the hand-verification pass budgeted into the round and `wf check closure`'s new
+  adoption list as its work-list.
+- *And the manual gained the one thing nova measured that this corpus had no
+  place for: **the gate is a bound on what an unsupervised RUN can get wrong,
+  and not a bound on what the FEATURE can get wrong**.* Four rounds and 55
+  findings hardened that script; the run came back green on every bar with zero
+  ownership violations and one violated acceptance clause that was genuinely
+  right; then a human opened the page and found two defects reachable from
+  neither artifact — a tab indicator drawn 7px beside an 8px sibling, correct in
+  isolation, and a one-frame radio flicker from a third-party table clearing its
+  own selection state on every data push, a mechanism inside `node_modules` and
+  named nowhere. Both are visual, and §D's own rule that a clause asserts what a
+  COMMAND can observe correctly forbids writing one for either, so the class is
+  uncovered BY CONSTRUCTION. For a backend slice the two bounds nearly coincide,
+  which is why a corpus of backend slices never had to say it. `round-discipline.md`
+  now has a short section naming the gap, what the gate still buys there (two of
+  nova's round-2 blockers were ownership holes that would have wasted the whole
+  2.4-hour run), and the window after the gate closes — where that same slice's
+  own fix for the flicker introduced a fourth defect, in exactly the shape the
+  stop rule already warns about.
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
@@ -1067,15 +1064,45 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-30 — read before trusting
+## State as of 2026-08-31 — read before trusting
 
-- **TWELVE real gates have now run entirely through `wf`,** and P3h
-  (`close/feedback.md` in `~/projects/gates/mocker-p3h-basepath` — the first
-  write-up that is the `wf close` scaffold rather than a hand-authored
-  `docs/feedbacks/FEEDBACK-*.md` here) is the newest: 10 rounds by its own `wf stats`, 73
-  findings, 17 blockers, 129 edits over 822 changed lines, 5.3 h re-run today
-  (5.1 h in the banked scaffold, which is the closing commits landing after the
-  write-up), median round 30.5 min, over TWO artifacts — a decision document
+- **FOURTEEN real gates have now run entirely through `wf`, and the newest TWO
+  are P3f and nova** (`docs/feedbacks/FEEDBACK-p3f.md`,
+  `~/projects/gates/mocker-p3f-rederive`; and
+  `docs/feedbacks/FEEDBACK-nova-budget-panel-batch.md`, whose workspace is NOT
+  on this box). P3f is the longest gate in the corpus by rounds: 17 rounds by
+  its own `wf stats`, 128 findings, 58 blockers, 212 edits over 1962 changed
+  lines, 9.1 h, median round 28.8 min, authoring 4.6 min, over TWO artifacts —
+  a decision document for eight rounds at 11 -> 4 -> 2 -> 5 -> 2 -> 1 -> 1 -> 0
+  and the orchestration script for nine more at 5 -> 5 -> 7 -> 3 -> 4 -> 2 ->
+  5 -> 1 -> 0, both halves closed on the stop rule. Its SECOND artifact cost
+  more than its first — 67 findings and 32 blockers against 61 and 26, more
+  rounds and a bumpier descent — on an artifact the first gate's own closure
+  implicitly said was ready to be written; that is the magnitude the FIRST
+  REVIEW marker does not carry. Its fix-induced share is 37 of 128 findings and
+  26 of 58 blockers, with eight rounds MAJORITY self-inflicted and the gate
+  still converging. It launched from `gate-r17` while its write-up was being
+  authored and the write-up says so rather than guessing; **that section is
+  still one sentence long and the run's own numbers are not in this file.** Its
+  workspace is on disk, unpruned, and carries `post-gate — 1 apply batch after
+  gate-r17, 8 edit(s); in the gate total, reviewed by no round`, which is the
+  closing-edit class printed by the tool. nova is the first gate against a
+  target other than `mocker` and the first whose launched run was then exercised
+  BY A HUMAN in a browser: 4 rounds, 55 findings, 17 blockers, 106 edits over
+  790 changed lines, 2.2 h, a run of 22 agents over 2.43 h returning
+  `green: false` on exactly one violated acceptance clause — and then three
+  defects a person found that neither artifact could reach. **Every nova number
+  here is quoted from its write-up and is not re-derivable on this box**; its
+  workspace lives on another machine, which is itself a first for this corpus.
+- **P3h is the gate before those, and its own numbers MOVED again since the
+  nineteenth wave banked them** (`close/feedback.md` in
+  `~/projects/gates/mocker-p3h-basepath` — the first write-up that is the
+  `wf close` scaffold rather than a hand-authored `docs/feedbacks/FEEDBACK-*.md`
+  here): **11 rounds, 86 findings, 20 blockers** by its own `wf stats` today,
+  against the 10 / 73 / 17 banked one wave ago, because its `-kind run` round 11
+  has been filled since (13 findings, 3 blockers) — and 106 commits against 95,
+  14.2 h against 5.3, median round 31.5 min against 30.5. 129 edits over 822
+  changed lines is unchanged. Over TWO artifacts — a decision document
   gated for three rounds alone and an orchestration script added at round 4,
   both closing together on two consecutive rounds with no blocker. **It
   LAUNCHED, and came back `green: false` on exactly one term** — 30 agents,
@@ -1091,11 +1118,12 @@ fixtures for the non-ASCII anchor detector).
   prices rounds 2-3 and 5-9 — 1 and 4 excluded as artifact-adding windows, 10
   because its tag MOVED over that round's own repairs. It is the gate that
   produced the citation-span and inflection fixes, and its own round 1 filed 2
-  blockers. Its workspace is on disk and unpruned.
-- **ELEVEN real gates ran entirely through `wf` before it,** and P3g
-  (`docs/feedbacks/FEEDBACK-p3g.md`, `~/projects/gates/mocker-p3g-deep-nesting`) is the one
-  before it — and its own numbers moved after its wave was written, because its
-  run round was filled since:
+  blockers. Its workspace is on disk and unpruned. Its fix-induced share reads
+  10 of 86 findings and 2 of 20 blockers now, and FIVE of its rounds with
+  findings carry no marker at all.
+- **P3g ran before those** (`docs/feedbacks/FEEDBACK-p3g.md`,
+  `~/projects/gates/mocker-p3g-deep-nesting`) — and its own numbers moved after
+  its wave was written, because its run round was filled since:
   14 rounds by its own `wf stats` today, 112 findings, 34 blockers, 86 edits over
   1131 changed lines, 14.9 h, median round 19.6 min, over TWO artifacts — a decision
   document gated for eight rounds and an orchestration script for five, both
@@ -1114,8 +1142,8 @@ fixtures for the non-ASCII anchor detector).
   are excluded by the rule that a window ADDING an artifact prices a corpus its
   batches did not write, which no command changes. Its workspace is on disk and unpruned,
   and it is what the `dead-reviews` phase note was validated against.
-- **TEN real gates ran entirely through `wf` before those,** and P3e
-  (`docs/feedbacks/FEEDBACK-p3e.md`, `~/projects/gates/mocker-p3e-nested`) is the one before: 14
+- **P3e ran before those** (`docs/feedbacks/FEEDBACK-p3e.md`,
+  `~/projects/gates/mocker-p3e-nested`): 14
   rounds by its own `wf stats`, 193 findings, 46 blockers, 183 edits over 2535
   changed lines, over TWO artifacts — a decision document, 1323 -> 2091 lines
   over nine rounds, and an orchestration script gated for four more. Its
@@ -1138,8 +1166,8 @@ fixtures for the non-ASCII anchor detector).
   been the reported one. Its workspace is on disk and unpruned, and it
   is the corpus the `$ref`-pointer note, the `required` census and
   `wf check schema` were all validated against.
-- **Nine real gates ran entirely through `wf` before it,** and P3d
-  (`docs/feedbacks/FEEDBACK-p3d.md`, `~/projects/gates/mocker-p3d-datasnap`) is the one before: **15
+- **P3d ran before that** (`docs/feedbacks/FEEDBACK-p3d.md`,
+  `~/projects/gates/mocker-p3d-datasnap`): **15
   rounds by its own `wf stats` today, 319 findings, 85 blockers**, 446 edits over
   3933 changed lines, median round 32.3 min, over TWO artifacts — a decision document
   that went 752 -> 1481 lines in eight rounds, one undispatched round nobody
@@ -1171,8 +1199,8 @@ fixtures for the non-ASCII anchor detector).
   proved the launch RESOLVES `$defs`/`$ref` and enforces the constraints reached
   through one. Its workspace is on disk and unpruned, and it is what the `$ref`
   fixture support was validated against.
-- **Eight real gates ran entirely through `wf` before it,** and P3c
-  (`docs/feedbacks/FEEDBACK-p3c.md`, `~/projects/gates/mocker-p3c-ref-recipe`) is the first
+- **P3c ran before that** (`docs/feedbacks/FEEDBACK-p3c.md`,
+  `~/projects/gates/mocker-p3c-ref-recipe`) and is the first
   where BOTH halves closed on the stop rule: 10 rounds by its own `wf stats`
   (nine plus the run round), 153 findings, 61 blockers, 20 apply batches over 43
   edits and 2408 changed lines. The decision gate ran five rounds at 15 -> 7 ->
@@ -1183,16 +1211,16 @@ fixtures for the non-ASCII anchor detector).
   itself, only size", which was false: one throwaway agent answers it in 16
   seconds. The relaunch after narrowing ran 15 of 15. Its workspace is on disk
   and unpruned, and it is the calibration corpus for the schema-width meter.
-- **Seven real gates ran entirely through `wf` before those,** and P3b
-  (`docs/feedbacks/FEEDBACK-p3b.md`, `~/projects/gates/mocker-p3b-resources`) is the first that
+- **P3b ran before those** (`docs/feedbacks/FEEDBACK-p3b.md`,
+  `~/projects/gates/mocker-p3b-resources`) and is the first that
   **stopped instead of closing**: 22 rounds by its own `wf stats`, 588 findings,
   177 blockers, 451 edits over 8388 changed lines, 25.7 h, median round 29.4 min.
   Its document half closed on the rule at 19 -> 0 over seventeen rounds; its
   script half ran four and was halted by the operator. It did NOT launch. The
   workspace is on disk and unpruned, and it is now the calibration corpus for the
   blocker-origin split and for the closure check that was REFUSED on it.
-- **Six real gates ran entirely through `wf` before those,** and P3a
-  (`docs/feedbacks/FEEDBACK-p3a.md`, `~/projects/gates/mocker-p3a-resources`) is the first
+- **P3a ran before those** (`docs/feedbacks/FEEDBACK-p3a.md`,
+  `~/projects/gates/mocker-p3a-resources`) and is the first
   workspace gated TWICE — sixteen rounds over a decision document, closed, then
   the orchestration script added as a SECOND artifact to the same workspace and
   gated for more rounds plus a tooling round. **Its numbers here were wrong for
@@ -1204,7 +1232,7 @@ fixtures for the non-ASCII anchor detector).
   re-ran the command. Its workspace is on disk and unpruned, which is what let
   the prompt-diff feature be validated against the revision before its own
   closing commit.
-- **Four real gates ran entirely through `wf` before those.** P2d (10 rounds, 98
+- **The four earliest gates ran before all of those.** P2d (10 rounds, 98
   findings — `docs/feedbacks/FEEDBACK-p2d.md`), P2e, the first over a workflow SCRIPT
   (17 rounds, 234 findings — `docs/feedbacks/FEEDBACK-p2e.md` says 235, and its own `wf stats` says 234; the
   hand-count is the one that is wrong — 293 KB of artifacts), and P2f,
@@ -1227,25 +1255,32 @@ fixtures for the non-ASCII anchor detector).
   `check drift` is STILL unexercised live.
 - **The validation corpus DOES survive, and it is the best evidence this
   repository has.** The claim that it did not was stale and cost an
-  investigation an hour of archaeology before it was checked: **ELEVEN** gate
+  investigation an hour of archaeology before it was checked: **TWELVE** gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
   `~/gates/p2f` (82 / 102 / 87 commits), and
   `~/projects/gates/mocker-a3-cas`, `mocker-p3a-resources`,
   `mocker-p3b-resources`, `mocker-p3c-ref-recipe`, `mocker-p3d-datasnap`,
-  `mocker-p3e-nested`, `mocker-p3g-deep-nesting`, `mocker-p3h-basepath`
-  (153 / 203 / 247 / 82 / 173 / 131 / 123 / 95 commits, all counts re-derived
-  2026-08-30 with `git rev-list --count HEAD` — 128 stood here for one wave and
-  was the count BEFORE P3e's run round was filled, inherited by the next wave
-  from the bullet whose own next sentence says not to, and 117 for P3g lasted
-  exactly one wave the same way). This
+  `mocker-p3e-nested`, `mocker-p3f-rederive`, `mocker-p3g-deep-nesting`,
+  `mocker-p3h-basepath`
+  (153 / 203 / 247 / 82 / 173 / 131 / 183 / 123 / 106 commits, all counts
+  re-derived 2026-08-31 with `git rev-list --count HEAD` — 128 stood here for one
+  wave and was the count BEFORE P3e's run round was filled, inherited by the next
+  wave from the bullet whose own next sentence says not to; 117 for P3g lasted
+  exactly one wave the same way; and P3h's 95 lasted exactly one wave for the
+  third time, its run round filled since). **nova is the first gate whose
+  workspace is NOT here at all** — it ran on another machine, so its numbers are
+  readable only in its write-up and the count of gates has now come apart from
+  the count of workspaces in a second way. This
   bullet listed three of them for three waves, which is why a census that called
   itself complete missed A3 entirely — and it then listed SIX for one more wave,
   which is why the fifteenth wave's own closure census said "six workspaces"
   while running over seven. Re-count them; do not inherit the number. `~/projects/gates/mocker-a-mcp` has been CLOSED AND PRUNED: no `.git`, no
   `artifacts/`, no `rounds/` — its numbers survive only in `close/stats.txt`,
   `close/history.tsv`, `close/freezes.tsv` and `close/rounds/`, and `wf stats`
-  cannot be run there. Read the banked file; do not try to re-derive them. `~/projects/gates/mocker-a-mcp` is the TWELFTH gate and the only pruned one, so
-  the count of workspaces and the count of gates are two different numbers. The six tracked orchestration scripts are in
+  cannot be run there. Read the banked file; do not try to re-derive them. `~/projects/gates/mocker-a-mcp` is the only PRUNED gate, so
+  the count of workspaces and the count of gates are two different numbers — in
+  two directions now: one gate here was pruned, and one gate never had a
+  workspace on this box. The six tracked orchestration scripts are in
   `~/projects/mocker/.claude/workflows/` (769-2658 lines each, 10 823 total; a
   live gate's own script sits there untracked while it runs). Run `wf stats
   -time` inside a workspace before reasoning about cost; the commit timestamps
@@ -1253,43 +1288,48 @@ fixtures for the non-ASCII anchor detector).
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
   workspace over any set of documents.
 - **The cost of a gate is now measured by the tool, and the answer moved the
-  work.** `wf stats -time`, re-pooled 2026-08-30 over the ELEVEN unpruned
-  workspaces with the current binary, over the 148 round spans of 165 that are
-  under two hours: **median 24.0 min, middle half 17.6-31.5** (quartiles by the
-  rank `int(n*0.25)+1`). The review segment is a median 88% of a round and the
-  bookkeeping tail 3.1%, over the 137 of those spans that carry a
-  `(review, fix, tail)` breakdown at all — a different population from the 148,
+  work.** `wf stats -time`, re-pooled 2026-08-31 over the TWELVE unpruned
+  workspaces with the current binary, over the 165 round spans of 183 that are
+  under two hours: **median 24.3 min, middle half 17.8-32.3** (quartiles by the
+  rank `int(n*0.25)+1`). The review segment is a median 88.6% of a round and the
+  bookkeeping tail 3.2%, over the 153 of those spans that carry a
+  `(review, fix, tail)` breakdown at all — a different population from the 165,
   and named because this file's own rule is to name it. The other
-  seventeen spans are breaks (the longest 637.9 min) and none is a round
+  eighteen spans are breaks (the longest 637.9 min) and none is a round
   length. State the READING with the number, because two of them disagree by a
   round: this one is every `  round` line carrying a `; N min` span, run rounds
   included, piped through `grep -oE '; [0-9]+\.[0-9] min'` and `sort -n`, where
-  the ten-workspace pooling one day earlier gave 138 of 154 and a
-  nine-workspace one 119 of 129. Re-derive it with the command and say which
+  the eleven-workspace pooling one day earlier gave 148 of 165, a
+  ten-workspace one 138 of 154 and a nine-workspace one 119 of 129. Re-derive it with the command and say which
   population the number came from.
   The old figures — "10-40 minutes, pooled median 15.5, review 70-87%" — were
   three gates and are not wrong so much as SMALL: per-gate medians run 13.8,
-  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 19.6, 30.5, so the round got
-  longer as the gates got bigger, and a number banked from the first three
+  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 28.8, 19.6, 31.5, so the round
+  got longer as the gates got bigger, and a number banked from the first three
   under-prices every gate since. Read them off `wf stats -time`, one line per
   workspace, rather than re-deriving them: a hand pooling of the same spans moved
-  five of these by up to 0.8 and was wrong, while three DID move against a
-  reading two waves ago (13.8 against 14.2, 19.1 against 19.5, 45.3 against
-  37.6) because the population itself changed.
+  five of these by up to 0.8 and was wrong, while values DO move as a workspace
+  grows: three moved against a reading two waves ago (13.8 against 14.2, 19.1
+  against 19.5, 45.3 against 37.6) and P3h's moved again this wave, 30.5 to 31.5,
+  when its run round was filled.
   So the ROUND COUNT is the cost function, the ~9-command sequence is not worth
   compressing (1.4 minutes across p2d's eleven rounds), and the largest measured
   saving in the whole investigation is a DOCUMENT change already in the manual:
   running the decision gate to exhaustion before the script exists took one gate
   from 10+6 rounds to 8+3, about an hour. The authoring window — init to the
   first artifact — is **0.3 to 76.5 min (9.9, 31.7, 42.2, 4.3, 5.0, 39.2, 2.2,
-  20.9, 76.5, 0.3, 10.7; median 10.7)**, and this file quoted only its two largest for
+  20.9, 76.5, 4.6, 0.3, 10.7; median 10.7)**, and this file quoted only its two largest for
   three waves before quoting a ceiling P3e then doubled and a floor P3g then cut
   by seven times. It is the largest block no
   round covers, and the short end is worse than it looks: those are the gates
   whose document was drafted BEFORE `wf init`, so the authoring itself falls
   outside every measurement banked here. `interview.md`
   (step -2) is what now occupies that window, against a round-1 blocker baseline
-  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 4, 2.
+  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 11, 4, 2 (one per unpruned workspace, in
+  the order they are listed above; nova's round 1 filed 3, and its own write-up
+  banks that as one data point AGAINST a large saving in blocker count from the
+  interview and a clear one FOR what the step is actually for — not one of that
+  round's fifteen findings was "this decision was never taken").
 - **The seventh wave was reviewed the same way, and the review is again why it
   is trustworthy** (2026-08-24; two Opus vectors — Go correctness with a
   mutation sweep, and the claims/specification — plus one external model on the

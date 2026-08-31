@@ -120,6 +120,16 @@ every bar RED. A reference the runner cannot expand — a typo in the pointer, a
 NAMED in a note.) A schema that does not SERIALIZE fails `wfdry` outright: there is nothing for the
 launch to send.
 
+**A schema edit is a `wfdry`-worthy event, because width is discoverable ONLY by running it, and the
+cost of a shape is not visible in the shape.** Measured on the first gate outside mocker: turning one
+bar report into a required-keyed object — a correctness fix a reviewer had asked for, six keys — took
+three composed schemas to 4663, 4658 and 5312 bytes, all above the corpus's measured refusal, because
+an inline leaf is serialized once per key. Referencing that leaf brought the same three to 1662, 1657
+and 2311. Nothing about writing the six-key object suggests that price, and no static check reports
+it — `wfcheck` reads the parsed program and does not serialize, so a second width measurement there
+would be a second answer to a question the runner already answers exactly. Run `wfdry` between schema
+edits, not once at the end of the round.
+
 **A `$ref` is anchored at the SCHEMA ROOT, so write the `$defs` there — or write the whole pointer.**
 `#/$defs/prop` is a pointer into the document the schema IS, so a `$defs` on a SUB-schema — beside the
 leaf it declares, in the same constant, which is the natural way to write it — is not reachable by
@@ -245,6 +255,16 @@ dangerous half — six other rows carrying `\|` in the same table failed LOUDLY 
 and only the two inside a regex returned a plausible number, on an acceptance step whose whole job is
 re-deriving numbers.
 
+**A `<placeholder>` inside a command a prompt hands over runs, exits 0, and prints NOTHING.** The
+receiving agent cannot tell that from a section that genuinely says nothing, so it reports the
+absence. Measured on one gate: two BLOCKERs in one round for `sed -n '/^\*\*<its id> /,…'` ranges
+handed to reviewers, and a third instance in the NEXT round's own lens prompts, caught by grepping
+before dispatch rather than by any check. Either interpolate the value (`${id}`) or state in prose
+that the agent substitutes it — and grep the prompts for `<` before a round goes out. `wfcheck` now
+reports the shape as an INFO with the line, deliberately not louder: over 73 frozen script revisions
+the same shape occurs 14 times and only three were the defect, the rest being templates an agent is
+meant to fill, and which one a line is depends on something that is not in the text.
+
 **An acceptance finding of the form "X does not exist" must name the COMMAND whose empty output it
 read.** A property reported met carries its evidence and a later gate judges that evidence; a claim
 that something is ABSENT carries none, and the acceptance step is read-only, so its report is the one
@@ -253,6 +273,29 @@ that a discriminating test "does not exist anywhere in" a package, and the test 
 that same run, named after exactly what it discriminates, stating its own mutation in its own doc
 comment. Nothing caught it, because there was nothing to catch: an absence with no command behind it
 cannot be reproduced or refuted. With the command in the finding, both are one paste away. Put such commands in a fenced block, or write the alternation without a pipe.
+
+**No phase that can WRITE may run after a phase that MEASURES.** When the verdict rests on quantities
+collected during the run, enumerate those quantities once and check the PHASE ORDER, rather than
+repairing each accumulator at the site where it is read. Measured on the longest gate in this corpus:
+the last fix-bearing gate ran AFTER the acceptance phase, so every measured term was stale-able, and
+there were eight of them. Rounds 9, 10, 11, 12 and 13 each found exactly ONE — `barFailures`, then
+`unverified` and `disputed`, then `acceptBlockers`, then `barFailures` and `goalMet`, then
+`acceptBlockers` and `goalMet` again. Five rounds, one defect, and the sibling rule about a guard
+patched in the direction each reviewer faced did NOT fire, because nothing was being weakened: each
+fix was locally correct, one accumulator at a time, forever. Reordering — the fix gate before the
+acceptance phase, acceptance the LAST measuring phase, a read-only verification last — deleted 149
+lines and all five defect classes at once, at the price of one new phase. When the order cannot be
+changed, the measured term is re-taken after the write, not patched where it is read (which is what
+the conditional re-measurement below is).
+
+**Every agent that grades itself and gates the verdict draws another auditor, and the auditor grades
+itself.** The same gate walked it: round 9 asked for a sampler because the acceptance claims were
+self-graded, round 10 asked for a re-measurement because the sampler's own output could not be
+cleared, round 11 asked who audits the re-measurement. What ends it is not a fourth auditor but a
+change of KIND — split the verdict's terms into MECHANICAL ones (re-derivable by anyone, no
+judgement) and JUDGEMENTS, and gate the judgements on STRUCTURE: was every property ANSWERED by
+someone, do two independent readings DISAGREE. Never on whether an answer was true, which is the
+question that regresses.
 
 **The acceptance step is the run's most parallelisable work, and its re-measurement is the other half
 of the same step.** Two rules, one place, because doing either without the other moves the cost rather

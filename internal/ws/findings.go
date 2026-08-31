@@ -303,3 +303,46 @@ func ScaffoldOnly(rows []FindingRow) bool {
 	}
 	return true
 }
+
+// SetClosedBy rewrites the closure cell of one findings row IN PLACE, without
+// splitting the line into cells and joining it back.
+//
+// That is the whole point of the function. Measured on the first gate outside
+// mocker: both times the ledger was corrupted it was the operator's own
+// `awk -F'|'` filling this column — the table requires a literal pipe inside a
+// cell to be written `\|`, and every field-splitting tool splits on the escape
+// too, so the commit id landed in the middle of a finding's text. The demand
+// for the escape is right; what was missing was a way to fill the column that
+// never splits the row. Everything before the fourth unescaped pipe and
+// everything from the fifth on are returned byte-identical.
+//
+// The second return is false when the line does not carry four unescaped pipes
+// — a malformed row, which the caller refuses rather than repairs.
+func SetClosedBy(row, val string) (string, bool) {
+	var pipes []int
+	esc := false
+	for i, r := range row {
+		switch {
+		case esc:
+			esc = false
+		case r == '\\':
+			esc = true
+		case r == '|':
+			pipes = append(pipes, i)
+		}
+	}
+	if len(pipes) < 4 {
+		return row, false
+	}
+	head := row[:pipes[3]+1]
+	tail := ""
+	if len(pipes) >= 5 {
+		tail = row[pipes[4]:]
+	}
+	// No special case for an empty value: the general form already writes the
+	// scaffold's own `|  |`, and the branch that used to handle it wrote `| |`
+	// — a shape nothing else in this repository produces. It was also
+	// unreachable from the command, which validates the sha as a commit before
+	// it gets here. Deleted rather than fixed, twice over.
+	return head + " " + val + " " + tail, true
+}
