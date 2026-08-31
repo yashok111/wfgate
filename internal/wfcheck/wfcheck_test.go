@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 const preamble = `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
@@ -949,5 +950,75 @@ await spawn(`+"`Run `+\"`sed -n '1,20p' doc.md`\"+` and report.`"+`, { model: 's
 return { done: true }`)
 	if has(r, INFO, "<placeholder> inside a command") || has(r, WARN, "<placeholder> inside a command") {
 		t.Fatalf("a command with no placeholder must produce no report, got:\n%s", dump(r))
+	}
+}
+
+// The fenced branch is a test on the MATCH's position, not a second pattern
+// over the line. A separate regex answered "is this line indented and does it
+// start with a lowercase word", which an indented English SENTENCE satisfies:
+// measured through the built binary, a prose line mentioning a command was
+// escalated to WARN under a message asserting there was no reading under which
+// the agent fills the placeholder in.
+func TestPlaceholderInIndentedProseStaysAnInfo(t *testing.T) {
+	r := run(t, preamble+`phase('P')
+await spawn(`+"`Notes:\n\n    the reviewer should run git diff HEAD -- <the path> before deciding.\n`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`)
+	if !has(r, INFO, "<placeholder> inside a command") {
+		t.Fatalf("want the INFO, got:\n%s", dump(r))
+	}
+	if has(r, WARN, "no reading under which the agent fills it in") {
+		t.Fatalf("an indented English sentence is not a fenced command line:\n%s", dump(r))
+	}
+}
+
+// One report per LINE. A line carrying two commands, each with its own
+// placeholder, is one thing to go and fix, and the first version printed it
+// twice quoting the identical text.
+func TestPlaceholderReportsOneLineOnce(t *testing.T) {
+	r := run(t, preamble+`phase('P')
+await spawn(`+"`Run: go test ./... -run '<TheTest>' && git show <sha>`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
+return { done: true }`)
+	n := 0
+	for _, f := range r.Findings {
+		if strings.Contains(f.Msg, "<placeholder> inside a command") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("one line must produce one report, got %d:\n%s", n, dump(r))
+	}
+}
+
+// `clip` cuts RUNES. A prompt quoting a Russian product string as DATA is the
+// case: cut in bytes it ends in a replacement glyph, which reads as corruption
+// in the tool rather than a long line in the artifact.
+func TestClipCutsRunes(t *testing.T) {
+	long := "sed -n '/" + strings.Repeat("я", 200) + "/p' <the id>"
+	got := clip(long, 120)
+	if !utf8.ValidString(got) {
+		t.Fatalf("clip produced invalid UTF-8: %q", got)
+	}
+	if n := utf8.RuneCountInString(got); n != 121 { // 120 + the ellipsis
+		t.Fatalf("clip kept %d runes, want 121", n)
+	}
+}
+
+// lineAround returns the line's own start offset, which is what the fenced test
+// measures the indent against, and the whole line.
+func TestLineAround(t *testing.T) {
+	s := "first\n    sed -n '<id>' f\nlast"
+	i := strings.Index(s, "sed")
+	start, line := lineAround(s, i)
+	if start != strings.Index(s, "    sed") {
+		t.Fatalf("start = %d, want the line's own first byte", start)
+	}
+	if line != "    sed -n '<id>' f" {
+		t.Fatalf("line = %q", line)
+	}
+	// The last line of a prompt has no trailing newline, which is the branch
+	// the index arithmetic gets wrong the other way.
+	start2, line2 := lineAround(s, strings.Index(s, "last"))
+	if line2 != "last" || start2 != len(s)-len("last") {
+		t.Fatalf("last line = %q at %d", line2, start2)
 	}
 }

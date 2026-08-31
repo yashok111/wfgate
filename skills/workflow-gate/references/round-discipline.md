@@ -247,7 +247,7 @@ sequence is `pre-flight-gate.md`.
   blocker of the form "X is missing from a set that already has N members", stop sampling: give a
   lens the set, the COMMAND that enumerates it, and the instruction to report a COMPLETE table with
   member counts. A guard covering its whole class is then a NOTE saying so with the count, and a
-  missing member is a finding. Measured on the longest gate in this corpus, where five reviewer
+  missing member is a finding. Measured on one seventeen-round gate, where five reviewer
   rounds had each found one instance of that shape — two spawn sites without a guard ten siblings
   carried, one acceptance property with no route into `incomplete` that twenty-four siblings had, two
   commands with an unfilled hole. The round that was told to build three complete tables closed two

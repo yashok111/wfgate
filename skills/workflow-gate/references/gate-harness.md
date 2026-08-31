@@ -480,7 +480,9 @@ prose kept losing: a step nobody can run is a step that gets skipped.
    it did NOT examine (an empty closure cell, or one carrying prose) — because `wf round record`
    says `open 1` about exactly those rows and a reader holding both reports once concluded the gate
    was clean while the freeze was about to refuse — and the closures resting on an ADOPTION, which
-   is the work-list for the hand verification `wf apply -whole` forfeits.
+   is the work-list for the hand verification `wf apply -whole` forfeits — grouped
+   by round, because on the gate that produced the feature it reaches 47 of 121
+   closures across seven rounds.
 6. Fill the `closed by` column with the apply commit — `wf round close <finding#> <commit>` per row,
    or re-record the whole ledger with `wf round record <file> -round N`.
    The next freeze refuses while a closed round's blocker stands open, and a record naming a commit

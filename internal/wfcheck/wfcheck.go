@@ -699,8 +699,9 @@ var footguns = []footgun{
 //
 // The predecessor required a FENCED line — four leading spaces and a command
 // from a seven-word list — and over the whole corpus it fired ZERO times: 73
-// frozen script revisions across ten gates, including the three revisions of
-// one gate that were filing this exact defect as a BLOCKER at the time. Both
+// frozen script revisions across the twelve unpruned workspaces, including the
+// three revisions of one gate that were filing this exact defect as a BLOCKER
+// at the time. Both
 // halves of the enumeration defeated it. The command was `sed`, which was not
 // on the list, and the line read `  3. Run ONLY the named test: go test … -run
 // '<the test name>'`, which is two spaces of a numbered list and not four of a
@@ -709,11 +710,11 @@ var footguns = []footgun{
 // the same tree".
 //
 // So the shape is the COMMAND plus a placeholder on the same line, anywhere in
-// the prompt. Measured before shipping, over those same 73 revisions: 14
-// distinct occurrences, about 0.6 per revision — three of them the blockers one
-// gate filed, the rest ordinary templates an agent is meant to substitute
-// (`git diff HEAD -- <path>`). That ratio is why the level is INFO and not
-// WARN: which of the two a line is depends on whether the receiving agent
+// the prompt. Measured before shipping, over those same 73 revisions with the
+// BUILT binary: 40 report lines on 23 of them, 12 distinct quoted lines, three
+// of which are the blockers one gate filed — the rest ordinary templates an
+// agent is meant to substitute (`git diff HEAD -- <path>`). That ratio is why
+// the level is INFO and not WARN: which of the two a line is depends on whether the receiving agent
 // substitutes, and that is not in the text. What IS in the text is worth one
 // line of output — an unsubstituted selector makes the command exit 0 having
 // matched nothing, and an agent cannot tell that from a section that says
@@ -723,7 +724,15 @@ var placeholderCmdRe = regexp.MustCompile("\\b(?:sed|rg|grep|awk|jq|git|go|make|
 // The narrower shape the predecessor looked for, kept because it is stronger
 // evidence: a command on its own indented line is meant to be run as written,
 // so there is no reading under which the placeholder is the agent's to fill.
-var placeholderFencedRe = regexp.MustCompile(`(?m)^\s{4,}[a-z][a-z0-9_.-]*\s`)
+//
+// It is a test on the MATCH's position, not a second pattern over the line. A
+// separate regex answered "is this line indented and does it start with a
+// lowercase word", which an indented English sentence satisfies — measured
+// through the built binary, `    the reviewer should run git diff HEAD --
+// <the path> before deciding.` was escalated to WARN under a message asserting
+// there was no reading under which the agent fills it in. The command has to be
+// the first thing on the line for that sentence to be true.
+const fencedIndent = 4
 
 // checkPromptFootguns scans PROMPT TEXT, not the source file. The predecessor
 // scanned the raw source, so a comment WARNING against a footgun — the natural
@@ -748,10 +757,18 @@ func checkPromptFootguns(r *Report, calls []wfscript.AgentCall) {
 // fenced case is a NARROWING of the wide one, so a rule for each would print
 // twice about a single line.
 func checkPromptPlaceholders(r *Report, c wfscript.AgentCall) {
+	seen := map[string]bool{}
 	for _, m := range placeholderCmdRe.FindAllStringIndex(c.Prompt, -1) {
-		line := lineAround(c.Prompt, m[0])
+		start, line := lineAround(c.Prompt, m[0])
+		// One report per LINE. A line carrying two commands, each with its own
+		// placeholder, is one thing to go and fix, and the first version
+		// printed it twice quoting the identical text.
+		if seen[line] {
+			continue
+		}
+		seen[line] = true
 		level, why := INFO, "if the agent is meant to substitute it, this is fine; if it is meant to run the line as written, the command exits 0 having matched nothing and prints NOTHING, which the receiving agent cannot tell from a real empty result"
-		if placeholderFencedRe.MatchString(line) {
+		if indent := m[0] - start; indent >= fencedIndent && strings.TrimSpace(line[:indent]) == "" {
 			level, why = WARN, "it sits on its own indented command line, so there is no reading under which the agent fills it in — the command gets pasted into a shell verbatim, exits 0 having matched nothing, and prints NOTHING"
 		}
 		r.add(level, c.Line, "agent %s: a <placeholder> inside a command this prompt hands over — %s\n        → %s",
@@ -771,16 +788,17 @@ func clip(s string, n int) string {
 	return string(r[:n]) + "\u2026"
 }
 
-// lineAround returns the whole line containing byte offset i. The MATCH is not
-// enough: the fenced test is about how the line STARTS, and the match begins at
-// the command word, which is exactly the part after the indent.
-func lineAround(s string, i int) string {
+// lineAround returns the byte offset the line containing i starts at, and the
+// whole line. The MATCH alone is not enough: the fenced test is about where the
+// match sits WITHIN its line, and the match begins at the command word, which is
+// exactly the part after the indent.
+func lineAround(s string, i int) (int, string) {
 	start := strings.LastIndexByte(s[:i], '\n') + 1
 	end := strings.IndexByte(s[i:], '\n')
 	if end < 0 {
-		return s[start:]
+		return start, s[start:]
 	}
-	return s[start : i+end]
+	return start, s[start : i+end]
 }
 
 // ------------------------------------------------------- 7. result safety --

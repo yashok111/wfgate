@@ -262,8 +262,9 @@ handed to reviewers, and a third instance in the NEXT round's own lens prompts, 
 before dispatch rather than by any check. Either interpolate the value (`${id}`) or state in prose
 that the agent substitutes it — and grep the prompts for `<` before a round goes out. `wfcheck` now
 reports the shape as an INFO with the line, deliberately not louder: over 73 frozen script revisions
-the same shape occurs 14 times and only three were the defect, the rest being templates an agent is
-meant to fill, and which one a line is depends on something that is not in the text.
+it reports 40 lines carrying 12 distinct commands, and only three of those were the defect — the
+rest are templates an agent is meant to fill, and which one a line is depends on something that is
+not in the text.
 
 **An acceptance finding of the form "X does not exist" must name the COMMAND whose empty output it
 read.** A property reported met carries its evidence and a later gate judges that evidence; a claim
@@ -276,7 +277,7 @@ cannot be reproduced or refuted. With the command in the finding, both are one p
 
 **No phase that can WRITE may run after a phase that MEASURES.** When the verdict rests on quantities
 collected during the run, enumerate those quantities once and check the PHASE ORDER, rather than
-repairing each accumulator at the site where it is read. Measured on the longest gate in this corpus:
+repairing each accumulator at the site where it is read. Measured on a seventeen-round gate:
 the last fix-bearing gate ran AFTER the acceptance phase, so every measured term was stale-able, and
 there were eight of them. Rounds 9, 10, 11, 12 and 13 each found exactly ONE — `barFailures`, then
 `unverified` and `disputed`, then `acceptBlockers`, then `barFailures` and `goalMet`, then

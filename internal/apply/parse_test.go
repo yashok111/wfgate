@@ -128,3 +128,41 @@ func TestParseText_strayMarkerInBlock(t *testing.T) {
 		t.Errorf("correct batch refused: %v", err)
 	}
 }
+
+// The bracket refusal, and the two shapes the first version missed. The manual
+// renders the header `=== <file> [count=N] [note=...]`, where the brackets mark
+// the field optional inside a format whose other delimiters are literal.
+func TestBracketedHeaderFields(t *testing.T) {
+	body := "\n<<<<\nold\n====\nnew\n>>>>\n"
+	for _, tc := range []struct{ name, header, want string }{
+		{"count", "=== a.md [count=1]", "count=N is written inside square brackets"},
+		{"note", "=== a.md [note=why]", "note=... is written inside square brackets"},
+		// One space away from the shape above, and it used to be accepted
+		// SILENTLY with the note reading `why ]`.
+		{"note with spaces inside the bracket", "=== a.md [ note=why ]", "note=... is written inside square brackets"},
+		{"count with spaces inside the bracket", "=== a.md [ count=1 ]", "count=N is written inside square brackets"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseText([]byte(tc.header + body))
+			if err == nil {
+				t.Fatal("a bracketed field must be refused")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not carry %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// The refusal reads FIELDS, never the whole header: the first token is the
+// artifact PATH, and a file legitimately named `[count=1].md` is not a
+// malformed header.
+func TestBracketRefusalDoesNotReadThePath(t *testing.T) {
+	edits, err := ParseText([]byte("=== docs/[count=1].md count=1\n<<<<\nold\n====\nnew\n>>>>\n"))
+	if err != nil {
+		t.Fatalf("a path containing the bracketed form must parse: %v", err)
+	}
+	if len(edits) != 1 || edits[0].File != "docs/[count=1].md" || edits[0].Count != 1 {
+		t.Fatalf("parsed wrong: %+v", edits)
+	}
+}

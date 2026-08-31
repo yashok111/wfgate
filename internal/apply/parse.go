@@ -197,15 +197,40 @@ func openerOf(half string) string {
 func refuseBracketedFields(rest string, line int) error {
 	head := rest
 	if k := strings.Index(rest, "note="); k >= 0 {
-		if k > 0 && rest[k-1] == '[' {
+		// Whitespace inside the bracket is the same mistake: `[ note=x ]`
+		// reached the note as `x ]` with no complaint, one space away from the
+		// shape this refusal was written for.
+		if openBracketBefore(rest, k) {
 			return bracketError(line, "note=...")
 		}
 		head = rest[:k]
 	}
-	if strings.Contains(head, "[count=") {
-		return bracketError(line, "count=N")
+	// FIELDS only, never the whole head: the first token is the artifact PATH,
+	// and a file legitimately named `[count=1].md` is not a malformed header.
+	fields := strings.Fields(head)
+	for _, f := range fields[min(1, len(fields)):] {
+		if strings.HasPrefix(f, "[") && strings.HasPrefix(strings.TrimLeft(f[1:], " "), "count=") {
+			return bracketError(line, "count=N")
+		}
+	}
+	// A bracket that opens its own field — `=== f [ count=1 ]` — leaves `[` as
+	// a field of its own, which the loop above cannot recognise.
+	for i, f := range fields {
+		if i > 0 && f == "[" {
+			return bracketError(line, "count=N")
+		}
 	}
 	return nil
+}
+
+// openBracketBefore reports a `[` immediately before position k, allowing the
+// spaces an operator writes inside a bracket.
+func openBracketBefore(s string, k int) bool {
+	i := k - 1
+	for i >= 0 && (s[i] == ' ' || s[i] == '\t') {
+		i--
+	}
+	return i >= 0 && s[i] == '['
 }
 
 func bracketError(line int, field string) error {

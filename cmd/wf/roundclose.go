@@ -66,6 +66,17 @@ func cmdRoundClose(args []string) error {
 	if !w.Git.CommitExists(sha) {
 		return fmt.Errorf("%w; nothing was written", closedByError(w, fmt.Sprintf("round %d finding %s", n, num), sha))
 	}
+	// RESOLVED, not stored as typed. `wf round close 1 HEAD` was accepted, wrote
+	// the literal `HEAD` into the cell, and every reader downstream then saw a
+	// closure "by prose": `ws.FindingRow.Shas()` wants hex with a digit, so
+	// `wf check closure` skipped the row entirely and `wf freeze` passed the
+	// BLOCKER as prose-closed with a verify-by-hand note. The command whose
+	// whole purpose is a checkable commit reference was quietly producing an
+	// uncheckable one, and a symbolic ref is the natural thing to type.
+	sha, err = canonicalSha(w, sha)
+	if err != nil {
+		return fmt.Errorf("round %d finding %s: %w; nothing was written", n, num, err)
+	}
 	rows := ws.ParseFindings(b)
 	var hit []ws.FindingRow
 	for _, r := range rows {
@@ -95,14 +106,19 @@ func cmdRoundClose(args []string) error {
 		// and the commit then fails on `nothing staged` — a git-shaped error
 		// for an operator-shaped mistake. `wf apply -whole` refuses an
 		// unchanged file for the same reason.
-		if cur == sha {
-			return fmt.Errorf("round %d finding %s is already closed by %s and -replace names the same commit; nothing to do", n, num, sha)
+		// Compared as COMMITS, not as strings: the cell may hold an
+		// abbreviation, a different case or a full sha of the very commit
+		// being named, and each of those would write bytes that differ while
+		// the claim does not change.
+		if cur == sha || sameCommit(w, cur, sha) {
+			return fmt.Errorf("round %d finding %s is already closed by %s and -replace names the same commit; nothing to do", n, num, cur)
 		}
 	}
+	// No bounds check on r.Line: `ParseFindings` numbers its rows over the same
+	// `strings.Split(b, "\n")` this indexes, so it is in range by construction.
+	// The check that used to stand here survived every mutation, and this
+	// project deletes such a guard rather than shipping it.
 	lines := strings.Split(string(b), "\n")
-	if r.Line < 1 || r.Line > len(lines) {
-		return fmt.Errorf("round %d finding %s reports line %d, outside a file of %d lines", n, num, r.Line, len(lines))
-	}
 	out, ok := ws.SetClosedBy(lines[r.Line-1], sha)
 	if !ok {
 		return fmt.Errorf("round %d line %d does not carry four unescaped pipes; a row the parser cannot split cannot be edited either — escape a literal pipe as \\|", n, r.Line)
@@ -123,7 +139,22 @@ func cmdRoundClose(args []string) error {
 	rel, _ := filepath.Rel(w.Root, dst)
 	commit, err := w.Git.Commit(fmt.Sprintf("round %d: finding %s closed by %s", n, num, short(sha)), []string{rel})
 	if err != nil {
-		return err
+		// All-or-nothing, like `wf apply`: a commit that fails — a hook, a
+		// read-only object store — used to leave the ledger REWRITTEN and
+		// STAGED under a bare `exit status 1`, and both ways back in then
+		// refused (`already closed by …` without -replace, `names the same
+		// commit` with it), so the only exit left was the hand `git commit`
+		// this command exists to remove.
+		// The rollback's own failures are REPORTED, not swallowed: an operator
+		// told "rolled back" over a ledger that is still rewritten is worse off
+		// than one told nothing.
+		rolled := "the edit has been rolled back and nothing is staged"
+		if werr := os.WriteFile(dst, b, 0o644); werr != nil {
+			rolled = fmt.Sprintf("AND THE ROLLBACK FAILED (%v) — %s still holds the edit; restore it with `git checkout -- %s`", werr, rel, rel)
+		} else if _, rerr := w.Git.Run("reset", "-q", "HEAD", "--", rel); rerr != nil {
+			rolled = fmt.Sprintf("the edit has been rolled back, but it is still STAGED (%v) — unstage it with `git reset HEAD -- %s`", rerr, rel)
+		}
+		return fmt.Errorf("round %d finding %s: the ledger was written and the commit failed (%v) — %s", n, num, err, rolled)
 	}
 	fmt.Printf("round %d finding %s: closed by %s\n  %s\ncommitted %s\n", n, num, sha, trunc(r.Text, 90), short(commit))
 	// The check that reads this cell, named where the cell was just filled.
@@ -177,4 +208,45 @@ func rowLines(rows []ws.FindingRow) []string {
 		out = append(out, fmt.Sprint(r.Line))
 	}
 	return out
+}
+
+// canonicalSha turns whatever the operator typed into the sha the ledger
+// stores. A symbolic ref (`HEAD`, `gate-r3`, a branch) is a commit to git and
+// is not a commit to `ws.FindingRow.Shas()`, which wants a hex token of 7 to 40
+// characters carrying at least one digit — so an unresolved ref reads as a
+// PROSE closure everywhere downstream.
+//
+// The short form is what `wf apply` prints and what an operator copies, so it
+// is what goes in; the full form is the fallback for the ~4e-4 short sha with
+// no digit, which the ledger's own detector would refuse for the same reason it
+// refuses `deadbeef`.
+func canonicalSha(w *ws.Workspace, ref string) (string, error) {
+	full, err := w.Git.Run("rev-parse", "--verify", ref+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("%s names no commit here", ref)
+	}
+	full = strings.TrimSpace(full)
+	if s := short(full); hasDigit(s) {
+		return s, nil
+	}
+	return full, nil
+}
+
+func hasDigit(s string) bool {
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+// sameCommit reports whether two ledger cells name one commit. A cell that is
+// not a resolvable ref at all (prose, a target sha) is not the same commit as
+// anything: it is a different KIND of closure, and -replace is exactly the flag
+// for turning one into the other.
+func sameCommit(w *ws.Workspace, a, b string) bool {
+	ra, err1 := w.Git.Run("rev-parse", "--verify", a+"^{commit}")
+	rb, err2 := w.Git.Run("rev-parse", "--verify", b+"^{commit}")
+	return err1 == nil && err2 == nil && strings.TrimSpace(ra) == strings.TrimSpace(rb)
 }

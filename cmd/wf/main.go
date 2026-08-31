@@ -2971,7 +2971,7 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	// the freeze is about to refuse. A row with an empty closure cell is not a
 	// failing closure; it is no closure at all, and naming it is the same
 	// print-your-population discipline every other note here follows.
-	openRows, proseRows := 0, 0
+	openRows, proseRows, malformed := 0, 0, 0
 	// Closures whose commit was an ADOPTION (`wf apply -whole`), where the tool
 	// watched nothing being made. `wf stats` already draws this distinction per
 	// ROUND; the closure the operator has to trust is per ROW. Measured on P3f:
@@ -2979,7 +2979,33 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	// the code, this check passed it correctly by its own rules, and the fact
 	// that separates it from its neighbours — the commit carried no verified
 	// batch — was in git the whole time.
-	adopted := []string{}
+	adopted := map[int][]string{}
+	adoptedRounds := []int{}
+	adoptedTotal := 0
+	// Cached per sha, beside `touched` and `shiftDiff` and for the same reason:
+	// one round's findings routinely name the same closing batch a dozen times.
+	// Measured on the largest ledger in the corpus, `wf check closure` went
+	// 0.57 s to 2.05 s without it — 587 forks over 62 distinct commits.
+	msgs := map[string]string{}
+	unreadableMsg := map[string]bool{}
+	msgOf := func(sha string) (string, bool) {
+		if m, ok := msgs[sha]; ok {
+			return m, true
+		}
+		if unreadableMsg[sha] {
+			return "", false
+		}
+		m, err := w.Git.Run("show", "-s", "--format=%B", sha)
+		if err != nil {
+			// A commit git cannot read here is not an adoption and is not a
+			// verified batch either: the message is the whole evidence, and an
+			// absent message is an absent measurement.
+			unreadableMsg[sha] = true
+			return "", false
+		}
+		msgs[sha] = m
+		return m, true
+	}
 	// A finding's line numbers are written against the round's FREEZE; a
 	// commit's own old-side ranges are written against ITS PARENT. Measured over
 	// the eleven gate workspaces, 643 of the 661 closures citing a line name a
@@ -3060,7 +3086,11 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 			continue
 		}
 		for _, r := range ws.ParseFindings(b) {
-			if r.Malformed || r.Placeholder() {
+			if r.Malformed {
+				malformed++
+				continue
+			}
+			if r.Placeholder() {
 				continue
 			}
 			if len(r.Shas()) == 0 {
@@ -3079,8 +3109,12 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 				continue
 			}
 			claims++
-			if isAdoption(w, r.Shas()) {
-				adopted = append(adopted, fmt.Sprintf("r%d#%s", n, r.Num))
+			if isAdoption(msgOf, r.Shas()) {
+				if len(adopted[n]) == 0 {
+					adoptedRounds = append(adoptedRounds, n)
+				}
+				adopted[n] = append(adopted[n], r.Num)
+				adoptedTotal++
 			}
 			named, amb := check.PathsNamed(r.Text, arts)
 			if len(amb) > 0 {
@@ -3242,17 +3276,41 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	if claims > 0 && checked == 0 {
 		fmt.Printf("  note: NOT A PASS — no closure could be checked. `wf round record` proves the sha EXISTS; this check proves the commit touched what the finding names, and it reaches a finding only where the finding names an artifact path\n")
 	}
+	if claims == 0 {
+		// The whole population is empty, and every number above it is a zero
+		// about nothing. Armed on `claims`, never on `claims > 0 && ...`: an
+		// unfilled scaffold reaches this with rows==0 too, and that is the
+		// larger case, not a different one.
+		fmt.Printf("  note: NOT A PASS — no row in the rounds examined names a commit, so every count above is over an empty population rather than a clean one\n")
+	}
+	if malformed > 0 {
+		// `wf round record` and `wf freeze` both refuse such a row BY NAME. In
+		// the one report whose subject is the populations it is not about, a
+		// row the parser cannot split used to vanish from all three counts.
+		fmt.Printf("  note: %d row(s) do not split into four cells and are in NO count above — `wf round record` refuses them by line, and a row the parser cannot split cannot be checked for a closure either\n", malformed)
+	}
 	if openRows > 0 || proseRows > 0 {
 		// The population this check never had, printed in the same breath as
 		// the one it did — the two commands disagreed in the operator's hands
 		// because only one of them said what it was counting.
 		fmt.Printf("  note: %d finding(s) name no commit and are not a population this check examines (%d with an empty closure cell, %d closed by prose) — `wf round record` reports them as open and by prose, and `wf freeze` refuses on an open BLOCKER\n", openRows+proseRows, openRows, proseRows)
 	}
-	if len(adopted) > 0 {
+	if adoptedTotal > 0 {
 		// Not a failure and never counted into `bad`: an adoption that landed
 		// is a closure like any other. What the operator cannot reconstruct
 		// without git archaeology is WHICH rows rest on one.
-		fmt.Printf("  note: %d closure(s) rest on an ADOPTION (`wf apply -whole`), where no replacement was matched and no declared count checked, so the only evidence they landed is this ledger: %s. Byte-verify each against the pre-fix artifact — `wf stats` prices those rounds `(N ADOPTED whole, verified by no batch)` for the same reason\n", len(adopted), strings.Join(adopted, ", "))
+		//
+		// Grouped BY ROUND, and that is the narrowing this line needed before
+		// it shipped anywhere: on the gate it was derived from it reaches 47 of
+		// 121 closures across seven rounds, and the first version printed all
+		// 47 ids on one unwrapped line under an instruction to byte-verify each
+		// — a work-list nobody reads. The round is also the unit `wf stats`
+		// already prices the act in.
+		var parts []string
+		for _, n := range adoptedRounds {
+			parts = append(parts, fmt.Sprintf("r%d: %s", n, strings.Join(adopted[n], ",")))
+		}
+		fmt.Printf("  note: %d of %d closure(s) rest on an ADOPTION (`wf apply -whole`), where no replacement was matched and no declared count checked, so the only evidence they landed is this ledger — by round: %s. Byte-verify them against the pre-fix artifact; `wf stats` prices those rounds `(N ADOPTED whole, verified by no batch)` for the same reason\n", adoptedTotal, claims, strings.Join(parts, "; "))
 	}
 	if implied > 0 {
 		fmt.Printf("  note: %d closure(s) name no path and were checked against %s, the workspace's only artifact\n", implied, arts[0])
@@ -5136,14 +5194,7 @@ var citePathRe = regexp.MustCompile(`\b([\w./-]*[\w-]{2,}\.[A-Za-z]{2,8})(?::\d+
 // operator meant, and a warning at init is read once and scrolls away, while
 // the tree it dirties is read by every agent of the run.
 func refuseInsideTarget(root, target, name string) error {
-	rp, err1 := resolveDir(root)
-	tp, err2 := resolveDir(target)
-	if err1 != nil || err2 != nil {
-		// A path that cannot be resolved is not a path known to be inside.
-		// Refusing here would refuse a legitimate init over an unreadable
-		// mount, and the target is re-read by every freeze anyway.
-		return nil
-	}
+	rp, tp := resolveDir(root), resolveDir(target)
 	rel, err := filepath.Rel(tp, rp)
 	if err != nil {
 		return nil
@@ -5167,25 +5218,25 @@ func refuseInsideTarget(root, target, name string) error {
 // back: without that, a target reached through a symlinked parent (/tmp on a
 // mac) compares unequal to a workspace root under the same real directory, and
 // the refusal misses exactly the operator whose box has one.
-func resolveDir(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", err
-	}
+func resolveDir(p string) string {
+	// filepath.Abs fails only when os.Getwd does, and this project deletes a
+	// guard nothing can make fail: an unreachable working directory is a
+	// condition every other command in the binary dies on first.
+	abs, _ := filepath.Abs(p)
 	rest := ""
 	cur := abs
 	for {
 		if r, err := filepath.EvalSymlinks(cur); err == nil {
 			if rest == "" {
-				return r, nil
+				return r
 			}
-			return filepath.Join(r, rest), nil
+			return filepath.Join(r, rest)
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
 			// Nothing on the path exists: the absolute form is all there is,
 			// and it is still a usable answer for the comparison.
-			return abs, nil
+			return abs
 		}
 		rest = filepath.Join(filepath.Base(cur), rest)
 		cur = parent
@@ -5210,12 +5261,16 @@ func resolveDir(p string) (string, error) {
 // where the fact was never recorded, and a printed `0 rest on an adoption`
 // would be this project's own most-repeated defect — an absent measurement in
 // the register of a measured one.
-func isAdoption(w *ws.Workspace, shas []string) bool {
+func isAdoption(msgOf func(string) (string, bool), shas []string) bool {
+	// No `len(shas) > 0` guard: the only caller skips a row with no sha two
+	// lines earlier, so the branch survived every mutation and this project
+	// deletes such a guard rather than shipping it. An empty slice returns true
+	// here and cannot arrive.
 	for _, sha := range shas {
-		msg, err := w.Git.Run("show", "-s", "--format=%B", sha)
-		if err != nil || !applyWholeRe.MatchString(msg) {
+		msg, ok := msgOf(sha)
+		if !ok || !applyWholeRe.MatchString(msg) {
 			return false
 		}
 	}
-	return len(shas) > 0
+	return true
 }

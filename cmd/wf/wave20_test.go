@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"git.sumka.site/yakov/wfgate/internal/ws"
 )
 
 // `wf init` inside the target. Measured on the first gate run against a target
@@ -137,10 +139,14 @@ func TestApplyAcceptsABracketedFormQuotedInsideANote(t *testing.T) {
 // beside "1 closure claiming a commit, 1 checked, 0 not closed".
 func TestCheckClosureNamesTheRowsItDidNotExamine(t *testing.T) {
 	wsDir, sha := twoArtifactGate(t)
+	// TWO empty cells against ONE prose closure, deliberately: with one of each
+	// the line reads identically when the two counters are swapped, which is a
+	// floor armed on the value that disables it.
 	ledger(t, wsDir, 1,
 		"| 1 | MAJOR | artifacts/decisions.md needs a revision | "+sha+" |\n"+
 			"| 2 | MAJOR | artifacts/decisions.md has a second problem |  |\n"+
-			"| 3 | MINOR | artifacts/decisions.md wants a word | fixed in an earlier round |\n")
+			"| 3 | MAJOR | artifacts/decisions.md has a third problem |  |\n"+
+			"| 4 | MINOR | artifacts/decisions.md wants a word | fixed in an earlier round |\n")
 	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
 	noErr(t, err, "round record")
 
@@ -149,7 +155,7 @@ func TestCheckClosureNamesTheRowsItDidNotExamine(t *testing.T) {
 	// The counts, and the vocabulary `wf round record` uses for the same two
 	// rows: a report that called them one number would disagree with the
 	// command the operator ran one line earlier.
-	mustContain(t, out, "2 finding(s) name no commit", "1 with an empty closure cell, 1 closed by prose")
+	mustContain(t, out, "3 finding(s) name no commit", "2 with an empty closure cell, 1 closed by prose")
 }
 
 // A ledger where every row names a commit says nothing about a population it
@@ -188,10 +194,12 @@ func TestCheckClosureNamesTheClosuresRestingOnAnAdoption(t *testing.T) {
 
 	out, err := runWF(t, wsDir, "check", "closure")
 	noErr(t, err, "check closure")
-	mustContain(t, out, "1 closure(s) rest on an ADOPTION", "r1#2")
+	// Grouped by ROUND, and naming the row: the first version printed 47 ids on
+	// one line on the gate it was derived from.
+	mustContain(t, out, "1 of 2 closure(s) rest on an ADOPTION", "by round: r1: 2")
 	// The verified batch must NOT be in the group: a report that marked both
 	// would say nothing, which is the state before this change.
-	if strings.Contains(out, "r1#1,") || strings.Contains(out, "r1#1 ") {
+	if strings.Contains(out, "r1: 1") {
 		t.Fatalf("the verified batch was named as an adoption:\n%s", out)
 	}
 }
@@ -386,4 +394,220 @@ func TestRoundCloseNamesTheCheckThatReadsTheCell(t *testing.T) {
 	out, err := runWF(t, wsDir, "round", "close", "1", sha)
 	noErr(t, err, "round close")
 	mustContain(t, out, "wf check closure -round "+strconv.Itoa(1))
+}
+
+// The review round over this wave. Every test below pins a guard a mutation
+// sweep proved was defended by nothing, or a defect three reviewer vectors
+// found in the first version of it.
+
+// A symbolic ref is a commit to git and NOT a commit to the ledger's own sha
+// detector, which wants hex with a digit. `wf round close 1 HEAD` was accepted,
+// wrote the literal `HEAD`, and every reader downstream then saw a closure "by
+// prose": `wf check closure` skipped the row and `wf freeze` passed the BLOCKER
+// as prose-closed with a verify-by-hand note.
+func TestRoundCloseResolvesASymbolicRefToASha(t *testing.T) {
+	wsDir, sha := twoArtifactGate(t)
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | artifacts/decisions.md needs a revision |  |\n")
+	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+
+	// A symbolic ref pointing at the commit that actually landed the fix, so
+	// the check below is about the RESOLUTION and not about a miss.
+	gitIn(t, wsDir, "branch", "fixref", sha)
+	out, err := runWF(t, wsDir, "round", "close", "1", "fixref")
+	noErr(t, err, "round close fixref")
+	mustNotContain(t, out, "closed by fixref")
+
+	b, err := os.ReadFile(filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "read ledger")
+	if strings.Contains(string(b), "| fixref |") {
+		t.Fatalf("the ledger stores the ref as typed:\n%s", b)
+	}
+	// The row must read back as a COMMIT closure — the whole point of the
+	// command — which is what `wf check closure` and `wf freeze` both ask.
+	rows := ws.ParseFindings(b)
+	if len(rows) != 1 || len(rows[0].Shas()) != 1 {
+		t.Fatalf("the closure is not a sha the ledger can read: %+v", rows)
+	}
+	chk, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, chk, "1 closure(s) claiming a commit")
+}
+
+// And an unresolvable ref is refused, not stored: without this the fix above
+// could pass by writing anything at all.
+func TestRoundCloseRefusesARefThatNamesNoCommit(t *testing.T) {
+	wsDir, _ := twoArtifactGate(t)
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md needs a revision |  |\n")
+	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+
+	out, err := runWF(t, wsDir, "round", "close", "1", "no-such-branch")
+	if err == nil {
+		t.Fatalf("round close must refuse a ref that names no commit, got:\n%s", out)
+	}
+	mustContain(t, err.Error(), "nothing was written")
+}
+
+// The EvalSymlinks ancestor walk in resolveDir is the load-bearing half of the
+// refusal and a mutation replacing it with a plain filepath.Abs survived every
+// test: the workspace was then created INSIDE the target and the target's own
+// git status reported it.
+func TestInitRefusesAWorkspaceReachedThroughASymlinkedAncestor(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real")
+	target := filepath.Join(real, "target")
+	write(t, filepath.Join(target, "a.md"), "x\n")
+	gitIn(t, target, "init", "-q", "-b", "main")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "initial")
+
+	link := filepath.Join(tmp, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+	// -target names the REAL path and -dir reaches the same directory through
+	// the link, so only a resolved comparison sees that they are one tree.
+	out, err := runWF(t, tmp, "init", "gate", "-target", target, "-dir", filepath.Join(link, "target", "gate"))
+	if err == nil {
+		t.Fatalf("init must refuse a workspace reached through a symlinked ancestor, got:\n%s", out)
+	}
+	mustContain(t, err.Error(), "INSIDE the target")
+	if _, statErr := os.Stat(filepath.Join(target, "gate")); statErr == nil {
+		t.Fatal("the refused init created the workspace directory anyway")
+	}
+}
+
+// A duplicate finding number makes the closure ambiguous. Without the refusal
+// `hit[0]` silently closes the first of the two, and no test reached it.
+func TestRoundCloseRefusesADuplicateFindingNumber(t *testing.T) {
+	wsDir, sha := twoArtifactGate(t)
+	ledger(t, wsDir, 1,
+		"| 1 | MAJOR | artifacts/decisions.md needs a revision |  |\n"+
+			"| 1 | MAJOR | artifacts/decisions.md needs another revision |  |\n")
+	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+
+	out, err := runWF(t, wsDir, "round", "close", "1", sha)
+	if err == nil {
+		t.Fatalf("round close must refuse a duplicate finding number, got:\n%s", out)
+	}
+	mustContain(t, err.Error(), "rows numbered 1", "nothing was written")
+}
+
+// verifyClosureLanded is unfalsifiable through the command — which is the point
+// of it — so it is pinned directly. The body it is fed is corrupted the way a
+// naive `awk -F'|'` corrupts one: the sha lands inside the finding TEXT.
+func TestVerifyClosureLandedRejectsACorruptedRow(t *testing.T) {
+	const line = 5
+	good := []byte("# F\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | MAJOR | a finding | abc1234 |\n")
+	if err := verifyClosureLanded(good, line, "1", "abc1234", "a finding"); err != nil {
+		t.Fatalf("a correctly rewritten row must verify: %v", err)
+	}
+	for _, tc := range []struct{ name, body, want string }{
+		{"the sha landed in the finding text", "# F\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | MAJOR | a finding abc1234 |  |\n", "different text"},
+		{"the row no longer splits into four cells", "# F\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | MAJOR | a finding | abc1234 | extra |\n", "no longer splits"},
+		{"the closure cell holds something else", "# F\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | MAJOR | a finding | deadbeef1 |\n", "reads back with closure"},
+		{"the row is gone", "# F\n\n| # | level | finding | closed by |\n|---|---|---|---|\n", "no longer a table row"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := verifyClosureLanded([]byte(tc.body), line, "1", "abc1234", "a finding")
+			if err == nil {
+				t.Fatal("a corrupted row must not verify")
+			}
+			mustContain(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// A closure carried by two commits, one adopted and one a verified batch, rests
+// on a batch the tool DID watch. Under ANY-instead-of-EVERY the note would
+// paint rows the operator has receipts for, and no test had a multi-sha row
+// though multi-sha closures are the corpus norm.
+func TestCheckClosureDoesNotCallAMixedClosureAnAdoption(t *testing.T) {
+	wsDir, batchSha := twoArtifactGate(t)
+	art := filepath.Join(wsDir, "artifacts", "decisions.md")
+	body, err := os.ReadFile(art)
+	noErr(t, err, "read artifact")
+	write(t, art, string(body)+"\nA paragraph the operator wrote by hand.\n")
+	applied, err := runWF(t, wsDir, "apply", "-whole", "artifacts/decisions.md", "-m", "restructure")
+	noErr(t, err, "apply -whole")
+	wholeSha := commitShaOf(t, applied)
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md needs both | "+wholeSha+", "+batchSha+" |\n")
+	_, err = runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustNotContain(t, out, "rest on an ADOPTION")
+}
+
+// A whole population of nothing. An unfilled scaffold printed
+// `0 closure(s) claiming a commit, 0 checked, 0 not closed` and exited zero —
+// the report of a check that examined nothing, in the register of one that
+// examined everything.
+func TestCheckClosureSaysNotAPassOverAnEmptyPopulation(t *testing.T) {
+	wsDir := newGate(t)
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "NOT A PASS", "empty population")
+}
+
+// A malformed row is in NO count of this report, and the report whose subject
+// is the populations it is not about used to say nothing about it.
+func TestCheckClosureNamesTheRowsItCouldNotSplit(t *testing.T) {
+	wsDir, sha := twoArtifactGate(t)
+	// Written straight to disk: `wf round record` refuses such a row by line,
+	// which is the other half of the same rule.
+	write(t, filepath.Join(wsDir, "rounds", "r1", "findings.md"),
+		"# Findings\n\n| # | level | finding | closed by |\n|---|-------|---------|-----------|\n"+
+			"| 1 | MAJOR | artifacts/decisions.md needs a revision | "+sha+" |\n"+
+			"| 2 | MAJOR | a row quoting a | b unescaped | "+sha+" |\n")
+	out, err := runWF(t, wsDir, "check", "closure")
+	noErr(t, err, "check closure")
+	mustContain(t, out, "1 row(s) do not split into four cells")
+}
+
+// All-or-nothing, like `wf apply`. A commit that fails — a hook, a read-only
+// object store — used to leave the ledger REWRITTEN and STAGED under a bare
+// `exit status 1`, and both ways back in then refused (`already closed by …`
+// without -replace, `names the same commit` with it), so the only exit left was
+// the hand `git commit` this command exists to remove.
+func TestRoundCloseRollsBackWhenTheCommitFails(t *testing.T) {
+	wsDir, sha := twoArtifactGate(t)
+	ledger(t, wsDir, 1, "| 1 | MAJOR | artifacts/decisions.md needs a revision |  |\n")
+	_, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
+	noErr(t, err, "round record")
+	dst := filepath.Join(wsDir, "rounds", "r1", "findings.md")
+	before, err := os.ReadFile(dst)
+	noErr(t, err, "read ledger")
+
+	hook := filepath.Join(wsDir, ".git", "hooks", "pre-commit")
+	write(t, hook, "#!/bin/sh\nexit 1\n")
+	if err := os.Chmod(hook, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runWF(t, wsDir, "round", "close", "1", sha)
+	if err == nil {
+		t.Fatalf("round close must fail when the commit does, got:\n%s", out)
+	}
+	mustContain(t, err.Error(), "the commit failed", "rolled back")
+
+	after, err := os.ReadFile(dst)
+	noErr(t, err, "re-read ledger")
+	if string(before) != string(after) {
+		t.Fatalf("the ledger was left rewritten:\n%s", after)
+	}
+	// And nothing is staged, which is the half that made the failure sticky:
+	// a staged edit is invisible to a re-run and is picked up by the next
+	// unrelated commit.
+	if _, err := os.Stat(hook); err == nil {
+		_ = os.Remove(hook)
+	}
+	status, err := runWF(t, wsDir, "status")
+	noErr(t, err, "status")
+	mustContain(t, status, "tree clean")
 }
