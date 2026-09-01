@@ -126,6 +126,9 @@ func cmdRoundClose(args []string) error {
 			return fmt.Errorf("round %d finding %s: %w; nothing was written", n, num, err)
 		}
 		value = sha
+		if err := commitTouchedAnArtifact(w, sha); err != nil {
+			return fmt.Errorf("round %d finding %s: %w; nothing was written", n, num, err)
+		}
 	}
 	rows := ws.ParseFindings(b)
 	var hit []ws.FindingRow
@@ -183,7 +186,7 @@ func cmdRoundClose(args []string) error {
 	lines := strings.Split(string(b), "\n")
 	out, ok := ws.SetClosedBy(lines[r.Line-1], value)
 	if !ok {
-		return fmt.Errorf("round %d line %d does not carry four unescaped pipes; a row the parser cannot split cannot be edited either — escape a literal pipe as \\|", n, r.Line)
+		return fmt.Errorf("round %d line %d does not carry four unescaped pipes; a row the parser cannot split cannot be edited either — escape a literal pipe as \\|, and a backtick code span is NOT an escape", n, r.Line)
 	}
 	lines[r.Line-1] = out
 	body := []byte(strings.Join(lines, "\n"))
@@ -245,6 +248,56 @@ func cmdRoundClose(args []string) error {
 	// a closure is a claim, and the command that tests it is one line away.
 	fmt.Printf("  `wf check closure -round %d` asks whether that commit touched what the finding names\n", n)
 	return nil
+}
+
+// commitTouchedAnArtifact refuses a closure whose commit changed no artifact.
+//
+// A closure says a fix LANDED in the document or the script the finding is
+// about, and a commit that touched only `rounds/` is bookkeeping — this
+// command's own ledger commit, a freeze, a lens. Measured on the gate that
+// found it: EIGHT of one round's nine closures named the ledger commit of the
+// PREVIOUS `wf round close`, because the operator read `HEAD` after each call
+// and fed it to the next. Every one of those rows passed `wf round record` (the
+// sha exists), and `wf check closure` reported all eight as FILE misses after
+// the round had shipped — the same evidence, a round too late, in a report the
+// operator has to go and run.
+//
+// The refusal is not about the commit's SUBJECT: a message can say anything,
+// and what makes the row uncheckable is the paths. A row no commit closes has
+// its own door, and the message names it.
+func commitTouchedAnArtifact(w *ws.Workspace, sha string) error {
+	arts, err := w.ArtifactList()
+	if err != nil {
+		return err
+	}
+	if len(arts) == 0 {
+		// No artifact exists to touch. Refusing here would refuse every
+		// closure in a workspace whose artifacts were pruned or not yet
+		// added, which is a check firing on an ABSENT population rather than
+		// a failing one.
+		return nil
+	}
+	_, files, err := w.Git.CommitBrief(sha)
+	if err != nil {
+		// The commit resolved a moment ago; a read that fails here is git
+		// trouble, not an operator mistake, and refusing on it would block a
+		// correct closure with a message about the wrong thing.
+		return nil
+	}
+	// The DIRECTORY, not the current artifact list: an artifact the commit
+	// touched may have been renamed or removed since, and a refusal computed
+	// from today's tree would reject a closure that was right when it was
+	// written.
+	for _, f := range files {
+		if strings.HasPrefix(filepath.ToSlash(strings.TrimSpace(f)), "artifacts/") {
+			return nil
+		}
+	}
+	touched := "no file at all"
+	if len(files) > 0 {
+		touched = strings.Join(files, ", ")
+	}
+	return fmt.Errorf("%s touched no artifact (it changed %s) — a closure names the commit that FIXED the artifact, and this one is bookkeeping. `wf apply` prints the sha of the batch it committed, and `git log --oneline -- artifacts/` lists them; for a row no commit closes, `-prose \"why\"`", sha, touched)
 }
 
 // proseValue validates and escapes a prose closure. The cell it is about to

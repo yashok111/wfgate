@@ -46,12 +46,13 @@ cites.
 
 ## Read before you act — by activity
 
-| you are about to | read first |
+| you are about to — or have just FINISHED one step and not chosen the next | read first |
 |---|---|
 | author or edit a workflow script | `references/authoring.md`, then `references/model-routing.md` |
 | author or edit the DECISION document — above all its ACCEPTANCE section | `references/interview.md`, which is how the document gets written at all, then `references/gate-checks.md` section D, before the first clause is written. Its rules are AUTHOR-side and this table reached them from nowhere: the rows naming the gate files are for REVIEWING and for BRIEFING a reviewer, so an author who does neither never opens them. Measured on the gate that added this row — an acceptance section written as prose test specifications rather than observations was rewritten in four consecutive rounds, killing 8 then 2 then 5 then 9 clauses while the document around it was settling, and the rule it broke was written out in section D the whole time |
 | open and RUN the gate workspace (`wf`) | `references/gate-harness.md` — the operator's half, in the order it is run: workspace, round, apply, record, lens, freeze, verify, the checks, the cost meter, close |
 | decide whether the gate keeps going | `references/round-discipline.md` — barrier, delta rounds, the descent, the stop rule, fix-induced |
+| finish one step and not know which is next — the decision gate has gone quiet, the script is not written, a round closed | `references/pre-flight-gate.md` — the only place the whole SEQUENCE is stated (-2 interview, -1 workspace, -1b round, 1 decisions, author the script, 0 static, 2b dry-run, 2 freeze, 3 reviewers, 4 close) and where in it you now are [M-38] |
 | choose models or reasoning effort for agents | `references/model-routing.md` |
 | review a script or gate its artifacts (the pre-flight gate) | `references/pre-flight-gate.md` + `references/gate-checks.md` |
 | add per-section review gates inside a script | `references/section-gate.md` |

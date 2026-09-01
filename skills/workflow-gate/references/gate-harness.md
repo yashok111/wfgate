@@ -228,6 +228,11 @@ can drift apart from itself, and nothing here compares the copies.
    splits on the escape too, which is how one gate wrote a commit id into the middle of a finding's
    text TWICE; the command rewrites the cell in place, validates the sha before touching the file,
    reads the row back, and refuses to overwrite a closure that already stands without `-replace`.
+   **It also refuses a commit that touched no artifact.** A closure names the commit that FIXED the
+   document or the script; one that changed only `rounds/` is bookkeeping — a ledger commit, a
+   freeze, a lens. Measured on one gate: EIGHT of a round's nine closures named the ledger commit of
+   the PREVIOUS `wf round close`, because the operator read `HEAD` after each call and fed it to the
+   next, and every one of them passed `wf round record`, which proves only that the sha exists.
    Re-recording the whole ledger with `-round N` remains the way to change anything else, and
    `-prose "why"` fills the same cell for a row no commit closes. A prose
    closure ("deferred, see decision D-7") passes the freeze with a counted "verify by hand" note — a
@@ -236,7 +241,9 @@ can drift apart from itself, and nothing here compares the copies.
    **Write the artifact path into the finding text while you are writing it, and cite the SPAN you
    mean.** `wf check closure` reads `file.md:120-134` as the range it is — an edit anywhere inside it
    closes the claim — so a span costs nothing and a first line alone asks a narrower question than the
-   finding did. `wf check closure` asks
+   finding did. A section the finding merely MENTIONS does not preempt the line it CITES: both halves
+   are asked and the verdict is their OR, which took the corpus from 92 miss rows to 83 with nothing
+   added. `wf check closure` asks
    whether a closing commit's diff reaches what the finding NAMES, and a finding naming no artifact
    path cannot be reached at all: `wf round record` counts those and says so at the moment they are
    still cheap to fix. Measured on one gate — 0 of 350 claims checkable on the first record, 26 of 26

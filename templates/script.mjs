@@ -312,7 +312,17 @@ function ownership(section, owns, files) {
   // reads entries with that same grammar, and two ends of one comparison that
   // disagree about what a path is would report every file as unowned.
   const pathOf = (o) => String(o).split(/[\s(]/)[0]
-  for (const f of files || []) {
+  // The agent's self-report is asked for repo-relative paths and one real run
+  // returned an ABSOLUTE one — `/…/mocker/CLAUDE.md` against a `CLAUDE.md`
+  // declaration, reported as writing outside an ownership block whose FIRST
+  // LINE names that file. A false major on a correct write is the direction
+  // that teaches an operator to stop reading the check.
+  const relOf = (f) => {
+    let s = String(f).trim()
+    if (s.startsWith(REPO)) s = s.slice(REPO.length)
+    return s.replace(/^\/+/, '').replace(/^\.\//, '')
+  }
+  for (const f of (files || []).map(relOf)) {
     if (!(owns || []).map(pathOf).some((o) => f === o || (o.endsWith('/') && f.startsWith(o)))) {
       carried.push({ section, severity: 'major', summary: 'wrote ' + f + ' outside its declared ownership' })
     }

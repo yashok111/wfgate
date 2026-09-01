@@ -1311,6 +1311,85 @@ it in a different shape.
   already changed. Nothing was mis-triaged, and the barrier rule is about
   reviewers of one round, which this was.
 
+**The twenty-fourth wave — A4, and the report the gate had already printed and
+nobody read** (`docs/feedbacks/FEEDBACK-a4.md`). 8 rounds, 70 findings, 20
+blockers, 85 edits over 916 changed lines, 2.7 h, median round 19.5 min, TWO
+artifacts in one workspace with independent descents — a decision document at
+9-6-0-0 and the orchestration script, brought in by `wf add` at round 5, at
+2-2-1-0 — and its launch came back `green: true` over 13 agents in 1.5 h. Each
+of its five claims was reproduced against the workspace before a line was
+written, and the flagship one is FALSE in its stated mechanism while the defect
+under it is real and larger.
+
+- *The three closure false positives are not `-whole` shifting the lines, and
+  one of the three is the check being RIGHT.* The write-up blames a whole-file
+  adoption for moving a cited `:545` out from under the check. It does not
+  reproduce: between `gate-r5` and that adoption's parent the artifact was not
+  touched at all — only lens and record commits stand between them — so the
+  shift is zero and the map has nothing to do. r5 #5 cites `:545`, which is
+  `reviewers: [` in the parent, and the commit rewrites 546; r5 #6 cites `:656`
+  and the commit rewrites 654. Both are the OFF-BY-ONE citation habit the
+  write-up's own section 0 banks three instances of, and the check reported them
+  correctly. The third, r4 #5, is a real defect and a different one: the finding
+  cites `decisions.md:607-611` — which the commit covered — and mentions D11 in
+  passing, and the SECTION half PREEMPTED the line half, `continue`-ing before
+  the lines were read. The comment three lines above it already said a section
+  mentioned in passing is not a finding about it; the verdict had not been told.
+  The two halves are ORed now, and where both miss the row carries both reasons
+  in one verdict per row. **Narrowed against the corpus before shipping: 92 miss
+  rows over the fourteen unpruned workspaces, 83 after, nothing added** — five of
+  the removals in P4a alone, each verified by hand to be a commit whose hunks
+  cover the cited span.
+- *`wf round close` accepted EIGHT closures naming a commit that could not
+  possibly have closed them, and the feedback never mentions it.* Round 6's
+  findings 2 to 9 each name the ledger commit of the PREVIOUS `wf round close` —
+  the operator read `HEAD` after each call and fed it to the next — and every one
+  passed `wf round record`, which proves only that the sha exists. `wf check
+  closure` printed all eight as FILE misses, in a report run after the round had
+  shipped. The refusal is at the point of writing now: a commit touching nothing
+  under `artifacts/` is refused, naming what it DID touch and naming `-prose` for
+  a row no commit closes. It reads the DIRECTORY rather than today's artifact
+  list, because an artifact renamed since would otherwise reject a closure that
+  was right when it was written.
+- *The ownership check in the emitted skeleton compares an absolute path against
+  a repo-relative declaration.* A4's `record` section was reported as writing
+  `CLAUDE.md` outside its ownership when `CLAUDE.md` is the FIRST LINE of its
+  `YOU OWN` block: the agent self-reported `/home/yakov/projects/mocker/CLAUDE.md`
+  and `ownership()` compared with `===`. A false major on a correct write is the
+  direction that teaches an operator to stop reading the check. The self-report
+  is normalised against `REPO` now, and the test EXECUTES the function on the
+  same engine `wfdry` uses rather than asserting on the template's text — a text
+  assertion passes with the comparison reverted.
+- *And the pipe refusals say what an operator's instinct gets wrong.* A findings
+  row carrying a literal `||` inside a backtick code span was refused correctly
+  and by a message that named the escape and not the misconception: the row is
+  split before any markdown exists, so a code span is not an escape. All three
+  refusals say so now.
+- *Three manual edits, and two of them are about a number nobody re-ran.*
+  `gate-checks.md` §D: a pinned number is re-derived by the round that READS a
+  clause resting on it, not only by the round that wrote it — A4's baseline
+  recorded 29 passing packages against a real 28, so a clause comparing against
+  it would have gone RED against a correct implementation, and it survived four
+  rounds including two criterion lenses instructed to test every clause against a
+  correct implementation as well as a wrong one; and, from the same incident, a
+  clause is written so that no judgement is available, because that gate's
+  acceptance agent reasoned past the discrepancy to the right answer by a route
+  nobody can check. §I: after a batch applying SEVERAL fixes, re-read the region
+  as a reader of the ARTIFACT rather than of the patch — two fixes from one batch
+  cancelled each other (a `halted()` guard made a `died` flag unreachable) and
+  the next round's blocker was the same shape one level up; both are invisible in
+  the diff and immediate in the composed result, and two of that gate's eight
+  rounds exist for the mechanism. And SKILL.md's routing table gained a row for a
+  TRANSITION rather than an activity: every row read "you are about to X", so an
+  operator who had correctly read three of four references reached the end of the
+  decision rounds having never been sent to `pre-flight-gate.md`, the only file
+  stating the whole sequence, and told their principal that `wf close` — step 4,
+  the end of everything — came next while the script was unwritten. Three
+  provenance entries, M-38 to M-40, and the checkbox floor moves to 152.
+  `make check-docs` also scans SKILL.md for `[M-nn]` citations now: it was
+  computing the used set over `references/` alone, so a citation in the front
+  door resolved against nothing.
+
 ## Hard rules
 
 - **origin is Gitea** `ssh://git@git.sumka.site:2222/yakov/wfgate.git`, branch
@@ -1508,18 +1587,27 @@ fixtures for the non-ASCII anchor detector).
 
 ## State as of 2026-09-01 — read before trusting
 
-- **A SIXTEENTH gate is IN FLIGHT while this is written** —
-  `~/projects/gates/mocker-a4-mcp-reach`, 101 commits, 5 rounds by its own
-  `wf stats`, 51 findings, 15 blockers, a decision document closed at
-  9 -> 6 -> 0 -> 0 and an orchestration script added at round 5. It is not a
-  closed gate and has no write-up; it is named here because this file's census
-  missed it for a whole wave and a measurement over "the eleven workspaces that
-  carry a lens record" was taken while it was GROWING — 8 prompts to 13 inside
-  one hour. A corpus reading taken during a live gate is a reading at a moment,
-  and the moment goes in the sentence.
-- **FIFTEEN gates have run entirely through `wf` and closed, and the newest is
-  P4a** (`docs/feedbacks/FEEDBACK-p4a.md`, `~/projects/gates/mocker-p4a-triage`,
-  210 commits): 16 rounds by its own `wf stats`, 97 findings, 30 blockers, 127
+- **SIXTEEN gates have run entirely through `wf` and closed, and the newest is
+  A4** (`docs/feedbacks/FEEDBACK-a4.md`, `~/projects/gates/mocker-a4-mcp-reach`,
+  143 commits): 8 rounds by its own `wf stats`, 70 findings, 20 blockers, 85
+  edits over 916 changed lines, 2.8 h, median round 19.5 min, authoring 2.1 min.
+  It is the first gate to carry a decision document AND its orchestration script
+  in ONE workspace with independent descents — 9 -> 6 -> 0 -> 0 over rounds 1-4,
+  then 2 -> 2 -> 1 -> 0 over rounds 5-8 after `wf add` brought the script in —
+  and its first script review filed 7 findings and 2 blockers against a corpus
+  precedent of 38 and 12, on a script authored after four rounds had pinned the
+  method signature, the SQL predicate, the error taxonomy and every Fails-if
+  clause. **It LAUNCHED and came back `green: true`** — 13 agents, 1.5 h, 1.83 M
+  subagent tokens, no dead agent, no bar failure, the four bars re-run by hand
+  afterwards. Its cost meter prices rounds 2, 6 and 7 only: round 1 adds an
+  artifact and rounds 3 and 4 were re-frozen over their own repairs, knowingly,
+  for cheap textual fixes. Its numbers were taken while it was still growing
+  once already — a census over "the eleven workspaces that carry a lens record"
+  was taken while this gate went from 8 prompts to 13 inside one hour — so read
+  the command, not this bullet. This wave's own reproduction found three of its
+  five claims wrong or incomplete, including the flagship.
+- **P4a ran before it** (`docs/feedbacks/FEEDBACK-p4a.md`,
+  `~/projects/gates/mocker-p4a-triage`, 210 commits): 16 rounds by its own `wf stats`, 97 findings, 30 blockers, 127
   edits over 1195 changed lines, 9.4 h over the 13 review rounds at a median of
   21.5 min, authoring 4.3 min, over THREE artifacts — a decision document gated
   for six rounds, an orchestration script added at round 7 and gated for four
@@ -1739,9 +1827,10 @@ fixtures for the non-ASCII anchor detector).
   `mocker-p3b-resources`, `mocker-p3c-ref-recipe`, `mocker-p3d-datasnap`,
   `mocker-p3e-nested`, `mocker-p3f-rederive`, `mocker-p3g-deep-nesting`,
   `mocker-p3h-basepath`, `mocker-p4a-triage`, `mocker-a4-mcp-reach`
-  (153 / 203 / 247 / 82 / 173 / 131 / 183 / 123 / 106 / 210 / 101 commits, all counts
-  re-derived 2026-09-01 with `git rev-list --count HEAD` — the last is a gate
-  still RUNNING, so its count is a moment and not a total — 128 stood here for one
+  (153 / 203 / 247 / 82 / 173 / 131 / 183 / 123 / 106 / 210 / 143 commits, all counts
+  re-derived 2026-09-01 with `git rev-list --count HEAD` — the last stood at 101
+  one wave ago, while that gate was still running, so a count taken then is a
+  moment and not a total — 128 stood here for one
   wave and was the count BEFORE P3e's run round was filled, inherited by the next
   wave from the bullet whose own next sentence says not to; 117 for P3g lasted
   exactly one wave the same way; and P3h's 95 lasted exactly one wave for the

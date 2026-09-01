@@ -414,6 +414,21 @@ compiles, passes every test, and does nothing.
       is what found it, at the one step where changing production code is usually forbidden [M-36].
       This is the bars rule one row up applied to every other number in the section: derived from a
       reading of the code, a count is an assertion; run, it is an observation.
+- [ ] **And it is re-derived by the round that READS a clause resting on it, not only by the round
+      that wrote it.** A baseline table is measured ONCE, early, by one agent, and every later round
+      reads it as an OBSERVATION rather than as the claim it is. Measured on the gate that shipped
+      one: the baseline recorded 29 passing packages against a real 28, so the clause "fails if
+      `make test` reports fewer passing packages than the 29 recorded" would have gone RED against a
+      CORRECT implementation — four rounds passed it, two of them carrying a criterion lens under the
+      explicit instruction to test every clause against a correct implementation as well as a wrong
+      one, and the number was wrong in exactly the direction those lenses were told to look [M-39].
+      Re-running the command costs seconds; reading the table costs the round nothing and proves
+      nothing. **And write the clause so that no judgement is available to the acceptance agent.**
+      That gate's acceptance step found the discrepancy, classified it as a pre-existing
+      documentation error rather than a regression, filed a NOTE and returned green — the outcome was
+      right and the route is not, because a criterion an agent can argue with is weaker than one it
+      cannot. Every clause of that gate a reviewer could not argue with survived four rounds
+      unchanged.
 - [ ] **The bars are MEASURED on the untouched tree before any clause is written, and a clause says
       "no worse than the recorded number" rather than "green".** An acceptance section over an
       existing codebase compares against what that codebase does TODAY, and what it does today is not
@@ -911,6 +926,16 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       than a NOTE: "we decided this was not a defect and did not look" asserts nothing yet. The same discipline is what makes a HALF-taken finding legible — say which half
       was taken and what the other half asserted, because the untaken half is what the next reviewer
       meets first.
+- [ ] **After a batch that applies SEVERAL fixes, re-read the affected region as a reader of the
+      ARTIFACT, not as a reader of the patch.** Two fixes from one batch can cancel each other and
+      the diff shows neither: measured on one gate, a `halted()` guard added for one finding made the
+      `died` flag added for another provably unreachable — same file, twenty minutes apart, both
+      hunks locally correct — and the next round's blocker was the same shape one level up, a
+      reconciliation written against one sentence of a frozen prompt while a blunter second sentence
+      stood two paragraphs below it. Both rounds existed for that mechanism alone [M-40]. What the
+      operator reads after an apply is the diff, and a defect BETWEEN two hunks is invisible there
+      and immediate in the composed result — the whole helper, the whole prompt an agent receives.
+      This is why a round's own fix is the edit most likely to file the next round's blockers.
 - [ ] **A finding that asserts something a command can RUN is reproduced before it is fixed.**
       CONFIRMED, with the command and what it printed. Or NOT REPRODUCED, which goes through the
       refusal record above rather than into a fix. Or NOT ENOUGH DETAIL, which is a question for the

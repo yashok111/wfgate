@@ -1281,7 +1281,7 @@ func cmdRoundRecord(args []string) error {
 			if r.TailCol > 0 {
 				where = fmt.Sprintf(" — the 4th pipe is at column %d (characters, from the start of the line) and everything after it is %s", r.TailCol, trunc(r.Tail, 60))
 			}
-			return fmt.Errorf("line %d is a table row of %d cell(s), not 4 (%s)%s; a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\| — nothing was recorded",
+			return fmt.Errorf("line %d is a table row of %d cell(s), not 4 (%s)%s; a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\|, and a backtick code span is NOT an escape (the row is split before any markdown exists) — nothing was recorded",
 				r.Line, r.Cells, trunc(r.Raw, 60), where)
 		}
 		// The scale is closed on the write path and open on every read path.
@@ -1559,7 +1559,7 @@ func cmdFreeze(args []string) error {
 		open := 0
 		for _, r := range rows {
 			if r.Malformed {
-				return fmt.Errorf("round %d: %s line %d is a table row of %d cell(s), not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\|",
+				return fmt.Errorf("round %d: %s line %d is a table row of %d cell(s), not 4 (%s); a row the parser cannot split cannot be checked for an open blocker — escape a literal pipe as \\|, and a backtick code span is NOT an escape",
 					rn, fp, r.Line, r.Cells, trunc(r.Raw, 60))
 			}
 			if r.Placeholder() {
@@ -3262,24 +3262,19 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 						}
 					}
 				}
-				if anySection {
-					sawSection = true
-					if !hitSection {
-						why = append(why, fmt.Sprintf("changed %s but NOT any section it cites: %s", p, strings.Join(uniqueStrings(resolved), ", ")))
-					}
-					continue
-				}
-				// No section: fall back to the lines, where the finding cites
-				// them. A citation is a RANGE and the question is overlap, not
-				// the first line: `p3h.mjs:454-459` was reported not closed by a
-				// commit whose hunks covered 450-453 and 455-457, because 454 is
-				// the one unchanged line inside the span the finding drew. All
-				// four line misses of that gate were that shape.
+				// The LINES the finding cites, read whether or not it also names
+				// a section. A citation is a RANGE and the question is overlap,
+				// not the first line: `p3h.mjs:454-459` was reported not closed
+				// by a commit whose hunks covered 450-453 and 455-457, because
+				// 454 is the one unchanged line inside the span the finding
+				// drew. All four line misses of that gate were that shape.
+				lineHit, lineChecked, lineUnmappable := false, false, 0
+				var lineMiss []string
 				for _, rng := range named[p] {
 					if rng[0] == 0 {
 						continue
 					}
-					sawLine = true
+					lineChecked = true
 					covered, unmappable := false, false
 					for _, sha := range r.Shas() {
 						at, edited, moved := shifted(n, sha, p, rng)
@@ -3298,11 +3293,44 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 					}
 					switch {
 					case covered:
+						lineHit = true
 					case unmappable:
-						preEdited++
+						lineUnmappable++
 					default:
-						why = append(why, fmt.Sprintf("changed %s but not %s", p, lineSpan(rng)))
+						lineMiss = append(lineMiss, fmt.Sprintf("changed %s but not %s", p, lineSpan(rng)))
 					}
+				}
+				// The two halves are ORed, and the section half does not
+				// PREEMPT the line half. It used to: any section id anywhere in
+				// the finding text made the check `continue` before the lines
+				// were read, so a finding that cited `decisions.md:607-611` and
+				// mentioned D11 in passing was reported as missing D11 while the
+				// commit had covered the lines it actually cited. One of the
+				// three misses of the gate that found this; the same comment
+				// above already says a section mentioned in passing is not a
+				// finding about it, and this is that sentence reaching the
+				// verdict.
+				if anySection {
+					sawSection = true
+				}
+				if lineChecked {
+					sawLine = true
+				}
+				switch {
+				case anySection && hitSection:
+					// The strongest evidence there is: skip the lines rather
+					// than complain about a span inside a section that moved.
+				case lineHit:
+					// The finding's own line citation landed. Counting the
+					// pre-edited spans here would print a note about a closure
+					// this branch judged.
+					preEdited += lineUnmappable
+				default:
+					preEdited += lineUnmappable
+					if anySection && !hitSection {
+						why = append(why, fmt.Sprintf("changed %s but NOT any section it cites: %s", p, strings.Join(uniqueStrings(resolved), ", ")))
+					}
+					why = append(why, lineMiss...)
 				}
 			}
 			// Counted ONCE per closure, and only when neither the section nor

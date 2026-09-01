@@ -618,3 +618,47 @@ and a sentence naming "non-blank" with the 55 beside it is carrying one of each.
 The corpus is LIVE: a gate was being written while this was taken and grew from 8 to 13 prompts inside
 one hour, which is why 309/16 120 and 313/16 380 are the same reading at two moments. Re-run the
 command; do not inherit the number.
+
+## M-38 — three references read, the fourth never opened, and the next step stated wrong
+
+Why the routing table carries a row for a TRANSITION and not only for an activity. Measured on the
+A4 gate, 2026-09-01: the operator read `interview.md`, `gate-harness.md` and `round-discipline.md` —
+correctly, each for the activity in front of them — and never opened `pre-flight-gate.md`, which is
+the only file stating the whole sequence. With the decision rounds gone quiet they told their
+principal that `wf close` came next; `wf close` is step 4, the end of everything, and the
+orchestration script had not been written. A human caught it. No check did, and none can: every
+mechanical guard in this toolchain watches the ARTIFACTS.
+
+The generalisable half is not "read more". A reference read for activity A does not say what follows
+A, and an agent that has read three feels materially better informed than one that has read none —
+which is exactly when it stops checking. The table's rows all read "you are about to X"; the state
+"X just finished" had no row.
+
+## M-39 — a baseline number measured once, read as an observation by every round after
+
+Why section D re-derives a pinned number in the round that READS the clause, not only in the round
+that wrote it. Measured on the A4 gate, 2026-09-01: its acceptance baseline recorded 29 passing
+packages; `make test` reports 28, at the baseline commit and after the slice. The clause "fails if
+`make test` reports fewer passing packages than §3's 29" would therefore have gone RED against a
+correct implementation — the direction section D names as the worse one. It survived four rounds,
+two of which carried a criterion lens under the explicit instruction to test every clause against a
+correct implementation as well as a wrong one.
+
+The acceptance agent then found the discrepancy at run time, classified it as a pre-existing
+documentation error rather than a regression, filed it as a NOTE and returned `goalMet: true` — the
+outcome correct, the route not. That gate's own evidence is what picks the reading: every clause it
+wrote that a reviewer could not argue with survived four rounds unchanged.
+
+## M-40 — two fixes from one batch cancelling each other, invisible in the diff
+
+Why the fix protocol re-reads the composed RESULT after a multi-fix batch. Measured on the A4 gate,
+2026-09-01: round 6's two blockers were both made by round 5's own fixes, and one was two fixes from
+the SAME batch cancelling each other — the `halted()` guard added for finding 3 made the `died` flag
+added for finding 7 provably unreachable, written twenty minutes apart in one file, each hunk
+locally correct. Round 7's blocker is the same shape one level up: a reconciliation written against
+one sentence of a frozen prompt while a second, blunter sentence stood two paragraphs below it,
+unqualified. Two of that gate's eight rounds exist for this mechanism.
+
+Neither is visible in the DIFF, which is what an operator reads after an apply. Both are immediate
+in the composed result — the whole helper, the whole prompt an agent receives.
+
