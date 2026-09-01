@@ -154,9 +154,9 @@ func cmdNewLens(args []string) error {
 
 func lensKindPhrase(kind string) string {
 	if kind == "delta" {
-		return "a DELTA round — you do NOT re-read the whole artifact, you read the diff and the brief"
+		return "This is a DELTA round: you do NOT re-read the whole artifact. You read the diff\nand the brief, and your findings say what you did not re-read."
 	}
-	return "a FULL round — the artifact is read whole, because no earlier round has read it"
+	return "This is a FULL round: no earlier round has read this artifact, so it is read\nwhole."
 }
 
 // lensAsksBlock is the three questions a delta round may never drop [R3]. A
@@ -176,7 +176,6 @@ section 0b defines them:
   FIX-INDUCED  — what did the previous round's own fix break that was not broken
                  before? Say so in the row; the operator marks it [fix-induced].
   RIPPLE       — which untouched paragraphs still argue from what the fix changed?
-
 `
 }
 

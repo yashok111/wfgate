@@ -117,7 +117,7 @@ fi
 echo
 echo "installed from $ROOT:"
 echo "  wf, wfcheck, wfdry $("$HOME/.local/bin/wf" version | cut -d' ' -f2)  -> ~/.local/bin/"
-echo "  wfgate plugin               -> workflow-gate skill + PreToolUse hooks (Workflow, Write|Edit)"
+echo "  wfgate plugin               -> workflow-gate skill, the gate-sweep agent, PreToolUse hooks (Workflow, Write|Edit)"
 echo
 echo "verify in a NEW session: the skill list shows wfgate:workflow-gate; wf docs | head"
 echo "  (wf docs names any reference where the installed plugin has drifted from this binary)"
