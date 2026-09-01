@@ -954,6 +954,71 @@ printed a usage error naming the very flag that was passed.
 agent that has confused the workspace with the repository under review must be
 stopped here, not discovered by a commit in the wrong tree.
 
+**The twenty-first wave — P4a, and the three RUN rounds that each found what the
+review rounds had not** (`docs/feedbacks/FEEDBACK-p4a.md`). 16 rounds, 97
+findings, 30 blockers, 127 edits over 1195 changed lines, 9.4 h of review across
+13 review rounds at a median of 21.5 min, three `-kind run` rounds counted apart
+at 124.7, 38.3 and 8.5 min, two artifacts — a decision document gated for six
+rounds, an orchestration script added at round 7 and gated for four more, then a
+THIRD artifact (an evidence-only script derived from the second by deletion)
+added at round 12. Prediction basis 5.5 per 100 changed lines against a gate
+actual of 8.1. NOT reproduced here — every claim below is what the gate reported
+and is filed for a maintainer to reproduce before acting, which this corpus's
+own nineteenth wave says is where three of five claims died.
+
+- *`wfdry` prescribed the keyword the live launch refuses.* Round 8's dry run
+  WARNed that a boolean outside its pass vocabulary reads false in every mode and
+  advised `'x-pass': true` on the two booleans of an evidence-row schema. The
+  launch refused the whole schema — `strict mode: unknown keyword: "x-pass"` —
+  killing the first evidence agent at spawn and, through the script's own abort,
+  the other two: 26 of 27 acceptance properties came back with no evidence after
+  1.9 M subagent tokens and 116 minutes. The remedy that works is to NAME the
+  fields inside the runner's vocabulary (`proven`, `clean`) rather than annotate
+  them. Note the sixteenth wave already carries `x-pass` on ARRAYS; this is the
+  same keyword failing at the other end, in the LAUNCH validator rather than in
+  `wfdry`.
+- *`gate-checks.md` section E names the class and not this instance.* Section E
+  is written about what the dry runner cannot SEE. This defect is the opposite:
+  the runner saw correctly, and its REMEDY was invalid in the harness it stubs. A
+  `wfdry` remedy that changes a schema is a claim about the launch validator,
+  which `wfdry` does not run.
+- *A decision document's arithmetic is a falsifiable claim about the code and
+  nothing made it be run.* The acceptance section pinned a grep count at six.
+  Six was unreachable by any correct implementation — the function whose call the
+  rule required deleted emits one row per suggestion and needs the list its
+  replacement does not return. It survived five review rounds because it was
+  internally consistent, and the LAUNCH found it, at the one step where changing
+  production code is usually forbidden. Proposal: every number an acceptance
+  property pins is produced by RUNNING its command at the moment the property is
+  written, and the run recorded.
+- *`wf round close` takes only a commit while `wf round record` reports
+  `closed by prose` as a first-class category.* A NOTE row asserts no failure and
+  has nothing to close; its cell can only be filled by editing the ledger by hand
+  and re-recording — the one path the harness exists to remove. Three
+  round-trips in this gate.
+- *`wf delta` saves the brief only under `-save`, and nothing says so where it
+  matters.* `wf round new` writes a findings scaffold and no brief; an operator
+  who runs `wf delta` reads a correct diff on stdout and has no reason to think a
+  file was expected. A reviewer handed a lens naming the absent
+  `rounds/rN/brief.md` reconstructed it from the previous ledger and the tag diff
+  and reported the gap. Either `wf round new` writes the brief or `wf delta`
+  saves by default.
+- *The cost meter prices a `-kind run` round against its fix's line count.*
+  Round 14 prints `80.0 finding(s) per 100 changed line(s)`: four findings from a
+  five-agent launch over the 5 lines its fix happened to touch. Run rounds are
+  already excluded from the round-time median and from the prediction basis; the
+  ratio should exclude them for the same reason.
+
+And one number this gate contributes that no previous one could: **resume makes
+a run round an instrument rather than a destination.** Round 16 replayed three
+mutation agents and a fingerprint from cache and ran only the one changed prompt
+live — 110 k subagent tokens and 8.5 min against round 14's 564 k and 38.3 — and
+that made it a controlled experiment with a single live variable, in which the
+two blockers the previous launch had produced did not return. Three run rounds,
+and the first clean one is the sixteenth; the argument this gate's numbers make
+is for reaching for a launch EARLIER, not for treating it as the thing a gate
+builds toward.
+
 ## Hard rules
 
 - **origin is Gitea** `ssh://git@git.sumka.site:2222/yakov/wfgate.git`, branch
