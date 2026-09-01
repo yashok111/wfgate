@@ -89,7 +89,7 @@ const FINDINGS_SCHEMA = {
         additionalProperties: false,
         required: ['severity', 'file', 'summary', 'failure'],
         properties: {
-          severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'], description: 'the level is decided by what catches it downstream, never by how bad it reads: blocker = no later gate catches it, and vacuity STARTS here — a finding that makes a guard or a tripwire vacuous is classified blocker and rides only where you can name the gate that catches it; major = a real defect and you NAME the later gate that catches it; minor = a real defect cheaper to leave standing than to loop for; note = not a defect' },
+          severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'], description: 'the level is decided by what catches it downstream, never by how bad it reads: blocker = no later gate catches it, and vacuity STARTS here — a finding that makes a guard or a tripwire vacuous is classified blocker and rides only where you can name the gate that catches it; major = a real defect and you NAME the later gate that catches it; minor = a real defect cheaper to leave standing than to loop for; note = not a defect, and an OPEN question is not one -- a row that cannot state its own fix says which observation settles it and who owns the call, and it is a blocker' },
           file: { type: 'string', description: 'repo-relative path, with :line when known' },
           summary: { type: 'string', description: 'one sentence stating the defect' },
           failure: { type: 'string', description: 'concrete inputs or state leading to the wrong outcome, not a restatement of the summary' },

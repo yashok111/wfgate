@@ -903,7 +903,12 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       condition cannot be stated is a deferral rather than a refusal, and the row SAYS so in its text
       and KEEPS its level — the reclassification to NOTE above is earned BY the reversal condition,
       and a row with none still asserts a defect. Either way the level stays on the closed scale,
-      because `wf round record` refuses any other word and records nothing at all. The same discipline is what makes a HALF-taken finding legible — say which half
+      because `wf round record` refuses any other word and records nothing at all. A deferred BLOCKER
+      therefore LOOPS the round like any other, and the only two ways out are the ordinary ones:
+      state a reversal condition and it becomes the refusal above, or close it. Never by prose in
+      `closed by` — `wf freeze` reads that cell, and a prose closure passes its open-blocker check.
+      And a refusal whose reversal observation nobody has TAKEN is section 0c's open question rather
+      than a NOTE: "we decided this was not a defect and did not look" asserts nothing yet. The same discipline is what makes a HALF-taken finding legible — say which half
       was taken and what the other half asserted, because the untaken half is what the next reviewer
       meets first.
 - [ ] **A finding that asserts something a command can RUN is reproduced before it is fixed.**

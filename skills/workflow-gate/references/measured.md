@@ -593,3 +593,28 @@ into that text in the same commit. State what was OBSERVED and by which command 
 an entry nobody can re-derive is held to the same bar this manual holds a reviewer's row to. When a
 rule is retired, its entry stays: the record of why something was believed is what stops the next
 gate re-arguing it.
+
+## M-37 — a third of every reviewer brief is the manual, re-authored by hand
+
+Why `wf new-lens` points at the pinned `gate-checks.md` instead of restating it. Measured over the
+lens prompts banked in the gate workspaces on the box that built this tool, 2026-09-01: **313 prompts,
+16 380 non-blank lines, and the lines recurring in five or more DISTINCT prompts are 29.9% of them**
+(19.9% at ten or more). 200 of them name `gate-checks` and exactly ONE names `wf docs`, so the
+recurring third is the rules re-typed rather than pointed at -- and it goes stale in place: **26 carry
+the severity scale's NOTE line in a wording the manual has since replaced**, which no check reaches,
+because `wf check dup` runs over artifacts and a prompt is not one.
+
+The reading, because two of this measurement's first three readings did not reproduce. Population:
+`find ~/projects/gates ~/gates -mindepth 4 -maxdepth 4 -path '*/rounds/r*' -name 'lens-*.md'` --
+depth-pinned, or `find` descends into the `close/rounds/` copies a closed gate banks and doubles the
+corpus to 609. Non-blank lines: `l.strip()` per line, blanks dropped. Recurrence: DOCUMENT frequency,
+the number of distinct prompts a line's stripped text appears in; the numerator is line INSTANCES
+whose text clears the threshold, the denominator all non-blank lines. **Strip before keying**, not
+after: a first reading built the frequency table from `set(lines)` and keyed on the stripped text, so
+two lines differing only in leading whitespace incremented one key twice and the share came out
+32.8%. And a median is 44 non-blank lines per prompt or 55 lines including blanks -- two readings,
+and a sentence naming "non-blank" with the 55 beside it is carrying one of each.
+
+The corpus is LIVE: a gate was being written while this was taken and grew from 8 to 13 prompts inside
+one hour, which is why 309/16 120 and 313/16 380 are the same reading at two moments. Re-run the
+command; do not inherit the number.

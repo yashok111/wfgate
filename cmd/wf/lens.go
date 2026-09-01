@@ -420,8 +420,8 @@ func cmdRoundLens(args []string) error {
 	// -- with the difference that this one is 40 lines long and reads like a
 	// brief. `-name`, `-model` and `-asks` are each refused when they say
 	// nothing; the prompt is the fourth field and had no such refusal.
-	if bytes.Contains(b, []byte(lensAimMarker)) {
-		return fmt.Errorf("%s still carries the `wf new-lens` marker line %q: the scaffold's fixed half is banked and its VECTOR is not, which records that a lens ran and not what it was aimed at. Replace that line with the aim, or bank the prompt the vector actually received", pos[0], lensAimMarker)
+	if bytes.Contains(b, []byte(lensAimMarker)) || bytes.Contains(b, []byte("<<<")) && bytes.Contains(b, []byte(">>>")) {
+		return fmt.Errorf("%s still carries the `wf new-lens` marker line %q (or a reworded one — any prompt holding both `<<<` and `>>>` is refused, because an exact-byte check is walked past by an operator who EDITS the marker instead of replacing it): the scaffold's fixed half is banked and its VECTOR is not, which records that a lens ran and not what it was aimed at. Replace that line with the aim, or bank the prompt the vector actually received", pos[0], lensAimMarker)
 	}
 	// Same inference, same announcement as `wf round record`: the default is
 	// the OPEN round, so banking a vector after the next round was opened lands

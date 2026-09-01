@@ -74,8 +74,9 @@ judgement.
 
 ## Architecture
 
-Thirteen units, each one decision — nine Go packages under `internal/`, plus
-the emitted template, the dispatcher, the hooks and the skill. Re-count them
+Fifteen units, each one decision — nine Go packages under `internal/`, plus
+the TWO emitted templates, the dispatcher, the hooks, the skill and the agent.
+Re-count them
 against `ls internal/` before quoting the number; it said "eleven" for four
 units, which is this file's own most-banked defect class committed in its
 opening line.
@@ -108,6 +109,20 @@ opening line.
 - `internal/apply` — the all-or-nothing batch of textual edits.
 - `internal/check` — the deterministic checks: `cite.go`, `dup.go`,
   `drift.go`, `rules.go`.
+- `templates/lens.md` — the reviewer's brief, embedded and emitted by
+  `wf new-lens`. It carries what is true of EVERY round — the reading list by
+  path, the three asks, the four level words from `ws.Levels`, the output
+  contract — and POINTS at the workspace's pinned `gate-checks.md` §0 and §0c
+  rather than restating them, because a rule restated in a prompt goes stale
+  where `wf check dup` cannot reach it: a prompt is not an artifact [M-37]. The
+  aim is left as a marker line and `wf round lens` refuses to bank a prompt
+  still carrying it.
+- `agents/gate-sweep.md` — the plugin's mutation-sweep reviewer, and the ONLY
+  agent definition this repo ships. It pins the tool list and nothing else: the
+  case for pinning a MODEL was refused on measurement (the sonnet rule shows
+  88 opus / 0 sonnet before it and zero opus in the five gates after the one it
+  landed in, so a pin buys nothing), and `isolation` is a parameter of the Agent
+  CALL rather than frontmatter, so the definition SAYS to pass it.
 - `templates/script.mjs` — the orchestration-script harness, embedded and
   emitted by `wf new-script`. Measured over the six tracked scripts of one
   repository (10 823 lines): the blocks recurring in five or more of them hold
@@ -1201,6 +1216,101 @@ flagship one turned out to reach a shipped feature nobody had ever launched.
   so it would have passed with the note written to stdout — the exact failure its
   comment says it guards.
 
+**The twenty-third wave — the reviewer's brief is a scaffold, and the corpus
+refused the other three things the wave was about to build.** No gate feedback
+behind it: the question was whether gate reviewers should be able to ASK the
+operator mid-round, and the answer measured out to no — a reviewer's question
+IS a finding, the row is recorded and checkable where a mid-round question is
+an input nothing holds, and the two vectors that actually needed something got
+it in a different shape.
+
+- *An OPEN question filed by a reviewer is a BLOCKER, and the scale now says so
+  where the level is chosen.* `gate-checks.md` §0 listed "a question" under NOTE
+  while §0c, 115 lines down, said "it is a QUESTION, not a NOTE" and named no
+  replacement — and the scale is CLOSED, so a reviewer told which level NOT to
+  use was left to derive one, which is how 1065 findings grew four vocabularies.
+  §0's discriminator was also failing on its own population: "with no failure
+  attached" is unanswerable exactly when whether something fails is the open
+  question, so it is now "a question whose answer would change nothing". §0c
+  DERIVES the level rather than choosing it — §0 holds a MAJOR to naming the
+  later gate that catches the defect, and no gate catches a decision nobody
+  took — and §I's deferral KEEPS its level, with the exit stated, because a
+  deferred BLOCKER loops the round and `wf freeze` refuses while it stands.
+- *`wf new-lens`, and the measurement that chose it over three other shapes.*
+  Roughly a third of every banked reviewer brief is the manual RE-AUTHORED by
+  hand, 200 of the prompts name `gate-checks` and exactly ONE names `wf docs`,
+  and 26 carry a severity-scale line the manual has replaced — invisible,
+  because `wf check dup` runs over artifacts and a prompt is not one. The
+  numbers, their reading and the three readings that did NOT reproduce are
+  banked in `measured.md` [M-37] rather than here or in the manual. What ships
+  emits the fixed half and POINTS at the pinned `gate-checks.md` §0 and §0c
+  instead of restating them; the aim is a marker line `wf round lens` refuses to
+  bank. It is NOT the measurement that justified `wf new-script`, and the
+  comment says so: that one counts block NAMES at five of six and records the
+  blocks as re-authored at 0.05 similarity, this one counts identical line text
+  at five of 313.
+- *One agent definition, and the corpus refused the other.* `agents/gate-sweep.md`
+  pins a tool list and nothing else. The case for pinning a MODEL was killed by
+  the roster: across the banked lens records the sonnet rule shows 88 opus and
+  ZERO sonnet before the day it was set, and zero opus in the five gates after
+  the one it landed in — it is kept by hand, and a pin buys nothing. `isolation`
+  is a parameter of the Agent CALL rather than frontmatter, so the definition
+  says to pass it instead of claiming to carry it.
+- *And the wave earned its review round, for the seventeenth time running, and
+  the flagship was again the thing built rather than corrected.* The refusal the
+  whole feature is described by — never write into `rounds/rN/`, where a file
+  clears the freeze and close refusals demanding a round was read — **did not
+  fire for a relative `-o`**, which is the spelling an operator types. It
+  compared `filepath.Dir(dst)` against an ABSOLUTE round directory, and the test
+  that pinned it built an absolute path: a guard armed on the one input the
+  defect does not take, which is this file's own floor-on-the-wrong-field rule
+  wearing a path. Both refusals compare RESOLVED paths now, across every round
+  rather than the one being briefed. Beside it: `-o` was bounded by nothing and
+  would write into the read-only TARGET; the template POINTED at §0 and
+  restated its decision rule four lines below the pointer, in a file
+  `make check-docs` does not stage, so the command built to stop unchecked
+  copies emitted one; `-asks` was validated and then changed nothing while its
+  help said it shaped the reading list; a `-round -3` was reported as "not
+  given"; and a `-round 99` was accepted over a gate with one round while
+  `wf round lens` refuses exactly that. Of the numbers, the wave's own headline
+  share was wrong: 32.8% came from building the frequency table over
+  `set(lines)` while keying on the STRIPPED text, so two lines differing only in
+  leading whitespace incremented one key twice. It is 29.9%. And "16 120
+  non-blank lines, median 55" carried one reading of each — the non-blank median
+  is 44.
+  The sweep ran 34 mutations with 22 surviving, and every survivor was a guard
+  nothing proved — the positional check, the `-kind` and `-asks` refusals, both
+  halves of "never over a file that exists", `MkdirAll`, the no-artifact reading
+  line — including the wave's own central decision, because a mutation making
+  EVERY round default to `full` passed all five bars. Ten cases were added and
+  each was verified to kill its mutation; one wiring is documented as
+  UNKILLABLE with the reason, because freezing `strings.Join(ws.Levels, ", ")`
+  to the literal it currently produces passes any test that compares against
+  that literal. Two of the wave's own assertions were self-referential and
+  passed with their claim reverted — one compared the brief against the same
+  expression the production line uses, the other asserted the template contains
+  `lensAimMarker`, so narrowing the constant to `"<<<"` moved both sides
+  together. Both are literals now, beside the source.
+  The external vector found the three the others did not. A failed write left a
+  PARTIAL brief on disk, which is still a `lens-*.md` and would be banked
+  verbatim — the `wf round close` rollback of the wave before, one command over.
+  The marker refusal was exact-byte, so an operator who REWORDS the line instead
+  of replacing it walks past it; any prompt holding both `<<<` and `>>>` is
+  refused now. And the brief asked for a `where` COLUMN, which keeps the path
+  out of the finding text — and `wf check closure` reaches a closure only
+  through the path the finding names, so the transcription would have dropped
+  the one thing that check needs. The brief asks for the ledger's own four
+  columns now, with the pipe-escaping rule beside them.
+  One more copy of the scale was found by the same vector: `templates/script.mjs`
+  defines the four levels in a schema `description`, where nothing can point,
+  and its `note` clause carried no open-question rule — the fourth copy
+  disagreeing with the three this wave had just reconciled.
+  And the wave made the mistake its own manual names: the tree was EDITED while
+  the external vector was reading it. The sweep vector was isolated and the
+  external one was not, so a third of its findings describe code that had
+  already changed. Nothing was mis-triaged, and the barrier rule is about
+  reviewers of one round, which this was.
+
 ## Hard rules
 
 - **origin is Gitea** `ssh://git@git.sumka.site:2222/yakov/wfgate.git`, branch
@@ -1225,7 +1335,7 @@ flagship one turned out to reach a shipped feature nobody had ever launched.
   that agrees with itself. Written `R2`, never in the bracket form the check scans for. Run
   `wf check rules` over the manual AND these two files together when in doubt —
   it must report the manual's own 9 marked sites and nothing else.
-- **A change under `skills/` or `hooks/` bumps `version` in
+- **A change under `skills/`, `hooks/` or `agents/` bumps `version` in
   `.claude-plugin/plugin.json`.** `claude plugin update` is VERSION-keyed —
   measured: it copies nothing when the declared version is the one already
   installed, so a spec fix committed without a bump never reaches a session.
@@ -1398,7 +1508,16 @@ fixtures for the non-ASCII anchor detector).
 
 ## State as of 2026-09-01 — read before trusting
 
-- **FIFTEEN real gates have now run entirely through `wf`, and the newest is
+- **A SIXTEENTH gate is IN FLIGHT while this is written** —
+  `~/projects/gates/mocker-a4-mcp-reach`, 101 commits, 5 rounds by its own
+  `wf stats`, 51 findings, 15 blockers, a decision document closed at
+  9 -> 6 -> 0 -> 0 and an orchestration script added at round 5. It is not a
+  closed gate and has no write-up; it is named here because this file's census
+  missed it for a whole wave and a measurement over "the eleven workspaces that
+  carry a lens record" was taken while it was GROWING — 8 prompts to 13 inside
+  one hour. A corpus reading taken during a live gate is a reading at a moment,
+  and the moment goes in the sentence.
+- **FIFTEEN gates have run entirely through `wf` and closed, and the newest is
   P4a** (`docs/feedbacks/FEEDBACK-p4a.md`, `~/projects/gates/mocker-p4a-triage`,
   210 commits): 16 rounds by its own `wf stats`, 97 findings, 30 blockers, 127
   edits over 1195 changed lines, 9.4 h over the 13 review rounds at a median of
@@ -1613,15 +1732,16 @@ fixtures for the non-ASCII anchor detector).
   `check drift` is STILL unexercised live.
 - **The validation corpus DOES survive, and it is the best evidence this
   repository has.** The claim that it did not was stale and cost an
-  investigation an hour of archaeology before it was checked: **THIRTEEN** gate
+  investigation an hour of archaeology before it was checked: **FOURTEEN** gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
   `~/gates/p2f` (82 / 102 / 87 commits), and
   `~/projects/gates/mocker-a3-cas`, `mocker-p3a-resources`,
   `mocker-p3b-resources`, `mocker-p3c-ref-recipe`, `mocker-p3d-datasnap`,
   `mocker-p3e-nested`, `mocker-p3f-rederive`, `mocker-p3g-deep-nesting`,
-  `mocker-p3h-basepath`, `mocker-p4a-triage`
-  (153 / 203 / 247 / 82 / 173 / 131 / 183 / 123 / 106 / 210 commits, all counts
-  re-derived 2026-09-01 with `git rev-list --count HEAD` — 128 stood here for one
+  `mocker-p3h-basepath`, `mocker-p4a-triage`, `mocker-a4-mcp-reach`
+  (153 / 203 / 247 / 82 / 173 / 131 / 183 / 123 / 106 / 210 / 101 commits, all counts
+  re-derived 2026-09-01 with `git rev-list --count HEAD` — the last is a gate
+  still RUNNING, so its count is a moment and not a total — 128 stood here for one
   wave and was the count BEFORE P3e's run round was filled, inherited by the next
   wave from the bullet whose own next sentence says not to; 117 for P3g lasted
   exactly one wave the same way; and P3h's 95 lasted exactly one wave for the
@@ -1646,7 +1766,7 @@ fixtures for the non-ASCII anchor detector).
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
   workspace over any set of documents.
 - **The cost of a gate is now measured by the tool, and the answer moved the
-  work.** `wf stats -time`, re-pooled 2026-09-01 over the THIRTEEN unpruned
+  work.** `wf stats -time`, re-pooled 2026-09-01 over the thirteen unpruned
   workspaces with the current binary, over the 179 round spans of 199 that are
   under two hours: **median 24.2 min, middle half 17.6-32.2** (quartiles by the
   rank `int(n*0.25)+1`). The review segment is a median 89.9% of a round and the

@@ -1068,9 +1068,8 @@ reads [R2]. The scale is closed — wf round record refuses anything else:
   Cannot name one? Then it is a BLOCKER.
 - **MINOR** — a real defect whose cost, standing forever, is below the round it
   would take to close.
-- **NOTE** — not a defect: this row asserts that nothing here fails. An
-  observation, or a question whose answer would change nothing. A question
-  still OPEN is a BLOCKER, not a NOTE, and section 0c says why.
+- **NOTE** — not a defect: this row asserts that nothing here fails. An open
+  question is not one; gate-checks.md sections 0 and 0c say which level it gets.
 
 Three rules about this table, all of which cost a live gate something. The finding
 text NAMES the artifact path it is about — wf check closure reaches a closure only

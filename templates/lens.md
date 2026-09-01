@@ -13,32 +13,34 @@ version this gate was briefed from — read THAT copy and not one you remember.
 {{ASKS}}
 YOUR VECTOR BEYOND WHAT IS ABOVE:
 
-  <<< WRITE YOUR VECTOR HERE — this is the half no scaffold can write, and
-  `wf round lens` refuses to bank a prompt that still carries this line. >>>
+  (Replace the line below. `wf round lens` refuses to bank a prompt that still
+  carries it; this parenthesis is prose and goes with it.)
+  <<< WRITE YOUR VECTOR HERE >>>
 
 **An empty findings list is the expected and legitimate result; manufacturing a
 finding to look thorough is one failure mode and downgrading a real one to make
 the count look good is the other.**
 
-SEVERITY — use exactly these four words and nothing else, as section 0 defines
-them: {{LEVELS}}. A level is decided by what catches the defect downstream,
-never by how bad it reads; a MAJOR row NAMES the later gate that catches it, and
-a row that cannot name one is a BLOCKER.
+SEVERITY — exactly these four words and nothing else: {{LEVELS}}. Section 0 of
+the file above defines them and decides which one a row gets; read it there.
 
-WHERE — every row names the place in the form the artifact is addressed by:
-`file:line` for a script, `path#anchor` or the section's own heading for a
-document, the roster name for a prompt. A finding that never wrote one hands the
-fixer the search you already did.
+WHERE and PATCH — section 0c says what every row must carry. Read it there too.
+Both are short, and neither is restated here on purpose: a rule restated in a
+prompt goes stale where no check can see it, which is the defect this scaffold
+exists to remove.
 
-PATCH — every row carries the sentence that should stand instead, the guard that
-is missing, or the term the criterion should read. Where the fix genuinely is
-not knowable from the row, say WHICH observation settles it and who owns the
-call; that row is a BLOCKER, not a NOTE.
+WHAT TO RETURN — a markdown table in the LEDGER's own four columns, one row per
+finding, and nothing after it:
 
-WHAT TO RETURN — a markdown table, one row per finding, and nothing after it:
+| # | level | finding | closed by |
+|---|-------|---------|-----------|
 
-| level | where | finding |
-|-------|-------|---------|
+Leave `#` and `closed by` empty; the operator numbers the rows and fills the
+closure. There is no `where` column ON PURPOSE: the place goes INSIDE the
+finding text, because `wf check closure` reaches a closure only through the path
+the finding names, and a separate column is exactly how that path gets dropped
+in transcription. A literal pipe inside a cell is written `\|` — the row is
+split on unescaped pipes.
 
 Return the table even when it is empty. Prose before it is fine; anything after
 it is not, because the operator transcribes from the last table in your output.

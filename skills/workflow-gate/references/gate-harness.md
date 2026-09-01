@@ -145,15 +145,17 @@ can drift apart from itself, and nothing here compares the copies.
    sections 0, 0b and 0c named; the artifacts; the round's `brief.md` where one exists), the three
    asks a delta round may never drop, the closed scale taken from the binary, and the table the lens
    returns -- and it leaves the VECTOR as a marker line, which `wf round lens` then refuses to bank.
-   It does NOT restate the scale, because a restated rule goes stale where nothing can see it:
-   measured over the 309 lens prompts banked across the eleven workspaces that carry any, the lines
-   recurring in five or more DISTINCT prompts are 32.8% of 16 120, 200 of the 309 name `gate-checks`
-   and exactly ONE names `wf docs` -- so the recurring third is the manual re-authored by hand, and
-   `wf check dup` cannot see it because a prompt is not an artifact. What it will never write is the
+   It does NOT restate the scale or what a row must carry -- it points at sections 0 and 0c -- because
+   a rule restated in a prompt goes stale where NOTHING can see it: `wf check dup` runs over artifacts
+   and a lens prompt is not one, so a brief carrying a superseded rule is invisible to every check
+   this harness has. Roughly a third of a banked brief is the manual re-authored by hand, and the
+   copies do go stale [M-37]. What it will never write is the
    aim: a gate's blocker has come from the lens whose instruction was deliberately under-specified
    beside the ones the round's findings aimed, and a scaffold that composed the vector would close
-   exactly that. The emitted file lives BESIDE the operator and never in `rounds/rN/`, where a file
-   is what clears the freeze and close refusals demanding a round was read by somebody.
+   exactly that. The emitted file lives BESIDE the operator and never in `rounds/rN/`: a `lens-*.md`
+   there is the shape the roster scans, so an unbanked scaffold reads as a vector that ran, and
+   `wf verify` reports it against the freeze. A brief left inside the workspace at all draws that
+   same `uncommitted` line, and the command says so where it writes one.
 
    **The scaffold is a form, and an empty form briefs nobody.** When round N's reviewers report, write
    what they found up and put it in with `wf round record <file>` BEFORE applying the fixes — the
