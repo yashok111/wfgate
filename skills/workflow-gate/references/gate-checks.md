@@ -62,8 +62,10 @@ gates keep being readable.
   Then it is a BLOCKER. That naming is what turns the classification from a feeling into a claim the
   next round can check, and it is the operative half of "classify by actual downstream coverage".
 - **MINOR** — a real defect whose cost, standing forever, is below the round it would take to close.
-- **NOTE** — not a defect. An observation or a question with no failure attached. Counted in a round's
-  findings, never subtracted from them, and named apart by `wf stats`.
+- **NOTE** — not a defect: the row asserts that nothing here fails. An observation, or a question
+  whose answer would change nothing. A question still OPEN — one whose answer decides whether
+  something fails — is not a NOTE, and section 0c names what it is. Counted in a round's findings,
+  never subtracted from them, and named apart by `wf stats`.
 
 **Measured, which is why the scale is closed rather than suggested.** The six gate ledgers on disk held,
 on 2026-08-25, 1065 findings under FOUR vocabularies for one scale: BLOCKER is universal, the tier under
@@ -179,6 +181,14 @@ does not own, or on a measurement nobody has taken — the row says WHICH observ
 who owns the call. That is the refusal record of section I read from the other end, and it is a
 QUESTION, not a NOTE: a NOTE asserts there is no defect, and a row that cannot state its own fix has
 asserted nothing yet. Filing it as a NOTE is how an open question leaves the gate looking closed.
+
+**Such a row is a BLOCKER, and that is DERIVED rather than chosen.** Section 0 holds a MAJOR to
+naming the later gate that catches the defect, and no gate catches a decision nobody took: the run
+is built on whichever way it happened to fall. Only BLOCKER loops the gate, and looping is the whole
+ask — the row exists because somebody has to make the call. It closes the ordinary way, once the
+call is taken and the artifact says so. The level is stated here because the closed scale has three
+levels left after "not a NOTE", and a reviewer picking among them per round is how one scale grew
+the four vocabularies section 0 measures.
 
 ---
 
@@ -890,9 +900,10 @@ The fix is the largest single source of blockers. These are protocol, not taste.
       Never put a refusal in `closed by`: that cell is read by `wf freeze`, a prose closure passes its
       open-blocker check, and a refused BLOCKER left at BLOCKER with prose beside it freezes as closed
       — by hand, the same false green the cell splitter was fixed to stop. A refusal whose reversal
-      condition cannot be stated is a deferral rather than a refusal, and the row SAYS so in its text;
-      the level stays on the closed scale, because `wf round record` refuses any other word and records
-      nothing at all. The same discipline is what makes a HALF-taken finding legible — say which half
+      condition cannot be stated is a deferral rather than a refusal, and the row SAYS so in its text
+      and KEEPS its level — the reclassification to NOTE above is earned BY the reversal condition,
+      and a row with none still asserts a defect. Either way the level stays on the closed scale,
+      because `wf round record` refuses any other word and records nothing at all. The same discipline is what makes a HALF-taken finding legible — say which half
       was taken and what the other half asserted, because the untaken half is what the next reviewer
       meets first.
 - [ ] **A finding that asserts something a command can RUN is reproduced before it is fixed.**
