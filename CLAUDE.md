@@ -111,7 +111,9 @@ opening line.
   `drift.go`, `rules.go`.
 - `templates/lens.md` — the reviewer's brief, embedded and emitted by
   `wf new-lens`. It carries what is true of EVERY round — the reading list by
-  path, the three asks, the four level words from `ws.Levels`, the output
+  path with the pinned file's section index BY LINE, the reading rule (`Read`
+  and `Grep`, not a shell), the three asks, the four level words from
+  `ws.Levels`, the output
   contract — and POINTS at the workspace's pinned `gate-checks.md` §0 and §0c
   rather than restating them, because a rule restated in a prompt goes stale
   where `wf check dup` cannot reach it: a prompt is not an artifact [M-37]. The
@@ -1462,6 +1464,80 @@ under it is real and larger.
   clause. Both readings are written beside it — and the command that settles it
   needs `bash -c`, because under `zsh` the `$t:artifacts/...` in that loop is a
   history modifier and the first run of it reported zero everywhere.
+
+**The twenty-fifth wave — a review of the plugin asking where a round's MINUTES
+go, and the five things built from the answer** (no gate feedback behind it;
+the measurement is `measured.md` [M-41] and it was taken from two sources: `wf
+stats -time` pooled over the fourteen unpruned workspaces, and A4's own
+operator-session transcript with its 23 reviewer sub-agent transcripts, read
+with a Python script over the JSONL). What the corpus says first: over the 146
+rounds under two hours that carry a `(review, fix, tail)` breakdown, review is
+**73%** of the summed minutes at a median of 19.4 per round, fix 15% and tail
+12% at a median of 0.7 each — so the bookkeeping this tool spends most of its
+code on is not where the time is, and the `~9-command sequence is not worth
+compressing` verdict of the eighth wave holds. Lens COUNT barely moves the
+review segment because the lenses run concurrently (median review minutes
+13.8 / 20.4 / 18.6 / 25.9 for one to four lenses), which is the reviewer-width
+rule measured from the other side. What A4's transcripts say: a reviewer is a
+median 9.5 minutes and 36 turns at **14.8 seconds per turn**, and tool
+execution across all 23 reviewers was 9.2 minutes IN TOTAL — a lens's wall
+clock is its TURNS. 249 of their 455 `Bash` calls were `sed -n`/`grep`/`rg`/
+`cat` fetching what `Read` fetches in one, and the pinned `gate-checks.md`
+was opened by 36 `Read` calls at hand-found offsets after 18 shell greps for
+its headings — the `NAV` rule the nineteenth wave put into the emitted SCRIPT
+had never reached the emitted BRIEF. The operator's own share: 13-30 minutes
+from one dispatch to the next with the reviewers back inside 12, spent
+re-typing returned tables into the ledger (through `python3` heredocs inside
+`Bash`, 35 of them, which the harness forbids for data), one `wf round close`
+per row (70 of the workspace's 143 commits), and `wf check` run 19 times over
+8 rounds against three prescribed commands per round. And 101 minutes of the
+session preceded `wf init` against 159 for the gate — 39% of it outside every
+number the tool prints, on a gate whose authoring window reads 2.1 minutes.
+
+- *The brief carries the reading rule and a section index by LINE.*
+  `templates/lens.md` gained the `Read`/`Grep` paragraph the script template
+  already had, and `wf new-lens` prints `sections 0, 0b and 0c … lines 48-195`
+  plus `A 196-288, B …` computed from the PINNED copy — the one with the stamp
+  line at the top, which is why the index cannot be a constant — and says `(no
+  line index: …)` when the copy is missing rather than inventing ranges. The
+  ratio AFTER the change is not measured and the manual says so.
+- *`wf apply -closes 1,2`, either form.* The batch's own commit is the closure,
+  written into the named rows in ONE ledger commit after the batch's; validated
+  BEFORE a byte is written (round open, each number one recorded row, none
+  already closed), so a typo leaves the batch unwritten rather than committed
+  without its closure. `wf round close` and this share one planner
+  (`closes.go`), so the two commands cannot disagree about a row; the
+  `-replace` comparison stays in `round close`, which is the only door for it.
+  `applyWhole` returns its sha now. One guard was DELETED rather than shipped:
+  the empty-item refusal in the list parser, which `FieldsFunc` makes
+  unreachable.
+- *`wf check` (no argument) runs `stale` from the newest freeze — SKIPPED and
+  said so before the first freeze — and ends in one `## check —` line naming
+  which of the five found something.* The runbook's steps 4 and 5 named three
+  commands; they name one.
+- *`wf round ingest <report>...`.* Each report's LAST table (the brief already
+  says that is the one the operator transcribes from) appended to the ledger:
+  numbered on, tagged `[lens: NAME]`, closure cells the lens filled dropped and
+  counted, refused whole on a malformed row, an off-scale level, a report with
+  no table or an empty one — and COMMITTED, like a banked lens, because the
+  freeze reads the ledger from the worktree and a ledger left dirty between two
+  commands would fall out of the tag. The first cut left it uncommitted and
+  taught `wf freeze` to refuse the dirty ledger; that refusal broke every test
+  that writes a ledger by hand and was the wrong end of the fix. The judgement
+  half — dedup across lenses, the level under §0 — stays by hand, and
+  `wf round record` over bytes already committed is now a validated no-op with
+  a line saying "if you edited it, the edit did not land" rather than git's
+  `nothing staged`. This is NOT the findings registry the do-not-build list
+  refuses: the ledger stays the one hand-edited table, parsed and never
+  generated, and ingest writes rows in the scaffold's own shape.
+- *`wf init` FIRST, before the interview* — a manual change in `interview.md`,
+  the sequence sentence in `pre-flight-gate.md` and SKILL.md's two mentions:
+  the workspace's git is the only clock this toolchain has, and the authoring
+  window prices the interview only when the interview runs inside it.
+- *Two things measured and NOT built:* fewer lenses per round (concurrent, so
+  narrowing buys ~nothing and the missing-vector rule says what it costs), and
+  a cheaper closing round (zero-blocker rounds are 16 of 144 and 12% of the
+  minutes — the stop rule's price).
 
 ## Hard rules
 

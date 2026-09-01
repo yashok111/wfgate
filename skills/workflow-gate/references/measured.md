@@ -667,3 +667,37 @@ unqualified. Two of that gate's eight rounds exist for this mechanism.
 Neither is visible in the DIFF, which is what an operator reads after an apply. Both are immediate
 in the composed result — the whole helper, the whole prompt an agent receives.
 
+## M-41 — where a round's minutes go, read off one gate's own session transcript
+
+Why the reviewer's brief carries a reading rule and a section index by line, why `wf round ingest`
+and `wf apply -closes` exist, why `wf check` runs the five checks as one command, and why the
+workspace is opened before the interview. Measured on the A4 gate, 2026-09-01, from two sources:
+`wf stats -time` pooled over the fourteen unpruned workspaces, and the operator session's own
+transcript with its 23 reviewer sub-agent transcripts (`~/.claude/projects/<mocker>/<session>/subagents/agent-*.jsonl`,
+read with a Python script over the JSONL: timestamps, `tool_use` blocks, `usage`).
+
+Corpus, 146 rounds under two hours carrying a `(review, fix, tail)` breakdown: review is 73% of
+the summed minutes (median 19.4 per round), fix 15% (median 0.7), tail 12% (median 0.7). The
+bookkeeping is not where the time is. Lens count does not move the review segment much, because the
+lenses run concurrently: median review minutes 13.8 with one lens, 20.4 with two, 18.6 with three,
+25.9 with four. Rounds with zero blockers are 16 of 144 and 511 minutes (12%), the price of the
+stop rule; rounds whose every blocker was `[fix-induced]` are 26 and 558 minutes (13%).
+
+A4's reviewers: median 9.5 minutes, 36 turns (16 to 171), **14.8 seconds per turn** — and tool
+execution across all 23 was 9.2 minutes IN TOTAL, under five percent. A lens's wall clock is its
+turns. Of their 455 `Bash` calls, 249 were `sed -n`, `grep`, `rg` or `cat` fetching text `Read`
+fetches in one; `gate-checks.md` was opened by 36 `Read` calls at hand-found offsets after 18 shell
+greps for its headings. The reviewer brief carried no reading rule (the emitted script does, since
+the nineteenth wave) and no line index. The ratio AFTER the change is not measured.
+
+A4's operator: from one round's lens dispatch to the next, 13 to 30 minutes, with the reviewers
+back inside 12 — between a third and a half of a round is the operator's own, and the largest block
+of it is re-typing the returned tables into the ledger and authoring batches; the batches were
+built through `python3` heredocs inside `Bash` (35 such calls), which the harness forbids for data.
+70 of the workspace's 143 commits are one `wf round close` each, and `wf check` ran 19 times over
+8 rounds against a runbook naming three separate check commands per round.
+
+The session before `wf init`: 05:05 to 06:46 UTC, **101 minutes** — the interview, four research
+agents, three design agents, the draft — against 159 minutes for the gate itself. 39% of the
+session outside every number `wf` prints, on a gate whose `wf stats` authoring window reads 2.1
+minutes.

@@ -243,8 +243,22 @@ section 0b defines them:
 // makes on stderr.
 func lensReading(w *ws.Workspace, n int, kind string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "  %s\n", filepath.Join(w.Root, "gate-checks.md"))
-	fmt.Fprintf(&b, "      sections 0, 0b and 0c — the scale, the questions, what a row must carry\n")
+	pinned := filepath.Join(w.Root, "gate-checks.md")
+	fmt.Fprintf(&b, "  %s\n", pinned)
+	// With LINE RANGES, read off the pinned copy. Measured on A4's 23
+	// reviewers: 36 Read calls into gate-checks.md, most with a hand-found
+	// offset, and 18 shell greps for its headings before them — every one a
+	// turn, and a lens's wall clock is its turns. The index is computed from
+	// the copy this gate pinned, because that is the one with the stamp line
+	// at the top and the one the lens will open.
+	head, rest, err := gateChecksIndex(pinned)
+	switch {
+	case err != nil:
+		fmt.Fprintf(&b, "      sections 0, 0b and 0c — the scale, the questions, what a row must carry (no line index: %v)\n", err)
+	default:
+		fmt.Fprintf(&b, "      sections 0, 0b and 0c — the scale, the questions, what a row must carry: lines %s\n", head)
+		fmt.Fprintf(&b, "      the other sections by line, so none has to be searched for: %s\n", rest)
+	}
 
 	arts, err := w.ArtifactList()
 	if err != nil || len(arts) == 0 {
@@ -274,6 +288,60 @@ func lensReading(w *ws.Workspace, n int, kind string) string {
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// gateChecksIndex reads the `## <id>.` headings of the pinned gate-checks.md
+// and returns the line range covering sections 0, 0b and 0c, and an index of
+// every other section as `<id> <from>-<to>`. Ranges are 1-based and inclusive,
+// which is what `Read`'s offset takes.
+func gateChecksIndex(path string) (string, string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", err
+	}
+	lines := strings.Split(string(b), "\n")
+	type sec struct {
+		id   string
+		from int
+	}
+	var secs []sec
+	for i, l := range lines {
+		if !strings.HasPrefix(l, "## ") {
+			continue
+		}
+		rest := strings.TrimPrefix(l, "## ")
+		if dot := strings.Index(rest, ". "); dot > 0 && !strings.ContainsAny(rest[:dot], " ") {
+			secs = append(secs, sec{id: rest[:dot], from: i + 1})
+		} else {
+			// A heading with no id (the file's closing "Appending to this
+			// file") bounds the section before it and is not indexed.
+			secs = append(secs, sec{id: "", from: i + 1})
+		}
+	}
+	to := func(k int) int {
+		if k+1 < len(secs) {
+			return secs[k+1].from - 1
+		}
+		return len(lines)
+	}
+	headFrom, headTo := 0, 0
+	var rest []string
+	for k, sc := range secs {
+		switch sc.id {
+		case "0", "0b", "0c":
+			if headFrom == 0 {
+				headFrom = sc.from
+			}
+			headTo = to(k)
+		case "":
+		default:
+			rest = append(rest, fmt.Sprintf("%s %d-%d", sc.id, sc.from, to(k)))
+		}
+	}
+	if headFrom == 0 || len(rest) == 0 {
+		return "", "", fmt.Errorf("%s carries no `## 0.`/`## A.` headings; the pinned copy is not the reference `wf init` writes", path)
+	}
+	return fmt.Sprintf("%d-%d", headFrom, headTo), strings.Join(rest, ", "), nil
 }
 
 // checkLensDest is the two refusals -o carries, and BOTH compare RESOLVED

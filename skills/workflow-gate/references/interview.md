@@ -1,13 +1,20 @@
 # Grilling the decisions into existence (step -2)
 
-The window before a gate workspace exists, and what has to come out of it. Step -2 of the
-sequence in `pre-flight-gate.md`; the workspace itself opens in `gate-harness.md`.
+The window before the first artifact exists, and what has to come out of it. Step -2 of the
+sequence in `pre-flight-gate.md`; the workspace itself opens in `gate-harness.md` — and it opens
+FIRST.
 
--2. **Grill the DECISIONS into existence, before the workspace exists.** The document round 1
-   reviews is written in a window no command in this toolchain can see. `wf stats -time` prices it — run it across the
-   workspaces you have; the window has run from a couple of minutes to well over an hour, and its
-   short end is not fast authoring but the gates whose document was drafted BEFORE `wf init`, so the
-   drafting itself falls outside every measurement banked anywhere. What that window produces is read
+-2. **Grill the DECISIONS into existence, inside a workspace opened before the first question.**
+   Run `wf init` (step -1) before the interview starts, not after the document exists: the only
+   clock this toolchain has is the workspace's own git, and `wf stats -time`'s authoring window
+   (init → first artifact) prices the interview only when the interview runs inside it. Measured on
+   one gate whose document was drafted before `wf init`: the session spent longer before the
+   workspace existed than the gate's own first three rounds took together, and every minute of it
+   is outside every number the tool prints [M-41]. `wf stats -time` prices the window — run it
+   across the workspaces you have; it has run from a couple of minutes to well over an hour, and its
+   short end is not fast authoring but exactly those gates whose document was drafted BEFORE
+   `wf init`, so the drafting itself falls outside every measurement banked anywhere. What that
+   window produces is read
    for the first time by round 1, and **round 1 is the most expensive round of every gate on
    record** — by a wide margin, in blockers and in findings alike, every one of them filed against a
    document nobody had questioned before it was frozen.

@@ -11,6 +11,12 @@ severity scale, the questions a round puts, and what a finding's row must carry.
 They are pinned into this workspace by `wf init`, so the copy above is the
 version this gate was briefed from — read THAT copy and not one you remember.
 {{ASKS}}
+HOW YOU READ: with Read, Grep and Glob. Reserve Bash for git and for what
+genuinely needs a shell. A `sed -n`, a `grep` or a `cat` where Read would do is
+a round-trip carrying your whole context to fetch one file, and the wall clock
+of a lens is its round-trips, not its reading. The line ranges beside the
+pinned file above exist so that no heading has to be searched for.
+
 YOUR VECTOR BEYOND WHAT IS ABOVE:
 
   (Replace the line below. `wf round lens` refuses to bank a prompt that still

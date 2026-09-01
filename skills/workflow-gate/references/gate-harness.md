@@ -143,8 +143,13 @@ can drift apart from itself, and nothing here compares the copies.
    **Brief each lens from `wf new-lens <name>`, and write only the aim by hand.** It emits what is
    true of every round -- the reading list BY PATH (the workspace's own pinned `gate-checks.md`, with
    sections 0, 0b and 0c named; the artifacts; the round's `brief.md` where one exists), the three
-   asks a delta round may never drop, the closed scale taken from the binary, and the table the lens
-   returns -- and it leaves the VECTOR as a marker line, which `wf round lens` then refuses to bank.
+   asks a delta round may never drop, the closed scale taken from the binary, the pinned file's
+   section index BY LINE, the rule that a lens reads with `Read` and `Grep` rather than through a
+   shell, and the table the lens returns -- and it leaves the VECTOR as a marker line, which
+   `wf round lens` then refuses to bank. The index and the reading rule are there because a lens's
+   wall clock is its TURNS and not its reading: measured over one gate's reviewers, more than half
+   of their shell calls fetched text `Read` fetches in one, and the headings of `gate-checks.md`
+   were searched for before they were read [M-41].
    It does NOT restate the scale or what a row must carry -- it points at sections 0 and 0c -- because
    a rule restated in a prompt goes stale where NOTHING can see it: `wf check dup` runs over artifacts
    and a lens prompt is not one, so a brief carrying a superseded rule is invisible to every check
@@ -157,8 +162,14 @@ can drift apart from itself, and nothing here compares the copies.
    `wf verify` reports it against the freeze. A brief left inside the workspace at all draws that
    same `uncommitted` line, and the command says so where it writes one.
 
-   **The scaffold is a form, and an empty form briefs nobody.** When round N's reviewers report, write
-   what they found up and put it in with `wf round record <file>` BEFORE applying the fixes — the
+   **The scaffold is a form, and an empty form briefs nobody.** When round N's reviewers report,
+   `wf round ingest <report>...` appends the rows of each report's LAST table to the round's ledger —
+   numbered on, each tagged `[lens: NAME]`, any closure cell the lens filled dropped, the whole thing
+   refused before a byte is written on a malformed row or an off-scale level — and commits it. What
+   it does NOT do is the operator's half: two lenses filing one defect become one row, and every
+   level is re-derived under `gate-checks.md` section 0, by hand, in the ledger; then
+   `wf round record <file>` banks the result BEFORE applying the fixes. Ingest exists because the
+   transcription was the largest single block of the operator's own time in a round [M-41], and the
    command exists so that filling the form is not the one place an operator falls back to a hand
    commit. That file is what
    `wf delta` puts in front of the next reviewer, whose first job is to check the claim that those
@@ -482,21 +493,26 @@ package you meant, and it starts erroring only once a second `repo.go` appears.
 one needs. What follows is the same round as a command sequence, which is the half a reference in
 prose kept losing: a step nobody can run is a step that gets skipped.
 
-1. `wf round record <file>` — BEFORE a fix is touched. That file is what `wf delta` puts in front of
-   the next reviewer, and the scaffold `wf round new` wrote is blank.
-2. `wf apply -f <edits>` — the round's fixes as ONE batch: one edit per artifact per rule, each
-   declaring its own occurrence `count`. A restructure made by hand is adopted with
-   `wf apply -whole <path>`, never with `git commit`.
+1. `wf round ingest <report>...` for the returned tables, the dedup and the levels by hand in the
+   ledger, then `wf round record <file>` — BEFORE a fix is touched. That file is what `wf delta`
+   puts in front of the next reviewer, and the scaffold `wf round new` wrote is blank.
+2. `wf apply -f <edits> -closes 1,2,…` — the round's fixes as ONE batch: one edit per artifact per
+   rule, each declaring its own occurrence `count`, and the numbers of the findings it closes, whose
+   `closed by` cells are then filled with the batch's OWN commit in one ledger commit. A restructure
+   made by hand is adopted with `wf apply -whole <path> -closes …`, never with `git commit`.
 3. Read the BLOCK around every edit after making it, not just the edited line.
-4. Sweep for what the batch did not reach. `wf check dup` for copies that DRIFTED,
-   `wf check stale -since <ref>` for the consumers the fix's OWN old text names, then a hand pass for
-   copies that CONTRADICT, which no similarity metric reaches. On a SCRIPT add
+4. Sweep for what the batch did not reach: `wf check`, one command — `dup` for copies that DRIFTED,
+   `stale` from the newest freeze for the consumers the fix's OWN old text names, `cite`, `rules`
+   and `closure`, ending in one summary line naming which of the five found something — then a
+   hand pass for copies that CONTRADICT, which no similarity metric reaches. One command rather than
+   three because on the gate that measured it the separate ones were run less than half the time
+   [M-41]. On a SCRIPT add
    `wf check schema -since <ref>` wherever the batch touched a schema — it compares what every
    agent's output schema OBLIGES its agent to fill against the previous freeze, and a DROP is the
    finding, a class nothing static reaches when the leaf is built in a `.map()` callback [M-07] —
    and `wfdry <script> --prompt-diff <a>,<b>` for each pair of agents the batch gave the same job
    (`gate-checks.md` section B).
-5. `wf check closure` before recording the closures. It asks of every `closed by` sha the question
+5. Read the `closure` half of that report before the round is frozen. It asks of every `closed by` sha the question
    `wf round record` does not: whether that commit's diff reaches the SECTION the finding cites
    (`D9`, `R12` — the form a ledger uses, and the only one that reaches a finding citing no line). A
    FILE miss is a closure that did not land; a SECTION miss is a question to re-ask. A closure
@@ -508,8 +524,8 @@ prose kept losing: a step nobody can run is a step that gets skipped.
    is the work-list for the hand verification `wf apply -whole` forfeits — grouped
    by round, because on the gate that produced the feature it reaches 47 of 121
    closures across seven rounds.
-6. Fill the `closed by` column with the apply commit — `wf round close <finding#> <commit>` per row,
-   or re-record the whole ledger with `wf round record <file> -round N`. A row no commit closes — a
+6. Whatever `-closes` did not fill: `wf round close <finding#> <commit>` per row, or re-record the
+   whole ledger with `wf round record <file> -round N`. A row no commit closes — a
    NOTE, which asserts no failure, or a finding refuted rather than fixed — takes
    `wf round close <finding#> -prose "why"`, which is the same rewrite with the same read-back and
    without the sha validation; before it existed, the only path was a hand ledger edit plus a

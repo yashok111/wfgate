@@ -42,10 +42,11 @@ const usage = `wf — gate harness
 
   wf init <name> -target <repo>   create a workspace (its own git repo)
   wf status                       manifest, round, dirty artifacts
-  wf apply -f <edits>             all-or-nothing batch (JSON array or === text blocks), then commit
+  wf apply -f <edits> [-closes 1,2]   all-or-nothing batch (JSON array or === text blocks), then commit; -closes fills those findings' closure cells with that commit
   wf apply -whole <path> [-rule RN] [-rule-ack]   adopt a file rewritten in the worktree: the diff IS the batch, and it is verified by NOTHING
   wf add <file>...                bring a newly authored artifact under the workspace and commit it
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
+  wf round ingest <report>... [-round N] [-lens NAME]   append the rows of each reviewer's LAST table to the open round's ledger, numbered and tagged [lens: NAME]; not committed — dedup, then record
   wf round record <file> [-round N]   fill a round's findings.md from a file (- reads stdin), validate closures, commit
   wf round close <finding#> <commit> [-round N] [-replace]   fill one finding's closure cell without splitting the row on its pipes
   wf round close <finding#> -prose "why" [-round N] [-replace] the same cell for a row no commit closes
@@ -53,7 +54,7 @@ const usage = `wf — gate harness
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
   wf delta [-from REF] [-to REF] [-save]  the delta brief: findings, closure checklist, diff
-  wf check [cite|dup|drift|rules|stale|closure|schema] deterministic checks over the artifacts
+  wf check [cite|dup|drift|rules|stale|closure|schema] deterministic checks over the artifacts (no argument: cite, dup, rules, closure, and stale from the newest freeze, with one summary line)
                                   stale -since REF: sentences still using vocabulary a fix retired
                                   closure [-round N]: does each closing commit touch what the finding names
   wf stats [-time]                per-round findings, closures and batches, from the ledger and git
@@ -258,6 +259,9 @@ func cmdApply(args []string) error {
 	rule := fs.String("rule", "", "the [RN] rule this batch changes; the note then names the OTHER sites carrying it")
 	ruleAck := fs.Bool("rule-ack", false, "apply anyway when a declared [RN] rule has marked sites in files this batch does not write")
 	whole := fs.String("whole", "", "adopt <path> as it lies in the worktree: no block format, the diff against HEAD IS the batch")
+	// The batch's own commit is the closure; nothing is read back and fed
+	// forward. See ledgerClosure for what the per-row command cost a gate.
+	closes := fs.String("closes", "", "finding numbers of the OPEN round this batch closes (comma list, `#` optional): their `closed by` cells are filled with this batch's commit in ONE ledger commit, instead of one `wf round close` per row")
 	// `parseMixed`, not `fs.Parse`: this was the ONE command still parsing its
 	// own arguments the way `wf init p2c -target X` used to, so `wf apply
 	// edits.json -m msg` dropped every flag after the path and then complained
@@ -291,8 +295,32 @@ func cmdApply(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Validated BEFORE anything is written, like every refusal in this
+	// command: a typo in the list must not leave the batch committed and the
+	// closure unwritten, which is the shape the flag exists to remove.
+	var closePlan *ledgerClosure
+	if *closes != "" {
+		nums, err := parseCloses(*closes)
+		if err != nil {
+			return err
+		}
+		closePlan, err = planClosure(w, w.M.Round, nums, false)
+		if err != nil {
+			return fmt.Errorf("-closes: %w; nothing was written", err)
+		}
+	}
 	if *whole != "" {
-		return applyWhole(w, *whole, *msg, ruleID, rulePhrase, *ruleAck, *dry)
+		sha, err := applyWhole(w, *whole, *msg, ruleID, rulePhrase, *ruleAck, *dry)
+		if err != nil || sha == "" {
+			if err == nil && closePlan != nil {
+				fmt.Printf("  would close finding(s) %s in round %d with the adoption's commit\n", strings.Join(closePlan.nums(), ", "), closePlan.n)
+			}
+			return err
+		}
+		if closePlan != nil {
+			return closeWithBatch(w, closePlan, sha)
+		}
+		return nil
 	}
 	var raw []byte
 	if *file == "-" {
@@ -363,6 +391,9 @@ func cmdApply(args []string) error {
 		}
 		if err := printRuleSpread(w, ruleID, rulePhrase, dryTouched); err != nil {
 			return err
+		}
+		if closePlan != nil {
+			fmt.Printf("  would close finding(s) %s in round %d with the batch's commit\n", strings.Join(closePlan.nums(), ", "), closePlan.n)
 		}
 		return nil
 	}
@@ -456,6 +487,9 @@ func cmdApply(args []string) error {
 		return err
 	}
 	fmt.Printf("\ncommitted %s  (%d file(s))\n", short(sha), len(written))
+	if closePlan != nil {
+		return closeWithBatch(w, closePlan, sha)
+	}
 	return nil
 }
 
@@ -481,7 +515,7 @@ func cmdApply(args []string) error {
 // split git will report, which is the count of separate places the file
 // changed. Anything larger would be invented and anything smaller would price a
 // restructure as one edit.
-func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, dry bool) error {
+func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, dry bool) (string, error) {
 	// The same refusal `apply` and `add` have, for the same reason: a path
 	// argument written by an agent that has confused the workspace with the
 	// repository under review must be stopped here.
@@ -499,18 +533,18 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 	}
 	abs, key, err := apply.SafeJoin(w.Root, rel)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// Under `artifacts/`, because the number this command exists to record is a
 	// round's edits to a REVIEWED document. `wf apply -whole gate.json` is
 	// otherwise accepted and prices the workspace's own bookkeeping into the
 	// cost meter — the same boundary `wf add` draws, for the same reason.
 	if key != "artifacts" && !strings.HasPrefix(key, "artifacts"+string(filepath.Separator)) {
-		return fmt.Errorf("%s is not under artifacts/; `-whole` prices a round's edits to a reviewed artifact, and the workspace's own bookkeeping is not one", key)
+		return "", fmt.Errorf("%s is not under artifacts/; `-whole` prices a round's edits to a reviewed artifact, and the workspace's own bookkeeping is not one", key)
 	}
 	st, err := os.Stat(abs)
 	if err != nil {
-		return fmt.Errorf("%s: %w", key, err)
+		return "", fmt.Errorf("%s: %w", key, err)
 	}
 	// ONE regular file. A directory passes every other check in this function —
 	// `ls-files -- <dir>` lists its children, `git diff HEAD -- <dir>` counts
@@ -519,7 +553,7 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 	// `1 file(s)`. The command's whole contract is that ONE rewritten file is
 	// being priced.
 	if !st.Mode().IsRegular() {
-		return fmt.Errorf("%s is not a regular file; `-whole` adopts ONE rewritten artifact, and a directory would be committed whole under a report naming one file", key)
+		return "", fmt.Errorf("%s is not a regular file; `-whole` adopts ONE rewritten artifact, and a directory would be committed whole under a report naming one file", key)
 	}
 	// Tracked at HEAD, or this is not an adoption of a REWRITE. A file that is
 	// new to the workspace is `wf add`'s job, and routing it here would record
@@ -531,7 +565,7 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 	// the refusal exists for, defeated by a command the operator ran for an
 	// unrelated reason.
 	if tracked, _ := w.Git.Run("ls-tree", "HEAD", "--", key); strings.TrimSpace(tracked) == "" {
-		return fmt.Errorf("%s is not in HEAD; `wf add` adopts a new artifact, `-whole` adopts a REWRITE of one already under review", key)
+		return "", fmt.Errorf("%s is not in HEAD; `wf add` adopts a new artifact, `-whole` adopts a REWRITE of one already under review", key)
 	}
 	// --unified=0 and the forced prefixes for the reason `check drift` uses
 	// them: the parse must not depend on a host diff config.
@@ -545,7 +579,7 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 		"diff", "--no-renames", "--no-ext-diff",
 		"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "HEAD", "--", key)
 	if err != nil {
-		return err
+		return "", err
 	}
 	hunks := 0
 	for _, l := range strings.Split(raw, "\n") {
@@ -563,9 +597,9 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 		// direction is right and the sentence was false, which is worse than no
 		// message: an operator acts on it.
 		if strings.Contains(raw, "\nBinary files ") || strings.HasPrefix(raw, "Binary files ") {
-			return fmt.Errorf("%s is BINARY as far as git is concerned, so it has no hunks to count and this command cannot price it; gate artifacts are text by workflow rule, and a binary one is a question about the artifact, not about the adoption", key)
+			return "", fmt.Errorf("%s is BINARY as far as git is concerned, so it has no hunks to count and this command cannot price it; gate artifacts are text by workflow rule, and a binary one is a question about the artifact, not about the adoption", key)
 		}
-		return fmt.Errorf("%s is byte-identical to HEAD — there is no rewrite to adopt, and an edit count taken from one would price a round that changed nothing", key)
+		return "", fmt.Errorf("%s is byte-identical to HEAD — there is no rewrite to adopt, and an edit count taken from one would price a round that changed nothing", key)
 	}
 	// Against HEAD, not against the INDEX. `worktreeChangedLines` is the
 	// post-write measurement `wf apply -f` takes, where the batch it just wrote
@@ -587,7 +621,7 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 	fmt.Printf("  note: this is an ADOPTION, not a verified batch — `wf apply -f` rejects a batch whole when one replacement misses and checks each declared occurrence count, and neither reaches a rewrite this command did not watch being made. A change inside it that silently did nothing is indistinguishable here from one that landed: byte-verify each against %s before recording a closure for it\n", src)
 	if dry {
 		fmt.Printf("\ndry run: %s would be committed as %d edit(s)\n", key, hunks)
-		return printRuleSpread(w, ruleID, rulePhrase, []string{key})
+		return "", printRuleSpread(w, ruleID, rulePhrase, []string{key})
 	}
 	// The `-rule` refusal, BEFORE the commit and on the same terms as `-f`.
 	// It was a print-only note here for one revision, and a divergence in the
@@ -597,7 +631,7 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 	// restructure, it is stronger, because a restructure is the batch most
 	// likely to move a rule.
 	if miss, err := unwrittenRuleSites(w, ruleID, []string{key}); err != nil {
-		return err
+		return "", err
 	} else if len(miss) > 0 && !ruleAck {
 		fmt.Fprintf(os.Stderr, "\nadoption REFUSED — nothing was committed. [%s] is marked in %d file(s) this adoption does not write:\n", ruleID, len(miss))
 		for _, m := range miss {
@@ -605,16 +639,16 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 		}
 		fmt.Fprintf(os.Stderr, "Visit them, or re-run with -rule-ack to say they are correct as they stand.\n")
 		if err := printRuleSpread(w, ruleID, "", []string{key}); err != nil {
-			return err
+			return "", err
 		}
-		return errFindings
+		return "", errFindings
 	}
 	hist, authoringSkipped, republishedSkipped, runSkipped := batchHistory(w)
 	if note, warn := batchNote(hunks, changed, hist, authoringSkipped, republishedSkipped, runSkipped); warn {
 		fmt.Println(note)
 	}
 	if err := printRuleSpread(w, ruleID, rulePhrase, []string{key}); err != nil {
-		return err
+		return "", err
 	}
 	subject := msg
 	if subject == "" {
@@ -627,10 +661,10 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 	body += fmt.Sprintf("\n%s %d edit(s) in 1 file(s)\n%s %s\n", applyTrailer, hunks, applyWholeTrailer, key)
 	sha, err := w.Git.Commit(body, []string{key})
 	if err != nil {
-		return err
+		return "", err
 	}
 	fmt.Printf("\ncommitted %s  (1 file(s))\n", short(sha))
-	return nil
+	return sha, nil
 }
 
 // noteWholeArtifact names a replacement that carries most of its file.
@@ -994,8 +1028,11 @@ func cmdRound(args []string) error {
 	if len(args) > 0 && args[0] == "close" {
 		return cmdRoundClose(args[1:])
 	}
+	if len(args) > 0 && args[0] == "ingest" {
+		return cmdRoundIngest(args[1:])
+	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> [-round N] | wf round close <finding#> <commit>|-prose T [-round N] | wf round lens <prompt-file> -name N -model M -asks Q [-round N]")
+		return fmt.Errorf("usage: wf round new [-title T] | wf round ingest <report>... [-round N] [-lens NAME] | wf round record <file> [-round N] | wf round close <finding#> <commit>|-prose T [-round N] | wf round lens <prompt-file> -name N -model M -asks Q [-round N]")
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
@@ -1339,11 +1376,22 @@ func cmdRoundRecord(args []string) error {
 		return err
 	}
 	rel, _ := filepath.Rel(w.Root, dst)
-	sha, err := w.Git.Commit(fmt.Sprintf("round %d: record findings", n), []string{rel})
-	if err != nil {
-		return err
+	// A record of bytes the ledger already holds committed is not a mistake
+	// worth a git-shaped failure (`nothing staged`): it is `wf round record
+	// rounds/rN/findings.md` run over a ledger `wf round ingest` wrote and the
+	// operator has since recorded once. Validated all the same; only the
+	// commit is skipped, and the line says so, because "I edited it and it
+	// did not land" is the other reading of the same state.
+	sha := ""
+	if d, derr := w.Git.Dirty(rel); derr == nil && len(d) == 0 {
+		fmt.Printf("recorded %s (%d bytes) — identical to the committed ledger, nothing to commit; if you edited it, the edit did not land\n", rel, len(b))
+	} else {
+		sha, err = w.Git.Commit(fmt.Sprintf("round %d: record findings", n), []string{rel})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("recorded %s (%d bytes)\n", rel, len(b))
 	}
-	fmt.Printf("recorded %s (%d bytes)\n", rel, len(b))
 	if len(rows) == 0 {
 		// No table means nothing was validated, and saying so is the entire
 		// difference between "checked" and "looked green".
@@ -1379,7 +1427,9 @@ func cmdRoundRecord(args []string) error {
 		// with the roster and `wf stats` about one round again.
 		fmt.Printf("  lenses: %d banked — %s\n", validLenses(lenses), note)
 	}
-	fmt.Printf("committed %s\n", short(sha))
+	if sha != "" {
+		fmt.Printf("committed %s\n", short(sha))
+	}
 	return nil
 }
 
@@ -2399,12 +2449,26 @@ func cmdCheck(args []string) error {
 		return nil
 	}
 	fail := false
+	// The verdict of each check, for the one line at the end. Measured on A4:
+	// `wf check` was run 19 times over 8 rounds — under half of the five checks
+	// plus verify the runbook prescribed per round — and the runbook named
+	// them as three separate commands. One command, one summary line, is what
+	// gets run every round.
+	var summary []string
+	note := func(name string, bad bool) {
+		v := "clean"
+		if bad {
+			v = "FINDINGS"
+		}
+		summary = append(summary, name+": "+v)
+	}
 	if which == "all" || which == "cite" {
 		bad, err := runCite(w, arts, *show, *reqAnchor, *at)
 		if err != nil {
 			return err
 		}
 		fail = fail || bad
+		note("cite", bad)
 	}
 	if which == "all" || which == "dup" {
 		bad, err := runDup(w, arts, *thr, *minWords, *since)
@@ -2412,6 +2476,7 @@ func cmdCheck(args []string) error {
 			return err
 		}
 		fail = fail || bad
+		note("dup", bad)
 	}
 	if which == "all" || which == "rules" {
 		bad, err := runRules(w, arts)
@@ -2419,6 +2484,7 @@ func cmdCheck(args []string) error {
 			return err
 		}
 		fail = fail || bad
+		note("rules", bad)
 	}
 	// closure IS part of "all": the check exists because a whole live round of
 	// hand-written reviewer prompts was spent asking it, and a check nobody runs
@@ -2429,9 +2495,32 @@ func cmdCheck(args []string) error {
 			return err
 		}
 		fail = fail || bad
+		note("closure", bad)
+	}
+	// stale joins "all" from the first freeze on. It is measured FROM a
+	// reference, and before any freeze there is none — so it is SKIPPED there,
+	// said out loud rather than left out: the runbook's step 4 named it as a
+	// separate command with a `-since` the operator had to look up, and on A4
+	// it was the check that ran least. The newest freeze is the previous
+	// round's tag, so `<tag>..HEAD` is exactly this round's fixes.
+	if which == "all" {
+		if n := newestFrozen(w); n == 0 && *since == "" {
+			fmt.Printf("## stale — SKIPPED: nothing is frozen yet, so there is no fix range to mine; it runs here from the first freeze on\n")
+			summary = append(summary, "stale: skipped (nothing frozen)")
+		} else {
+			bad, err := runStale(w, arts, *since, *minWords, *maxDF)
+			if err != nil {
+				return err
+			}
+			fail = fail || bad
+			note("stale", bad)
+		}
 	}
 	if which != "all" && which != "cite" && which != "dup" && which != "rules" && which != "closure" {
 		return fmt.Errorf("unknown check %q (cite, dup, drift, rules, stale, closure, schema)", which)
+	}
+	if which == "all" {
+		fmt.Printf("\n## check — %s; the populations are in the ## lines above, and a clean over an empty population says so there\n", strings.Join(summary, ", "))
 	}
 	if fail {
 		return errFindings

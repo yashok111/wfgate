@@ -23,8 +23,8 @@ scales the tier. The external lens (step 1, `vcodex`) is untouched — it bills 
 quota, which is a second reason to alternate internal and external lenses between rounds.
 
 **Before you spawn a single reviewer, in this order.** The order matters and is not the order these
-paragraphs were written in — it is: GRILL the decisions into existence (-2) → open the WORKSPACE
-(-1) → open the ROUND (-1b) → gate the
+paragraphs were written in — it is: open the WORKSPACE (-1, FIRST, so its clock prices what follows)
+→ GRILL the decisions into existence (-2, inside it) → open the ROUND (-1b) → gate the
 DECISIONS (1) → author the script → static check (0) → **dry-run the artifact set (2b)** → freeze the
 whole set (2) → hand reviewers the frozen paths (3) → and when the gate is done, BANK it (4). The dry-run comes BEFORE the freeze, reversed
 2026-08-22: a dry-run defect found after freezing invalidates a freeze, and republishing it

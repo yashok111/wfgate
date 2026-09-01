@@ -3,8 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"git.sumka.site/yakov/wfgate/internal/ws"
@@ -94,11 +92,6 @@ func cmdRoundClose(args []string) error {
 	if *round == 0 {
 		fmt.Printf("round %d (the open one; `-round N` closes in another)\n", n)
 	}
-	dst := filepath.Join(w.RoundDir(n), "findings.md")
-	b, err := os.ReadFile(dst)
-	if err != nil {
-		return err
-	}
 	// The cell's value, from whichever of the two doors was used. Everything
 	// below this point writes and verifies THIS, so the two closures cannot
 	// drift into two write paths.
@@ -130,31 +123,14 @@ func cmdRoundClose(args []string) error {
 			return fmt.Errorf("round %d finding %s: %w; nothing was written", n, num, err)
 		}
 	}
-	rows := ws.ParseFindings(b)
-	var hit []ws.FindingRow
-	for _, r := range rows {
-		if !r.Malformed && strings.TrimSpace(r.Num) == num {
-			hit = append(hit, r)
-		}
+	// The lookup and its refusals are `planClosure`'s, shared with
+	// `wf apply -closes` so the two commands cannot disagree about one row.
+	plan, err := planClosure(w, n, []string{num}, *replace)
+	if err != nil {
+		return err
 	}
-	if len(hit) == 0 {
-		// Naming what IS there, because the usual cause is the wrong round: a
-		// finding number is unique inside a ledger and meaningless across two.
-		return fmt.Errorf("round %d has no finding %s (it has: %s); `-round N` picks another round's ledger", n, num, strings.Join(findingNums(rows), ", "))
-	}
-	if len(hit) > 1 {
-		return fmt.Errorf("round %d has %d rows numbered %s (lines %s) — a duplicate number makes the closure ambiguous and nothing was written", n, len(hit), num, strings.Join(rowLines(hit), ", "))
-	}
-	r := hit[0]
-	if r.Placeholder() {
-		// The scaffold's empty row is a form. Closing it would record a
-		// commit against a finding nobody has written down.
-		return fmt.Errorf("round %d finding %s has no finding text — it is the scaffold's empty row, not a claim; record the findings first with `wf round record`", n, num)
-	}
+	r := plan.rows[0]
 	if cur := strings.TrimSpace(r.ClosedBy); cur != "" {
-		if !*replace {
-			return fmt.Errorf("round %d finding %s is already closed by %q — pass -replace to overwrite it, and say in the round title why the first closure did not hold", n, num, cur)
-		}
 		// A -replace that names what is already there writes identical bytes,
 		// and the commit then fails on `nothing staged` — a git-shaped error
 		// for an operator-shaped mistake. `wf apply -whole` refuses an
@@ -179,56 +155,15 @@ func cmdRoundClose(args []string) error {
 			return fmt.Errorf("round %d finding %s is already closed by %s and -replace %s; nothing to do", n, num, cur, what)
 		}
 	}
-	// No bounds check on r.Line: `ParseFindings` numbers its rows over the same
-	// `strings.Split(b, "\n")` this indexes, so it is in range by construction.
-	// The check that used to stand here survived every mutation, and this
-	// project deletes such a guard rather than shipping it.
-	lines := strings.Split(string(b), "\n")
-	out, ok := ws.SetClosedBy(lines[r.Line-1], value)
-	if !ok {
-		// Unreachable through this command as it stands — `ParseFindings`
-		// accepted the row, so `SetClosedBy` finds its four pipes — and kept
-		// because the two commands that CAN print this refusal say the same
-		// sentence, and a clause dropped from one copy of three is how this
-		// project's most-repeated defect starts.
-		return fmt.Errorf("round %d line %d does not carry four unescaped pipes; a row the parser cannot split cannot be edited either — escape a literal pipe as \\|, and a backtick code span is NOT an escape", n, r.Line)
-	}
-	lines[r.Line-1] = out
-	body := []byte(strings.Join(lines, "\n"))
-	// Re-parsed from the BYTES that are about to be written, never from the
-	// row struct that produced them: this is the same read-back-and-compare
-	// `wf apply` does after a write, one layer up. Without it a rewrite that
-	// lands the sha in the wrong cell is reported as the closure it was asked
-	// for.
-	if err := verifyClosureLanded(body, r.Line, num, value, r.Text); err != nil {
-		return err
-	}
-	if err := os.WriteFile(dst, body, 0o644); err != nil {
-		return err
-	}
-	rel, _ := filepath.Rel(w.Root, dst)
 	subject := fmt.Sprintf("round %d: finding %s closed by prose", n, num)
 	if !byProse {
 		subject = fmt.Sprintf("round %d: finding %s closed by %s", n, num, short(sha))
 	}
-	commit, err := w.Git.Commit(subject, []string{rel})
+	// Write, read back, commit, and roll back on a failed commit — all in
+	// `ledgerClosure.write`, the one path both closure commands go through.
+	commit, err := plan.write(w, value, subject)
 	if err != nil {
-		// All-or-nothing, like `wf apply`: a commit that fails — a hook, a
-		// read-only object store — used to leave the ledger REWRITTEN and
-		// STAGED under a bare `exit status 1`, and both ways back in then
-		// refused (`already closed by …` without -replace, `names the same
-		// commit` with it), so the only exit left was the hand `git commit`
-		// this command exists to remove.
-		// The rollback's own failures are REPORTED, not swallowed: an operator
-		// told "rolled back" over a ledger that is still rewritten is worse off
-		// than one told nothing.
-		rolled := "the edit has been rolled back and nothing is staged"
-		if werr := os.WriteFile(dst, b, 0o644); werr != nil {
-			rolled = fmt.Sprintf("AND THE ROLLBACK FAILED (%v) — %s still holds the edit; restore it with `git checkout -- %s`", werr, rel, rel)
-		} else if _, rerr := w.Git.Run("reset", "-q", "HEAD", "--", rel); rerr != nil {
-			rolled = fmt.Sprintf("the edit has been rolled back, but it is still STAGED (%v) — unstage it with `git reset HEAD -- %s`", rerr, rel)
-		}
-		return fmt.Errorf("round %d finding %s: the ledger was written and the commit failed (%v) — %s", n, num, err, rolled)
+		return err
 	}
 	fmt.Printf("round %d finding %s: closed by %s\n  %s\ncommitted %s\n", n, num, value, trunc(r.Text, 90), short(commit))
 	if byProse {
