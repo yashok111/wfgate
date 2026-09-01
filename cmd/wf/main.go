@@ -58,6 +58,7 @@ const usage = `wf — gate harness
                                   closure [-round N]: does each closing commit touch what the finding names
   wf stats [-time]                per-round findings, closures and batches, from the ledger and git
   wf new-script <name>            emit the orchestration-script harness: wrapper, schemas, gate, ledger
+  wf new-lens <name>              emit the fixed half of a reviewer brief: reading list, scale, contract
   wf close [-archive DIR]         bank the gate's own record — history, stats, findings, a feedback scaffold
   wf prune [-yes]                 delete artifacts/, rounds/ and .git once the record is banked; not reversible
   wf docs [name]                  print the embedded operating manual (guide, checks, routing, ...)
@@ -115,6 +116,8 @@ func run(args []string) error {
 		return cmdStats(args[1:])
 	case "new-script":
 		return cmdNewScript(args[1:])
+	case "new-lens":
+		return cmdNewLens(args[1:])
 	case "close":
 		return cmdClose(args[1:])
 	case "prune":
@@ -1065,7 +1068,9 @@ reads [R2]. The scale is closed — wf round record refuses anything else:
   Cannot name one? Then it is a BLOCKER.
 - **MINOR** — a real defect whose cost, standing forever, is below the round it
   would take to close.
-- **NOTE** — not a defect: an observation or a question with no failure attached.
+- **NOTE** — not a defect: this row asserts that nothing here fails. An
+  observation, or a question whose answer would change nothing. A question
+  still OPEN is a BLOCKER, not a NOTE, and section 0c says why.
 
 Three rules about this table, all of which cost a live gate something. The finding
 text NAMES the artifact path it is about — wf check closure reaches a closure only

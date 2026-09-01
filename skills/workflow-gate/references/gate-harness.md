@@ -140,6 +140,21 @@ can drift apart from itself, and nothing here compares the copies.
    not work" — is precisely backwards there. The launch is the one event in a gate's life most worth
    timing.
 
+   **Brief each lens from `wf new-lens <name>`, and write only the aim by hand.** It emits what is
+   true of every round -- the reading list BY PATH (the workspace's own pinned `gate-checks.md`, with
+   sections 0, 0b and 0c named; the artifacts; the round's `brief.md` where one exists), the three
+   asks a delta round may never drop, the closed scale taken from the binary, and the table the lens
+   returns -- and it leaves the VECTOR as a marker line, which `wf round lens` then refuses to bank.
+   It does NOT restate the scale, because a restated rule goes stale where nothing can see it:
+   measured over the 309 lens prompts banked across the eleven workspaces that carry any, the lines
+   recurring in five or more DISTINCT prompts are 32.8% of 16 120, 200 of the 309 name `gate-checks`
+   and exactly ONE names `wf docs` -- so the recurring third is the manual re-authored by hand, and
+   `wf check dup` cannot see it because a prompt is not an artifact. What it will never write is the
+   aim: a gate's blocker has come from the lens whose instruction was deliberately under-specified
+   beside the ones the round's findings aimed, and a scaffold that composed the vector would close
+   exactly that. The emitted file lives BESIDE the operator and never in `rounds/rN/`, where a file
+   is what clears the freeze and close refusals demanding a round was read by somebody.
+
    **The scaffold is a form, and an empty form briefs nobody.** When round N's reviewers report, write
    what they found up and put it in with `wf round record <file>` BEFORE applying the fixes — the
    command exists so that filling the form is not the one place an operator falls back to a hand

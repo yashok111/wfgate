@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -412,6 +413,15 @@ func cmdRoundLens(args []string) error {
 	}
 	if len(strings.TrimSpace(string(b))) == 0 {
 		return fmt.Errorf("%s is empty; a roster entry whose prompt is empty records that a lens ran and not what it was asked", pos[0])
+	}
+	// The `wf new-lens` scaffold writes everything that is true of every round
+	// and leaves the AIM as one marker line. Banking it unfilled is the same
+	// claim an empty prompt makes -- that a lens ran and not what it was asked
+	// -- with the difference that this one is 40 lines long and reads like a
+	// brief. `-name`, `-model` and `-asks` are each refused when they say
+	// nothing; the prompt is the fourth field and had no such refusal.
+	if bytes.Contains(b, []byte(lensAimMarker)) {
+		return fmt.Errorf("%s still carries the `wf new-lens` marker line %q: the scaffold's fixed half is banked and its VECTOR is not, which records that a lens ran and not what it was aimed at. Replace that line with the aim, or bank the prompt the vector actually received", pos[0], lensAimMarker)
 	}
 	// Same inference, same announcement as `wf round record`: the default is
 	// the OPEN round, so banking a vector after the next round was opened lands
