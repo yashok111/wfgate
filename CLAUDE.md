@@ -1,7 +1,7 @@
 # wfgate — agent context
 
 **Where things are.** This file is the WHY: the architecture, the hard rules,
-the bars, and the two newest waves of the maintenance record. `README.md` is the
+the bars, and the four newest waves of the maintenance record. `README.md` is the
 command reference — every flag, every report line, worked examples; go there
 first for "how do I run a round". `skills/workflow-gate/references/` is the
 OPERATING MANUAL, which is judgement and is what gate agents are briefed from;
@@ -239,8 +239,9 @@ opening line.
   script.
   One edit SWALLOWED a whole checkbox — a replacement whose new text omitted the
   `- [ ]` header, merging one entry into its predecessor — caught by counting the
-  entries before and after. So `make check-docs` grew a fourth arm, a floor on that count (148 today, and it
-  moves with every checkbox that lands), and it is proven by mutation like the other three: **an edit
+  entries before and after. So `make check-docs` grew a fourth arm, a floor on that count (150 today, and it
+  moves with every checkbox that lands — this same sentence has now been stale
+  three waves running, at 147, at 148 and at 150), and it is proven by mutation like the other three: **an edit
   that swallows an entry reads exactly like an edit that shortened one**, and the
   reviewer's list IS the population, which is §F's own pinned-population rule
   applied to the file that states it. A token census over the whole reference set
@@ -962,9 +963,12 @@ at 124.7, 38.3 and 8.5 min, two artifacts — a decision document gated for six
 rounds, an orchestration script added at round 7 and gated for four more, then a
 THIRD artifact (an evidence-only script derived from the second by deletion)
 added at round 12. Prediction basis 5.5 per 100 changed lines against a gate
-actual of 8.1. NOT reproduced here — every claim below is what the gate reported
-and is filed for a maintainer to reproduce before acting, which this corpus's
-own nineteenth wave says is where three of five claims died.
+actual of 8.1 — and that basis reads **5.2 over 53 findings and 1029 changed
+lines** under the binary the NEXT wave shipped, because the run round left the
+population; the 5.5 is what the gate itself was predicted from and is left
+standing as that, named rather than silently corrected. Every claim below is
+what the gate REPORTED, written down before any of it was checked; the
+twenty-second wave reproduced them one at a time and one did not survive.
 
 - *`wfdry` prescribed the keyword the live launch refuses.* Round 8's dry run
   WARNed that a boolean outside its pass vocabulary reads false in every mode and
@@ -1018,6 +1022,184 @@ two blockers the previous launch had produced did not return. Three run rounds,
 and the first clean one is the sixteenth; the argument this gate's numbers make
 is for reaching for a launch EARLIER, not for treating it as the thing a gate
 builds toward.
+
+**The twenty-second wave — P4a reproduced, and the annotation the manual had
+been prescribing for two waves is refused by the launch everywhere**
+(`docs/feedbacks/FEEDBACK-p4a.md`). Six claims, taken one at a time against the
+code and against the workspace, which is on this box: five reproduced, one had a
+FALSE PREMISE and the defect under it is larger than the report, and the
+flagship one turned out to reach a shipped feature nobody had ever launched.
+
+- *`x-pass` is refused by the launch ANYWHERE in a schema, so the sixteenth
+  wave's array feature was poison too, and it had never been through a live
+  launch to find out.* The report is that `wfdry` advised `'x-pass': true` on two
+  booleans and the launch refused the whole schema. Reproduced from the
+  workspace's own artifacts, which now carry the diagnosis as a comment. What the
+  report does NOT say is that `authoring.md` prescribed the same keyword for
+  ARRAYS at three sites and `pre-flight-gate.md` at a fourth — banked as a
+  shipped feature by the sixteenth wave from a `wfdry` measurement, never once
+  sent to a launch. **Probed rather than argued** (P3d's precedent, and the whole
+  probe cost about 40 seconds and 390 k subagent tokens): `x-pass` on an array
+  REFUSED, `x-pass` on a boolean REFUSED, `x-foo` REFUSED, a plain
+  `passPolarity` REFUSED, the byte-identical schema without them ACCEPTED — so
+  the refused class is UNKNOWN KEYWORD and the `x-` prefix is not the
+  discriminator, which the fourth probe is the only thing that says. `$comment`,
+  `description` and `title` are all ACCEPTED, on the root and on a leaf. The
+  declaration moved to `$comment` — a standard annotation keyword the validator
+  knows, and the one of the three the MODEL does not read as guidance about the
+  field — and `wfdry` now REFUSES an unknown keyword as a mode failure rather
+  than a WARN, because the launch refuses it at spawn and the stub should die
+  where the agent would. The check reads the SERIALIZED schema and not the
+  composed object: `JSON.stringify` drops a key whose value is `undefined` or a
+  function, and reading the object would refuse a schema over a key nothing
+  sends — the same boundary the width has always been measured at, and it is one
+  reading, not two. It walks STRUCTURALLY rather than descending into every map,
+  because under `properties` the keys are field names and under `enum`, `const`
+  and `default` the value is data the agent may return; a generic walk reports
+  both as keywords. **Narrowed BEFORE shipping, over 191 frozen script revisions
+  across the 13 gate workspaces on disk: it fires 4 times, and all four are the
+  P4a revisions that carried the annotation** — no other revision in the corpus's
+  history is painted, and the four are the window between the round that followed
+  the WARN and the round that undid it. The allowlist is a hand-written
+  enumeration, which this file's own rule says cannot be complete, so the
+  direction of its incompleteness is chosen and said: a missing keyword produces
+  a red dry run over a schema the launch would have taken, against a false green
+  that cost 116 minutes and 26 of 27 properties.
+- *The cost meter's claim in the feedback is FALSE, and the real defect is one
+  layer deeper than the one reported.* The report says run rounds are "already
+  excluded from the round-time median and from the prediction basis" and asks for
+  the per-round ratio to follow. They were excluded from the median and from
+  NOTHING else: `batchHistory` never looked at a round's kind, so P4a's own
+  basis line — `rounds 2-6, 8-10, 13-15` — contained run round 14, whose four
+  findings from a five-agent launch over the 5 lines of its fix are the 80.0 per
+  100 the report complains about, sitting inside the 5.5 the gate was predicted
+  from. Excluded now in all three places and NAMED in each, beside the two
+  exclusions already there: the per-round line, the basis line, and the apply
+  note the operator actually acts on — a basis line that names an exclusion while
+  the note does not is two commands and one number, which this project has
+  already paid for once with the re-freeze exclusion. P4a re-prices to **5.2 over
+  53 findings and 1029 changed lines**.
+- *`wf round close` gained the door the harness already reported through.* A NOTE
+  row asserts no failure and has nothing a commit could close, while
+  `wf round record` has printed `closed by prose` as a first-class category since
+  it shipped — so the only path was the hand ledger edit plus a re-record, three
+  round-trips on that gate, and the hand edit is the one this command exists to
+  remove. `-prose "why"` writes the same cell through the same rewrite and
+  read-back, and refuses: a newline (a row is one line, and the rest would land
+  in the document as text nobody wrote), prose carrying a sha-shaped token
+  (`ws.FindingRow.Shas()` is asked, not a second detector — such a cell is a
+  COMMIT claim to every reader downstream, and `wf freeze` would demand the
+  commit exist), a commit argument beside it, the scaffold's empty row, and a
+  `-replace` naming the same sentence. A literal pipe is ESCAPED rather than
+  refused — a shell pipeline quoted in a sentence is the ordinary reason a cell
+  holds one — and an already-escaped one is left alone, because the fix for
+  following the ledger's documented rule must not be to stop following it. It
+  says in the same breath that a prose closure is checked by no command, and on a
+  BLOCKER row it says that too, where the row is written rather than leaving it
+  to the freeze's verify-by-hand note.
+- *`wf apply` was the last command still parsing its own arguments the wrong
+  way.* `wf apply <file>` printed a usage line naming `-f`, and two gates
+  reported it. The cause is that `cmdApply` used `flag.Parse` while every other
+  command has used `parseMixed` since `wf init p2c -target X` silently dropped
+  the flag it was given: a positional stops `flag.Parse`, so the file was
+  discarded AND every flag after it. Both halves are closed — `parseMixed`, and a
+  lone positional accepted as the batch — and a second positional is refused
+  naming what the batch is.
+- *The brief that exists nowhere, said by both commands that could have said it.*
+  `wf round new` writes a findings scaffold and no brief, `wf delta` prints to
+  stdout unless told `-save`, and a lens whose prompt names `rounds/rN/brief.md`
+  as required reading finds nothing there — P4a round 15, where the reviewer
+  reconstructed it from the previous ledger and the tag diff and REPORTED the
+  gap, which is the only reason it is known. `wf round new` names the command
+  when it opens a DELTA round, which is the kind briefed from a diff, and
+  `wf delta` says on STDERR — stdout is the brief — that the round holds no
+  `brief.md`, and stops saying it once one exists. Not made to save by default:
+  `wf delta -from X -to Y` outside the loop is a legitimate read, and a read
+  command that commits a file is a worse surprise than the one being fixed.
+- *Two manual edits, and one of them is the class §E is written about, arriving
+  from the opposite direction.* `gate-checks.md` §E is about what the dry runner
+  cannot SEE; this defect is the runner seeing correctly and its REMEDY being
+  invalid in the harness it stubs, so §E gained the entry that a `wfdry` remedy
+  changing a SCHEMA is a claim about the LAUNCH validator, which `wfdry` does not
+  run — follow a naming remedy freely, treat a remedy that adds a KEY as
+  unverified. And §D gained the rule the launch found by running: every NUMBER an
+  acceptance property pins is produced by RUNNING its command at the moment the
+  property is written, and the run recorded — P4a pinned a grep count at six,
+  six was unreachable by any correct implementation, and it survived five review
+  rounds because it was internally consistent with the prose around it. That is
+  §D's own bars rule extended from the bars to every other number in the section.
+  Two provenance entries, M-35 and M-36, and the checkbox floor moves to 150.
+
+- *And the wave earned its review round, for the sixteenth time running, and this
+  time the flagship was wrong in the one direction it had claimed to have
+  excluded.* One external model over the diff, then two Opus vectors (Go
+  correctness with a mutation sweep in an ISOLATED WORKTREE, and
+  claims/specification), against five green bars. Between them: **one defect of
+  BLOCKER shape, thirteen majors, 44 mutations with 16 survivors, and a number
+  this wave INVENTED.** (The wave's own sweep before the review was 28 mutations
+  with none surviving, which is what a sweep over the guards you thought to write
+  measures; the sixteen are the guards nobody thought to write, and a second
+  sweep of 15 over everything the review added kills all fifteen.)
+  The blocker-shaped one is `README.md`, which went on prescribing
+  `"x-pass": true` AS A SCHEMA KEY at two sites while the manual, the runner and
+  the code had all moved to `$comment` — the command reference an agent is told
+  to read FIRST, telling authors to write the exact line that kills a run at
+  spawn. The same file documented the new refusal nowhere at all, which is this
+  file's own "a shipped capability the report never mentions is a capability
+  nobody has".
+  Sharpest by consequence: **`launchKeywords` was the UNION of draft-07 and
+  2020-12**, so its incompleteness was TWO-WAY while the comment above it sold
+  the check on being one-way — every keyword wrongly IN the list is a false
+  GREEN, the direction the check exists to remove. Settled by a second probe,
+  seven agents: `definitions`, `dependencies` and `$anchor` ACCEPTED,
+  `prefixItems`, `dependentRequired` and `unevaluatedProperties` REFUSED as
+  unknown keywords, and `additionalItems` refused for a DIFFERENT reason
+  (`"additionalItems" is ignored when "items" is not an array of schemas`, which
+  is strict mode complaining about a keyword it KNOWS). It is draft-07 plus
+  `$defs` and `$anchor`; every later spelling came out, and the corpus still
+  paints 4 of 186.
+  **The number this wave invented is its own narrowing denominator: 191 does not
+  reproduce, and the reading is 186** — the first scan counted every commit in
+  which each script's blob merely EXISTED rather than every commit that TOUCHED
+  it, which multiplies a workspace by the number of scripts it carries. Both
+  reviewers reached 186 independently. And the sentence around it was wrong in a
+  second way: the four painted revisions are not "the window between the round
+  that followed the WARN and the round that undid it" — the annotation is in the
+  artifact's FIRST commit, which PRECEDES the dry run the write-up credits with
+  prescribing it.
+  Four more numbers and pointers: the corpus enumerations still read TWELVE
+  workspaces in four places inside the commit that raised the census to thirteen
+  (re-pooled: 179 spans of 199, median 24.2, middle half 17.6-32.2, review share
+  89.9%, authoring median 9.9 over thirteen); "two gates reported the positional
+  form" is one; "the third probe" is the fourth; and the checkbox-floor sentence
+  went stale for the third wave running, at 147, 148 and now 150.
+  In the code, five more: the delta-brief note fired on an ad-hoc `-from/-to`
+  read and — with the content comparison added the same hour — told the operator
+  that a correct, current brief was a DIFFERENT one; `-prose ""` read as "no
+  prose", so `wf round close 1 <sha> -prose ""` closed by COMMIT in silence (it
+  is flag PRESENCE now, not emptiness); `polarityRe` had no right boundary, so
+  `x-pass: falsely reported` parsed as `false`; the mis-spelling test matched the
+  bare WORD, so any `$comment` merely mentioning the annotation was reported as a
+  broken one; and `serializedSchema`'s own comment claimed to be "the ONE
+  reading" while the code stringified twice.
+  Of the 16 survivors, ten named a real gap and are pinned now — the two
+  enumeration tables are the interesting pair, because a table read from the map
+  it tests loses its case together with the entry, so both are written out
+  LITERALLY beside the map. Two lines were DELETED rather than shipped unproven
+  (the two `sort.Strings` inside the walk, whose ordering is unobservable because
+  the result is sorted once at the end), and one condition was KEPT with a
+  comment saying no mutation can kill it and why (`!byProse` in front of
+  `sameCommit`, where `sha` is empty and the call would answer false anyway).
+  `roundKinds` was hardened past what the review asked: it took the NEWEST
+  subject matching `round N: open (kind)`, so any later commit whose message
+  imitated one re-labelled the round for the time median, the lens classification
+  and — as of this wave — the cost meter. The oldest match is the actual opening
+  commit.
+  Two tests were rewritten because they passed with their own claim reverted: the
+  positional-apply test asserted a clean tree, which holds with `-m` discarded,
+  and the stderr test ran through a helper that points ONE pipe at both streams,
+  so it would have passed with the note written to stdout — the exact failure its
+  comment says it guards.
 
 ## Hard rules
 
@@ -1075,7 +1257,7 @@ builds toward.
   multi-digit number, one file held THREE stale copies of one median, and
   "a stale number in the manual" is the dominant finding of every claims vector
   this project has ever run. The measurements live in the maintenance record —
-  the two newest waves in this file, everything older in `WAVES.md` — where they
+  the four newest waves in this file, everything older in `WAVES.md` — where they
   are a record rather than something an agent acts on. The same test was applied
   to THIS file on 2026-08-29 and it failed it: 80% of it was that record, paid
   in context on every session, so it moved.
@@ -1214,10 +1396,26 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-08-31 — read before trusting
+## State as of 2026-09-01 — read before trusting
 
-- **FOURTEEN real gates have now run entirely through `wf`, and the newest TWO
-  are P3f and nova** (`docs/feedbacks/FEEDBACK-p3f.md`,
+- **FIFTEEN real gates have now run entirely through `wf`, and the newest is
+  P4a** (`docs/feedbacks/FEEDBACK-p4a.md`, `~/projects/gates/mocker-p4a-triage`,
+  210 commits): 16 rounds by its own `wf stats`, 97 findings, 30 blockers, 127
+  edits over 1195 changed lines, 9.4 h over the 13 review rounds at a median of
+  21.5 min, authoring 4.3 min, over THREE artifacts — a decision document gated
+  for six rounds, an orchestration script added at round 7 and gated for four
+  more, and an evidence-only script derived from the second by DELETION added at
+  round 12. It is the first gate with three `-kind run` rounds, at 124.7, 38.3
+  and 8.5 min, and each of the first two found what the review rounds before it
+  had not; the third is its first clean run round and it cost 110 k subagent
+  tokens because `resume` replayed four of five agents from cache. 19 of its
+  findings are NOTE rows and 8 of its rounds with findings carry no
+  `[fix-induced]` marker, so its 30-of-97 share is a lower bound. Its prediction
+  basis was 5.5 per 100 when the gate ran and is **5.2** under the current
+  binary, because the twenty-second wave took its run round out of the
+  population. Its workspace is on disk and unpruned, and it is what the schema
+  keyword check was narrowed against.
+- **P3f and nova ran before it** (`docs/feedbacks/FEEDBACK-p3f.md`,
   `~/projects/gates/mocker-p3f-rederive`; and
   `docs/feedbacks/FEEDBACK-nova-budget-panel-batch.md`, whose workspace is NOT
   on this box). P3f is 17 rounds by its own `wf stats`, 128 findings, 58 blockers, 212 edits over 1962 changed
@@ -1415,15 +1613,15 @@ fixtures for the non-ASCII anchor detector).
   `check drift` is STILL unexercised live.
 - **The validation corpus DOES survive, and it is the best evidence this
   repository has.** The claim that it did not was stale and cost an
-  investigation an hour of archaeology before it was checked: **TWELVE** gate
+  investigation an hour of archaeology before it was checked: **THIRTEEN** gate
   workspaces are on disk with full git history — `~/gates/p2d`, `~/gates/p2e`,
   `~/gates/p2f` (82 / 102 / 87 commits), and
   `~/projects/gates/mocker-a3-cas`, `mocker-p3a-resources`,
   `mocker-p3b-resources`, `mocker-p3c-ref-recipe`, `mocker-p3d-datasnap`,
   `mocker-p3e-nested`, `mocker-p3f-rederive`, `mocker-p3g-deep-nesting`,
-  `mocker-p3h-basepath`
-  (153 / 203 / 247 / 82 / 173 / 131 / 183 / 123 / 106 commits, all counts
-  re-derived 2026-08-31 with `git rev-list --count HEAD` — 128 stood here for one
+  `mocker-p3h-basepath`, `mocker-p4a-triage`
+  (153 / 203 / 247 / 82 / 173 / 131 / 183 / 123 / 106 / 210 commits, all counts
+  re-derived 2026-09-01 with `git rev-list --count HEAD` — 128 stood here for one
   wave and was the count BEFORE P3e's run round was filled, inherited by the next
   wave from the bullet whose own next sentence says not to; 117 for P3g lasted
   exactly one wave the same way; and P3h's 95 lasted exactly one wave for the
@@ -1448,23 +1646,27 @@ fixtures for the non-ASCII anchor detector).
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
   workspace over any set of documents.
 - **The cost of a gate is now measured by the tool, and the answer moved the
-  work.** `wf stats -time`, re-pooled 2026-08-31 over the TWELVE unpruned
-  workspaces with the current binary, over the 165 round spans of 183 that are
-  under two hours: **median 24.3 min, middle half 17.8-32.3** (quartiles by the
-  rank `int(n*0.25)+1`). The review segment is a median 88.6% of a round and the
-  bookkeeping tail 3.2%, over the 153 of those spans that carry a
-  `(review, fix, tail)` breakdown at all — a different population from the 165,
-  and named because this file's own rule is to name it. The other
-  eighteen spans are breaks (the longest 637.9 min) and none is a round
+  work.** `wf stats -time`, re-pooled 2026-09-01 over the THIRTEEN unpruned
+  workspaces with the current binary, over the 179 round spans of 199 that are
+  under two hours: **median 24.2 min, middle half 17.6-32.2** (quartiles by the
+  rank `int(n*0.25)+1`). The review segment is a median 89.9% of a round and the
+  bookkeeping tail 3.3%, over the 164 of those spans that carry a
+  `(review, fix, tail)` breakdown at all — a different population from the 179,
+  and named because this file's own rule is to name it; 179 spans carry a
+  breakdown in total, fifteen of them over two hours, so the two 179s are two
+  different sets and not one. The other
+  twenty spans are breaks (the longest 637.9 min) and none is a round
   length. State the READING with the number, because two of them disagree by a
   round: this one is every `  round` line carrying a `; N min` span, run rounds
   included, piped through `grep -oE '; [0-9]+\.[0-9] min'` and `sort -n`, where
   the eleven-workspace pooling one day earlier gave 148 of 165, a
-  ten-workspace one 138 of 154 and a nine-workspace one 119 of 129. Re-derive it with the command and say which
+  ten-workspace one 138 of 154 and a nine-workspace one 119 of 129; the
+  twelve-workspace pooling one day before this one gave 165 of 183 at a median of
+  24.3 and a middle half of 17.8-32.3. Re-derive it with the command and say which
   population the number came from.
   The old figures — "10-40 minutes, pooled median 15.5, review 70-87%" — were
   three gates and are not wrong so much as SMALL: per-gate medians run 13.8,
-  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 28.8, 19.6, 31.5, so the round
+  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 28.8, 19.6, 31.5, 21.5, so the round
   got longer as the gates got bigger, and a number banked from the first three
   under-prices every gate since. Read them off `wf stats -time`, one line per
   workspace, rather than re-deriving them: a hand pooling of the same spans moved
@@ -1478,15 +1680,15 @@ fixtures for the non-ASCII anchor detector).
   running the decision gate to exhaustion before the script exists took one gate
   from 10+6 rounds to 8+3, about an hour. The authoring window — init to the
   first artifact — is **0.3 to 76.5 min (9.9, 31.7, 42.2, 4.3, 5.0, 39.2, 2.2,
-  20.9, 76.5, 4.6, 0.3, 10.7; median 10.3 over twelve, the mean of the middle
-  two)**, and this file quoted only its two largest for
+  20.9, 76.5, 4.6, 0.3, 10.7, 4.3; median 9.9 over thirteen — a single middle
+  value now, where twelve gave the 10.3 mean of two)**, and this file quoted only its two largest for
   three waves before quoting a ceiling P3e then doubled and a floor P3g then cut
   by seven times. It is the largest block no
   round covers, and the short end is worse than it looks: those are the gates
   whose document was drafted BEFORE `wf init`, so the authoring itself falls
   outside every measurement banked here. `interview.md`
   (step -2) is what now occupies that window, against a round-1 blocker baseline
-  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 11, 4, 2 (one per unpruned workspace, in
+  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 11, 4, 2, 5 (one per unpruned workspace, in
   the order they are listed above; nova's round 1 filed 3, and its own write-up
   banks that as one data point AGAINST a large saving in blocker count from the
   interview and a clear one FOR what the step is actually for — not one of that

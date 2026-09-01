@@ -187,10 +187,13 @@ return { done: Boolean(a.smokeAchieved) }`, "clean")
 // `x-pass` lets a script name a boolean after its subject instead of after this
 // file's matcher. Without it, `smokeAchieved` was FALSE in every mode and the
 // branch behind it was executed by none.
+//
+// It lives in `$comment` since 2026-09-01: as a schema KEYWORD it made the
+// launch refuse the whole schema, which is measured beside `launchKeywords`.
 func TestXPass_declaresPolarityForABooleanNoMatcherRecognises(t *testing.T) {
 	body := func(pol string) string {
 		return `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
-const S = { type: 'object', properties: { smokeAchieved: { type: 'boolean', 'x-pass': ` + pol + ` } } }
+const S = { type: 'object', properties: { smokeAchieved: { type: 'boolean', '$comment': 'x-pass: ` + pol + `' } } }
 const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
 phase('P')
 const a = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
@@ -340,13 +343,13 @@ func TestSerializedWidth_isTheExactLengthOfTheSerializedSchema(t *testing.T) {
 // again, with nothing saying their spelling was seen and rejected.
 func TestXPass_aNonBooleanAnnotationIsNamedRatherThanIgnored(t *testing.T) {
 	r := run1(t, `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
-const S = { type: 'object', properties: { smokeAchieved: { type: 'boolean', 'x-pass': 'true' } } }
+const S = { type: 'object', properties: { smokeAchieved: { type: 'boolean', '$comment': 'x-pass: yes' } } }
 const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
 phase('P')
 const a = await spawn(`+"`go`"+`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })
 return { done: Boolean(a.smokeAchieved) }`, "clean")
 	joined := strings.Join(r.Notes, "\n")
-	if !strings.Contains(joined, "x-pass on smokeAchieved is not a boolean") {
+	if !strings.Contains(joined, "x-pass on smokeAchieved is not readable as true or false") {
 		t.Fatalf("a rejected spelling must be named: %s", joined)
 	}
 }

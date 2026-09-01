@@ -124,22 +124,22 @@ func TestBatchNote(t *testing.T) {
 	// 1600 changed lines historically producing 80 findings is 5 per 100; a
 	// batch of 400 lines therefore predicts ~20, whether it took 4 edits or 60.
 	hist := []histRound{{N: 2, Findings: 40, Lines: 800}, {N: 3, Findings: 40, Lines: 800}}
-	note, warn := batchNote(60, 400, hist, nil, nil)
+	note, warn := batchNote(60, 400, hist, nil, nil, nil)
 	if !warn || !strings.Contains(note, "predicts ~20 finding(s)") ||
 		!strings.Contains(note, "split by RULE") || !strings.Contains(note, "consumers are NOT in this diff") {
 		t.Fatalf("want a prediction, the split advice and the rule warning: %q", note)
 	}
-	few, warn2 := batchNote(4, 400, hist, nil, nil)
+	few, warn2 := batchNote(4, 400, hist, nil, nil, nil)
 	if !warn2 || !strings.Contains(few, "predicts ~20 finding(s)") {
 		t.Fatalf("the edit COUNT must not change the prediction: %q", few)
 	}
-	if _, warn := batchNote(60, 20, hist, nil, nil); warn {
+	if _, warn := batchNote(60, 20, hist, nil, nil, nil); warn {
 		t.Fatal("a batch changing few lines must pass silently")
 	}
-	if _, warn := batchNote(60, 400, nil, nil, nil); warn {
+	if _, warn := batchNote(60, 400, nil, nil, nil, nil); warn {
 		t.Fatal("no history, no claim")
 	}
-	if _, warn := batchNote(60, 0, hist, nil, nil); warn {
+	if _, warn := batchNote(60, 0, hist, nil, nil, nil); warn {
 		t.Fatal("a batch git sees as changing nothing predicts nothing")
 	}
 }
@@ -155,7 +155,7 @@ func TestBatchNote_printsTheTrendAndNamesTheRegime(t *testing.T) {
 		{N: 3, Findings: 25, Lines: 354},
 		{N: 4, Findings: 23, Lines: 264},
 	}
-	note, warn := batchNote(20, 300, rising, nil, nil)
+	note, warn := batchNote(20, 300, rising, nil, nil, nil)
 	if !warn {
 		t.Fatal("want a note")
 	}
@@ -170,7 +170,7 @@ func TestBatchNote_printsTheTrendAndNamesTheRegime(t *testing.T) {
 		{N: 3, Findings: 10, Lines: 354},
 		{N: 4, Findings: 23, Lines: 264},
 	}
-	if n, _ := batchNote(20, 300, wobbly, nil, nil); strings.Contains(n, "RISING") || strings.Contains(n, "falling") {
+	if n, _ := batchNote(20, 300, wobbly, nil, nil, nil); strings.Contains(n, "RISING") || strings.Contains(n, "falling") {
 		t.Fatalf("a non-monotone series must not be named a regime: %q", n)
 	}
 }
@@ -180,7 +180,7 @@ func TestBatchNote_printsTheTrendAndNamesTheRegime(t *testing.T) {
 // in the register of a measurement.
 func TestBatchNote_authoringRoundIsExcludedAndSaidSoOutLoud(t *testing.T) {
 	hist := []histRound{{N: 2, Findings: 24, Lines: 447}, {N: 3, Findings: 25, Lines: 354}}
-	note, warn := batchNote(20, 300, hist, []int{1}, nil)
+	note, warn := batchNote(20, 300, hist, []int{1}, nil, nil)
 	if !warn {
 		t.Fatal("want a note")
 	}

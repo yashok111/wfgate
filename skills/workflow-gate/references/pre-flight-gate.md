@@ -252,10 +252,14 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    that agent, per mode, and the clean mode's own verdict violation points at it. Three of one gate's
    dry-run reds were fixture-synthesis limits reported as artifact defects, and one of them ended
    with a correct narrowing reverted [M-10]. What the synthesis CAN and cannot derive — the field-name
-   vocabularies that decide a boolean's and an array's polarity, `x-pass` when the name will not do,
-   and the `$defs` placement a `$ref` needs — is `authoring.md`; a WARN naming a field the contract
+   vocabularies that decide a boolean's and an array's polarity, the `$comment` declaration when the
+   name will not do, and the `$defs` placement a `$ref` needs — is `authoring.md`; a WARN naming a field the contract
    does not recognise means "no mode exercised the branch guarded by this field", and a green tally
-   standing over one is the false green this whole runner exists against. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
+   standing over one is the false green this whole runner exists against. **And a remedy that edits the
+   SCHEMA is a claim about the LAUNCH validator, which this runner does not run** — one gate followed a
+   correct WARN into a schema the launch refused outright and lost its most expensive round to it
+   [M-35]; the runner refuses that keyword itself now, and the general rule is in `gate-checks.md`
+   section E. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
    template literal on every path and walks branches a parse cannot reach. **The clean path is the one
    that matters most** — reviewers read the failure branches, because that is where the risk looks like
    it lives, so the defects that survive a gate are the ones on the happy path. It is a DISTINCT dynamic

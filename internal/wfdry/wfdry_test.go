@@ -1546,18 +1546,18 @@ return { done: true, n: r.unheldProperties.length }`
 		t.Fatalf("an unannotated array keeps the name-based behaviour: want 1, got %d", got)
 	}
 	// `x-pass: false` — a populated array is the FAILURE shape.
-	if got := n(run1(t, body(`'x-pass': false, `), "clean")); got != 0 {
+	if got := n(run1(t, body(`'$comment': 'x-pass: false', `), "clean")); got != 0 {
 		t.Fatalf("x-pass:false must empty the array in a passing mode, got %d", got)
 	}
-	if got := n(run1(t, body(`'x-pass': false, `), "blockers")); got != 2 {
+	if got := n(run1(t, body(`'$comment': 'x-pass: false', `), "blockers")); got != 2 {
 		t.Fatalf("x-pass:false must yield the MIXED pair in a failing mode, got %d", got)
 	}
 	// `x-pass: true` — the boolean rule one type over: populated everywhere but
 	// in the mode that fails acceptance.
-	if got := n(run1(t, body(`'x-pass': true, `), "clean")); got != 1 {
+	if got := n(run1(t, body(`'$comment': 'x-pass: true', `), "clean")); got != 1 {
 		t.Fatalf("x-pass:true must populate the array in a passing mode, got %d", got)
 	}
-	if got := n(run1(t, body(`'x-pass': true, `), "acceptfail")); got != 0 {
+	if got := n(run1(t, body(`'$comment': 'x-pass: true', `), "acceptfail")); got != 0 {
 		t.Fatalf("x-pass:true must empty the array where acceptance fails, got %d", got)
 	}
 	// The NAME still decides where nothing is declared, and the mixed PAIR is
@@ -1589,7 +1589,7 @@ return { done: true, n: r.blockers.length, m: r.notes.length }`
 	// The annotation beats the name matcher, which is the whole point of an
 	// explicit polarity: `blockers` is the strongest word in the vocabulary.
 	named := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
-const S = { type: 'object', properties: { blockers: { type: 'array', 'x-pass': true } } }
+const S = { type: 'object', properties: { blockers: { type: 'array', '$comment': 'x-pass: true' } } }
 const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
 phase('P')
 const r = await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
@@ -1604,14 +1604,14 @@ return { done: true, n: r.blockers.length }`
 // name-based behaviour they were escaping, with nothing saying why.
 func TestUnreadableArrayPolarityIsNamed(t *testing.T) {
 	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
-const S = { type: 'object', properties: { unheld: { type: 'array', 'x-pass': 'yes' } } }
+const S = { type: 'object', properties: { unheld: { type: 'array', '$comment': 'x-pass: yes' } } }
 const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
 phase('P')
 await spawn(` + "`go`" + `, { model: 'sonnet', effort: 'low', label: 'w', schema: S })
 return { done: true }`
 	r := run1(t, body, "clean")
 	joined := strings.Join(r.Notes, "\n")
-	if !strings.Contains(joined, "unreadable `x-pass` on array field(s) — unheld") {
+	if !strings.Contains(joined, "unreadable `x-pass` in the `$comment` of array field(s) — unheld") {
 		t.Fatalf("an unreadable x-pass must be named: %v", r.Notes)
 	}
 	// Its OWN note. Filed into the boolean one, every clause was wrong about an

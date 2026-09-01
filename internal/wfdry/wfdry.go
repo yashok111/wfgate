@@ -565,7 +565,11 @@ func runMode(src, mode string, o Options) Result {
 			// the spawn because that is where the composed object exists: on
 			// the P3a script as it stands, 15 of 16 prompts — and their schemas
 			// with them — are built at run time.
-			n := serializedWidth(vm, v)
+			js, serializes := serializedSchema(vm, v)
+			n := -1
+			if serializes {
+				n = len(js)
+			}
 			// The census is taken only over a schema that SERIALIZES. Not a
 			// convenience: the honest unserialisable case is a cycle, and a
 			// census walking one does not return — the census is a statement
@@ -575,6 +579,16 @@ func runMode(src, mode string, o Options) Result {
 			req, noreq := -1, -1
 			if n >= 0 {
 				req, noreq = requiredCensus(v.Export())
+				// The launch validates in STRICT mode and refuses the whole
+				// schema over one unknown keyword, at spawn, before the agent
+				// exists — so the stub dies here exactly as the agent would
+				// die there. It is `bad` and not a WARN because this is not a
+				// question the corpus brackets: it was probed, and the runner
+				// that ADVISED the keyword is the reason it must now refuse it.
+				if bogus := refusedKeywordsIn(js); len(bogus) > 0 {
+					bad(label, fmt.Sprintf("its schema carries %s, which the launch's validator refuses as an unknown keyword (`strict mode: unknown keyword: %q`) — the whole schema is rejected at spawn and the agent never runs. A polarity declaration belongs in `$comment` (`\"$comment\": \"x-pass: true\"`), which is a standard annotation keyword and is accepted; renaming the field into the vocabulary this runner matches costs nothing at all",
+						strings.Join(quoteAll(bogus), ", "), bogus[0]))
+				}
 			}
 			r.Schemas = append(r.Schemas, SchemaUse{Label: label, Bytes: n, Required: req, NoRequired: noreq})
 			// A width is a QUESTION and never fails a mode — the corpus
@@ -848,17 +862,19 @@ func runMode(src, mode string, o Options) Result {
 	// against the completion vocabulary, and the remedy it offers is the
 	// annotation the author just wrote.
 	if bad := prefixed(r.defaulted, arrayPolarityKey); len(bad) > 0 {
-		r.Notes = append(r.Notes, "unreadable `x-pass` on array field(s) — "+strings.Join(bad, ", ")+" — so the array's polarity was decided by its NAME after all: an array is returned EMPTY in the passing modes only when its name carries one of the defect words ("+arrayVocabulary+"), and otherwise holds one placeholder in every mode. `\"x-pass\": false` says a populated array is the failure shape, `true` says it is the pass shape; the value must be a JSON boolean")
+		r.Notes = append(r.Notes, "unreadable `x-pass` in the `$comment` of array field(s) — "+strings.Join(bad, ", ")+" — so the array's polarity was decided by its NAME after all: an array is returned EMPTY in the passing modes only when its name carries one of the defect words ("+arrayVocabulary+"), and otherwise holds one placeholder in every mode. Write it as `\"$comment\": \"x-pass: false\"` — a populated array is then the failure shape — or `true` for the opposite; the value must read as true or false. It lives in `$comment` and NOT as a schema keyword because the launch refuses the whole schema over an unknown keyword (probed)")
 	}
 	if names := prefixed(r.defaulted, ""); len(names) > 0 {
 		// The NAME is the contract, and the note has to say so. Without this
 		// clause the message named the fields and not the rule they broke, so
 		// the vocabulary could only be found by reading this file — three field
 		// names were spent doing that on one gate. Renaming is offered FIRST
-		// because it is free: `x-pass` rides in the schema the launch's safety
-		// classifier reads and widens it, which is the other failure this
-		// runner now measures.
-		r.Notes = append(r.Notes, "unrecognised report field(s) — "+strings.Join(names, ", ")+" — were FALSE in this mode: no branch guarded by one of them was exercised, and the mode's OK covers none of it. A boolean is read as pass-shaped only by its NAME ("+passBoolVocabulary()+"); rename the field, or declare its polarity in the schema with `\"x-pass\": true` (or false for a failure flag), which costs bytes in the schema the classifier reads")
+		// because it is free: the declaration rides in the schema the launch's
+		// safety classifier reads and widens it, which is the other failure this
+		// runner now measures. And it is offered in `$comment` and NOT as a
+		// schema keyword — as a keyword the launch refuses the whole schema,
+		// which is how this very note once cost a run 26 of 27 properties.
+		r.Notes = append(r.Notes, "unrecognised report field(s) — "+strings.Join(names, ", ")+" — were FALSE in this mode: no branch guarded by one of them was exercised, and the mode's OK covers none of it. A boolean is read as pass-shaped only by its NAME ("+passBoolVocabulary()+"); rename the field, or declare its polarity in its `$comment` — `\"$comment\": \"x-pass: true\"`, or false for a failure flag — which costs bytes in the schema the classifier reads. NOT as a schema keyword: the launch refuses the whole schema over `x-pass` as a key, which is how this note once cost a run 26 of 27 properties")
 	}
 	return r
 }
@@ -869,13 +885,28 @@ func runMode(src, mode string, o Options) Result {
 // answer: a schema carrying a function or a cycle is not a schema the launch
 // can send.
 func serializedWidth(vm *goja.Runtime, v goja.Value) int {
+	s, ok := serializedSchema(vm, v)
+	if !ok {
+		return -1
+	}
+	return len(s)
+}
+
+// serializedSchema is the JSON the launch would receive, from the same engine
+// that composed it. It is the ONE reading behind both the width and the keyword
+// check, because two derivations of one quantity is this project's most
+// repeated defect class — and because the two answer differently: the composed
+// OBJECT can carry keys that never reach the wire, since `JSON.stringify` drops
+// a key whose value is `undefined` or a function. Walking the object would
+// refuse a schema over a key the validator never sees.
+func serializedSchema(vm *goja.Runtime, v goja.Value) (string, bool) {
 	j, ok := vm.Get("JSON").(*goja.Object)
 	if !ok || j == nil {
-		return -1
+		return "", false
 	}
 	fn, ok := goja.AssertFunction(j.Get("stringify"))
 	if !ok {
-		return -1
+		return "", false
 	}
 	s, err := fn(goja.Undefined(), v)
 	// A THROW comes back as an error with a nil value, so `s == nil` was the same
@@ -886,9 +917,9 @@ func serializedWidth(vm *goja.Runtime, v goja.Value) int {
 	// stringify of null is the STRING "null" — so the branch for it was deleted
 	// rather than shipped unprovable.
 	if err != nil || goja.IsUndefined(s) {
-		return -1
+		return "", false
 	}
-	return len(s.String())
+	return s.String(), true
 }
 
 // jsErr and rejection keep the LOCATION. Printing only the message left a
@@ -1309,10 +1340,9 @@ func arrayOf(name string, v map[string]any, mode, label string, depth int, rec m
 	// The polarity is the array's POPULATED state, exactly as for a boolean:
 	// `false` says a populated array is the failure shape (empty in the passing
 	// modes), `true` says it is the pass shape (empty in `acceptfail`).
-	if raw, present := v["x-pass"]; present {
-		if xp, ok := raw.(bool); ok {
-			return itemsOf(name, v, mode, label, depth, rec, xpassCount(xp, mode))
-		}
+	if xp, state := declaredPolarity(v); state == polarityOK {
+		return itemsOf(name, v, mode, label, depth, rec, xpassCount(xp, mode))
+	} else if state == polarityBad {
 		// Present and unreadable, named rather than ignored: the author who
 		// reached for the escape hatch would otherwise see the name-based
 		// behaviour they were escaping, with nothing saying their spelling was
@@ -1447,18 +1477,17 @@ func value(name string, v map[string]any, mode, label string, depth, idx int, re
 		// annotation is NOT free: it rides in the schema the launch's safety
 		// classifier reads, and that width is the other failure this runner
 		// measures, so the note offers renaming first.
-		if raw, present := v["x-pass"]; present {
-			if xp, ok := raw.(bool); ok {
-				if xp {
-					return mode != "acceptfail"
-				}
-				return !passFixture(mode)
+		if xp, state := declaredPolarity(v); state == polarityOK {
+			if xp {
+				return mode != "acceptfail"
 			}
+			return !passFixture(mode)
+		} else if state == polarityBad {
 			// Present and unreadable. The author who reaches for the escape
 			// hatch after reading the WARN would otherwise get the same WARN
 			// again, with nothing saying their spelling was seen and rejected.
 			if rec != nil {
-				rec["x-pass on "+name+" is not a boolean"]++
+				rec["x-pass on "+name+" is not readable as true or false"]++
 			}
 		}
 		if passBools.MatchString(name) {

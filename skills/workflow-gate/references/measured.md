@@ -508,6 +508,82 @@ blocks and the report says `PARTIAL MAP`. The sharpest single path is
 NEITHER artifact, so no reviewer, no static check and no self-report could have reached it. Re-derive
 with `wfcheck -root <repo> --owns-diff <base> <script>`.
 
+## M-35 — the annotation the dry runner prescribed and the launch refuses
+
+Round 8 of a 16-round gate ran `wfdry`, which WARNed that two booleans of an evidence-row schema were
+outside its pass vocabulary and read false in every mode, and advised `'x-pass': true` on each. The
+author wrote it. The launch refused the whole schema —
+`agent({schema}) received an invalid JSON Schema: strict mode: unknown keyword: "x-pass"` — which
+killed the first evidence agent at spawn and, through the script's own abort, the other two with it:
+**26 of 27 acceptance properties came back with no evidence after 1.9 M subagent tokens and 116
+minutes**, the most expensive round of that gate. Everything the script had been built to do about a
+failure worked; the failure was a line the dry runner asked for.
+
+**Probed afterwards, six one-agent runs of a workflow whose schemas differ by one key** (about 40
+seconds and 390 k subagent tokens for all six):
+
+| schema | outcome |
+|---|---|
+| `x-pass` on an array | REFUSED — `strict mode: unknown keyword: "x-pass"` |
+| `x-pass` on a boolean | REFUSED — same |
+| `x-foo` on a boolean | REFUSED — `unknown keyword: "x-foo"` |
+| `passPolarity` on a boolean | REFUSED — `unknown keyword: "passPolarity"` |
+| the same schema with none of them | ACCEPTED |
+| `$comment` / `description` / `title`, root and leaf | ACCEPTED |
+
+So the refused class is UNKNOWN KEYWORD and not the `x-` extension prefix — the fourth row is what
+says so — and the declaration moved into `$comment`, which is a standard annotation keyword the
+validator knows and which the MODEL does not read as guidance the way `description` and `title` are.
+
+**A second probe, seven more agents, asked WHICH DRAFT the validator implements**, because a checker
+that knows the refused class still needs to know which spellings are legal, and a first version of
+`wfdry`'s allowlist was the UNION of draft-07 and 2020-12 — which makes its incompleteness two-way,
+every wrongly-included keyword a false GREEN:
+
+| schema | outcome |
+|---|---|
+| `definitions` | ACCEPTED (draft-07) |
+| `dependencies` | ACCEPTED (draft-07) |
+| `$anchor` | ACCEPTED (a 2019 spelling, accepted anyway) |
+| `additionalItems` | refused for a DIFFERENT reason — `"additionalItems" is ignored when "items" is not an array of schemas` — which is strict mode complaining about a KNOWN keyword |
+| `prefixItems` | REFUSED — unknown keyword (2020) |
+| `dependentRequired` | REFUSED — unknown keyword (2019) |
+| `unevaluatedProperties` | REFUSED — unknown keyword (2019) |
+
+It is draft-07 plus `$defs` and `$anchor`, so every 2019/2020-only spelling is OUT of the allowlist
+and the incompleteness is one-way again: a missing keyword costs a red dry run over a schema the
+launch would have taken, never a green one over a schema it refuses.
+`wfdry` now refuses an unknown keyword itself, as a mode failure rather than a WARN, because the
+launch refuses it at spawn and the stub should die where the agent would. Narrowed before shipping,
+the way this project narrows a new report: over **191 frozen script revisions across the 13 gate
+workspaces on disk, it fires 4 times, and all four are the P4a revisions that carried the
+annotation** — no other revision in the corpus's history is painted. Re-derive by running the built
+`wfdry` over `git show <sha>:<script>` for every revision of every `artifacts/*.mjs` in each
+workspace and grepping the output for `unknown keyword`.
+
+Note the sixteenth wave had already banked `x-pass` on ARRAYS as a shipped feature. It had never been
+through a live launch — the corpus scan above is what says so — and by this probe it would have been
+refused identically. A feature whose only evidence is the dry runner that implements it is not
+evidence about the harness it stubs.
+
+## M-36 — the acceptance number that no correct implementation could produce
+
+The same gate's decision document pinned an acceptance property at a grep count of six: a command, a
+count, a failure condition, obeying section D's shape rule exactly. Six was unreachable by any correct
+implementation — the function whose call the rule required deleted emits one row per suggestion and
+needs the list its replacement does not return — and it survived FIVE review rounds because it was
+internally consistent with the prose around it. The LAUNCH found it, at the one step where changing
+production code is usually forbidden, and closing it cost two rounds: one to amend the
+rule into two doors and fix the code, one to find that the record the run had written described the
+PRE-amendment design, in a `CLAUDE.md` the target auto-loads into every session — so a later agent
+would have reverted the fix on the documentation's authority. (The two rounds SPAN 159 minutes by
+`wf stats -time`, against that gate's median of 21.5 — a bound on the cost and not an elapsed one,
+since the same report's own note says a span far above the median is a break rather than work.)
+
+A reviewer cannot falsify a number by reading, which is the whole point: the round that would have
+caught it is the one that RAN the command. The rule that follows is section D's own bars rule extended
+from the bars to every other number in the section.
+
 ---
 
 ## Appending here

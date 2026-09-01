@@ -211,7 +211,8 @@ can drift apart from itself, and nothing here compares the copies.
    splits on the escape too, which is how one gate wrote a commit id into the middle of a finding's
    text TWICE; the command rewrites the cell in place, validates the sha before touching the file,
    reads the row back, and refuses to overwrite a closure that already stands without `-replace`.
-   Re-recording the whole ledger with `-round N` remains the way to change anything else. A prose
+   Re-recording the whole ledger with `-round N` remains the way to change anything else, and
+   `-prose "why"` fills the same cell for a row no commit closes. A prose
    closure ("deferred, see decision D-7") passes the freeze with a counted "verify by hand" note — a
    deliberate escape, not a verified commit. A hex-looking English word is not read as a sha: a commit
    claim needs at least one digit. A comma-separated list of shas is fine, and case does not matter.
@@ -484,11 +485,22 @@ prose kept losing: a step nobody can run is a step that gets skipped.
    by round, because on the gate that produced the feature it reaches 47 of 121
    closures across seven rounds.
 6. Fill the `closed by` column with the apply commit — `wf round close <finding#> <commit>` per row,
-   or re-record the whole ledger with `wf round record <file> -round N`.
+   or re-record the whole ledger with `wf round record <file> -round N`. A row no commit closes — a
+   NOTE, which asserts no failure, or a finding refuted rather than fixed — takes
+   `wf round close <finding#> -prose "why"`, which is the same rewrite with the same read-back and
+   without the sha validation; before it existed, the only path was a hand ledger edit plus a
+   re-record, and one gate paid three round-trips for it.
    The next freeze refuses while a closed round's blocker stands open, and a record naming a commit
    that does not exist is rejected before it writes.
 7. `wfcheck`, the JS linter, `wfdry`. Then `wf round new`, `wf freeze`, and `wf verify` before
    launching.
+8. `wf delta -save` — AFTER `wf round new`, and **with `-save`, or the brief exists nowhere.**
+   `wf round new` writes a findings scaffold and no brief, and `wf delta` prints to stdout unless
+   told to save, so a lens whose prompt names `rounds/rN/brief.md` as required reading finds nothing
+   there and reviews less. One gate's reviewer reconstructed the brief from the previous ledger and
+   the tag diff and REPORTED the gap, which is the only reason it is known. Both commands name the
+   step now — `wf round new` on a delta round, and `wf delta` when it printed a brief that is not
+   the one saved beside it, or that is saved nowhere.
 
 **After a run, audit the ownership map against the tree it left:**
 `wfcheck -root <repo> --owns-diff <the commit the run started from> <script>`. The script's own harness
@@ -542,7 +554,12 @@ mechanically: which edits belong together is judgement, and all-or-nothing is pe
   did not write — it read 377.8 per 100 on one gate and `wf apply` predicted ~355 findings for a round
   that produced 24 — so the tool now prints NO ratio for such a round and excludes it from the
   prediction basis, naming the exclusion; a round whose few changed lines are post-gate tidying still
-  reads in the hundreds and still says nothing about a fix. **Read the SERIES, not the pooled ratio**,
+  reads in the hundreds and still says nothing about a fix. **THREE kinds of round leave that basis
+  and each is named where it is excluded** — the window that ADDS an artifact, the round whose
+  `gate-rN` moved over its own repairs, and a `-kind run` round, whose findings come from EXECUTING
+  what the gate built while its lines are only whatever its fix touched: one such round priced four
+  findings from a five-agent launch against the 5 lines of that fix, 80.0 per 100, inside a basis of
+  5.5. `wf stats` and the `wf apply` note both print all three. **Read the SERIES, not the pooled ratio**,
   which `wf apply` now prints: one gate ran 5.4, 7.1, 8.7, 10.3 findings per 100 changed lines while
   its fixes SHRANK (447, 354, 264, 204 lines), so the pooled figure predicted 5-6 against actuals of
   21-25, while a script gate measured the same ratio flat across a 12x range of batch sizes. The two

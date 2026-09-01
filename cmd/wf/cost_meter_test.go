@@ -238,7 +238,7 @@ func TestStatsTotalAndApplyNoteShareABasis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hist, _, _ := batchHistory(w)
+	hist, _, _, _ := batchHistory(w)
 	histLines := 0
 	for _, h := range hist {
 		histLines += h.Lines

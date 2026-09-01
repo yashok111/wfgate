@@ -158,8 +158,25 @@ finished/met/satisfied/achieved`, optionally prefixed by `goal/scope/slice/secti
 criterion`. Anything else is FALSE in every mode, so the branch behind it is exercised by none and the
 `clean` mode fails correctly while nothing says why — three field names were burned discovering this by
 reading the runner's source. The WARN now names the vocabulary. Rename the field, or declare the
-polarity in the schema with `"x-pass": true` (`false` for a failure flag), remembering that the
-annotation rides in the schema the safety classifier reads and widens it.
+polarity in the field's `$comment` — `"$comment": "x-pass: true"`, `false` for a failure flag —
+remembering that the annotation rides in the schema the safety classifier reads and widens it.
+
+**The polarity declaration goes in `$comment` and NEVER as a schema keyword, because the launch
+refuses the whole schema over an unknown one.** `agent({schema})` is validated in JSON Schema STRICT
+mode: `x-pass` as a KEY comes back as `strict mode: unknown keyword: "x-pass"`, the schema is rejected
+at spawn and the agent never runs. It cost one gate its most expensive round — a dry run advised the
+annotation, the author wrote it, the first evidence agent died at spawn and the script's own abort
+took the other two with it, 26 of 27 acceptance properties unproven after 1.9 M subagent tokens and
+116 minutes [M-35]. Probed since, one cheap agent per schema: `x-pass` on an array, `x-pass` on a
+boolean, `x-foo` and a plain `passPolarity` are all REFUSED, so the refused class is UNKNOWN KEYWORD
+and not the `x-` prefix; `$comment`, `description` and `title` are all ACCEPTED, on the root and on a
+leaf. `$comment` is the home rather than the other two because those two are read BY THE MODEL as
+guidance about the field. `wfdry` refuses the keyword itself now, so the dry run fails where the
+launch would. A second probe asked which DRAFT the validator implements, because a schema is refused
+for a spelling from the wrong one just as surely: it is draft-07 plus `$defs` and `$anchor`, so
+`prefixItems`, `dependentRequired`, `dependentSchemas`, `unevaluatedItems`/`unevaluatedProperties`
+and the other 2019/2020-only spellings are REFUSED — write `items`, `dependencies` and
+`definitions`/`$defs` [M-35].
 
 **A report ARRAY is filled or emptied by its NAME too, and the vocabulary is a list of DEFECT
 words.** `wfdry` returns an array EMPTY in the passing modes and holding a mixed PAIR elsewhere — two
@@ -172,9 +189,12 @@ than for the vocabulary is FALSE in the clean mode, and the mode fails while not
 Measured on one gate that spent two rounds reaching for that term over `unheldProperties`, including
 a reviewer's proposal to make the items OBJECTS rather than strings: it was tried, and it changed
 nothing — the discriminator was never the item type nor `required`, which the runner does not read.
-Declare the polarity instead: `"x-pass": false` on the array says a populated one is the failure
-shape (empty in the passing modes), `"x-pass": true` says the opposite (empty in `acceptfail`), and
-an explicit polarity beats every matcher. It costs bytes in the schema the classifier reads.
+Declare the polarity instead, in the array's `$comment`: `"$comment": "x-pass: false"` says a
+populated array is the failure shape (empty in the passing modes), `"x-pass: true"` says the opposite
+(empty in `acceptfail`), and an explicit polarity beats every matcher. It costs bytes in the schema
+the classifier reads. In `$comment` and not as a keyword, for the reason two rules above: the launch
+refuses the whole schema over an unknown keyword, and this annotation was a keyword until a gate paid
+116 minutes to find out.
 
 **Name the spawn wrapper `spawn`.** A script must wrap the spawn call — an unhandled throw at a serial
 step aborts the run (see the gate-checks' failure-handling section) — and `wfcheck` reads every later

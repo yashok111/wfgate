@@ -33,14 +33,50 @@ func cmdRoundClose(args []string) error {
 	// refusal quotes what is already there so the operator can tell the two
 	// apart without opening the file.
 	replace := fs.Bool("replace", false, "overwrite a closure cell that already names something")
+	// A NOTE row asserts no failure and so has nothing a commit could close,
+	// and `wf round record` has always reported `closed by prose` as a
+	// first-class category — so the harness knew about the closure this
+	// command could not write. P4a's write-up reports three round-trips, each
+	// ending in the hand ledger edit plus a re-record that this command exists
+	// to remove, and each after a refusal about a commit that does not exist.
+	// The ROUND NUMBERS it names are not reproducible — a refusal leaves no git
+	// trace, and the workspace's hand-edit-plus-re-record pattern sits in other
+	// rounds than the three it names — so the count is quoted and the
+	// attribution is not.
+	prose := fs.String("prose", "", "close the row by PROSE instead of a commit: no code changed, and every reader downstream sees a claim nothing can check")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
 	}
-	if len(pos) != 2 {
-		return fmt.Errorf("usage: wf round close <finding#> <commit> [-round N] [-replace]")
+	// PRESENCE, not emptiness. `-prose ""` read as "no prose" made
+	// `wf round close 1 <sha> -prose ""` close by COMMIT in silence — the
+	// operator asked for one door and got the other — and `-prose ""` alone
+	// fell out as a usage line about a commit they had not typed. A flag that
+	// was passed is a claim, and an empty one is a claim with nothing in it.
+	byProse := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "prose" {
+			byProse = true
+		}
+	})
+	if byProse && strings.TrimSpace(*prose) == "" {
+		return fmt.Errorf("`-prose` was passed with nothing in it: the cell would read as an OPEN row to `wf round record` and to the freeze, which is what it already says. Give the reason, or close with the commit")
 	}
-	num, sha := pos[0], strings.TrimSpace(pos[1])
+	switch {
+	case byProse && len(pos) == 2:
+		// Two claims for one cell. Which one the row would carry is a coin
+		// flip, and the cell is what every later reader tests.
+		return fmt.Errorf("`-prose` and a commit argument are exclusive: the cell holds ONE closure, and %q would silently lose to the other", pos[1])
+	case byProse && len(pos) != 1:
+		return fmt.Errorf("usage: wf round close <finding#> -prose \"why this row needed no commit\" [-round N] [-replace]")
+	case !byProse && len(pos) != 2:
+		return fmt.Errorf("usage: wf round close <finding#> <commit> [-round N] [-replace]\n       wf round close <finding#> -prose \"why this row needed no commit\" — for a row no commit closes")
+	}
+	num := pos[0]
+	sha := ""
+	if !byProse {
+		sha = strings.TrimSpace(pos[1])
+	}
 	// `#3` is what the report prints and what an operator copies. Accepting it
 	// costs one line; refusing it costs a round-trip that teaches nothing.
 	num = strings.TrimPrefix(strings.TrimSpace(num), "#")
@@ -63,7 +99,18 @@ func cmdRoundClose(args []string) error {
 	if err != nil {
 		return err
 	}
-	if !w.Git.CommitExists(sha) {
+	// The cell's value, from whichever of the two doors was used. Everything
+	// below this point writes and verifies THIS, so the two closures cannot
+	// drift into two write paths.
+	value := ""
+	if byProse {
+		v, err := proseValue(*prose)
+		if err != nil {
+			return fmt.Errorf("round %d finding %s: %w; nothing was written", n, num, err)
+		}
+		value = v
+	}
+	if !byProse && !w.Git.CommitExists(sha) {
 		return fmt.Errorf("%w; nothing was written", closedByError(w, fmt.Sprintf("round %d finding %s", n, num), sha))
 	}
 	// RESOLVED, not stored as typed. `wf round close 1 HEAD` was accepted, wrote
@@ -73,9 +120,12 @@ func cmdRoundClose(args []string) error {
 	// BLOCKER as prose-closed with a verify-by-hand note. The command whose
 	// whole purpose is a checkable commit reference was quietly producing an
 	// uncheckable one, and a symbolic ref is the natural thing to type.
-	sha, err = canonicalSha(w, sha)
-	if err != nil {
-		return fmt.Errorf("round %d finding %s: %w; nothing was written", n, num, err)
+	if !byProse {
+		sha, err = canonicalSha(w, sha)
+		if err != nil {
+			return fmt.Errorf("round %d finding %s: %w; nothing was written", n, num, err)
+		}
+		value = sha
 	}
 	rows := ws.ParseFindings(b)
 	var hit []ws.FindingRow
@@ -110,8 +160,20 @@ func cmdRoundClose(args []string) error {
 		// abbreviation, a different case or a full sha of the very commit
 		// being named, and each of those would write bytes that differ while
 		// the claim does not change.
-		if cur == sha || sameCommit(w, cur, sha) {
-			return fmt.Errorf("round %d finding %s is already closed by %s and -replace names the same commit; nothing to do", n, num, cur)
+		// The prose half compares the BYTES, because there is nothing else to
+		// compare: two sentences that mean the same thing are two claims, and
+		// only an identical one would write identical bytes and die on git's
+		// `nothing staged` the way the commit half used to.
+		// `!byProse` is a statement of intent and not a behavioural guard: under
+		// prose `sha` is empty, so `sameCommit` would answer false anyway and no
+		// mutation can make the condition fail. It stays because calling git to
+		// compare a commit against the empty string is a question nobody asked.
+		if cur == value || (!byProse && sameCommit(w, cur, sha)) {
+			what := "names the same commit"
+			if byProse {
+				what = "names the same prose"
+			}
+			return fmt.Errorf("round %d finding %s is already closed by %s and -replace %s; nothing to do", n, num, cur, what)
 		}
 	}
 	// No bounds check on r.Line: `ParseFindings` numbers its rows over the same
@@ -119,7 +181,7 @@ func cmdRoundClose(args []string) error {
 	// The check that used to stand here survived every mutation, and this
 	// project deletes such a guard rather than shipping it.
 	lines := strings.Split(string(b), "\n")
-	out, ok := ws.SetClosedBy(lines[r.Line-1], sha)
+	out, ok := ws.SetClosedBy(lines[r.Line-1], value)
 	if !ok {
 		return fmt.Errorf("round %d line %d does not carry four unescaped pipes; a row the parser cannot split cannot be edited either — escape a literal pipe as \\|", n, r.Line)
 	}
@@ -130,14 +192,18 @@ func cmdRoundClose(args []string) error {
 	// `wf apply` does after a write, one layer up. Without it a rewrite that
 	// lands the sha in the wrong cell is reported as the closure it was asked
 	// for.
-	if err := verifyClosureLanded(body, r.Line, num, sha, r.Text); err != nil {
+	if err := verifyClosureLanded(body, r.Line, num, value, r.Text); err != nil {
 		return err
 	}
 	if err := os.WriteFile(dst, body, 0o644); err != nil {
 		return err
 	}
 	rel, _ := filepath.Rel(w.Root, dst)
-	commit, err := w.Git.Commit(fmt.Sprintf("round %d: finding %s closed by %s", n, num, short(sha)), []string{rel})
+	subject := fmt.Sprintf("round %d: finding %s closed by prose", n, num)
+	if !byProse {
+		subject = fmt.Sprintf("round %d: finding %s closed by %s", n, num, short(sha))
+	}
+	commit, err := w.Git.Commit(subject, []string{rel})
 	if err != nil {
 		// All-or-nothing, like `wf apply`: a commit that fails — a hook, a
 		// read-only object store — used to leave the ledger REWRITTEN and
@@ -156,12 +222,72 @@ func cmdRoundClose(args []string) error {
 		}
 		return fmt.Errorf("round %d finding %s: the ledger was written and the commit failed (%v) — %s", n, num, err, rolled)
 	}
-	fmt.Printf("round %d finding %s: closed by %s\n  %s\ncommitted %s\n", n, num, sha, trunc(r.Text, 90), short(commit))
+	fmt.Printf("round %d finding %s: closed by %s\n  %s\ncommitted %s\n", n, num, value, trunc(r.Text, 90), short(commit))
+	if byProse {
+		// What a prose closure IS, said where it is written and not left for
+		// the freeze to say. `wf check closure` counts this row in the
+		// population it is NOT about, and `wf freeze` passes it with a
+		// verify-by-hand note: the row now rests on the sentence above and on
+		// nothing else.
+		fmt.Printf("  a PROSE closure is checked by no command: `wf check closure -round %d` counts it apart, and `wf freeze` passes it with a verify-by-hand note\n", n)
+		if strings.EqualFold(strings.TrimSpace(r.Level), "BLOCKER") {
+			// The one level where that matters most, named rather than left to
+			// the reader of the freeze. A BLOCKER asserts that nothing
+			// downstream catches the defect; closing it with a sentence says
+			// the assertion was wrong, and the round title is where that
+			// belongs.
+			fmt.Printf("  this row is a BLOCKER: a blocker closed by prose is the claim that no commit was OWED, so say in the round title why\n")
+		}
+		return nil
+	}
 	// The check that reads this cell, named where the cell was just filled.
 	// `wf round record` prints the same class of pointer for the same reason:
 	// a closure is a claim, and the command that tests it is one line away.
 	fmt.Printf("  `wf check closure -round %d` asks whether that commit touched what the finding names\n", n)
 	return nil
+}
+
+// proseValue validates and escapes a prose closure. The cell it is about to
+// occupy is READ by three later commands, and each of them can be lied to by a
+// shape this rejects.
+func proseValue(s string) (string, error) {
+	v := strings.TrimSpace(s)
+	// A row is one line. A newline would end the row mid-cell and the rest
+	// would land in the document as text nobody wrote — the corruption class
+	// this whole command exists to remove, arriving through its new door.
+	if strings.ContainsAny(v, "\n\r") {
+		return "", fmt.Errorf("a prose closure is ONE line: the cell is a table row, and a newline ends it mid-cell")
+	}
+	// A sha-shaped token makes the cell a COMMIT claim to every reader
+	// downstream — `ws.FindingRow.Shas()` is what they all use, so it is what
+	// this asks, rather than a second detector. `wf freeze` would then demand
+	// that commit exist and `wf check closure` would test what it touched,
+	// both against a row whose author meant a sentence.
+	if shas := (ws.FindingRow{ClosedBy: v}).Shas(); len(shas) > 0 {
+		return "", fmt.Errorf("the prose contains %q, which every reader downstream reads as a COMMIT claim (a hex token of 7-40 chars with a digit) — close it with that commit instead, or reword", shas[0])
+	}
+	// The escape the ledger's own format requires. Written HERE rather than
+	// refused: the operator typed a sentence, and a shell pipeline quoted
+	// inside it is the ordinary reason a cell holds a pipe at all. The
+	// read-back below compares the ESCAPED form, so a mis-escape cannot pass.
+	//
+	// Only UNESCAPED pipes: an operator who read the ledger's rule and typed
+	// `\|` would otherwise get `\\|`, and the fix for following the
+	// documentation would be to stop following it.
+	var b strings.Builder
+	esc := false
+	for _, r := range v {
+		switch {
+		case esc:
+			esc = false
+		case r == '\\':
+			esc = true
+		case r == '|':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String(), nil
 }
 
 // verifyClosureLanded re-parses the edited ledger and asserts the closure

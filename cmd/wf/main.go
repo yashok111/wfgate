@@ -48,6 +48,7 @@ const usage = `wf — gate harness
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
   wf round record <file> [-round N]   fill a round's findings.md from a file (- reads stdin), validate closures, commit
   wf round close <finding#> <commit> [-round N] [-replace]   fill one finding's closure cell without splitting the row on its pipes
+  wf round close <finding#> -prose "why" [-round N] [-replace] the same cell for a row no commit closes
   wf round lens <prompt-file> -name N -model M -asks Q [-round N]   bank a reviewer vector against the round (no argument: print the roster)
   wf freeze                       hash the artifacts, commit, tag gate-rN
   wf verify [-round N]            the pre-launch check: the tree is exactly what was frozen
@@ -254,11 +255,27 @@ func cmdApply(args []string) error {
 	rule := fs.String("rule", "", "the [RN] rule this batch changes; the note then names the OTHER sites carrying it")
 	ruleAck := fs.Bool("rule-ack", false, "apply anyway when a declared [RN] rule has marked sites in files this batch does not write")
 	whole := fs.String("whole", "", "adopt <path> as it lies in the worktree: no block format, the diff against HEAD IS the batch")
-	if err := fs.Parse(args); err != nil {
+	// `parseMixed`, not `fs.Parse`: this was the ONE command still parsing its
+	// own arguments the way `wf init p2c -target X` used to, so `wf apply
+	// edits.json -m msg` dropped every flag after the path and then complained
+	// about the path. Two gates reported the positional form, which is the
+	// second half of the same defect and is accepted below.
+	pos, err := parseMixed(fs, args)
+	if err != nil {
 		return err
 	}
+	// A lone positional IS the edits file. It is what two operators typed and
+	// what the usage line's own `-f edits.json` reads like at a glance; the
+	// refusal taught neither of them anything a round-trip did not.
+	if len(pos) == 1 && *file == "" && *whole == "" {
+		*file = pos[0]
+		pos = nil
+	}
+	if len(pos) > 0 {
+		return fmt.Errorf("unexpected argument(s) %s: the batch is one file, named by `-f` or as the single positional argument", strings.Join(pos, " "))
+	}
 	if *file == "" && *whole == "" {
-		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]\n       wf apply -whole <path> [-m msg] [-rule RN] [-rule-ack] [--dry-run]")
+		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]\n       wf apply <edits.json> is the same thing\n       wf apply -whole <path> [-m msg] [-rule RN] [-rule-ack] [--dry-run]")
 	}
 	// The two are different acts, not two spellings of one: `-f` plans a batch
 	// and verifies it, `-whole` records a rewrite it did not watch. Taking both
@@ -402,8 +419,8 @@ func cmdApply(args []string) error {
 	// against comes from --numstat, and a ratio whose two halves count different
 	// things is worse than no ratio. Measured: a P2e window of two edits changed
 	// 933 lines, 931 of them in one commit the subject-only meter never saw.
-	hist, authoringSkipped, republishedSkipped := batchHistory(w)
-	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), hist, authoringSkipped, republishedSkipped); warn {
+	hist, authoringSkipped, republishedSkipped, runSkipped := batchHistory(w)
+	if note, warn := batchNote(len(edits), worktreeChangedLines(w, written), hist, authoringSkipped, republishedSkipped, runSkipped); warn {
 		fmt.Println(note)
 	}
 	// Named, not merely remembered. The prediction beside it prices CHANGED
@@ -589,8 +606,8 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 		}
 		return errFindings
 	}
-	hist, authoringSkipped, republishedSkipped := batchHistory(w)
-	if note, warn := batchNote(hunks, changed, hist, authoringSkipped, republishedSkipped); warn {
+	hist, authoringSkipped, republishedSkipped, runSkipped := batchHistory(w)
+	if note, warn := batchNote(hunks, changed, hist, authoringSkipped, republishedSkipped, runSkipped); warn {
 		fmt.Println(note)
 	}
 	if err := printRuleSpread(w, ruleID, rulePhrase, []string{key}); err != nil {
@@ -975,7 +992,7 @@ func cmdRound(args []string) error {
 		return cmdRoundClose(args[1:])
 	}
 	if len(args) == 0 || args[0] != "new" {
-		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> [-round N] | wf round close <finding#> <commit> [-round N] | wf round lens <prompt-file> -name N -model M -asks Q [-round N]")
+		return fmt.Errorf("usage: wf round new [-title T] | wf round record <file> [-round N] | wf round close <finding#> <commit>|-prose T [-round N] | wf round lens <prompt-file> -name N -model M -asks Q [-round N]")
 	}
 	fs := flag.NewFlagSet("round new", flag.ExitOnError)
 	title := fs.String("title", "", "what this round is asked to find or close")
@@ -1078,6 +1095,17 @@ loses it is that nobody remembered while writing the row.
 		return err
 	}
 	fmt.Printf("round %d opened (%s), %s\ncommitted %s\n", n, *kind, rel, short(sha))
+	// The next command of the loop, named where the round is opened. `wf round
+	// new` writes a findings scaffold and NO brief, and nothing said so at the
+	// moment it matters: an operator who then runs `wf delta` reads a correct
+	// diff on stdout and has no reason to think a file was expected. Measured
+	// on P4a round 15 — the lens named `rounds/r15/brief.md` as required
+	// reading and the reviewer had to reconstruct it. Only on a delta round:
+	// that is the kind whose reviewers are briefed from the diff rather than
+	// from the artifact.
+	if *kind == "delta" && n > 1 {
+		fmt.Printf("  next: `wf delta -save` writes rounds/r%d/brief.md — the input a delta lens is told to read; without -save the brief goes to stdout and nowhere else\n", n)
+	}
 	// The moment the round's reviewers are about to be briefed is the moment
 	// the age of the briefing matters. Measured on P3a: the workspace pin was
 	// written sixteen rounds earlier, the reference had since grown two whole
@@ -2147,13 +2175,15 @@ func cmdDelta(args []string) error {
 	// the very stray file verify then had to learn to name. If the brief is
 	// wanted as a file, the tool writes and commits it, so the class dies at
 	// its source.
-	var out io.Writer = os.Stdout
+	// The brief is composed into a buffer EITHER WAY. Without `-save` it is
+	// then printed, and the buffer is what the note below compares against the
+	// file: a `brief.md` left over from an earlier save is exactly as wrong as
+	// no brief at all, and the first version of the note was silent about it
+	// because it asked only whether the file existed.
 	var buf bytes.Buffer
-	if *save {
-		if w.M.Round == 0 {
-			return fmt.Errorf("no round is open to save the brief into")
-		}
-		out = &buf
+	out := io.Writer(&buf)
+	if *save && w.M.Round == 0 {
+		return fmt.Errorf("no round is open to save the brief into")
 	}
 	// The base is the round BEING CLOSED, which is the one before the open round —
 	// not simply the newest tag. By the time a delta reviewer is briefed, the
@@ -2195,6 +2225,9 @@ func cmdDelta(args []string) error {
 	}
 	fprintf(out, "## artifact diff\n\n%s\n", d)
 	noteDeletions(out, d, base)
+	if !*save {
+		_, _ = os.Stdout.Write(buf.Bytes())
+	}
 	if *save {
 		dir := w.RoundDir(w.M.Round)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -2214,6 +2247,36 @@ func cmdDelta(args []string) error {
 			return err
 		}
 		fmt.Printf("saved %s (%d bytes)\ncommitted %s\n", rel, buf.Len(), short(sha))
+		return nil
+	}
+	// The brief just went to stdout and nowhere else, and the lens about to be
+	// dispatched names `rounds/rN/brief.md` as required reading. Measured on
+	// P4a round 15: the file did not exist, the reviewer reconstructed the same
+	// content from the previous ledger and the tag diff and REPORTED the gap —
+	// which is the only reason it is known. A brief that silently does not
+	// exist is a lens that silently reviews less, so the command that produced
+	// the bytes says where they did not go. Only where a round is open to save
+	// into: `wf delta -from X -to Y` outside the loop is a legitimate read.
+	// The DEFAULT range only. `wf delta -from X -to Y` is a legitimate ad-hoc
+	// read — the comment above said so while the guard did not, so an ad-hoc
+	// read of an older range told the operator that a correct, current brief was
+	// a DIFFERENT one and advised republishing it. The note is about the round's
+	// own brief, and only the default range composes that.
+	if w.M.Round > 0 && *from == "" && *to == "HEAD" {
+		p := filepath.Join(w.RoundDir(w.M.Round), "brief.md")
+		rel, _ := filepath.Rel(w.Root, p)
+		switch b, err := os.ReadFile(p); {
+		case os.IsNotExist(err):
+			fmt.Fprintf(os.Stderr, "\nnote: this brief was printed and NOT saved — %s does not exist, and a lens naming it as required reading finds nothing there. `wf delta -save` writes and commits it\n", rel)
+		case err != nil:
+			// A third state, and it says so rather than passing as agreement:
+			// an unreadable file is not a file whose contents match.
+			fmt.Fprintf(os.Stderr, "\nnote: this brief was printed and NOT saved, and %s could not be read (%v), so whether the lens reads THIS brief is UNKNOWN\n", rel, err)
+		case !bytes.Equal(b, buf.Bytes()):
+			// The stale case, which is the one a reader cannot see: the file is
+			// there, the lens reads it, and it is a different brief.
+			fmt.Fprintf(os.Stderr, "\nnote: this brief was printed and NOT saved, and %s holds a DIFFERENT brief (%d bytes against %d) — a lens naming it reads the older one. `wf delta -save` republishes it\n", rel, len(b), buf.Len())
+		}
 	}
 	return nil
 }
@@ -3749,6 +3812,15 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 					} else {
 						ed += fmt.Sprintf(" (no ratio — the tag moved over %d line(s) of this round's OWN repairs)", rw.Swallowed)
 					}
+				} else if kinds[n] == "run" {
+					// The third window with no ratio in it, on the line where
+					// the ratio is read. P4a's round 14 printed `80.0
+					// finding(s) per 100 changed line(s)` — four findings from
+					// a five-agent launch divided by the 5 lines its fix
+					// happened to touch — the highest figure of that gate by a
+					// factor of seven, on the line a reader takes the descent
+					// from.
+					ed += " (no ratio — a run round's findings come from EXECUTING, not from reading the fix these lines are)"
 				} else {
 					ed += fmt.Sprintf(" (%.1f finding(s) per 100 changed line(s))",
 						100*float64(findings)/float64(lines))
@@ -4050,7 +4122,7 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	// used to happen silently and by 60% on a live gate, which is why one
 	// derivation is shared; where they legitimately differ, the difference is
 	// PRINTED rather than reconciled by pretending one of them is the other.
-	if hist, skipped, republished := batchHistory(w); len(hist) > 0 || len(skipped)+len(republished) > 0 {
+	if hist, skipped, republished, runs := batchHistory(w); len(hist) > 0 || len(skipped)+len(republished)+len(runs) > 0 {
 		hl, hf := 0, 0
 		var ns []int
 		for _, h := range hist {
@@ -4074,6 +4146,9 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		}
 		if len(republished) > 0 {
 			line += fmt.Sprintf(" (round(s) %s excluded — their tag moved over their OWN repairs, so the window prices edits that are not the fix it measures)", roundList(republished))
+		}
+		if len(runs) > 0 {
+			line += fmt.Sprintf(" (round(s) %s excluded — a run round's findings come from EXECUTING what the gate built, not from reading the fix its lines are)", roundList(runs))
 		}
 		_, _ = fmt.Fprintln(out, line)
 	}
@@ -4844,7 +4919,8 @@ type histRound struct {
 // including one made the meter predict ~355 findings for a round that produced
 // 24. Excluding is honest in a way that any correction factor would not be —
 // there is no ratio there to correct.
-func batchHistory(w *ws.Workspace) (hist []histRound, authoringSkipped, republishedSkipped []int) {
+func batchHistory(w *ws.Workspace) (hist []histRound, authoringSkipped, republishedSkipped, runSkipped []int) {
+	kinds := roundKinds(w)
 	for _, rw := range roundWindows(w) {
 		if !rw.Attributable {
 			continue
@@ -4886,9 +4962,23 @@ func batchHistory(w *ws.Workspace) (hist []histRound, authoringSkipped, republis
 			republishedSkipped = append(republishedSkipped, rw.N)
 			continue
 		}
+		// A `-kind run` round's findings come from EXECUTING what the gate
+		// built, and the lines in its window are whatever its own fix happened
+		// to touch. The two halves of the ratio are about different things, so
+		// there is no ratio there either — the same reasoning the authoring
+		// window and the moved tag already get, one cause along. Measured on
+		// P4a, whose feedback reported this exclusion as ALREADY MADE: it was
+		// made in the round-time median and nowhere else, so its run round 14 —
+		// four findings from a five-agent launch over the 5 lines of its fix,
+		// 80.0 per 100 — sat inside a prediction basis of 5.5. Without it the
+		// basis reads 5.2 over 53 findings and 1029 lines.
+		if kinds[rw.N] == "run" {
+			runSkipped = append(runSkipped, rw.N)
+			continue
+		}
 		hist = append(hist, histRound{N: rw.N, Findings: findings, Lines: lines})
 	}
-	return hist, authoringSkipped, republishedSkipped
+	return hist, authoringSkipped, republishedSkipped, runSkipped
 }
 
 // batchNote is the apply-side half of the cost meter: a NOTE, never a refusal
@@ -4904,7 +4994,7 @@ func batchHistory(w *ws.Workspace) (hist []histRound, authoringSkipped, republis
 // the ratio FLAT across a 12x range of batch sizes. The two do not disagree —
 // they measure different regimes, and the pooled number cannot say which one it
 // came from. The series can, and the operator reads it in one glance.
-func batchNote(edits, lines int, hist []histRound, authoringSkipped, republishedSkipped []int) (string, bool) {
+func batchNote(edits, lines int, hist []histRound, authoringSkipped, republishedSkipped, runSkipped []int) (string, bool) {
 	if len(hist) == 0 {
 		return "", false
 	}
@@ -4960,6 +5050,13 @@ func batchNote(edits, lines int, hist []histRound, authoringSkipped, republished
 	// the silent one being the command that acts on it.
 	if len(republishedSkipped) > 0 {
 		note += fmt.Sprintf("\n  note: round(s) %s are NOT in that history either — their `gate-rN` moved over their OWN repairs, so the window prices edits that are not the fix it measures", roundList(republishedSkipped))
+	}
+	// The third exclusion, named in the same place as the other two: an
+	// exclusion the basis line states and this note does not is a gap in the
+	// trend series that the operator reading the prediction cannot account for,
+	// which is exactly what the second one cost before it was added here.
+	if len(runSkipped) > 0 {
+		note += fmt.Sprintf("\n  note: round(s) %s are NOT in that history either — they CONTAIN a live run, so their findings come from executing what the gate built while their lines are only whatever the fix touched. One such round priced 4 findings against 5 lines, 80.0 per 100, inside a basis of 5.5", roundList(runSkipped))
 	}
 	return note, true
 }
@@ -5042,12 +5139,17 @@ func roundKinds(w *ws.Workspace) map[int]string {
 	if err != nil {
 		return out
 	}
+	// `git log` is newest-first and the OLDEST match wins, which is the round's
+	// actual opening commit — a round is opened once and never re-opened. The
+	// first version took the newest, so any later commit whose SUBJECT reads
+	// like an opening (an apply batch with a hand `-m "round 3: open (run) …"`)
+	// silently re-labelled the round for every reader of this map: the round-time
+	// median, the lens classification, and — since the twenty-second wave — the
+	// cost meter's exclusions.
 	for _, s := range strings.Split(subjects, "\n") {
 		if m := roundOpenRe.FindStringSubmatch(s); m != nil {
 			n, _ := strconv.Atoi(m[1])
-			if _, seen := out[n]; !seen {
-				out[n] = m[2]
-			}
+			out[n] = m[2]
 		}
 	}
 	return out

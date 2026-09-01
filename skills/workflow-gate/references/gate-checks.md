@@ -395,6 +395,15 @@ compiles, passes every test, and does nothing.
       untestable while every test passed.
 - [ ] **The criterion is observed, not asserted.** Decode the token, don't count its characters. Validate
       the body against its schema, don't check it is non-empty.
+- [ ] **Every NUMBER an acceptance property pins is produced by RUNNING its command at the moment the
+      property is written, and the run is recorded beside it.** A count in an acceptance section is a
+      falsifiable claim about the code, and nothing in a review round runs it: five rounds passed one
+      whose value was unreachable by any correct implementation — the function whose call the rule
+      required deleted emits one row per suggestion and needs the list its replacement does not
+      return — because the number was internally consistent with the prose around it, and the LAUNCH
+      is what found it, at the one step where changing production code is usually forbidden [M-36].
+      This is the bars rule one row up applied to every other number in the section: derived from a
+      reading of the code, a count is an assertion; run, it is an observation.
 - [ ] **The bars are MEASURED on the untouched tree before any clause is written, and a clause says
       "no worse than the recorded number" rather than "green".** An acceptance section over an
       existing codebase compares against what that codebase does TODAY, and what it does today is not
@@ -526,6 +535,15 @@ compiles, passes every test, and does nothing.
 
 ## E. Harness mechanics that silently do nothing
 
+- [ ] **A `wfdry` remedy that changes a SCHEMA is a claim about the LAUNCH validator, which `wfdry`
+      does not run.** This section is otherwise about what the dry runner cannot SEE; this entry is
+      the opposite shape and the one that has cost the most. The runner was RIGHT about its own
+      semantics — a boolean outside its pass vocabulary reads false in every mode — and the fix it
+      offered, an `x-pass` annotation as a schema KEY, is refused by the launch outright
+      (`strict mode: unknown keyword`), killing the agent at spawn [M-35]. Follow a naming remedy
+      freely; treat a remedy that adds a KEY to a schema as unverified until something that validates
+      like the launch has seen it. `wfdry` refuses the two keys it once advised, and a polarity
+      declaration belongs in `$comment` — `authoring.md` carries the probe.
 - [ ] `git add -N <paths> && git diff` — a pathspec matching nothing exits 128 having added nothing, and
       `&&` then suppresses the diff entirely. Reviewers approve emptiness. Use
       `git add -N . ; git diff HEAD -- <paths>`.
