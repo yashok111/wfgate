@@ -3316,22 +3316,29 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 				if lineChecked {
 					sawLine = true
 				}
-				switch {
-				case anySection && hitSection:
-					// The strongest evidence there is: skip the lines rather
-					// than complain about a span inside a section that moved.
-				case lineHit:
-					// The finding's own line citation landed. Counting the
-					// pre-edited spans here would print a note about a closure
-					// this branch judged.
-					preEdited += lineUnmappable
-				default:
-					preEdited += lineUnmappable
-					if anySection && !hitSection {
-						why = append(why, fmt.Sprintf("changed %s but NOT any section it cites: %s", p, strings.Join(uniqueStrings(resolved), ", ")))
-					}
-					why = append(why, lineMiss...)
+				// The strongest evidence there is: the cited section was
+				// reached. Skip the lines rather than complain about a span
+				// inside a section that moved. Written as `hitSection` alone:
+				// it is set only on an iteration that set `anySection` first,
+				// so an `anySection &&` in front of it is a conjunct no
+				// mutation can make fail — this project deletes those rather
+				// than shipping a line that reads like protection.
+				if hitSection {
+					continue
 				}
+				preEdited += lineUnmappable
+				// The SECTION complaint is what a landed line citation
+				// suppresses — never a sibling SPAN. Each cited span is its own
+				// claim and each is answered: a finding citing `:5` and `:13`
+				// where only 13 was touched is half closed, and reporting it as
+				// closed because one span landed would be a false green this
+				// wave introduced while removing another.
+				// `!hitSection` is implied by the `continue` above and is not
+				// written here for the same reason.
+				if anySection && !lineHit {
+					why = append(why, fmt.Sprintf("changed %s but NOT any section it cites: %s", p, strings.Join(uniqueStrings(resolved), ", ")))
+				}
+				why = append(why, lineMiss...)
 			}
 			// Counted ONCE per closure, and only when neither the section nor
 			// the line half ran: it used to be incremented per path and even

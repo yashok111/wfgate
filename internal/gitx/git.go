@@ -299,6 +299,33 @@ func (r Repo) CommitBrief(sha string) (string, []string, error) {
 	return lines[0], files, nil
 }
 
+// CommitPaths returns every path one commit touched, deduplicated.
+//
+// `diff-tree` rather than `show --name-only`, and four flags that each answer a
+// shape the simpler command gets wrong: `--root` so a repository's first commit
+// reports its files instead of nothing, `-m` so a MERGE reports its diff
+// against each parent instead of being suppressed, `--no-renames` so a rename
+// reports both the old path and the new one — the caller asks whether a path
+// was touched, and half a rename is a path that was — and `-z` for the reason
+// Dirty and Files already use it: git QUOTES a path that is not plain ASCII,
+// and a quoted path compares equal to nothing.
+func (r Repo) CommitPaths(sha string) ([]string, error) {
+	out, err := r.Run("diff-tree", "-r", "--root", "-m", "--no-commit-id", "--name-only", "--no-renames", "-z", sha)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, p := range splitNUL(out) {
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		paths = append(paths, p)
+	}
+	return paths, nil
+}
+
 // BlameLines maps each 1-based line of path to the commit that last changed it.
 //
 // File-level history is too coarse for the duplicate check: one commit touching

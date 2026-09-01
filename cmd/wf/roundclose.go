@@ -186,6 +186,11 @@ func cmdRoundClose(args []string) error {
 	lines := strings.Split(string(b), "\n")
 	out, ok := ws.SetClosedBy(lines[r.Line-1], value)
 	if !ok {
+		// Unreachable through this command as it stands — `ParseFindings`
+		// accepted the row, so `SetClosedBy` finds its four pipes — and kept
+		// because the two commands that CAN print this refusal say the same
+		// sentence, and a clause dropped from one copy of three is how this
+		// project's most-repeated defect starts.
 		return fmt.Errorf("round %d line %d does not carry four unescaped pipes; a row the parser cannot split cannot be edited either — escape a literal pipe as \\|, and a backtick code span is NOT an escape", n, r.Line)
 	}
 	lines[r.Line-1] = out
@@ -266,30 +271,31 @@ func cmdRoundClose(args []string) error {
 // and what makes the row uncheckable is the paths. A row no commit closes has
 // its own door, and the message names it.
 func commitTouchedAnArtifact(w *ws.Workspace, sha string) error {
-	arts, err := w.ArtifactList()
+	files, err := w.Git.CommitPaths(sha)
 	if err != nil {
-		return err
-	}
-	if len(arts) == 0 {
-		// No artifact exists to touch. Refusing here would refuse every
-		// closure in a workspace whose artifacts were pruned or not yet
-		// added, which is a check firing on an ABSENT population rather than
-		// a failing one.
-		return nil
-	}
-	_, files, err := w.Git.CommitBrief(sha)
-	if err != nil {
-		// The commit resolved a moment ago; a read that fails here is git
-		// trouble, not an operator mistake, and refusing on it would block a
-		// correct closure with a message about the wrong thing.
-		return nil
+		// The commit resolved a moment ago, so a read that fails here is not
+		// an operator mistake — and it is not evidence either. An unreadable
+		// commit passing as a closure is this project's most-repeated defect
+		// (an absent measurement printing in the register of a measured one),
+		// so it refuses and names the git error rather than failing open. No
+		// test reaches this branch: `rev-parse` resolved the commit one line
+		// earlier, and making `diff-tree` fail over a resolved commit means
+		// corrupting the object store.
+		return fmt.Errorf("git could not read what %s touched (%v), so nothing says this commit closed anything", sha, err)
 	}
 	// The DIRECTORY, not the current artifact list: an artifact the commit
 	// touched may have been renamed or removed since, and a refusal computed
 	// from today's tree would reject a closure that was right when it was
-	// written.
+	// written. Asking `ArtifactList` instead would also open an escape on a
+	// workspace holding no artifact yet, where a bookkeeping commit would then
+	// close a finding — the exact row this refusal exists for.
+	// The trailing slash is the BOUNDARY: without it a workspace-root
+	// `artifacts.md`, or an `artifacts-old/` copy of a pruned gate, satisfies
+	// the check and closes a row it did not fix. `CommitPaths` returns git's
+	// raw `-z` output, which is neither quoted nor padded, so nothing is
+	// trimmed or re-separated here.
 	for _, f := range files {
-		if strings.HasPrefix(filepath.ToSlash(strings.TrimSpace(f)), "artifacts/") {
+		if strings.HasPrefix(f, "artifacts/") {
 			return nil
 		}
 	}

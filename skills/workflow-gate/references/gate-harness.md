@@ -242,7 +242,7 @@ can drift apart from itself, and nothing here compares the copies.
    mean.** `wf check closure` reads `file.md:120-134` as the range it is — an edit anywhere inside it
    closes the claim — so a span costs nothing and a first line alone asks a narrower question than the
    finding did. A section the finding merely MENTIONS does not preempt the line it CITES: both halves
-   are asked and the verdict is their OR, which took the corpus from 92 miss rows to 83 with nothing
+   are asked and the verdict is their OR, which took the corpus from 92 miss rows to 85 with nothing
    added. `wf check closure` asks
    whether a closing commit's diff reaches what the finding NAMES, and a finding naming no artifact
    path cannot be reached at all: `wf round record` counts those and says so at the moment they are

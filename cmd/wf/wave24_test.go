@@ -17,7 +17,8 @@ import (
 // commit had covered was reported as missing a section the finding was not
 // about. Measured on the gate that found it: one of its three reported misses,
 // and five more of one earlier gate plus one of another, 92 rows corpus-wide
-// down to 83 with nothing added.
+// down to 85 with nothing added — 83 in the first cut, which was two rows of a
+// false green the sibling-span test below now pins.
 func TestCheckClosure_lineCitationLandsThoughAMentionedSectionDidNot(t *testing.T) {
 	wsDir := newGate(t)
 	tmp := filepath.Dir(wsDir)
@@ -204,6 +205,17 @@ func TestTemplateOwnership_normalisesAnAbsoluteSelfReport(t *testing.T) {
 		// The check still CATCHES: normalising a path must not turn every
 		// report green, which is the mutation this fix could have shipped.
 		{"unowned", []string{"/repo/internal/other.go"}, 1},
+		// The prefix is stripped at a path BOUNDARY only: without that,
+		// `/repoCLAUDE.md` — a write outside the repository — reads as the
+		// owned `CLAUDE.md`.
+		{"prefix-not-boundary", []string{"/repoCLAUDE.md"}, 1},
+		// The prefix is matched at the START, never mid-string: a nested
+		// checkout or a backup copy carries the repo root inside its path and
+		// is not that repository.
+		{"repo-root-mid-string", []string{"/tmp/backup/repo/CLAUDE.md"}, 1},
+		// The self-report is untrusted text, which is the whole reason `relOf`
+		// exists.
+		{"padded", []string{"  /repo/CLAUDE.md  "}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			vm := goja.New()
@@ -254,4 +266,178 @@ func jsArray(items []string) string {
 		q = append(q, "'"+s+"'")
 	}
 	return "[" + strings.Join(q, ", ") + "]"
+}
+
+// A finding citing TWO spans on one path is TWO claims, and a commit covering
+// one of them closes one of them. The wave's first cut suppressed every sibling
+// span the moment any span landed — a false green introduced while another was
+// being removed, and it was live in the corpus: two rows of one gate came back
+// when it was corrected, one of them a finding whose two cited lines were 444
+// and 716 with neither touched.
+func TestCheckClosure_aCoveredSpanDoesNotSuppressItsSiblings(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	// Line 5 is `one`, line 13 is `three`.
+	doc := "# Decisions\n\n## D1 — the first\n\none\n\n## D2 — the second\n\ntwo\n\n## D3 — the third\n\nthree\n"
+	seed := filepath.Join(tmp, "seed.txt")
+	write(t, seed, "=== artifacts/decisions.md  count=1  note=sections\n"+
+		"<<<<\n# Decisions\n\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+doc+">>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", seed); err != nil {
+		t.Fatal(err)
+	}
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=fix line 13\n<<<<\nthree\n====\nthree, corrected\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | `artifacts/decisions.md:13` and `artifacts/decisions.md:5` say the same thing twice | "+sha+" |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	if !errors.Is(err, errFindings) {
+		t.Fatalf("the span nothing touched is still a claim: %v\n%s", err, out)
+	}
+	mustContain(t, out, "[1] closed by "+sha, "but not line 5")
+	if strings.Contains(out, "but not line 13") {
+		t.Fatalf("the covered span is closed:\n%s", out)
+	}
+}
+
+// A workspace holding NO artifact must not become an escape: the first cut
+// returned early on an empty artifact list, so a bookkeeping commit closed a
+// finding in exactly the workspace where nothing could have fixed anything.
+func TestRoundClose_refusesAlsoWhenTheWorkspaceHasNoArtifact(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	write(t, filepath.Join(target, "src", "main.go"), "package main\n")
+	gitIn(t, target, "init", "-q", "-b", "main")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "initial")
+	wsDir := filepath.Join(tmp, "ws")
+	if _, err := runWF(t, tmp, "init", "demo", "-target", target, "-dir", wsDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "no artifact yet"); err != nil {
+		t.Fatal(err)
+	}
+	ledger(t, wsDir, 1, "| 1 | MAJOR | the workspace holds nothing yet |  |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	headRaw, err := gitOut(t, wsDir, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runWF(t, wsDir, "round", "close", "1", strings.TrimSpace(headRaw)); err == nil {
+		t.Fatalf("a workspace with no artifact is not an escape:\n%s", out)
+	} else if !strings.Contains(err.Error(), "touched no artifact") {
+		t.Fatalf("the refusal is the same one, got: %v", err)
+	}
+}
+
+// A closure citing a SECTION and no line was checked by the section half and
+// must not be counted as file-only: the note that says "cite the section id or
+// the line and the check reaches the claim" would then be printed at a closure
+// that cited one. The `sawSection` wiring is what separates the two, and the
+// mutation sweep found it defended by nothing.
+func TestCheckClosure_aSectionOnlyClosureIsNotFileOnly(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+
+	doc := "# Decisions\n\n## D1 — the first\n\none\n\n## D2 — the second\n\ntwo\n"
+	seed := filepath.Join(tmp, "seed.txt")
+	write(t, seed, "=== artifacts/decisions.md  count=1  note=sections\n"+
+		"<<<<\n# Decisions\n\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+doc+">>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", seed); err != nil {
+		t.Fatal(err)
+	}
+	fix := filepath.Join(tmp, "fix.txt")
+	write(t, fix, "=== artifacts/decisions.md  count=1  note=fix D1\n<<<<\none\n====\none, corrected\n>>>>\n")
+	applied, err := runWF(t, wsDir, "apply", "-f", fix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := commitShaOf(t, applied)
+
+	ledger(t, wsDir, 1, "| 1 | MAJOR | D1 states the rule wrongly | "+sha+" |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "check", "closure")
+	if err != nil {
+		t.Fatalf("the cited section was reached: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "cite neither a section this artifact heads nor a line") {
+		t.Fatalf("a closure that cited a section is not file-only:\n%s", out)
+	}
+}
+
+// The prefix is a path BOUNDARY. Without the trailing slash a workspace-root
+// `artifacts.md` — or an `artifacts-old/` copy of a pruned gate — satisfies the
+// guard and closes a row nothing fixed.
+func TestRoundClose_theArtifactPrefixIsABoundary(t *testing.T) {
+	wsDir := newGate(t)
+	write(t, filepath.Join(wsDir, "artifacts.md"), "not an artifact\n")
+	gitIn(t, wsDir, "add", "artifacts.md")
+	gitIn(t, wsDir, "commit", "-q", "-m", "a file whose name starts like the directory")
+	headRaw, err := gitOut(t, wsDir, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger(t, wsDir, 1, "| 1 | MAJOR | `artifacts/decisions.md` opens wrongly |  |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runWF(t, wsDir, "round", "close", "1", strings.TrimSpace(headRaw)); err == nil {
+		t.Fatalf("`artifacts.md` is not inside `artifacts/`:\n%s", out)
+	} else if !strings.Contains(err.Error(), "touched no artifact") {
+		t.Fatalf("the refusal is the same one, got: %v", err)
+	}
+}
+
+// A commit that touched NOTHING says so, rather than printing an empty list.
+// The refusal is read by an operator who is about to go and look for the right
+// sha, and "it changed " with nothing after it names no evidence at all.
+func TestRoundClose_anEmptyCommitIsNamedAsTouchingNoFile(t *testing.T) {
+	wsDir := newGate(t)
+	gitIn(t, wsDir, "commit", "-q", "--allow-empty", "-m", "an empty commit")
+	headRaw, err := gitOut(t, wsDir, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger(t, wsDir, 1, "| 1 | MAJOR | `artifacts/decisions.md` opens wrongly |  |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md")); err != nil {
+		t.Fatal(err)
+	}
+	_, err = runWF(t, wsDir, "round", "close", "1", strings.TrimSpace(headRaw))
+	if err == nil {
+		t.Fatal("an empty commit closes nothing")
+	}
+	// The round, the finding, the promise, and what the commit did.
+	for _, want := range []string{"round 1 finding 1", "no file at all", "nothing was written"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal carries its context and its promise, got: %v", err)
+		}
+	}
+}
+
+// The pipe refusal `wf freeze` gives is the SECOND of three copies, and the
+// sweep found only the first asserted. A clause that exists in one copy and not
+// in another is how this project's most-repeated defect starts.
+func TestFreezePipeRefusal_saysACodeSpanIsNotAnEscape(t *testing.T) {
+	wsDir := newGate(t)
+	ledger(t, wsDir, 1, "| 1 | MAJOR | the guard reads `a || b` and takes the first |  |\n")
+	gitIn(t, wsDir, "add", "-A")
+	gitIn(t, wsDir, "commit", "-q", "-m", "round 1: record findings by hand")
+	_, err := runWF(t, wsDir, "freeze")
+	if err == nil {
+		t.Fatal("a row the parser cannot split cannot be checked for an open blocker")
+	}
+	mustContain(t, err.Error(), "escape a literal pipe as \\|", "code span is NOT an escape")
 }

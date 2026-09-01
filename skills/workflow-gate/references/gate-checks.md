@@ -419,7 +419,7 @@ compiles, passes every test, and does nothing.
       reads it as an OBSERVATION rather than as the claim it is. Measured on the gate that shipped
       one: the baseline recorded 29 passing packages against a real 28, so the clause "fails if
       `make test` reports fewer passing packages than the 29 recorded" would have gone RED against a
-      CORRECT implementation — four rounds passed it, two of them carrying a criterion lens under the
+      CORRECT implementation — four rounds passed it, THREE of them carrying a criterion lens under the
       explicit instruction to test every clause against a correct implementation as well as a wrong
       one, and the number was wrong in exactly the direction those lenses were told to look [M-39].
       Re-running the command costs seconds; reading the table costs the round nothing and proves

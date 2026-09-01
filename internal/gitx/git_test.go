@@ -198,3 +198,110 @@ func TestShowFile_isRelativeToDirNotTheRepoRoot(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// CommitPaths answers "what did this commit touch" for the shapes
+// `show --name-only` gets wrong. Each was named by a reviewer over the closure
+// refusal that reads it: a legitimate closure refused because git said nothing
+// is worse than the mistake the refusal exists for.
+func TestCommitPaths_theShapesShowNameOnlyGetsWrong(t *testing.T) {
+	r := repo(t)
+	wr := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(r.Dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := r.Run(args...)
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return strings.TrimSpace(out)
+	}
+	has := func(paths []string, want string) bool {
+		for _, p := range paths {
+			if p == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	// The ROOT commit: `show --name-only` prints its files, `diff-tree` without
+	// --root prints nothing at all.
+	wr("artifacts/decisions.md", "one\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "root")
+	root := git("rev-parse", "HEAD")
+	paths, err := r.CommitPaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has(paths, "artifacts/decisions.md") {
+		t.Fatalf("the first commit of a repository touched its files: %v", paths)
+	}
+
+	// A path git QUOTES in porcelain output.
+	wr("artifacts/a draft.md", "two\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "quoted")
+	paths, err = r.CommitPaths(git("rev-parse", "HEAD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has(paths, "artifacts/a draft.md") {
+		t.Fatalf("a quoted path compares equal to nothing: %v", paths)
+	}
+
+	// A RENAME reports both ends: the caller asks whether a path was touched,
+	// and half a rename is a path that was.
+	git("mv", "artifacts/decisions.md", "artifacts/renamed.md")
+	git("commit", "-q", "-m", "rename")
+	paths, err = r.CommitPaths(git("rev-parse", "HEAD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has(paths, "artifacts/decisions.md") || !has(paths, "artifacts/renamed.md") {
+		t.Fatalf("a rename touched both paths: %v", paths)
+	}
+
+	// A MERGE: `show --name-only` suppresses the diff entirely, so a closure
+	// resting on one would be refused as having touched nothing.
+	base := git("rev-parse", "HEAD")
+	git("checkout", "-q", "-b", "side")
+	wr("artifacts/side.md", "side\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "side")
+	git("checkout", "-q", "main")
+	wr("rounds/r1/findings.md", "main\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "main")
+	git("merge", "-q", "--no-ff", "-m", "merge", "side")
+	merge := git("rev-parse", "HEAD")
+	if merge == base {
+		t.Fatal("the merge did not happen")
+	}
+	paths, err = r.CommitPaths(merge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has(paths, "artifacts/side.md") {
+		t.Fatalf("a merge commit touched what it merged: %v", paths)
+	}
+	// Deduplicated: -m prints one diff per parent, and the caller reads the
+	// list as a set.
+	seen := map[string]int{}
+	for _, p := range paths {
+		seen[p]++
+	}
+	for p, n := range seen {
+		if n > 1 {
+			t.Fatalf("%s listed %d times: %v", p, n, paths)
+		}
+	}
+}

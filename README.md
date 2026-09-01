@@ -425,7 +425,7 @@ shifts the numbers.
 **A section the finding MENTIONS does not preempt the line it CITES.** Both halves are asked and the
 verdict is their OR: a finding citing `decisions.md:607-611` that also names D11 in passing used to
 be reported as missing D11 while the commit had covered the very lines it cited. Measured over the
-fourteen unpruned workspaces on the box that built this — 92 miss rows before, 83 after, nothing
+fourteen unpruned workspaces on the box that built this — 92 miss rows before, 85 after, nothing
 added — and where both halves miss, the row now carries both reasons, one verdict per row.
 
 **It names the two populations it is not about.** The rows carrying NO commit — an empty closure

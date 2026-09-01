@@ -641,8 +641,13 @@ that wrote it. Measured on the A4 gate, 2026-09-01: its acceptance baseline reco
 packages; `make test` reports 28, at the baseline commit and after the slice. The clause "fails if
 `make test` reports fewer passing packages than §3's 29" would therefore have gone RED against a
 correct implementation — the direction section D names as the worse one. It survived four rounds,
-two of which carried a criterion lens under the explicit instruction to test every clause against a
-correct implementation as well as a wrong one.
+three of which carried a criterion lens under the explicit instruction to test every clause against a
+correct implementation as well as a wrong one. The two populations are separate and both are read
+off the workspace: the BASELINE table stood at all four freezes and the CLAUSE resting on it from
+`gate-r2` on, so four criterion lenses read the number and three read the clause
+(`for t in gate-r1 gate-r2 gate-r3 gate-r4; do git show "$t:artifacts/decisions.md" | grep -c "packages than"; done`
+— under `zsh` that loop needs `bash -c`, because `$t:a` is a history modifier and the command
+silently reads a path nobody named).
 
 The acceptance agent then found the discrepancy at run time, classified it as a pre-existing
 documentation error rather than a regression, filed it as a NOTE and returned `goalMet: true` — the

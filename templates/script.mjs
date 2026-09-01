@@ -317,10 +317,16 @@ function ownership(section, owns, files) {
   // declaration, reported as writing outside an ownership block whose FIRST
   // LINE names that file. A false major on a correct write is the direction
   // that teaches an operator to stop reading the check.
+  // The prefix is stripped only at a PATH BOUNDARY: a bare `startsWith(REPO)`
+  // turns `/repoCLAUDE.md` into `CLAUDE.md` and reports a write outside the
+  // repository as an owned one, which is the direction a check must never fail
+  // in.
   const relOf = (f) => {
     let s = String(f).trim()
-    if (s.startsWith(REPO)) s = s.slice(REPO.length)
-    return s.replace(/^\/+/, '').replace(/^\.\//, '')
+    const base = REPO.replace(/\/+$/, '')
+    if (s === base) return ''
+    if (s.startsWith(base + '/')) s = s.slice(base.length + 1)
+    return s.replace(/^\.\//, '')
   }
   for (const f of (files || []).map(relOf)) {
     if (!(owns || []).map(pathOf).some((o) => f === o || (o.endsWith('/') && f.startsWith(o)))) {

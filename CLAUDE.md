@@ -1,7 +1,7 @@
 # wfgate — agent context
 
 **Where things are.** This file is the WHY: the architecture, the hard rules,
-the bars, and the four newest waves of the maintenance record. `README.md` is the
+the bars, and the six newest waves of the maintenance record. `README.md` is the
 command reference — every flag, every report line, worked examples; go there
 first for "how do I run a round". `skills/workflow-gate/references/` is the
 OPERATING MANUAL, which is judgement and is what gate agents are briefed from;
@@ -171,9 +171,10 @@ opening line.
   of a spec is this project's most-repeated defect class.
   The nine were six until 2026-08-30, when `pre-flight-gate.md` — 1108 lines
   under ONE heading, 40% of the whole manual — was cut along the boundaries
-  SKILL.md's routing table was already drawing in PROSE ("steps -2, -1, -1b, 0,
-  2, 2b and 4 are the operator mechanics and step 1 is the reviewer's half; the
-  file is written in step order, which is NOT the order you execute"). A table
+  SKILL.md's routing table was already drawing in PROSE — the operator mechanics
+  against the reviewer's half, in a file written in step order, which is NOT the
+  order it is executed (the sentence quoted here for two waves left SKILL.md in
+  `8ebc159` and `grep -rn 'operator mechanics' skills/` now finds nothing). A table
   that has to explain a file's structure is the structure problem admitted in
   the front door. The four are `interview.md` (step -2, before a workspace
   exists), `pre-flight-gate.md` (the gate itself: steps 0, 1, 2b, 3 and the
@@ -1313,10 +1314,13 @@ it in a different shape.
 
 **The twenty-fourth wave — A4, and the report the gate had already printed and
 nobody read** (`docs/feedbacks/FEEDBACK-a4.md`). 8 rounds, 70 findings, 20
-blockers, 85 edits over 916 changed lines, 2.7 h, median round 19.5 min, TWO
+blockers, 85 edits over 916 changed lines, 2.8 h by `wf stats -time` (its
+write-up says 2.7, banked by the first of two `wf close` commits; the command's
+number is the number), median round 19.5 min, TWO
 artifacts in one workspace with independent descents — a decision document at
 9-6-0-0 and the orchestration script, brought in by `wf add` at round 5, at
-2-2-1-0 — and its launch came back `green: true` over 13 agents in 1.5 h. Each
+2-2-1-0, which is P2f's shape and P3a's and P3f's rather than a first — and its
+launch came back `green: true` over 13 agents in 1.5 h. Each
 of its five claims was reproduced against the workspace before a line was
 written, and the flagship one is FALSE in its stated mechanism while the defect
 under it is real and larger.
@@ -1328,18 +1332,19 @@ under it is real and larger.
   touched at all — only lens and record commits stand between them — so the
   shift is zero and the map has nothing to do. r5 #5 cites `:545`, which is
   `reviewers: [` in the parent, and the commit rewrites 546; r5 #6 cites `:656`
-  and the commit rewrites 654. Both are the OFF-BY-ONE citation habit the
-  write-up's own section 0 banks three instances of, and the check reported them
-  correctly. The third, r4 #5, is a real defect and a different one: the finding
+  and the commit rewrites 654 — off by one and by two. Both are the SHORT-BY-N
+  citation habit the write-up's own section 0 banks three instances of, and the
+  check reported them correctly. The third, r4 #5, is a real defect and a different one: the finding
   cites `decisions.md:607-611` — which the commit covered — and mentions D11 in
   passing, and the SECTION half PREEMPTED the line half, `continue`-ing before
   the lines were read. The comment three lines above it already said a section
   mentioned in passing is not a finding about it; the verdict had not been told.
   The two halves are ORed now, and where both miss the row carries both reasons
   in one verdict per row. **Narrowed against the corpus before shipping: 92 miss
-  rows over the fourteen unpruned workspaces, 83 after, nothing added** — five of
+  rows over the fourteen unpruned workspaces, 85 after, nothing added** — five of
   the removals in P4a alone, each verified by hand to be a commit whose hunks
-  cover the cited span.
+  cover the cited span. The first cut of it read 83, and the two rows between
+  the numbers are the review round's own finding below.
 - *`wf round close` accepted EIGHT closures naming a commit that could not
   possibly have closed them, and the feedback never mentions it.* Round 6's
   findings 2 to 9 each name the ledger commit of the PREVIOUS `wf round close` —
@@ -1370,7 +1375,7 @@ under it is real and larger.
   clause resting on it, not only by the round that wrote it — A4's baseline
   recorded 29 passing packages against a real 28, so a clause comparing against
   it would have gone RED against a correct implementation, and it survived four
-  rounds including two criterion lenses instructed to test every clause against a
+  rounds including THREE criterion lenses instructed to test every clause against a
   correct implementation as well as a wrong one; and, from the same incident, a
   clause is written so that no judgement is available, because that gate's
   acceptance agent reasoned past the discrepancy to the right answer by a route
@@ -1389,6 +1394,74 @@ under it is real and larger.
   `make check-docs` also scans SKILL.md for `[M-nn]` citations now: it was
   computing the used set over `references/` alone, so a citation in the front
   door resolved against nothing.
+
+- *And the wave earned its review round, for the eighteenth time running, and
+  the flagship defect was one the wave INTRODUCED while removing another.* One
+  external model over the diff, then two Opus vectors (Go correctness with a
+  mutation sweep in an ISOLATED WORKTREE, and claims/specification), against
+  five green bars. Between them: **one false GREEN, ten majors, 37 mutations
+  with 16 survivors, and a corpus number that was wrong because of the false
+  green itself.**
+  The false green is the closure check's own line half. Making the section and
+  line halves an OR was written PER PATH, so one covered span silenced every
+  OTHER span the same finding cited: a row citing `:5` and `:13` with only 13
+  touched passed clean, where the pre-wave code correctly reported the miss.
+  Both the external vector and the sweep found it independently, and it was LIVE
+  in the corpus — P3f goes from 5 rows to 7 with it fixed, one of the returning
+  rows a finding whose two cited lines are 444 and 716 with neither touched. A
+  landed line citation suppresses the SECTION complaint and nothing else now,
+  and the wave's headline number is **92 to 85**, not the 83 it was committed
+  with: the two rows between those numbers ARE the defect.
+  Four more in the new refusal, all of them the same shape — a question about a
+  commit answered with `git show --name-only`, which is not that question.
+  A MERGE prints its subject and no file list at all, so a merge carrying a real
+  artifact fix was refused as touching "no file at all"; a path holding any
+  non-ASCII byte comes back C-quoted, so `café.md` under `artifacts/` was
+  refused by a message quoting the very path it says was not touched — the
+  quoting lesson `internal/gitx` had already paid for twice, in a function that
+  did not use the reader that learned it. Both are closed by `gitx.CommitPaths`
+  (`diff-tree -r --root -m --no-renames -z`), which also answers the ROOT commit
+  that `diff-tree` alone reports as empty. And the guard failed OPEN in two
+  directions: an empty `artifacts/` returned early, so a workspace holding no
+  artifact accepted a bookkeeping commit as a closure — the exact row the
+  refusal exists for — and an unreadable commit did too, which is an absent
+  measurement printing in the register of a measured one.
+  The template fix had the boundary defect its own class is about:
+  `startsWith(REPO)` turned `/repoCLAUDE.md` into the owned `CLAUDE.md`, so a
+  write OUTSIDE the repository read as owned.
+  Of the sweep's 16 survivors, seven named a real gap and are pinned now — the
+  `sawSection` wiring (a closure citing a section and no line was in nothing's
+  test, and the file-only note would have painted it), the `artifacts/` prefix
+  as a BOUNDARY (`artifacts.md` at the workspace root satisfied it), the
+  empty-commit wording, the refusal's own "nothing was written" promise, and the
+  `wf freeze` copy of the pipe clause, which was the only one of three that no
+  test read. Two conjuncts were DELETED rather than shipped unproven — `anySection`
+  in front of `hitSection`, and `!hitSection` in front of the section-miss
+  message, both implied by the branch above them — and so were the `ToSlash` and
+  `TrimSpace` calls, because `-z` output is neither quoted nor padded. Two
+  branches are documented as UNREACHABLE with the reason, which is this
+  project's third option beside proving a guard and deleting it.
+  The claims vector re-ran every number and the cost bullet was the one this
+  wave forgot to sweep: it still pooled THIRTEEN workspaces in the commit that
+  raised the census to fourteen, so the spans, the per-gate medians, the
+  authoring list and the round-1 blocker baseline were each one value short
+  (187 of 207 now, median 24.1, middle half 17.6-31.5; authoring median 7.5,
+  which is the MEAN of two because fourteen is even — the statistic's shape
+  alternates with the count and the sentence has to say which it is). It also
+  found this file claiming A4 as "the first gate to carry a decision document
+  AND its orchestration script in ONE workspace" 200 lines above P2f, P3a and
+  P3f described in that exact shape — the twenty-third wave's own "longest gate"
+  defect, one wave later — a 2.7 h against the command's 2.8, "a corpus
+  precedent of 38 and 12" that is the corpus MAXIMUM where the comparable rounds
+  run 5 to 38 at a median of 17.5, "the four newest waves" over six, and a
+  SKILL.md sentence quoted here for two waves that left that file in `8ebc159`.
+  And the one number the manual now states about a shipped rule was wrong in the
+  direction that weakens it: "two criterion lenses" read the clause resting on
+  the 29, where the workspace says the BASELINE stood at all four freezes and
+  the clause from `gate-r2`, so four lenses read the number and three read the
+  clause. Both readings are written beside it — and the command that settles it
+  needs `bash -c`, because under `zsh` the `$t:artifacts/...` in that loop is a
+  history modifier and the first run of it reported zero everywhere.
 
 ## Hard rules
 
@@ -1446,7 +1519,7 @@ under it is real and larger.
   multi-digit number, one file held THREE stale copies of one median, and
   "a stale number in the manual" is the dominant finding of every claims vector
   this project has ever run. The measurements live in the maintenance record —
-  the four newest waves in this file, everything older in `WAVES.md` — where they
+  the six newest waves in this file, everything older in `WAVES.md` — where they
   are a record rather than something an agent acts on. The same test was applied
   to THIS file on 2026-08-29 and it failed it: 80% of it was that record, paid
   in context on every session, so it moved.
@@ -1591,11 +1664,13 @@ fixtures for the non-ASCII anchor detector).
   A4** (`docs/feedbacks/FEEDBACK-a4.md`, `~/projects/gates/mocker-a4-mcp-reach`,
   143 commits): 8 rounds by its own `wf stats`, 70 findings, 20 blockers, 85
   edits over 916 changed lines, 2.8 h, median round 19.5 min, authoring 2.1 min.
-  It is the first gate to carry a decision document AND its orchestration script
-  in ONE workspace with independent descents — 9 -> 6 -> 0 -> 0 over rounds 1-4,
+  Its decision document and its orchestration script were gated in ONE
+  workspace with independent descents — 9 -> 6 -> 0 -> 0 over rounds 1-4,
   then 2 -> 2 -> 1 -> 0 over rounds 5-8 after `wf add` brought the script in —
-  and its first script review filed 7 findings and 2 blockers against a corpus
-  precedent of 38 and 12, on a script authored after four rounds had pinned the
+  and its first script review filed 7 findings and 2 blockers where the corpus's
+  own comparable rounds — the FIRST REVIEW of an artifact ADDED after round 1,
+  read off `wf stats -time` — run 5 to 38 findings at a median of 17.5, on a
+  script authored after four rounds had pinned the
   method signature, the SQL predicate, the error taxonomy and every Fails-if
   clause. **It LAUNCHED and came back `green: true`** — 13 agents, 1.5 h, 1.83 M
   subagent tokens, no dead agent, no bar failure, the four bars re-run by hand
@@ -1855,15 +1930,15 @@ fixtures for the non-ASCII anchor detector).
   scratch: `git clone --no-hardlinks ~/projects/mocker <lab>/head`, then a
   workspace over any set of documents.
 - **The cost of a gate is now measured by the tool, and the answer moved the
-  work.** `wf stats -time`, re-pooled 2026-09-01 over the thirteen unpruned
-  workspaces with the current binary, over the 179 round spans of 199 that are
-  under two hours: **median 24.2 min, middle half 17.6-32.2** (quartiles by the
+  work.** `wf stats -time`, re-pooled 2026-09-01 over the FOURTEEN unpruned
+  workspaces with the current binary, over the 187 round spans of 207 that are
+  under two hours: **median 24.1 min, middle half 17.6-31.5** (quartiles by the
   rank `int(n*0.25)+1`). The review segment is a median 89.9% of a round and the
-  bookkeeping tail 3.3%, over the 164 of those spans that carry a
-  `(review, fix, tail)` breakdown at all — a different population from the 179,
-  and named because this file's own rule is to name it; 179 spans carry a
-  breakdown in total, fifteen of them over two hours, so the two 179s are two
-  different sets and not one. The other
+  bookkeeping tail 3.3%, over the 170 of those spans that carry a
+  `(review, fix, tail)` breakdown at all — a different population from the 187,
+  and named because this file's own rule is to name it; 182 spans carry a
+  breakdown in total, twelve of them over two hours, so the two populations are
+  two different sets and not one. The other
   twenty spans are breaks (the longest 637.9 min) and none is a round
   length. State the READING with the number, because two of them disagree by a
   round: this one is every `  round` line carrying a `; N min` span, run rounds
@@ -1871,11 +1946,12 @@ fixtures for the non-ASCII anchor detector).
   the eleven-workspace pooling one day earlier gave 148 of 165, a
   ten-workspace one 138 of 154 and a nine-workspace one 119 of 129; the
   twelve-workspace pooling one day before this one gave 165 of 183 at a median of
-  24.3 and a middle half of 17.8-32.3. Re-derive it with the command and say which
+  24.3 and a middle half of 17.8-32.3, and the thirteen-workspace one of the wave
+  before this gave 179 of 199 at 24.2 and 17.6-32.2. Re-derive it with the command and say which
   population the number came from.
   The old figures — "10-40 minutes, pooled median 15.5, review 70-87%" — were
   three gates and are not wrong so much as SMALL: per-gate medians run 13.8,
-  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 28.8, 19.6, 31.5, 21.5, so the round
+  24.3, 19.1, 45.3, 21.5, 29.4, 39.0, 32.3, 21.4, 28.8, 19.6, 31.5, 21.5, 19.5, so the round
   got longer as the gates got bigger, and a number banked from the first three
   under-prices every gate since. Read them off `wf stats -time`, one line per
   workspace, rather than re-deriving them: a hand pooling of the same spans moved
@@ -1889,15 +1965,17 @@ fixtures for the non-ASCII anchor detector).
   running the decision gate to exhaustion before the script exists took one gate
   from 10+6 rounds to 8+3, about an hour. The authoring window — init to the
   first artifact — is **0.3 to 76.5 min (9.9, 31.7, 42.2, 4.3, 5.0, 39.2, 2.2,
-  20.9, 76.5, 4.6, 0.3, 10.7, 4.3; median 9.9 over thirteen — a single middle
-  value now, where twelve gave the 10.3 mean of two)**, and this file quoted only its two largest for
+  20.9, 76.5, 4.6, 0.3, 10.7, 4.3, 2.1; median 7.5 over fourteen — the mean of
+  5.0 and 9.9, where thirteen gave a single middle value of 9.9 and twelve the
+  10.3 mean of two, so the statistic's SHAPE alternates with the count and the
+  sentence has to say which it is)**, and this file quoted only its two largest for
   three waves before quoting a ceiling P3e then doubled and a floor P3g then cut
   by seven times. It is the largest block no
   round covers, and the short end is worse than it looks: those are the gates
   whose document was drafted BEFORE `wf init`, so the authoring itself falls
   outside every measurement banked here. `interview.md`
   (step -2) is what now occupies that window, against a round-1 blocker baseline
-  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 11, 4, 2, 5 (one per unpruned workspace, in
+  of 7, 15, 7, 13, 15, 19, 15, 13, 10, 11, 4, 2, 5, 9 (one per unpruned workspace, in
   the order they are listed above; nova's round 1 filed 3, and its own write-up
   banks that as one data point AGAINST a large saving in blocker count from the
   interview and a clear one FOR what the step is actually for — not one of that
