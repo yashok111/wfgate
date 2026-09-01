@@ -323,6 +323,25 @@ func TestRoundIngestLedgerShapes(t *testing.T) {
 		t.Fatalf("want exactly one row numbered 1 from the indented table, got %+v", rows)
 	}
 
+	// A ledger already carrying one number twice: the read-back refuses the
+	// write rather than adding a third row nobody can address.
+	write(t, ledgerPath, "# Round 1\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 2 | MAJOR | a |  |\n| 2 | MAJOR | b |  |\n")
+	gitIn(t, wsDir, "add", "--", "rounds/r1/findings.md")
+	gitIn(t, wsDir, "commit", "-q", "-m", "test: duplicate number")
+	_, err = runWF(t, wsDir, "round", "ingest", rep)
+	if err == nil || !strings.Contains(err.Error(), "would carry finding 2 twice") {
+		t.Fatalf("want the duplicate-number refusal, got %v", err)
+	}
+	rows = ws.ParseFindings([]byte(read(t, ledgerPath)))
+	if len(rows) != 2 {
+		t.Fatalf("the ledger was written although the read-back refused, %d rows", len(rows))
+	}
+	write(t, ledgerPath, "# Round 1\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | BLOCKER |  |  |\n")
+	gitIn(t, wsDir, "add", "--", "rounds/r1/findings.md")
+	gitIn(t, wsDir, "commit", "-q", "-m", "test: scaffold again")
+	_, err = runWF(t, wsDir, "round", "ingest", rep)
+	noErr(t, err, "ingest over the restored scaffold")
+
 	// A second artifact arms the path note; a row naming no path is counted.
 	art2 := filepath.Join(tmp, "context.md")
 	write(t, art2, "# Context\n")
@@ -428,6 +447,23 @@ func TestRoundIngestRefusals(t *testing.T) {
 	_, err := runWF(t, wsDir, "round", "ingest", good, good, "-lens", "x")
 	if err == nil || !strings.Contains(err.Error(), "-lens names ONE lens and 2 reports were given") {
 		t.Fatalf("want the -lens/multi-report refusal, got %v", err)
+	}
+	// A pipe in the tag would split every row; refused at the flag, not at
+	// the read-back (which blamed the write, not the operator's value).
+	_, err = runWF(t, wsDir, "round", "ingest", good, "-lens", "a|b")
+	if err == nil || !strings.Contains(err.Error(), "-lens \"a|b\": the name is written into every row's finding cell") {
+		t.Fatalf("want the pipe-in-lens refusal, got %v", err)
+	}
+	if read(t, filepath.Join(wsDir, "rounds", "r1", "findings.md")) != before || headOf(t, wsDir) != head {
+		t.Fatal("the ledger or the history changed although -lens was refused")
+	}
+	// The refusal names the REPORT's line, not the table's: prose above the
+	// table shifts them apart, and every other case here starts at line 1.
+	shifted := filepath.Join(tmp, "shifted.md")
+	write(t, shifted, "I read everything.\n\nSome prose.\n\n| # | level | finding | closed by |\n|---|---|---|---|\n|  | MAJOR | a | b | c |\n")
+	_, err = runWF(t, wsDir, "round", "ingest", shifted)
+	if err == nil || !strings.Contains(err.Error(), "shifted.md line 7 is a table row of 5 cell(s)") {
+		t.Fatalf("want the refusal at the report's line 7, got %v", err)
 	}
 	_, err = runWF(t, wsDir, "round", "ingest")
 	if err == nil || !strings.Contains(err.Error(), "usage: wf round ingest") {

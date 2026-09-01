@@ -1557,20 +1557,26 @@ number the tool prints, on a gate whose authoring window reads 2.1 minutes.
   most-repeated defect, reintroduced by the line built to save reading the
   headers. Every runner answers with a `checkVerdict` now, and the word is
   `nothing compared (NOT A PASS)`.
-  The sweep ran **72 mutations: 47 killed, 23 survived, 2 build-broken** —
+  The sweep ran **72 mutations: 47 killed, 25 survived** (two of the 25 were
+  re-run in compilable form after their first spelling broke the build) —
   and it took an hour of wall clock because each mutation is a full
   `go test ./cmd/wf` in the worktree and a sibling session's `golangci-lint`
   held the CPU, which is a reason to run a sweep alone that the memory file
-  already carries. Of the 23 survivors, FIFTEEN named a real gap and are pinned
-  now, each verified to kill its mutation: the `-whole` dry run with `-closes`
+  already carries. Of the 25 survivors, EIGHTEEN named a real gap and are
+  pinned now, each verified to kill its mutation: the `-whole` dry run with `-closes`
   (which would have called the closure with an empty sha), `record` printing
   `committed` over a commit it had not made, `wf check -since` before any
   freeze, a stale hit not moving the exit code, the ledger-side refusals of
   `ingest` (no table, a malformed row), its rollback, its path note, a scaffold
   with TWO placeholder rows (rows landed at both), an indented table, the
   short-form sha in the closure cell, the empty number `wf round close "#"`
-  reaches, the closing heading BOUNDING section I, and the OR in the index's
-  refusal. Four were DELETED rather than shipped unproven — the `#` strip and
+  reaches, the closing heading BOUNDING section I, the OR in the index's
+  refusal, a ledger already carrying one number twice, the refusal naming the
+  REPORT's line rather than the table's (every other test table started at
+  line 1, so the two were equal), and a pipe in `-lens` — which the sweep
+  found LIVE: the read-back refused the write under a message blaming the
+  write, so the flag refuses it now, naming the flag. Four were DELETED rather
+  than shipped unproven — the `#` strip and
   the `!Malformed` conjunct in the planner (both callers strip, and a malformed
   row has no number), the no-space rule on a heading id, and the empty-item
   branch of the list parser, which `FieldsFunc` makes unreachable. Four are

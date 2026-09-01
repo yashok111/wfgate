@@ -47,6 +47,12 @@ func cmdRoundIngest(args []string) error {
 	if *lens != "" && len(pos) > 1 {
 		return fmt.Errorf("-lens names ONE lens and %d reports were given; run once per report, or let the file names label them", len(pos))
 	}
+	// The tag lands inside a table cell. A pipe in it would split the row —
+	// the read-back below would refuse the write, but under a message blaming
+	// the read-back rather than the flag (found by the sweep, live).
+	if strings.ContainsAny(*lens, "|\n") {
+		return fmt.Errorf("-lens %q: the name is written into every row's finding cell and must not carry a pipe or a newline", *lens)
+	}
 	w, err := open()
 	if err != nil {
 		return err
@@ -187,10 +193,12 @@ func cmdRoundIngest(args []string) error {
 	}
 	body := []byte(strings.Join(out, "\n"))
 	// Read back from the bytes about to be written: exactly the rows staged,
-	// none malformed, numbers unique. UNKILLABLE by mutation of the three
-	// checks below: they pin the WRITER above them, which no test of a guard
-	// can make wrong — the same standing `wf apply`'s byte-for-byte read-back
-	// has. Proven the day the writer regresses.
+	// none malformed, numbers unique. The count and the malformed check are
+	// UNKILLABLE by mutation now that every input that could trip them is
+	// refused earlier (a pipe in `-lens`, a malformed report row): they pin
+	// the WRITER above them, which no test of a guard can make wrong — the
+	// same standing `wf apply`'s byte-for-byte read-back has. The duplicate
+	// check is reachable: a ledger hand-edited to carry one number twice.
 	after := ws.ParseFindings(body)
 	want := len(have) + added
 	if scaffold {

@@ -111,6 +111,10 @@ func (p *ledgerClosure) write(w *ws.Workspace, value, subject string) (string, e
 		// No bounds check on r.Line: `ParseFindings` numbers its rows over the
 		// same split this indexes, so it is in range by construction.
 		out, ok := ws.SetClosedBy(lines[r.Line-1], value)
+		// UNREACHABLE: a planned row parsed into four cells, so SetClosedBy
+		// finds its pipes. Kept because `wf round close`, `wf freeze` and
+		// `wf round record` print this sentence and a clause dropped from one
+		// copy is how this project's most-repeated defect starts.
 		if !ok {
 			return "", fmt.Errorf("round %d line %d does not carry four unescaped pipes; a row the parser cannot split cannot be edited either — escape a literal pipe as \\|, and a backtick code span is NOT an escape", p.n, r.Line)
 		}
