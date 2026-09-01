@@ -503,7 +503,9 @@ prose kept losing: a step nobody can run is a step that gets skipped.
 3. Read the BLOCK around every edit after making it, not just the edited line.
 4. Sweep for what the batch did not reach: `wf check`, one command — `dup` for copies that DRIFTED,
    `stale` from the newest freeze for the consumers the fix's OWN old text names, `cite`, `rules`
-   and `closure`, ending in one summary line naming which of the five found something — then a
+   and `closure`, ending in one summary line naming which of the five found something and which
+   compared nothing at all (`nothing compared (NOT A PASS)`, never `clean`, over an empty
+   population) — then a
    hand pass for copies that CONTRADICT, which no similarity metric reaches. One command rather than
    three because on the gate that measured it the separate ones were run less than half the time
    [M-41]. On a SCRIPT add

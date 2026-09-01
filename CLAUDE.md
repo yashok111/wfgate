@@ -1491,7 +1491,7 @@ re-typing returned tables into the ledger (through `python3` heredocs inside
 `Bash`, 35 of them, which the harness forbids for data), one `wf round close`
 per row (70 of the workspace's 143 commits), and `wf check` run 19 times over
 8 rounds against three prescribed commands per round. And 101 minutes of the
-session preceded `wf init` against 159 for the gate — 39% of it outside every
+session preceded `wf init` against 169 from init to close — 37% of it outside every
 number the tool prints, on a gate whose authoring window reads 2.1 minutes.
 
 - *The brief carries the reading rule and a section index by LINE.*
@@ -1514,7 +1514,11 @@ number the tool prints, on a gate whose authoring window reads 2.1 minutes.
 - *`wf check` (no argument) runs `stale` from the newest freeze — SKIPPED and
   said so before the first freeze — and ends in one `## check —` line naming
   which of the five found something.* The runbook's steps 4 and 5 named three
-  commands; they name one.
+  commands; they name one. The first cut of that line said `clean` for a check
+  that had compared NOTHING — under five headers that each print NOT A PASS
+  there — and the external vector's one interim remark before it died named
+  it; each runner now answers with a `checkVerdict` carrying its population,
+  and the word is `nothing compared (NOT A PASS)`.
 - *`wf round ingest <report>...`.* Each report's LAST table (the brief already
   says that is the one the operator transcribes from) appended to the ledger:
   numbered on, tagged `[lens: NAME]`, closure cells the lens filled dropped and
@@ -1538,6 +1542,42 @@ number the tool prints, on a gate whose authoring window reads 2.1 minutes.
   narrowing buys ~nothing and the missing-vector rule says what it costs), and
   a cheaper closing round (zero-blocker rounds are 16 of 144 and 12% of the
   minutes — the stop rule's price).
+
+- *And the wave earned its review round, for the nineteenth time running, and
+  this time the external vector DIED.* One external model over the diff, then
+  the plugin's own `gate-sweep` agent in an ISOLATED WORKTREE (the claims
+  vector was this file's own re-derivation of every number, which found the
+  one wrong one: a gate span of 159 minutes read off the dispatch times where
+  `wf stats -time` says 169). The external lens ran its full 25-minute budget,
+  produced 2.2 MB of trace and no FINDINGS section, exit 0 — the failure mode
+  `pre-flight-gate.md` step 1 names, banked here as a vector that died, not as
+  a clean one. Its one interim sentence before it died was worth the run: the
+  summary line of `wf check` printed `clean` over a check that had compared
+  NOTHING, under five headers that each say NOT A PASS there — this project's
+  most-repeated defect, reintroduced by the line built to save reading the
+  headers. Every runner answers with a `checkVerdict` now, and the word is
+  `nothing compared (NOT A PASS)`.
+  The sweep ran **72 mutations: 47 killed, 23 survived, 2 build-broken** —
+  and it took an hour of wall clock because each mutation is a full
+  `go test ./cmd/wf` in the worktree and a sibling session's `golangci-lint`
+  held the CPU, which is a reason to run a sweep alone that the memory file
+  already carries. Of the 23 survivors, FIFTEEN named a real gap and are pinned
+  now, each verified to kill its mutation: the `-whole` dry run with `-closes`
+  (which would have called the closure with an empty sha), `record` printing
+  `committed` over a commit it had not made, `wf check -since` before any
+  freeze, a stale hit not moving the exit code, the ledger-side refusals of
+  `ingest` (no table, a malformed row), its rollback, its path note, a scaffold
+  with TWO placeholder rows (rows landed at both), an indented table, the
+  short-form sha in the closure cell, the empty number `wf round close "#"`
+  reaches, the closing heading BOUNDING section I, and the OR in the index's
+  refusal. Four were DELETED rather than shipped unproven — the `#` strip and
+  the `!Malformed` conjunct in the planner (both callers strip, and a malformed
+  row has no number), the no-space rule on a heading id, and the empty-item
+  branch of the list parser, which `FieldsFunc` makes unreachable. Four are
+  documented as UNKILLABLE with the reason: the read-back guards in `ingest`
+  and in the closure writer pin the WRITER, which no test of the guard can
+  make wrong, and the end-of-file branch of the section index is unreachable
+  in the reference as shipped because its last heading carries no id.
 
 ## Hard rules
 

@@ -2439,11 +2439,11 @@ func cmdCheck(args []string) error {
 		return nil
 	}
 	if which == "stale" {
-		bad, err := runStale(w, arts, *since, *minWords, *maxDF)
+		v, err := runStale(w, arts, *since, *minWords, *maxDF)
 		if err != nil {
 			return err
 		}
-		if bad {
+		if v.bad {
 			return errFindings
 		}
 		return nil
@@ -2455,47 +2455,54 @@ func cmdCheck(args []string) error {
 	// them as three separate commands. One command, one summary line, is what
 	// gets run every round.
 	var summary []string
-	note := func(name string, bad bool) {
-		v := "clean"
-		if bad {
-			v = "FINDINGS"
+	note := func(name string, v checkVerdict) {
+		// Three words, not two: a check that compared NOTHING is not clean,
+		// and a summary that said so only in the lines above it would be the
+		// absent-measurement-in-the-register-of-a-measured-one defect, one
+		// line under five headers that each know better.
+		word := "clean"
+		switch {
+		case v.bad:
+			word = "FINDINGS"
+		case v.vacuous:
+			word = "nothing compared (NOT A PASS)"
 		}
-		summary = append(summary, name+": "+v)
+		summary = append(summary, name+": "+word)
 	}
 	if which == "all" || which == "cite" {
-		bad, err := runCite(w, arts, *show, *reqAnchor, *at)
+		v, err := runCite(w, arts, *show, *reqAnchor, *at)
 		if err != nil {
 			return err
 		}
-		fail = fail || bad
-		note("cite", bad)
+		fail = fail || v.bad
+		note("cite", v)
 	}
 	if which == "all" || which == "dup" {
-		bad, err := runDup(w, arts, *thr, *minWords, *since)
+		v, err := runDup(w, arts, *thr, *minWords, *since)
 		if err != nil {
 			return err
 		}
-		fail = fail || bad
-		note("dup", bad)
+		fail = fail || v.bad
+		note("dup", v)
 	}
 	if which == "all" || which == "rules" {
-		bad, err := runRules(w, arts)
+		v, err := runRules(w, arts)
 		if err != nil {
 			return err
 		}
-		fail = fail || bad
-		note("rules", bad)
+		fail = fail || v.bad
+		note("rules", v)
 	}
 	// closure IS part of "all": the check exists because a whole live round of
 	// hand-written reviewer prompts was spent asking it, and a check nobody runs
 	// by default is the prompt again with a shorter name.
 	if which == "all" || which == "closure" {
-		bad, err := runClosure(w, arts, *round)
+		v, err := runClosure(w, arts, *round)
 		if err != nil {
 			return err
 		}
-		fail = fail || bad
-		note("closure", bad)
+		fail = fail || v.bad
+		note("closure", v)
 	}
 	// stale joins "all" from the first freeze on. It is measured FROM a
 	// reference, and before any freeze there is none — so it is SKIPPED there,
@@ -2508,12 +2515,12 @@ func cmdCheck(args []string) error {
 			fmt.Printf("## stale — SKIPPED: nothing is frozen yet, so there is no fix range to mine; it runs here from the first freeze on\n")
 			summary = append(summary, "stale: skipped (nothing frozen)")
 		} else {
-			bad, err := runStale(w, arts, *since, *minWords, *maxDF)
+			v, err := runStale(w, arts, *since, *minWords, *maxDF)
 			if err != nil {
 				return err
 			}
-			fail = fail || bad
-			note("stale", bad)
+			fail = fail || v.bad
+			note("stale", v)
 		}
 	}
 	if which != "all" && which != "cite" && which != "dup" && which != "rules" && which != "closure" {
@@ -2526,6 +2533,16 @@ func cmdCheck(args []string) error {
 		return errFindings
 	}
 	return nil
+}
+
+// checkVerdict is what one check answers with: whether it found something,
+// and whether it had a population to find it in. The second half exists for
+// the summary line of `wf check`: every runner prints NOT A PASS in its own
+// header over an empty population, and a one-word summary that read "clean"
+// there would have been this project's most-repeated defect reintroduced by
+// the line built to save reading the headers.
+type checkVerdict struct {
+	bad, vacuous bool
 }
 
 // runDrift intersects the target's movement since a freeze with the cited
@@ -2680,17 +2697,17 @@ func driftHint(w *ws.Workspace) string {
 		short(now), n, short(fm.TargetRef), who)
 }
 
-func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string) (bool, error) {
+func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string) (checkVerdict, error) {
 	cits, err := check.ScanCitations(w.Root, arts)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	// The revision to read the target at. `frozen` is the one an operator
 	// actually wants: it is the revision the freeze manifest NAMES, which is the
 	// tree the reviewers of that round were pointed at.
 	ref, refNote, err := citeRef(w, at)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	var ix *check.Index
 	var read func(string) ([]byte, error)
@@ -2702,11 +2719,11 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string
 		read = check.RevReader(w.M.Target, ref)
 	}
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	findings, err := check.VerifyCitationsWith(read, ix, cits)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	// Anchor coverage is printed unconditionally, because the check's real limit
 	// has to be visible. Range validation catches a citation that points past the
@@ -2722,7 +2739,7 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string
 	// project's named worst failure, hence the note.
 	extless, err := check.ExtensionlessRefs(w.Root, arts, ix)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	anchored, badAnchors := 0, 0
 	for _, c := range cits {
@@ -2782,7 +2799,7 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string
 			fmt.Printf("  %s:%d  %s\n%s", c.Artifact, c.AtLine, c.Raw, check.ShowWith(read, ix, c))
 		}
 	}
-	return len(findings) > 0, nil
+	return checkVerdict{bad: len(findings) > 0, vacuous: len(cits) == 0}, nil
 }
 
 // printProseScope says which artifacts were read as programs rather than as
@@ -2807,14 +2824,14 @@ func printProseScope(arts []string, notes []check.Note) {
 	}
 }
 
-func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since string) (bool, error) {
+func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since string) (checkVerdict, error) {
 	sts, notes, err := check.CollectStatements(w.Root, arts, minWords)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	groups, blind, err := check.FindDuplicates(w.Root, sts, thr)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	// -since narrows the OUTPUT, never the threshold. On a derived artifact
 	// (a context document that deliberately restates the decisions) every
@@ -2827,7 +2844,7 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	if since != "" {
 		out, err := w.Git.Run("rev-list", since+"..HEAD")
 		if err != nil {
-			return false, err
+			return checkVerdict{}, err
 		}
 		recent := map[string]bool{}
 		for _, sha := range strings.Split(out, "\n") {
@@ -2861,7 +2878,7 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	nums := check.FindNumericDrift(sts)
 	ops, err := check.FindOperatorConflicts(w.Root, sts)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	fmt.Printf("## dup — %d statement(s), %d cross-file group(s), %d divergent, %d numeric, %d operator\n",
 		len(sts), len(groups), divergent, len(nums), len(ops))
@@ -2911,17 +2928,17 @@ func runDup(w *ws.Workspace, arts []string, thr float64, minWords int, since str
 	// together are how a rule is SUPPOSED to look when it legitimately lives in
 	// two places; failing on those would make the check noise and it would get
 	// turned off.
-	return divergent > 0 || len(nums) > 0 || len(ops) > 0, nil
+	return checkVerdict{bad: divergent > 0 || len(nums) > 0 || len(ops) > 0, vacuous: len(sts) == 0 || len(arts) < 2}, nil
 }
 
 // runRules compares every site of each `[RN]` rule marker. Zero markers is a
 // corpus that opted out, and the population line says so — dup's structural
 // blind spot (copies contradicting in DIFFERENT words: eight on the first live
 // gate, all found by reviewers) is only closed where an author marked the rule.
-func runRules(w *ws.Workspace, arts []string) (bool, error) {
+func runRules(w *ws.Workspace, arts []string) (checkVerdict, error) {
 	sites, markers, notes, err := check.CollectRuleSites(w.Root, arts)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	conflicts := check.RuleConflicts(sites)
 	compared := check.ComparedIDs(sites)
@@ -2988,7 +3005,7 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 			"statement of it. Drop the marker from the reference — do not reword the artifact to " +
 			"satisfy the check\n")
 	}
-	return len(conflicts) > 0, nil
+	return checkVerdict{bad: len(conflicts) > 0, vacuous: compared == 0}, nil
 }
 
 // runStale reports the consumers a fix left standing. `wf apply` has printed
@@ -3001,11 +3018,11 @@ func runRules(w *ws.Workspace, arts []string) (bool, error) {
 // a quarter of every round's claimed closures were incomplete, and the failure
 // was almost always this one — the fix corrected one copy of a rule and left
 // another standing, in words no `dup` group and no `[RN]` marker reaches.
-func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int) (bool, error) {
+func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int) (checkVerdict, error) {
 	if since == "" {
 		n := newestFrozen(w)
 		if n == 0 {
-			return false, fmt.Errorf("nothing is frozen yet, so there is no fix range to mine; pass -since <ref>")
+			return checkVerdict{}, fmt.Errorf("nothing is frozen yet, so there is no fix range to mine; pass -since <ref>")
 		}
 		since = ws.RoundTag(n)
 	}
@@ -3015,11 +3032,11 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	raw, err := w.Git.Run("-c", "core.quotePath=false", "diff", "--no-renames", "--no-ext-diff",
 		"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", since, "HEAD", "--", "artifacts")
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	sts, notes, err := check.CollectStatements(w.Root, arts, minWords)
 	if err != nil {
-		return false, err
+		return checkVerdict{}, err
 	}
 	rep := check.FindStale(sts, raw, maxDF)
 	fmt.Printf("## stale — %s..HEAD: %d retired token(s), %d sentence(s) still carrying them (%d scanned, %d written by the range)\n",
@@ -3070,7 +3087,7 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	if len(rep.Hits) > 0 {
 		fmt.Printf("  note: a hit is a sentence the fix did not touch that still uses the words the fix retired. Which of them ARGUES from the superseded rule and which merely shares its vocabulary is judgement — this check reports, it never rewrites\n")
 	}
-	return len(rep.Hits) > 0, nil
+	return checkVerdict{bad: len(rep.Hits) > 0, vacuous: rep.Mined == 0}, nil
 }
 
 // runClosure asks of every claimed closure the question `wf round record` does
@@ -3081,7 +3098,7 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 // independently reported 6 and 4, 5 and 4, 6 and 4 closures they judged not
 // closed, out of 25, 23 and 21 findings. It was the most valuable half of those
 // rounds and it was produced entirely by prose instruction over data git holds.
-func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
+func runClosure(w *ws.Workspace, arts []string, round int) (checkVerdict, error) {
 	rounds := []int{}
 	if round > 0 {
 		// A round that does not exist is not a round with no closures. `-round
@@ -3089,7 +3106,7 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 		// and exited zero: the report of a check that examined nothing, in the
 		// register of one that examined everything.
 		if round > w.M.Round {
-			return false, fmt.Errorf("round %d does not exist (this workspace has %d); a check over a round that is not there would report zero of everything and exit clean", round, w.M.Round)
+			return checkVerdict{}, fmt.Errorf("round %d does not exist (this workspace has %d); a check over a round that is not there would report zero of everything and exit clean", round, w.M.Round)
 		}
 		rounds = append(rounds, round)
 	} else {
@@ -3533,7 +3550,7 @@ func runClosure(w *ws.Workspace, arts []string, round int) (bool, error) {
 	if len(bad) > 0 {
 		fmt.Printf("  note: a FILE miss is a closure that did not land where the finding said it would. A SECTION or LINE miss is a question to re-ask, not a verdict: the fix may have landed in the section that PRODUCES the defect rather than the one the finding cites. A citation is read as a SPAN and mapped into each commit's own coordinates first, so a later batch in the same round no longer moves it out from under the check. Verified by hand on a live gate — 12 of 127, and the first three read that way\n")
 	}
-	return len(bad) > 0, nil
+	return checkVerdict{bad: len(bad) > 0, vacuous: claims == 0 || checked == 0}, nil
 }
 
 // unionOf is for the REPORT only — "the commits changed these files" — never

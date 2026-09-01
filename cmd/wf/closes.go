@@ -50,9 +50,11 @@ func planClosure(w *ws.Workspace, n int, nums []string, replace bool) (*ledgerCl
 	p := &ledgerClosure{n: n, dst: dst, before: b}
 	p.rel, _ = filepath.Rel(w.Root, dst)
 	for _, num := range nums {
-		num = strings.TrimPrefix(strings.TrimSpace(num), "#")
+		// Both callers have already stripped `#` and whitespace; a second
+		// strip here survived every mutation and is not repeated. What CAN
+		// arrive empty is `wf round close "#" <sha>`.
 		if num == "" {
-			return nil, fmt.Errorf("an empty finding number in the list; write the numbers the ledger carries (it has: %s)", strings.Join(findingNums(rows), ", "))
+			return nil, fmt.Errorf("an empty finding number; write one the ledger carries (it has: %s)", strings.Join(findingNums(rows), ", "))
 		}
 		if seen[num] {
 			return nil, fmt.Errorf("finding %s is named twice; one closure per row", num)
@@ -60,7 +62,9 @@ func planClosure(w *ws.Workspace, n int, nums []string, replace bool) (*ledgerCl
 		seen[num] = true
 		var hit []ws.FindingRow
 		for _, r := range rows {
-			if !r.Malformed && strings.TrimSpace(r.Num) == num {
+			// No `!r.Malformed` test: a malformed row carries no Num at all,
+			// so it never equals one. The conjunct survived every mutation.
+			if strings.TrimSpace(r.Num) == num {
 				hit = append(hit, r)
 			}
 		}
@@ -115,7 +119,10 @@ func (p *ledgerClosure) write(w *ws.Workspace, value, subject string) (string, e
 	body := []byte(strings.Join(lines, "\n"))
 	// Re-parsed from the BYTES about to be written, never from the row structs
 	// that produced them: the same read-back-and-compare `wf apply` does after
-	// a write, one layer up.
+	// a write, one layer up. UNKILLABLE by mutation of this call: it pins the
+	// WRITER (`ws.SetClosedBy`), which no test of the guard can make wrong;
+	// `verifyClosureLanded` itself is pinned directly, and the wiring is
+	// proven the day the writer regresses and not before.
 	for _, r := range p.rows {
 		if err := verifyClosureLanded(body, r.Line, strings.TrimSpace(r.Num), value, r.Text); err != nil {
 			return "", err
@@ -161,7 +168,9 @@ func parseCloses(s string) ([]string, error) {
 func closeWithBatch(w *ws.Workspace, p *ledgerClosure, sha string) error {
 	value, err := canonicalSha(w, sha)
 	if err != nil {
-		return err
+		// The batch is already committed; the message must say so, or the
+		// operator re-applies a batch whose edits no longer match anything.
+		return fmt.Errorf("the batch is committed as %s and stands; %w — close the rows by hand with `wf round close <finding#> %s`", short(sha), err, short(sha))
 	}
 	subject := fmt.Sprintf("round %d: finding(s) %s closed by %s", p.n, strings.Join(p.nums(), ", "), short(sha))
 	commit, err := p.write(w, value, subject)

@@ -698,6 +698,6 @@ built through `python3` heredocs inside `Bash` (35 such calls), which the harnes
 8 rounds against a runbook naming three separate check commands per round.
 
 The session before `wf init`: 05:05 to 06:46 UTC, **101 minutes** — the interview, four research
-agents, three design agents, the draft — against 159 minutes for the gate itself. 39% of the
-session outside every number `wf` prints, on a gate whose `wf stats` authoring window reads 2.1
+agents, three design agents, the draft — against 169 minutes from `wf init` to `wf close` (2.8 h by
+`wf stats -time`, first commit to last). 37% of the session outside every number `wf` prints, on a gate whose `wf stats` authoring window reads 2.1
 minutes.

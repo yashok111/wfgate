@@ -64,7 +64,9 @@ func TestApplyClosesFillsTheLedgerWithTheBatchCommit(t *testing.T) {
 	for _, r := range rows {
 		got[r.Num] = strings.TrimSpace(r.ClosedBy)
 	}
-	if got["1"] == "" || !strings.HasPrefix(applySha, got["1"]) || got["2"] != got["1"] {
+	// The SHORT form, as `wf round close` stores it — a full sha in the cell
+	// passed a prefix test and let the canonicalisation be bypassed.
+	if got["1"] == "" || len(got["1"]) != 8 || !strings.HasPrefix(applySha, got["1"]) || got["2"] != got["1"] {
 		t.Fatalf("rows 1 and 2 must be closed by the apply commit %s, got %v", applySha, got)
 	}
 	if got["3"] != "" {
@@ -161,9 +163,16 @@ func TestApplyClosesDryRunAndWhole(t *testing.T) {
 		t.Fatal("a dry run filled the closure cell")
 	}
 
-	// -whole: rewrite by hand, adopt, and close in the same breath.
+	// -whole: rewrite by hand, adopt, and close in the same breath — and its
+	// dry run plans the closure without a commit, exactly like -f's.
 	art := filepath.Join(wsDir, "artifacts", "decisions.md")
 	write(t, art, "# Decisions\n\nRewritten whole. `src/main.go:3#NeedleFn`.\n")
+	out, err = runWF(t, wsDir, "apply", "-whole", "artifacts/decisions.md", "-closes", "1", "--dry-run")
+	noErr(t, err, "apply -whole --dry-run -closes")
+	mustContain(t, out, "would close finding(s) 1 in round 1")
+	if headOf(t, wsDir) != head {
+		t.Fatal("a -whole dry run committed something")
+	}
 	out, err = runWF(t, wsDir, "apply", "-whole", "artifacts/decisions.md", "-closes", "1")
 	noErr(t, err, "apply -whole -closes")
 	mustContain(t, out, "closed finding(s) 1 in round 1 by ")
@@ -184,15 +193,28 @@ func TestCheckAllRunsStaleFromTheNewestFreezeAndSummarises(t *testing.T) {
 	wsDir := newGate(t)
 	out, err := runWF(t, wsDir, "check")
 	noErr(t, err, "check before freeze")
-	mustContain(t, out, "## stale — SKIPPED: nothing is frozen yet", "## check — cite: clean, dup: clean, rules: clean, closure: clean, stale: skipped (nothing frozen)")
+	// One artifact, no markers, no closure claimed: three of the five compared
+	// NOTHING, and the summary must not call that clean — every header above
+	// it says NOT A PASS, and a one-word "clean" under them would be the
+	// empty-population defect reintroduced by the line built to save reading
+	// the headers.
+	mustContain(t, out, "## stale — SKIPPED: nothing is frozen yet",
+		"## check — cite: clean, dup: nothing compared (NOT A PASS), rules: nothing compared (NOT A PASS), closure: nothing compared (NOT A PASS), stale: skipped (nothing frozen)")
 
 	recordRows(t, wsDir, "| 1 | NOTE | artifacts/decisions.md: nothing |  |\n")
 	_, err = runWF(t, wsDir, "freeze")
 	noErr(t, err, "freeze")
+	// A fix after the freeze retires a word, so stale has a population; a
+	// closure naming that commit gives closure one too.
+	tmp := filepath.Dir(wsDir)
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/decisions.md  count=1\n<<<<\nEntry point:\n====\nThe entrypoint is:\n>>>>\n")
+	_, err = runWF(t, wsDir, "apply", "-f", edits, "-closes", "1")
+	noErr(t, err, "apply -closes")
 	out, err = runWF(t, wsDir, "check")
 	noErr(t, err, "check after freeze")
-	mustContain(t, out, "## stale — gate-r1..HEAD:", "stale: clean")
-	mustNotContain(t, out, "SKIPPED")
+	mustContain(t, out, "## stale — gate-r1..HEAD:", "stale: clean", "closure: clean")
+	mustNotContain(t, out, "SKIPPED", "closure: nothing compared")
 	// A single named check carries no summary: the line is for the set.
 	out, err = runWF(t, wsDir, "check", "cite")
 	noErr(t, err, "check cite")
@@ -210,7 +232,7 @@ func TestCheckAllSummaryNamesTheFailingCheck(t *testing.T) {
 	noErr(t, err, "apply")
 	out, err := runWF(t, wsDir, "check")
 	wantFindings(t, err, "check")
-	mustContain(t, out, "cite: FINDINGS", "dup: clean")
+	mustContain(t, out, "cite: FINDINGS", "dup: nothing compared (NOT A PASS)")
 }
 
 // `wf round ingest` appends each report's LAST table to the ledger, numbered on,
@@ -263,6 +285,116 @@ func TestRoundIngestAppendsTheLastTableOfEachReport(t *testing.T) {
 	out, err = runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
 	noErr(t, err, "record after ingest")
 	mustContain(t, out, "identical to the committed ledger, nothing to commit", "findings: 4 row(s), 1 blocker(s)")
+	mustNotContain(t, out, "\ncommitted ")
+}
+
+// The ledger-side refusals, the two-placeholder scaffold, the indented table,
+// and the path note over a two-artifact workspace — every one a mutation
+// survivor of the first sweep.
+func TestRoundIngestLedgerShapes(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	ledgerPath := filepath.Join(wsDir, "rounds", "r1", "findings.md")
+	rep := filepath.Join(tmp, "lens-a.md")
+	// Indented rows are rows: a lens that returns its table inside a list.
+	write(t, rep, "  | # | level | finding | closed by |\n  |---|---|---|---|\n  |  | MAJOR | indented |  |\n")
+
+	// No table in the ledger at all.
+	write(t, ledgerPath, "# Round 1\n\nprose only\n")
+	_, err := runWF(t, wsDir, "round", "ingest", rep)
+	if err == nil || !strings.Contains(err.Error(), "carries no findings table") {
+		t.Fatalf("want the no-table refusal, got %v", err)
+	}
+	// A malformed row already in the ledger.
+	write(t, ledgerPath, "# Round 1\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | MAJOR | a | b | c |\n")
+	_, err = runWF(t, wsDir, "round", "ingest", rep)
+	if err == nil || !strings.Contains(err.Error(), "line 5 is a table row of 5 cell(s), not 4") {
+		t.Fatalf("want the malformed-ledger refusal, got %v", err)
+	}
+	// TWO placeholder rows: the new rows land once, where the first stood.
+	write(t, ledgerPath, "# Round 1\n\n| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | BLOCKER |  |  |\n| 2 |  |  |  |\n")
+	gitIn(t, wsDir, "add", "--", "rounds/r1/findings.md")
+	gitIn(t, wsDir, "commit", "-q", "-m", "test: two-row scaffold")
+	out, err := runWF(t, wsDir, "round", "ingest", rep)
+	noErr(t, err, "ingest over a two-row scaffold")
+	mustContain(t, out, "it now holds 1 row(s)")
+	rows := ws.ParseFindings([]byte(read(t, ledgerPath)))
+	if len(rows) != 1 || rows[0].Num != "1" || !strings.Contains(rows[0].Text, "indented") {
+		t.Fatalf("want exactly one row numbered 1 from the indented table, got %+v", rows)
+	}
+
+	// A second artifact arms the path note; a row naming no path is counted.
+	art2 := filepath.Join(tmp, "context.md")
+	write(t, art2, "# Context\n")
+	_, err = runWF(t, wsDir, "add", art2)
+	noErr(t, err, "add second artifact")
+	rep2 := filepath.Join(tmp, "lens-b.md")
+	write(t, rep2, "| # | level | finding | closed by |\n|---|---|---|---|\n|  | MINOR | names no file |  |\n")
+	out, err = runWF(t, wsDir, "round", "ingest", rep2)
+	noErr(t, err, "ingest without a path")
+	mustContain(t, out, "2 of 2 row(s) name no artifact path in the finding text")
+}
+
+// A failing commit rolls the ledger back to its pre-ingest bytes.
+func TestRoundIngestRollsBackWhenTheCommitFails(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	ledgerPath := filepath.Join(wsDir, "rounds", "r1", "findings.md")
+	before := read(t, ledgerPath)
+	rep := filepath.Join(tmp, "lens-a.md")
+	write(t, rep, "| # | level | finding | closed by |\n|---|---|---|---|\n|  | MAJOR | a row |  |\n")
+	hook := filepath.Join(wsDir, ".git", "hooks", "pre-commit")
+	write(t, hook, "#!/bin/sh\nexit 1\n")
+	if err := os.Chmod(hook, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runWF(t, wsDir, "round", "ingest", rep)
+	if err == nil || !strings.Contains(err.Error(), "the ledger has been rolled back") {
+		t.Fatalf("want the rollback message, got %v", err)
+	}
+	if read(t, ledgerPath) != before {
+		t.Fatal("the ledger still holds the ingested rows after a failed commit")
+	}
+	st, _ := gitOut(t, wsDir, "status", "--porcelain")
+	if strings.TrimSpace(st) != "" {
+		t.Fatalf("something is left staged or dirty:\n%s", st)
+	}
+}
+
+// `wf round close "#" <sha>` reaches the planner with an empty number.
+func TestRoundCloseRefusesAnEmptyNumber(t *testing.T) {
+	wsDir := newGate(t)
+	recordRows(t, wsDir, "| 1 | MAJOR | artifacts/decisions.md: one |  |\n")
+	// A commit that touched an artifact, so the sha passes its own refusal
+	// and the number is what gets judged.
+	artSha, err := gitOut(t, wsDir, "log", "--format=%H", "-n", "1", "--", "artifacts")
+	noErr(t, err, "log")
+	_, err = runWF(t, wsDir, "round", "close", "#", strings.TrimSpace(artSha))
+	if err == nil || !strings.Contains(err.Error(), "an empty finding number") {
+		t.Fatalf("want the empty-number refusal, got %v", err)
+	}
+}
+
+// Before any freeze, `-since` still runs stale from the named ref; and a stale
+// hit moves the exit code of the whole command.
+func TestCheckAllStaleSinceAndExitCode(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	// Two sentences long enough to be statements, sharing the word the fix
+	// will retire from one of them.
+	art := filepath.Join(tmp, "notes.md")
+	write(t, art, "# Notes\n\nThe entrypoint of the whole program is the needle function here.\n\nEvery caller reaches the entrypoint of the whole program through the needle function here.\n")
+	_, err := runWF(t, wsDir, "add", art)
+	noErr(t, err, "add")
+	base := headOf(t, wsDir)
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/notes.md  count=1\n<<<<\nThe entrypoint of the whole program\n====\nThe start of the whole program\n>>>>\n")
+	_, err = runWF(t, wsDir, "apply", "-f", edits)
+	noErr(t, err, "apply")
+	out, err := runWF(t, wsDir, "check", "-since", base)
+	wantFindings(t, err, "check -since before any freeze")
+	mustContain(t, out, "## stale — "+base+"..HEAD:", "stale: FINDINGS")
+	mustNotContain(t, out, "SKIPPED")
 }
 
 // Every report is refused BEFORE a byte is written, and each refusal names the
@@ -316,6 +448,9 @@ func TestLastTable(t *testing.T) {
 	if b, s := lastTable("| only |"); b != "| only |" || s != 1 {
 		t.Fatalf("a table on the first line: got %q at %d", b, s)
 	}
+	if b, s := lastTable("x\n  | in |\n\t| dented |\n"); b != "  | in |\n\t| dented |" || s != 2 {
+		t.Fatalf("indented rows are rows: got %q at %d", b, s)
+	}
 }
 
 // The reviewer's brief carries the navigation rule and the pinned file's
@@ -331,7 +466,7 @@ func TestNewLensCarriesTheNavigationRuleAndTheSectionIndex(t *testing.T) {
 	// The index, re-derived here from the pinned copy by an independent
 	// reading: the line of `## 0.` and the line before `## A.`.
 	pinned := strings.Split(read(t, filepath.Join(wsDir, "gate-checks.md")), "\n")
-	from, aLine, iLine := 0, 0, 0
+	from, aLine, iLine, appLine := 0, 0, 0, 0
 	for i, l := range pinned {
 		switch {
 		case strings.HasPrefix(l, "## 0. "):
@@ -340,10 +475,12 @@ func TestNewLensCarriesTheNavigationRuleAndTheSectionIndex(t *testing.T) {
 			aLine = i + 1
 		case strings.HasPrefix(l, "## I. "):
 			iLine = i + 1
+		case strings.HasPrefix(l, "## Appending"):
+			appLine = i + 1
 		}
 	}
-	if from == 0 || aLine == 0 || iLine == 0 {
-		t.Fatalf("the pinned gate-checks.md lost its headings (0 at %d, A at %d, I at %d)", from, aLine, iLine)
+	if from == 0 || aLine == 0 || iLine == 0 || appLine == 0 {
+		t.Fatalf("the pinned gate-checks.md lost its headings (0 at %d, A at %d, I at %d, Appending at %d)", from, aLine, iLine, appLine)
 	}
 	// The stamp line `wf init` prepends shifts every heading by one against
 	// the source; the index must follow the PINNED copy.
@@ -353,9 +490,12 @@ func TestNewLensCarriesTheNavigationRuleAndTheSectionIndex(t *testing.T) {
 	mustContain(t, body,
 		"what a row must carry: lines "+strconv.Itoa(from)+"-"+strconv.Itoa(aLine-1),
 		"the other sections by line, so none has to be searched for: A "+strconv.Itoa(aLine)+"-",
-		", I "+strconv.Itoa(iLine)+"-")
-	if m := regexp.MustCompile(`I (\d+)-(\d+)`).FindStringSubmatch(body); m == nil || m[2] == "" {
-		t.Fatalf("section I carries no upper bound in:\n%s", body)
+		", I "+strconv.Itoa(iLine)+"-"+strconv.Itoa(appLine-1))
+	// The closing heading carries no id and is not indexed itself; it BOUNDS
+	// section I, which a mutation letting it through reported as running to
+	// the end of the file.
+	if m := regexp.MustCompile(`I \d+-(\d+)`).FindStringSubmatch(body); m == nil || m[1] != strconv.Itoa(appLine-1) {
+		t.Fatalf("section I must end at line %d, the line before the closing heading, in:\n%s", appLine-1, body)
 	}
 
 	// No pinned copy: the line says so instead of inventing ranges.
@@ -371,9 +511,19 @@ func TestNewLensCarriesTheNavigationRuleAndTheSectionIndex(t *testing.T) {
 }
 
 func TestGateChecksIndexRefusesAFileWithoutTheHeadings(t *testing.T) {
-	f := filepath.Join(t.TempDir(), "x.md")
-	write(t, f, "## Something else\n\ntext\n")
-	if _, _, err := gateChecksIndex(f); err == nil || !strings.Contains(err.Error(), "carries no `## 0.`/`## A.` headings") {
-		t.Fatalf("want the missing-headings refusal, got %v", err)
+	// Neither half, and EACH half alone: a file with sections 0-0c and nothing
+	// after them has no index to print, and one with A-I and no section 0 has
+	// no head range — the refusal is an OR, and a mutation to AND passed the
+	// neither-half case alone.
+	for name, body := range map[string]string{
+		"neither":   "## Something else\n\ntext\n",
+		"head only": "## 0. scale\n\n## 0b. asks\n\n## 0c. carry\n",
+		"rest only": "## A. facts\n\n## B. seams\n",
+	} {
+		f := filepath.Join(t.TempDir(), "x.md")
+		write(t, f, body)
+		if _, _, err := gateChecksIndex(f); err == nil || !strings.Contains(err.Error(), "carries no `## 0.`/`## A.` headings") {
+			t.Fatalf("%s: want the missing-headings refusal, got %v", name, err)
+		}
 	}
 }

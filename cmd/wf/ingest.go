@@ -187,7 +187,10 @@ func cmdRoundIngest(args []string) error {
 	}
 	body := []byte(strings.Join(out, "\n"))
 	// Read back from the bytes about to be written: exactly the rows staged,
-	// none malformed, numbers unique.
+	// none malformed, numbers unique. UNKILLABLE by mutation of the three
+	// checks below: they pin the WRITER above them, which no test of a guard
+	// can make wrong — the same standing `wf apply`'s byte-for-byte read-back
+	// has. Proven the day the writer regresses.
 	after := ws.ParseFindings(body)
 	want := len(have) + added
 	if scaffold {
