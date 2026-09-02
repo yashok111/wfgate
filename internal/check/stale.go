@@ -608,7 +608,7 @@ func SectionRanges(body []byte) map[string][2]int {
 			switch {
 			case fence == "":
 				fence = f
-			case strings.HasPrefix(f, fence[:1]):
+			case FenceCloses(fence, t):
 				fence = ""
 			}
 			continue
@@ -647,12 +647,21 @@ func SectionRanges(body []byte) map[string][2]int {
 // leadingIDs reads the ids a heading NAMES — the ones at its head — and stops
 // at the first word that is not one. A heading mentions other sections in
 // passing (`## D3. One of A2's four D16 premises is wrong`, `### D5.2 …, and
-// D7 is its other half`, `### D3.2 The base scope … [R4]`: 11 of 537 headings
-// across the gate workspaces on disk carry a second id, and every one of them
-// is a mention or a rule marker), and the first version gave EVERY id in the
-// heading the section's range. So a finding citing D1 was reported closed by
-// a commit that touched only D2, because D2's heading said it replaced the D1
-// rule — the false pass this check exists to refuse, produced by the check.
+// D7 is its other half`, `### D3.2 The base scope … [R4]`: 11 of 556 headings
+// across the nineteen gate workspaces on disk carry a second id — the reading
+// is `^#{1,6} ` over every `artifacts/*.md`, two or more distinct
+// `\b[A-Z]{1,3}[0-9]{1,3}\b` — and every one of them is a mention or a rule
+// marker), and the first version gave EVERY id in the heading the section's
+// range. So a finding citing D1 was reported closed by a commit that touched
+// only D2, because D2's heading said it replaced the D1 rule — the false pass
+// this check exists to refuse, produced by the check. Measured over the same
+// nineteen workspaces, `wf check closure` goes 96 miss rows to 97, and the one
+// it adds is that class (p3f round 5 #3: a fix in D13.2, whose heading says
+// "the one predicate D3.2's rule adds", had been closing a finding about D3).
+// The other edge: a heading whose ids are all NON-leading — `## §F. Section 5
+// — the criterion tests C5–C11`, 7 of the corpus's 424 id-bearing headings —
+// now heads no section at all where it used to head C5 and C11 (and never C7);
+// such a finding falls to the line and file halves, and no corpus verdict moved.
 // Two ids joined by a separator (`## D1, D2 shared`) are both the heading's.
 func leadingIDs(title string) []string {
 	var out []string
@@ -668,14 +677,30 @@ func leadingIDs(title string) []string {
 	}
 }
 
-// FenceOf returns the fence marker a line opens or closes with, or "".
+// FenceOf returns the fence run a (trimmed) line opens or closes with — the
+// WHOLE run of backticks or tildes, not the first three — or "".
 func FenceOf(t string) string {
-	for _, c := range []string{"```", "~~~"} {
-		if strings.HasPrefix(t, c) {
-			return c
+	for _, c := range []byte{'`', '~'} {
+		n := 0
+		for n < len(t) && t[n] == c {
+			n++
+		}
+		if n >= 3 {
+			return t[:n]
 		}
 	}
 	return ""
+}
+
+// FenceCloses says whether the (trimmed) line closes the fence `open` began:
+// the same character, a run at least as long, and nothing after it. Markdown's
+// own rule, and it matters: a four-backtick fence holding a three-backtick
+// `​```go` block used to be CLOSED by that inner line, so the example table
+// after it was read as the report's last table — and a `~~~` line inside a
+// backtick fence closed it too, because only the first character was compared.
+func FenceCloses(open, t string) bool {
+	f := FenceOf(t)
+	return f != "" && f[0] == open[0] && len(f) >= len(open) && strings.TrimSpace(t[len(f):]) == ""
 }
 
 // SectionsNamed returns the section ids a finding's text cites.

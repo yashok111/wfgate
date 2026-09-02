@@ -222,6 +222,12 @@ func regexCanStart(src string, i int, prev byte) bool {
 	case 0, '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^':
 		return true
 	}
+	// The last significant byte must be part of a WORD before the walk-back
+	// runs, and that gate is load-bearing rather than an early exit. The walk
+	// reads the ORIGINAL source, where a `//` comment's text is still present,
+	// and a newline is a space byte — so after `// the ratio we return` a `/`
+	// opening the next line skipped the break, found `return` inside the
+	// comment, and opened a regex over a division.
 	if !isWordByte(prev) {
 		return false
 	}

@@ -1617,7 +1617,8 @@ round below is the wave's own reviewer.
   clean. `-whole` had refused the same path since it shipped, and the
   comment on `-closes` asserted an invariant ("touched artifacts by
   construction") that nothing enforced. One `underArtifacts` now, for `-f`,
-  `-whole` and `wf add`, refused before the plan.
+  `-whole` and `wf add` (the review round found `wf add` still carrying its
+  own copy of the test), refused before the plan.
 - *A ledger row numbered `#1` could be closed by NO spelling, and after an
   ingest it closed the WRONG row.* The column is headed `#`, the reports
   print `#3`, and `wf round record` accepts either; `wf round close` stripped
@@ -1640,10 +1641,20 @@ round below is the wave's own reviewer.
   finding about D1 was reported closed by a commit that touched only D2 —
   because D2's heading said it replaced the D1 rule.* Reproduced both ways in
   one workspace: with the mention, `0 not closed`; without it, `1 not closed …
-  NOT any section it cites: D1 (3-6)`. Measured over the 537 headings of the
-  gate workspaces on disk: 11 carry a second id and every one is a mention in
-  passing or a `[R4]` marker. A heading names the ids at its HEAD and mentions
-  the rest (`leadingIDs`); two ids joined by a separator still both head it.
+  NOT any section it cites: D1 (3-6)`. Measured over the 556 headings of the
+  nineteen gate workspaces on disk (`^#{1,6} ` over every `artifacts/*.md`,
+  two or more distinct `\b[A-Z]{1,3}[0-9]{1,3}\b`; a first reading said 537
+  and was one workspace short): 11 carry a second id and every one is a mention
+  in passing or a `[R4]` marker. A heading names the ids at its HEAD and
+  mentions the rest (`leadingIDs`); two ids joined by a separator still both
+  head it. Corpus-wide the closure check goes **96 miss rows to 97**, and the
+  one it adds is the class (p3f round 5 #3, a fix in D13.2 — "the one
+  predicate D3.2's rule adds" — had been closing a finding about D3). The
+  second effect, named by the review round: a heading whose ids are ALL
+  non-leading (`## §F. Section 5 — the criterion tests C5–C11`, seven of the
+  corpus's 424 id-bearing headings) heads no section now, where it used to
+  head C5 and C11 and never C7; those findings fall to the line and file
+  halves, and no corpus verdict moved.
 - *`wf check stale` printed `swept: 1 of 1 … survive NOWHERE` and the summary
   said `stale: clean` over ZERO scanned sentences.* Every retired token
   survives nowhere in an empty corpus; `vacuous` was armed on `Mined == 0`
@@ -1685,9 +1696,9 @@ round below is the wave's own reviewer.
   own built `wf`: the 1.2 GB defect back through a door `rm -f $(BINS)` never
   opened. `make clean` clears those binaries, `install.sh` refuses to stage a
   tree holding any file over 2 MB outside `.git`, and the worktree itself was
-  removed. `plugin.json` was also one bump behind: `1efe2ef` edited two
-  references under `1.74.0`, which is the hard rule three sections below,
-  broken in the commit before this one.
+  removed. `plugin.json` was also one bump behind: `1efe2ef`, two commits
+  before this one, edited two references under `1.74.0` — the hard rule in
+  the next section, broken by the wave that wrote it down last.
 - *The manual against the code, seventeen sites.* The sharpest: `interview.md`
   still ended "Then, and only then: `wf init`, …" — the exact order its own
   opening paragraph, SKILL.md and `pre-flight-gate.md` had been changed to
@@ -1709,6 +1720,58 @@ round below is the wave's own reviewer.
   gate census on disk is NINETEEN workspaces now (a6 and p6a-d are new) — the
   pooled numbers in the state section below were not re-derived this wave
   and say fourteen, which is the reading they were taken under.
+
+- *And the wave earned its review round, for the twentieth time running, and
+  the external vector died once and answered once.* The plugin's own
+  `gate-sweep` agent in an ISOLATED WORKTREE, a claims vector over every
+  number and quoted string the wave wrote, and one external model over the
+  diff — which ran its whole 25-minute budget, produced 1.7 MB of trace and
+  no table (banked as a vector that DIED, per `pre-flight-gate.md` step 1),
+  then answered a NARROWED brief over five hunks in ten minutes with three
+  findings, all real. The sweep ran **68 mutations: 48 killed, 20 survived**,
+  and sixteen of the survivors named a real gap. The two sharpest were the
+  wave's own headline: **no bar read either hook's JSON for the permission
+  key**, so the `allow` decision could be re-added with every bar green, and
+  `workflow-preflight.sh` was read by no bar at all — `make check-tools` now
+  runs both hooks and refuses a `permissionDecision`, and pins the no-session
+  and unwritable-marker paths. Next by consequence, a live false green one
+  `return f` away from the factory fix: a factory ending in a returned LOCAL
+  binding (`const f = async (p,o)=>…; return f`) inventoried `makeSpawn` and
+  `f` as wrappers, lost every `spawn(...)` call, and exited 0 over
+  `effort: 'nonsense'` — `factoryOf` reads a returned identifier now, and the
+  narrowing that kept the backstop silent shares that reader. The rest:
+  `underArtifacts` without its separator let `artifactsx/a.md` and
+  `artifacts.md` through (pinned); a reused label plus a textual block was
+  silent in both ownership halves; `--owns-diff -root <typo>` ran over an
+  empty tree; a factory param sharing a wrapper param's name; `\n` is a
+  space byte, so `// we return` could open a regex on the next line. Four
+  guards were DELETED or documented unkillable rather than shipped unproven,
+  and one (`factoryOf` accepting a non-wrapper inner) turned out NOT
+  equivalent: a wrapper that also returns a function had been dropped from
+  the inventory entirely.
+  The external vector's three: a SYMLINK under `artifacts/` — the lexical
+  boundary is satisfied by `artifacts/link/x.md` where `link` points at the
+  target, so the parent is resolved on disk now and must land under the
+  resolved `artifacts/`; `-m` on a merge unions hunks from EVERY parent while
+  the section index and the span map are in the first parent's coordinates,
+  so a second parent's edit at line 8 overlapped a first-parent D2 at 7-9 that
+  nothing touched — `--diff-merges=first-parent` now, and the test that pins
+  it is a merge built to produce exactly that overlap; and a fence is closed
+  by CHARACTER AND LENGTH (a ```go line inside a four-backtick fence, a `~~~`
+  inside a backtick one), in one `FenceCloses` that the section index and
+  `ingest` both call. The claims vector's nine: `wf add` still carried its own
+  copy of the boundary this wave sold as "one spelling"; 537 headings was 556
+  under the reading now written beside it, and `leadingIDs` has a second
+  effect the entry had not named — a heading whose ids are ALL non-leading
+  heads no section, seven in the corpus, no verdict moved; IDEAS.md credited
+  two commands with an exit-code contract that no subcommand honours; three
+  README rows were appended without a period, which `wf check rules` reads
+  as one statement; `authoring.md` pointed at a `-h` that lists flags, not
+  checks; and the plugin cache still held only 1.74.0, because `make install`
+  is not `install.sh` — the bump landed and the copy had not. The
+  mutation-check of the round's own guards was run TWICE: the first pass
+  reported every mutant killed while the tree did not build, which is the
+  trap this file names in Hard rules, met a fifth time.
 
 ## Hard rules
 

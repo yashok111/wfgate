@@ -54,3 +54,17 @@ func TestNeutraliseMeta_aTemplateLiteralIsNotASurvivingExport(t *testing.T) {
 		t.Fatalf("a prompt's own export line was read as module syntax: %v", err)
 	}
 }
+
+// D3: the scan is LINE-INITIAL, and the one thing that reaches the condition is
+// a property named `export`. `o.export = 1` carries the seven bytes the refusal
+// looks for, and refusing a script over a legal property name is a false red in
+// the tool that exists to refuse false greens.
+func TestNeutraliseMeta_aPropertyNamedExportIsNotModuleSyntax(t *testing.T) {
+	body := "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }\n" +
+		"const o = {}\n" +
+		"o.export = 1\n" +
+		"return { done: true, n: o.export }"
+	if _, err := neutraliseMeta(body, "s.mjs"); err != nil {
+		t.Fatalf("a property named `export` was read as module syntax: %v", err)
+	}
+}

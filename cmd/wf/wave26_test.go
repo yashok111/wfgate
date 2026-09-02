@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -180,4 +181,121 @@ func TestIngestSkipsFencedTablesAndNamesTheLastTableRule(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "findings table must come last") {
 		t.Fatalf("want the last-table patch named, got %v", err)
 	}
+}
+
+// The review round over this wave. `artifacts` with no separator is a PREFIX
+// of `artifactsx/` and `artifacts.md`, and the sweep's mutation dropping the
+// separator survived every test above; the symlink case is the external
+// vector's — a lexical prefix test is satisfied by `artifacts/link/x.md` where
+// `artifacts/link` points at the target.
+func TestApplyBoundaryIsASeparatorAndAResolvedPath(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	target := filepath.Join(tmp, "target")
+	write(t, filepath.Join(target, "victim.md"), "untouched\n")
+	if err := os.Symlink(target, filepath.Join(wsDir, "artifacts", "link")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	head := headOf(t, wsDir)
+	for _, spelling := range []string{"artifactsx/a.md", "artifacts.md", "artifacts/link/victim.md"} {
+		edits := filepath.Join(tmp, "edits.txt")
+		write(t, edits, "=== "+spelling+"  count=1\n<<<<\nuntouched\n====\nrewritten\n>>>>\n")
+		_, err := runWF(t, wsDir, "apply", "-f", edits)
+		if err == nil || !strings.Contains(err.Error(), "artifacts/") || !strings.Contains(err.Error(), "nothing was written") {
+			t.Fatalf("%s: want the artifacts/ refusal, got %v", spelling, err)
+		}
+		if headOf(t, wsDir) != head {
+			t.Fatalf("%s: a commit was made", spelling)
+		}
+	}
+	if read(t, filepath.Join(target, "victim.md")) != "untouched\n" {
+		t.Fatal("the batch wrote through the symlink into the target")
+	}
+	// A symlink to a directory INSIDE artifacts/ is fine: the resolved path
+	// stays under it.
+	write(t, filepath.Join(wsDir, "artifacts", "sub", "in.md"), "untouched\n")
+	gitIn(t, wsDir, "add", "artifacts/sub")
+	gitIn(t, wsDir, "commit", "-q", "-m", "a subdirectory")
+	if err := os.Symlink(filepath.Join(wsDir, "artifacts", "sub"), filepath.Join(wsDir, "artifacts", "alias")); err != nil {
+		t.Fatal(err)
+	}
+	edits := filepath.Join(tmp, "edits.txt")
+	write(t, edits, "=== artifacts/alias/in.md  count=1\n<<<<\nuntouched\n====\nrewritten\n>>>>\n")
+	if _, err := runWF(t, wsDir, "apply", "-f", edits, "-dry-run"); err != nil {
+		t.Fatalf("a symlink resolving INSIDE artifacts/ must pass the boundary, got %v", err)
+	}
+}
+
+// A ledger already holding `#1` and `1` — one hand edit and one ingest from
+// before this wave — is two rows with one number, and an ingest over it must
+// refuse in its read-back rather than append a third reading.
+func TestIngestRefusesALedgerHoldingOneNumberTwice(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	ledger(t, wsDir, 1,
+		"| #1 | BLOCKER | artifacts/decisions.md: one |  |\n"+
+			"| 1 | MINOR | artifacts/decisions.md: the same number again |  |\n")
+	rep := filepath.Join(tmp, "lens-a.md")
+	write(t, rep, "| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | MINOR | artifacts/decisions.md: a nit |  |\n")
+	_, err := runWF(t, wsDir, "round", "ingest", rep)
+	if err == nil || !strings.Contains(err.Error(), "would carry finding 1 twice") {
+		t.Fatalf("want the duplicate-number refusal, got %v", err)
+	}
+}
+
+// Markdown closes a fence with the SAME character and a run at least as long:
+// a four-backtick fence holding a ```go example is one block, and a `~~~` line
+// inside a backtick fence closes nothing. Both used to end the fence early and
+// hand the example table after it to the ledger.
+func TestIngestFenceIsClosedByLengthAndCharacter(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	// Two reports, one per half of the rule: the LENGTH half (a ```go line
+	// inside a four-backtick fence) and the CHARACTER half (a ~~~ line inside
+	// a backtick fence). One fixture carrying both let a mutant that closed
+	// on the inner line re-open on the next and fence the table by accident.
+	table := "| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | BLOCKER | artifacts/decisions.md an example |  |\n"
+	for name, fenced := range map[string]string{
+		"length":    "````\n```go\n" + table + "````\n",
+		"character": "```\n~~~\n" + table + "```\n",
+	} {
+		rep := filepath.Join(tmp, "lens-"+name+".md")
+		write(t, rep, "| # | level | finding | closed by |\n|---|---|---|---|\n| 1 | MAJOR | artifacts/decisions.md:3 the real row "+name+" |  |\n\n"+fenced)
+		_, err := runWF(t, wsDir, "round", "ingest", rep)
+		noErr(t, err, "ingest "+name)
+	}
+	rows := ws.ParseFindings([]byte(read(t, filepath.Join(wsDir, "rounds", "r1", "findings.md"))))
+	if len(rows) != 2 || !strings.Contains(rows[0].Text, "the real row") || !strings.Contains(rows[1].Text, "the real row") {
+		t.Fatalf("want the two unfenced rows and no example, got %+v", rows)
+	}
+}
+
+// A merge is read against its FIRST parent only. `-m` unions the diff against
+// every parent, and a second parent's hunks are in that parent's coordinates:
+// here the branch inserts three lines at the top, so main's edit to D1's rule
+// (line 5) sits at line 8 in the branch's numbering and lands inside D2 (7-9)
+// in the first parent's — a closure of a D2 finding read as landed by a commit
+// that never touched D2.
+func TestClosureReadsAMergeAgainstItsFirstParentOnly(t *testing.T) {
+	wsDir := newGate(t)
+	tmp := filepath.Dir(wsDir)
+	doc := filepath.Join(tmp, "doc.md")
+	write(t, doc, "# Doc\n\n## D1 first\n\nRule one here.\n\n## D2 second\n\nRule two here.\n")
+	_, err := runWF(t, wsDir, "add", doc)
+	noErr(t, err, "add")
+	recordRows(t, wsDir, "| 1 | BLOCKER | D2 in artifacts/doc.md contradicts the reader |  |\n")
+	art := filepath.Join(wsDir, "artifacts", "doc.md")
+	gitIn(t, wsDir, "checkout", "-q", "-b", "shift")
+	write(t, art, "a\nb\nc\n"+read(t, art))
+	gitIn(t, wsDir, "commit", "-q", "-am", "three lines on top")
+	gitIn(t, wsDir, "checkout", "-q", "main")
+	write(t, art, strings.Replace(read(t, art), "Rule one here.", "Rule one, restated.", 1))
+	gitIn(t, wsDir, "commit", "-q", "-am", "edit D1 on main")
+	gitIn(t, wsDir, "merge", "-q", "--no-ff", "-m", "merge the shift", "shift")
+	merge := headOf(t, wsDir)
+	_, err = runWF(t, wsDir, "round", "close", "1", merge)
+	noErr(t, err, "round close")
+	out, err := runWF(t, wsDir, "check", "closure")
+	wantFindings(t, err, "check closure")
+	mustContain(t, out, "NOT any section it cites: D2")
 }

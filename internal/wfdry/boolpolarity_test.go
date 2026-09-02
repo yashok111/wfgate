@@ -58,6 +58,30 @@ func TestCleanMode_aPlainFailureNameIsStillFalse(t *testing.T) {
 	if !hasNote(r, "hasBlockers") {
 		t.Fatalf("the note must name it, so the verdict can be traced to the field:\n%v", r.Notes)
 	}
+	// D11: and it travels under its own prefix, so the UNRECOGNISED-field note
+	// does not list it. That note says the name was not recognised, which is the
+	// opposite claim about the same field — the two describing each other's
+	// population is what the prefix split exists to prevent.
+	if hasNote(r, "unrecognised report field(s)") {
+		t.Fatalf("a boolean valued from its NAME was reported as unrecognised:\n%v", r.Notes)
+	}
+}
+
+// D10: the failure-word note is recorded only where the value is the SURPRISING
+// one. A failure flag is TRUE in a failing mode by design, and printing that in
+// every mode paints every run with what it expects — the narrowing this project
+// requires before a report ships, not after.
+func TestFailureNamedBooleanIsNotNotedInAFailingMode(t *testing.T) {
+	body := "export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }\n" +
+		"const S = { type: 'object', properties: { hasBlockers: { type: 'boolean' } } }\n" +
+		"const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }\n" +
+		"phase('P')\n" +
+		"const r = await spawn(`go`, { model: 'sonnet', effort: 'low', label: 'w', phase: 'P', schema: S })\n" +
+		"return { green: !(r && r.hasBlockers) }"
+	r := run1(t, body, "acceptfail")
+	if hasNote(r, "valued from their NAME") {
+		t.Fatalf("a failure word is false in a passing mode and true in a failing one; only the first is news:\n%v", r.Notes)
+	}
 }
 
 // The negator is matched as a WHOLE token. Under the prefix rule `hasWord` uses

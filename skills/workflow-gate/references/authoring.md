@@ -11,8 +11,9 @@ Four companions, all used by the pre-flight gate below and none auto-loaded:
 the gate-checks reference (`wf docs checks`; `wf init` writes a pinned copy into every workspace — the standing list of failure modes from previous runs — reviewers
 read it, and every novel blocker appends a line), `~/.local/bin/wf` (the gate harness: the workspace
 that holds the artifacts, the atomic apply, the round with its validated findings ledger, the freeze,
-the verify, the delta with its closure checklist, and the deterministic artifact checks — `wf check -h` names
-them, and `wf check` with no argument runs the set it can run — it
+the verify, the delta with its closure checklist, and the deterministic artifact checks — `wf -h` names
+them on its `wf check` line (`wf check -h` lists only the flags), and `wf check` with no argument runs the
+set it can run — it
 owns the BOOKKEEPING of the gate; the script's own static and dynamic checks stay
 in the two binaries below),
 `~/.local/bin/wfcheck` (a static checker for these

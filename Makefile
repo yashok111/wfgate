@@ -170,6 +170,31 @@ check-tools: build
 		| TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \
 		&& { echo "authoring hook: fired TWICE in one session — repeated, it stops being read"; rm -rf $$d; exit 1; } \
 		|| { echo "authoring hook: once per session"; rm -rf $$d; }
+	@# The permission bypass. Both hooks once emitted `"permissionDecision":"allow"`,
+	@# which the PreToolUse contract defines as "bypasses the permission system
+	@# entirely" — a reminder that auto-approved every Workflow launch. No bar read
+	@# either hook's JSON for the key, and the sweep re-added it with every bar green;
+	@# workflow-preflight.sh was read by no bar at all.
+	@for h in scripts/hooks/workflow-preflight.sh scripts/hooks/script-authoring.sh; do \
+		out=$$(printf '{"session_id":"pd","tool_name":"Write","tool_input":{"file_path":"/tmp/run.mjs","content":"x"}}' | TMPDIR=$$(mktemp -d) sh $$h); \
+		echo "$$out" | grep -q '"additionalContext"' || { echo "hook $$h: no additionalContext — the reminder is not injected"; exit 1; }; \
+		echo "$$out" | grep -q 'permissionDecision' && { echo "hook $$h: emits a permissionDecision — a reminder must not grant permission"; exit 1; }; \
+		echo "hook $$(basename $$h): injects context and decides nothing"; \
+	done
+	@# No session id: fires on EVERY write rather than never. The first version keyed a
+	@# marker on the literal `nosession`, shared by every session on the box, so the
+	@# reminder fired once ever. Loud is the failure direction this hook exists for.
+	@d=$$(mktemp -d); j='{"tool_name":"Write","tool_input":{"file_path":"/tmp/run.mjs","content":"x"}}'; \
+		printf '%s' "$$j" | TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \
+		&& printf '%s' "$$j" | TMPDIR=$$d sh scripts/hooks/script-authoring.sh | grep -q . \
+		&& { echo "authoring hook: with no session id it fires on every write"; rm -rf $$d; } \
+		|| { echo "authoring hook: with no session id it went SILENT — a marker shared across sessions"; rm -rf $$d; exit 1; }
+	@# An unwritable TMPDIR still prints the reminder: `:` is a SPECIAL builtin and a
+	@# redirection error on it ends a non-interactive sh before the heredoc.
+	@printf '{"session_id":"ro","tool_name":"Write","tool_input":{"file_path":"/tmp/run.mjs","content":"x"}}' \
+		| TMPDIR=/nonexistent-wfgate-tmp sh scripts/hooks/script-authoring.sh 2>/dev/null | grep -q "MANDATORY BEFORE authoring" \
+		&& echo "authoring hook: fires when its marker cannot be written" \
+		|| { echo "authoring hook: SILENT when the marker cannot be written"; exit 1; }
 
 # The repository's own manual is a gate corpus like any other, and the two
 # checks that read prose had never been run over it. Measured 2026-08-27 over

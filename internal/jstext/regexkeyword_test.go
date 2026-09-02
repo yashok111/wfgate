@@ -56,3 +56,21 @@ func TestProseSpans_aKeywordPositionRegexContributesNoProse(t *testing.T) {
 		t.Fatalf("want exactly the one string literal as prose, got %q", got)
 	}
 }
+
+// The walk-back reads the ORIGINAL source, where a `//` comment's text is still
+// there, and a newline is a space byte. So without the "the last significant
+// byte must be part of a word" gate the skip runs past the line break into the
+// comment above: after `// the ratio we return`, the `/` opening the next line
+// found the keyword `return` and opened a REGEX, blanking every byte to the
+// closing slash — a division read as a regex, which is the under-count
+// direction a backstop cannot report.
+func TestStripNonCode_aKeywordInACommentDoesNotReachTheNextLine(t *testing.T) {
+	const src = "const n = f() // the ratio we return\n/ 2 && agent(p, o) / 3\n"
+	got := StripNonCode(src)
+	if !strings.Contains(got, "agent(") {
+		t.Fatalf("the division after a comment was read as a regex:\n%s", got)
+	}
+	if len(got) != len(src) {
+		t.Fatalf("StripNonCode must preserve length: %d != %d", len(got), len(src))
+	}
+}

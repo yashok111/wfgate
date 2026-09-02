@@ -1063,3 +1063,22 @@ func TestLineAround(t *testing.T) {
 		t.Fatalf("last line = %q at %d", line2, start2)
 	}
 }
+
+// OwnsDiff resolves the root through the same function the report does, and it
+// dropped the error: `--owns-diff -root /nonexistent` ran the whole comparison
+// over a tree that is not there and called every declared path unowned — which
+// this file's own doc calls a FALSE finding rather than a missed one.
+func TestOwnsDiffRefusesARootThatIsNotADirectory(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "s.mjs")
+	if err := os.WriteFile(p, []byte(preamble+"phase('P')\nreturn {done:true}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := OwnsDiff(p, filepath.Join(dir, "nope"), "")
+	if err == nil {
+		t.Fatal("a nonexistent -root produced an owns diff")
+	}
+	if !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("the refusal must name what is wrong: %v", err)
+	}
+}

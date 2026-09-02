@@ -118,15 +118,30 @@ func (s *Script) Wrappers() []Wrapper {
 	// script's one call site, and the backstop's arithmetic balanced — `wfcheck`
 	// exited 0 over an `effort: 'nonsense'` it never looked at.
 	factories := s.factories()
+	// Reset, because Wrappers() is called several times per report and this
+	// field is not derived fresh each time. No mutation can kill it — inWrapper
+	// answers the same over a list holding each span twice — so the reason is
+	// growth per call rather than a wrong answer, and it is written here rather
+	// than defended by a test that could not fail.
 	s.factoryBodies = s.factoryBodies[:0]
+	inner := map[ast.Expression]bool{}
 	for _, f := range factories {
 		s.factoryBodies = append(s.factoryBodies, f.Body)
+		inner[f.Inner] = true
 	}
 	add := func(name string, idx file.Idx, init ast.Expression) {
 		if name == "" || seen[name] || init == nil {
 			return
 		}
+		// Neither the factory nor the function it RETURNS is a wrapper of this
+		// script: the product is, under the name the factory's result is bound
+		// to. A factory written in two statements — `const f = …; return f` —
+		// binds that function to a local name, and registering it put a wrapper
+		// called `f` in the inventory with no call site anywhere.
 		if _, isFactory := factories[name]; isFactory {
+			return
+		}
+		if inner[init] {
 			return
 		}
 		if w, ok := s.wrapperOf(name, init); ok {
@@ -339,34 +354,7 @@ func (s *Script) factories() map[string]wrapperFactory {
 // factoryOf reads one function as a factory: it returns a function literal, and
 // that literal is itself a wrapper.
 func (s *Script) factoryOf(e ast.Expression) (wrapperFactory, bool) {
-	var body ast.Node
-	switch fn := e.(type) {
-	case *ast.ArrowFunctionLiteral:
-		body = fn.Body
-	case *ast.FunctionLiteral:
-		body = fn.Body
-	default:
-		return wrapperFactory{}, false
-	}
-	var inner ast.Expression
-	switch b := body.(type) {
-	case *ast.ExpressionBody:
-		inner = fnLiteral(b.Expression)
-	case *ast.BlockStatement:
-		// The TOP-LEVEL returns of this body only. A `return` found by a walk
-		// could belong to the returned function itself, which would read every
-		// wrapper as a factory of itself.
-		for _, st := range b.List {
-			ret, ok := st.(*ast.ReturnStatement)
-			if !ok || ret.Argument == nil {
-				continue
-			}
-			if f := fnLiteral(ret.Argument); f != nil {
-				inner = f
-				break
-			}
-		}
-	}
+	inner := returnedFunction(e)
 	if inner == nil {
 		return wrapperFactory{}, false
 	}
@@ -375,6 +363,70 @@ func (s *Script) factoryOf(e ast.Expression) (wrapperFactory, bool) {
 		return wrapperFactory{}, false
 	}
 	return wrapperFactory{Params: paramNames(paramList(e)), Inner: inner, Body: w.Body}, true
+}
+
+// returnedFunction is the function literal a function RETURNS, or nil. It is
+// the one reader of that question, because two units ask it from opposite ends
+// — factoryOf, which then asks whether the returned function is a wrapper, and
+// UnresolvedWrapperNames, which asks only whether a name could hold one — and a
+// second copy would answer them differently the first time either grew a shape.
+//
+// A returned IDENTIFIER is resolved against the function's own body: `function
+// makeSpawn(b){ const f = async (p, o) => agent(p, {...b, ...o}); return f }` is
+// the same factory written in two statements, and reading only a directly
+// returned literal made it a wrapper again — both `makeSpawn` and `f` were
+// inventoried, every `spawn(...)` was lost, and `wfcheck` exited 0 over an
+// `effort: 'nonsense'` beside them.
+func returnedFunction(e ast.Expression) ast.Expression {
+	var body ast.Node
+	switch fn := e.(type) {
+	case *ast.ArrowFunctionLiteral:
+		body = fn.Body
+	case *ast.FunctionLiteral:
+		body = fn.Body
+	default:
+		return nil
+	}
+	switch b := body.(type) {
+	case *ast.ExpressionBody:
+		return fnLiteral(b.Expression)
+	case *ast.BlockStatement:
+		// The TOP-LEVEL statements of this body only. A `return` found by a walk
+		// could belong to the returned function itself, which would read every
+		// wrapper as a factory of itself.
+		locals := map[string]ast.Expression{}
+		for _, st := range b.List {
+			switch d := st.(type) {
+			case *ast.LexicalDeclaration:
+				for _, bd := range d.List {
+					if id, ok := bd.Target.(*ast.Identifier); ok && bd.Initializer != nil {
+						if f := fnLiteral(bd.Initializer); f != nil {
+							locals[string(id.Name)] = f
+						}
+					}
+				}
+			case *ast.FunctionDeclaration:
+				if d.Function != nil {
+					locals[string(d.Function.Name.Name)] = d.Function
+				}
+			}
+		}
+		for _, st := range b.List {
+			ret, ok := st.(*ast.ReturnStatement)
+			if !ok || ret.Argument == nil {
+				continue
+			}
+			if f := fnLiteral(ret.Argument); f != nil {
+				return f
+			}
+			if id, ok := ret.Argument.(*ast.Identifier); ok {
+				if f, ok := locals[string(id.Name)]; ok {
+					return f
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func fnLiteral(e ast.Expression) ast.Expression {
@@ -401,14 +453,15 @@ type ObjectWrapper struct {
 
 // ObjectWrappers returns those bindings.
 func (s *Script) ObjectWrappers() []ObjectWrapper {
-	known := map[string]bool{}
-	for _, w := range s.Wrappers() {
-		known[w.Name] = true
-	}
 	var out []ObjectWrapper
+	// No filter against the resolved wrappers, and there was one: a binding
+	// whose initialiser is an OBJECT LITERAL can never be one of them, because
+	// wrapperOf reads a function literal and nothing else. It was written, no
+	// mutation could make it fail, and it was deleted rather than shipped
+	// unproven — along with the Wrappers() call it needed.
 	consider := func(name string, e ast.Expression) {
 		obj, ok := e.(*ast.ObjectLiteral)
-		if !ok || name == "" || known[name] {
+		if !ok || name == "" {
 			return
 		}
 		for _, p := range obj.Value {
@@ -469,30 +522,14 @@ func (s *Script) UnresolvedWrapperNames() []string {
 	// purpose: `const rs = await parallel(...)` is the shape the manual
 	// prescribes and must not be read as a lost wrapper.
 	returnsFn := map[string]bool{}
-	fnOf := func(e ast.Expression) ast.Expression { return fnLiteral(e) }
 	s.Walk(func(n ast.Node) {
 		record := func(name string, e ast.Expression) {
-			if name == "" || fnOf(e) == nil {
-				return
-			}
-			var body ast.Node
-			switch f := e.(type) {
-			case *ast.ArrowFunctionLiteral:
-				body = f.Body
-			case *ast.FunctionLiteral:
-				body = f.Body
-			}
-			switch b := body.(type) {
-			case *ast.ExpressionBody:
-				if fnLiteral(b.Expression) != nil {
-					returnsFn[name] = true
-				}
-			case *ast.BlockStatement:
-				for _, st := range b.List {
-					if ret, ok := st.(*ast.ReturnStatement); ok && ret.Argument != nil && fnLiteral(ret.Argument) != nil {
-						returnsFn[name] = true
-					}
-				}
+			// The SAME reader factoryOf uses. Asking this question twice is how
+			// the two would disagree: one taught a returned identifier and the
+			// other not, so a factory resolved by neither reached neither the
+			// inventory nor the backstop.
+			if name != "" && returnedFunction(e) != nil {
+				returnsFn[name] = true
 			}
 		}
 		switch v := n.(type) {
@@ -929,25 +966,30 @@ func (s *Script) callOf(c *ast.CallExpression, name string, w Wrapper, isWrap bo
 			if w.OptsOpaque {
 				oe = nil
 			}
-			// The factory's binding sits UNDER the wrapper's own, never over it:
-			// a wrapper parameter shadows a factory parameter of the same name,
-			// which is what JavaScript says too.
-			scopeParams := w.Params
-			if len(w.baseParams) > 0 {
-				scopeParams = append(append([]string{}, w.Params...), w.baseParams...)
-				for _, p := range w.baseParams {
-					if p == "" {
-						continue
-					}
-					if _, bound := sub[p]; bound || unbound[p] {
-						continue
-					}
-					if e, ok := w.baseSub[p]; ok {
-						sub[p] = e
-					}
+			// The factory's binding sits UNDER the wrapper's own, never over
+			// it: a wrapper parameter shadows a factory parameter of the same
+			// name, which is what JavaScript says too — and a wrapper parameter
+			// the CALL left empty stays empty, because at run time it is
+			// `undefined` and absent is a stronger answer than unreadable.
+			//
+			// The scope list is w.Params alone. Adding the factory's parameters
+			// to it was written and no mutation could make it fail:
+			// collectShadowed marks every ParameterList binding in the program,
+			// a factory's included, so an unbound factory parameter already
+			// resolves to UNKNOWN rather than to a top-level const of the same
+			// name. Deleted rather than shipped unproven.
+			for _, p := range w.baseParams {
+				if p == "" {
+					continue
+				}
+				if _, bound := sub[p]; bound || unbound[p] {
+					continue
+				}
+				if e, ok := w.baseSub[p]; ok {
+					sub[p] = e
 				}
 			}
-			s.withScope(sub, scopeParams, func() { read(pe, oe, w.LabelIdx) })
+			s.withScope(sub, w.Params, func() { read(pe, oe, w.LabelIdx) })
 			if w.PromptOpaque {
 				a.PromptSet, a.PromptOK = true, false
 			}

@@ -782,3 +782,26 @@ func TestPathsNamed_dotSlashSpelling(t *testing.T) {
 		t.Fatalf("`./` glued to a word is not the workspace root, got %v", n)
 	}
 }
+
+func TestFenceClosesByCharacterAndLength(t *testing.T) {
+	if FenceOf("````") != "````" || FenceOf("```go") != "```" || FenceOf("~~") != "" {
+		t.Fatal("FenceOf must return the whole run of three or more")
+	}
+	if FenceCloses("````", "```") || FenceCloses("```", "~~~") || FenceCloses("```", "```go") {
+		t.Fatal("a shorter run, another character or an info string does not close a fence")
+	}
+	if !FenceCloses("```", "````") || !FenceCloses("```", "```") {
+		t.Fatal("the same character, at least as long, closes it")
+	}
+	body := []byte("# Doc\n\n````\n```go\n## D9 phantom\n```\n~~~\n## D8 phantom\n````\n\n## D1 real\n\nx\n")
+	got := SectionRanges(body)
+	if _, ok := got["D9"]; ok {
+		t.Fatal("a heading inside a four-backtick fence closed by ```go is still fenced")
+	}
+	if _, ok := got["D8"]; ok {
+		t.Fatal("a ~~~ line inside a backtick fence closes nothing")
+	}
+	if _, ok := got["D1"]; !ok {
+		t.Fatal("the fence closed at its own length and D1 is a real section")
+	}
+}

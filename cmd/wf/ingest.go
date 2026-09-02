@@ -295,7 +295,7 @@ func lastTable(s string) (string, int) {
 			switch {
 			case fence == "":
 				fence = f
-			case strings.HasPrefix(f, fence[:1]):
+			case check.FenceCloses(fence, t):
 				fence = ""
 			}
 			fenced[i] = true

@@ -51,3 +51,22 @@ func TestOwnershipText_isSilentWhereTheParsedHalfNamesBothAgents(t *testing.T) {
 		t.Fatalf("the text half restated a collision the parsed half named in full:\n%s", dump(r))
 	}
 }
+
+// ONE label spawned twice is ONE owner. Counting the label per CALL made
+// agents=2, which sent the path to the parsed half — and the parsed half
+// deduplicates by label, so it was silent too. Both halves quiet, and the
+// collision with the textual block ships.
+func TestOwnershipText_oneLabelSpawnedTwiceIsOneOwner(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { findings: { type: 'array' } } }
+const spawn = async (p, o) => { try { return await agent(p, o) } catch { return null } }
+const OWN_B = ` + "`YOU OWN\n  internal/x.go — the composed one\n`" + `
+const mk = (o) => 'do it\n' + o
+phase('P')
+await spawn(` + "`YOU OWN\n  internal/x.go — the inline one\n`" + `, { model: 'sonnet', effort: 'low', label: 'a', phase: 'P', schema: S })
+await spawn(` + "`YOU OWN\n  internal/x.go — the inline one\n`" + `, { model: 'sonnet', effort: 'low', label: 'a', phase: 'P', schema: S })
+await spawn(mk(OWN_B), { model: 'sonnet', effort: 'low', label: 'b', phase: 'P', schema: S })
+return { done: true }`
+	r := run(t, body)
+	wantErr(t, r, "internal/x.go is owned by agent a AND declared in")
+}

@@ -366,12 +366,15 @@ func cmdApply(args []string) error {
 	// both printed clean over it. Refused BEFORE the plan, so no FAIL row is
 	// printed for a file the command would never write.
 	for _, e := range edits {
-		_, key, err := apply.SafeJoin(w.Root, e.File)
+		abs, key, err := apply.SafeJoin(w.Root, e.File)
 		if err != nil {
 			return fmt.Errorf("edits: %w", err)
 		}
 		if !underArtifacts(key) {
 			return fmt.Errorf("edits: %s is not under artifacts/; a batch edits a reviewed artifact, and the workspace's own bookkeeping (the pinned gate-checks.md, the ledgers, gate.json) is not one — nothing was written", e.File)
+		}
+		if err := resolvesUnderArtifacts(w, abs); err != nil {
+			return fmt.Errorf("edits: %s: %w — nothing was written", e.File, err)
 		}
 	}
 
@@ -703,6 +706,29 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 // restructure legitimately rewrites the whole document, and generating one
 // minimal block per change failed twice on uniqueness on that same gate. What
 // it must not do is look like a batch the tool verified.
+// resolvesUnderArtifacts asks the boundary question of the PATH ON DISK: the
+// lexical test above is satisfied by `artifacts/link/x.md` where
+// `artifacts/link` is a symlink to the target, and the write then lands in
+// the one tree no command may touch. The parent is resolved rather than the
+// file, because the file need not exist yet and a dangling link is refused
+// by the plan's own read. An unresolvable parent is not an escape — the plan
+// reports the missing file — so only a parent that resolves OUTSIDE is one.
+func resolvesUnderArtifacts(w *ws.Workspace, abs string) error {
+	dir, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if err != nil {
+		return nil
+	}
+	root, err := filepath.EvalSymlinks(w.Artifacts())
+	if err != nil {
+		return nil
+	}
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("resolves to %s, outside artifacts/ (a symlink under artifacts/ points out of it)", dir)
+	}
+	return nil
+}
+
 // underArtifacts is the ONE spelling of the workspace boundary every writer
 // draws: `wf add`, `wf apply -f`, `wf apply -whole`. A bare `artifacts` is the
 // directory itself, which no edit names, and it is accepted so `-whole
@@ -997,7 +1023,7 @@ func cmdAdd(args []string) error {
 		// workspace and landed a tracked file outside artifacts/, which the
 		// freeze manifest never covers and verify never classes — the same hole
 		// a dot-named artifact used to open, through another door.
-		if rel != "artifacts" && !strings.HasPrefix(rel, "artifacts"+string(filepath.Separator)) {
+		if !underArtifacts(rel) {
 			return fmt.Errorf("-as %s: an artifact lives under artifacts/, and only what lives there is frozen and verified", name)
 		}
 		b, err := os.ReadFile(src)
@@ -3156,13 +3182,18 @@ func runClosure(w *ws.Workspace, arts []string, round int) (checkVerdict, error)
 		// `show` it is an unknown flag and every closure then reads as "a commit
 		// git could not read", which the report duly printed as an absent
 		// measurement over a workspace where every commit was fine.
-		// `-m`, for the reason `gitx.CommitPaths` carries it: a MERGE prints
-		// a combined diff (`diff --cc`, `@@@` hunks) that `parseUnified` does
-		// not read, and a clean merge prints nothing at all — so a merge that
-		// carried a real artifact fix was counted as CHECKED and reported as a
-		// FILE miss, while `wf round close` accepted the same commit. With
-		// `-m` it is one ordinary diff per parent and the hunks union.
-		raw, err := w.Git.Run("-c", "core.quotePath=false", "show", "-m", "--no-renames", "--no-ext-diff",
+		// A MERGE prints a combined diff by default (`diff --cc`, `@@@` hunks)
+		// that `parseUnified` does not read, and a clean merge prints nothing
+		// at all — so a merge that carried a real artifact fix was counted as
+		// CHECKED and reported as a FILE miss, while `wf round close` accepted
+		// the same commit (`gitx.CommitPaths` reads merges with `-m`). Here it
+		// is the FIRST parent only, not `-m`: every old-side range this check
+		// compares — the section index at `sha^`, the span map from the
+		// freeze to `sha^` — is in the first parent's coordinates, and a
+		// second parent's hunk at line 105 unioned in would overlap a
+		// first-parent section at 105 that it never touched (the external
+		// reviewer's finding, before it shipped).
+		raw, err := w.Git.Run("-c", "core.quotePath=false", "show", "--diff-merges=first-parent", "--no-renames", "--no-ext-diff",
 			"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "--format=", sha)
 		var r map[string][][2]int
 		if err == nil {
