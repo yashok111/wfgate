@@ -89,19 +89,31 @@ func literalChunks(src string) []litChunk {
 // wave that names it. A script whose prompts are literals gets nothing from
 // here, which is correct: there the strong half ran.
 func checkOwnershipText(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) map[string]bool {
-	parsed := map[string]bool{}
+	// The AGENTS the parsed half read per path, deduplicated by label exactly as
+	// checkOwnership does it: two calls under one label are one owner there, and
+	// two derivations of "how many agents own this" disagreeing by one is the
+	// second-copy defect on adjacent lines of one report.
+	parsedOwners := map[string][]string{}
 	for _, c := range calls {
 		for _, o := range ownedPaths(c.Prompt) {
-			parsed[o.Path] = true
+			if !contains(parsedOwners[o.Path], c.Label) {
+				parsedOwners[o.Path] = append(parsedOwners[o.Path], c.Label)
+			}
 		}
 	}
 	_, found := ownsFromLiterals(s.Src)
+	blocksByPath := map[string][]int{}
+	for _, o := range found {
+		blocksByPath[o.Path] = append(blocksByPath[o.Path], o.Block)
+	}
+	reportCollisions(r, parsedOwners, blocksByPath)
+
 	byPath := map[string][]int{}
 	blocksSeen := map[int]bool{}
 	var order []string
 	unseen := 0
 	for _, o := range found {
-		if parsed[o.Path] {
+		if len(parsedOwners[o.Path]) > 0 {
 			continue
 		}
 		unseen++
@@ -128,9 +140,54 @@ func checkOwnershipText(r *Report, s *wfscript.Script, calls []wfscript.AgentCal
 	out := map[string]bool{}
 	for _, p := range order {
 		out[p] = true
-		if len(byPath[p]) > 1 {
-			r.add(ERROR, 1, "%s is declared in %d different `YOU OWN` block(s) — exactly one agent may own a file, and this was read from the text because no prompt carrying it resolves statically", p, len(byPath[p]))
-		}
 	}
 	return out
+}
+
+// reportCollisions is the dual-ownership ERROR over BOTH halves at once.
+//
+// The suppression used to be per PATH — a path any resolved prompt owned was
+// dropped from the textual side entirely — and that lost the MIXED case, which
+// is the one neither half can see alone: agent a's prompt is a literal declaring
+// `internal/x.go`, agent b's is composed by a run-time factory whose literal
+// declares it too. The parsed half sees ONE owner and does not fire; the textual
+// half skipped the path because the parsed half had read it; the lost write
+// shipped. Reproduced by disabling that one condition.
+//
+// So the suppression is per BLOCK instead. Every parsed prompt is composed from
+// exactly one `YOU OWN` block, so of the blocks naming p the parsed half has
+// already read len(parsedOwners[p]) of them and the rest are owners it never
+// saw. The parsed half reports its own collisions, so this fires only where it
+// stays silent — fewer than two agents — and two blocks still name the path.
+func reportCollisions(r *Report, parsedOwners map[string][]string, blocksByPath map[string][]int) {
+	var paths []string
+	for p := range blocksByPath {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	for _, p := range paths {
+		agents, blocks := len(parsedOwners[p]), len(blocksByPath[p])
+		if agents > 1 {
+			continue // checkOwnership names both agents; two reports of one collision is worse
+		}
+		// Blocks alone, not max(agents, blocks). Every parsed prompt is composed
+		// from exactly one block, so the union of the two halves is
+		// max(agents, blocks) — but the line above has already sent every path
+		// with two or more agents to the parsed half, so agents is 0 or 1 here
+		// and the max can never exceed blocks. It was written, no mutation could
+		// make it fail, and it was deleted rather than shipped unproven.
+		if blocks < 2 {
+			continue
+		}
+		if agents == 0 {
+			r.add(ERROR, 1, "%s is declared in %d different `YOU OWN` block(s) — exactly one agent may own a file, and this was read from the text because no prompt carrying it resolves statically", p, blocks)
+			continue
+		}
+		// The MIXED origin, and the message says which half saw what: one agent
+		// this tool could read, plus at least one block it could only read as
+		// text. It cannot say which agent is handed that block — that is the
+		// standing limit of this half — so it names the agent it does know.
+		r.add(ERROR, 1, "%s is owned by agent %s AND declared in %d `YOU OWN` block(s) in the source — exactly one agent may own a file; the extra block(s) reach no prompt that resolves statically, so this half knows which BLOCK declares the path and not which agent is handed it",
+			p, parsedOwners[p][0], blocks-1)
+	}
 }

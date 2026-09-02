@@ -196,9 +196,12 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    throw true. It must complete every mode before the gate runs. The seven modes are `clean`, `blockers`
    (every gate returns one), `acceptfail`, `unfixed` (a fix round that leaves blockers open),
    `throw-serial`, `dead-reviews` and `no-args` (the script runs with no `args`; every other mode hands
-   it a representative object). `dead-reviews` decides what a reviewer is from the label's SEGMENTS —
-   `review`, `fix`, `closeout`, `verif`, `accept` at the head of one — never from a substring, and the
-   mode PRINTS the labels it killed. Measured: it once matched `review` inside `preview`, killed a
+   it a representative object). `dead-reviews` decides what a reviewer is from the label's SEGMENTS: a
+   segment matches when it IS one of a closed set of spellings of the review, fix, closeout, verify
+   and accept families — the five the runner names in its zero-kill WARN — never a substring of one
+   and never a prefix of one. Prefix matching was tried and rejected: `fix` is a prefix of `fixture`,
+   so a fixture-building producer was killed as a fixer, which is the same over-kill one word along.
+   A spelling nobody thought of is an agent NOT killed, and the mode PRINTS the labels it killed. Measured: it once matched `review` inside `preview`, killed a
    producer, ended the run at section five and still reported OK over a seventh of the agents it
    exists to exercise, without killing a single gate reviewer. Read the `killed:` line; a mode
    silently exercising something else is the vacuous guard this runner is against. The mode runs the

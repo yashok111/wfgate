@@ -201,12 +201,20 @@ func TestCheckAllRunsStaleFromTheNewestFreezeAndSummarises(t *testing.T) {
 	mustContain(t, out, "## stale — SKIPPED: nothing is frozen yet",
 		"## check — cite: clean, dup: nothing compared (NOT A PASS), rules: nothing compared (NOT A PASS), closure: nothing compared (NOT A PASS), stale: skipped (nothing frozen)")
 
+	// A second artifact the fix never touches: the untouched corpus stale
+	// looks for consumers in. The one-sentence fixture scanned ZERO sentences,
+	// and `stale: clean` over that was the defect the twenty-sixth wave found
+	// this test asserting.
+	tmp := filepath.Dir(wsDir)
+	notes := filepath.Join(tmp, "notes.md")
+	write(t, notes, "# Notes\n\nA paragraph about the storage layout that no fix in this test touches.\n")
+	_, err = runWF(t, wsDir, "add", notes)
+	noErr(t, err, "add")
 	recordRows(t, wsDir, "| 1 | NOTE | artifacts/decisions.md: nothing |  |\n")
 	_, err = runWF(t, wsDir, "freeze")
 	noErr(t, err, "freeze")
 	// A fix after the freeze retires a word, so stale has a population; a
 	// closure naming that commit gives closure one too.
-	tmp := filepath.Dir(wsDir)
 	edits := filepath.Join(tmp, "edits.txt")
 	write(t, edits, "=== artifacts/decisions.md  count=1\n<<<<\nEntry point:\n====\nThe entrypoint is:\n>>>>\n")
 	_, err = runWF(t, wsDir, "apply", "-f", edits, "-closes", "1")

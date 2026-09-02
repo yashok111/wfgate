@@ -30,6 +30,8 @@ import (
 	"github.com/dop251/goja/parser"
 	"github.com/dop251/goja/token"
 	"github.com/dop251/goja/unistring"
+
+	"git.sumka.site/yakov/wfgate/internal/jstext"
 )
 
 // wrapPrefix makes a workflow script parseable as a function body. A script
@@ -97,6 +99,11 @@ type Script struct {
 	// pieces. A checker that a legal script can hang is a checker that gets a
 	// timeout instead of a report, which is the same silence as a false green.
 	strCache map[ast.Node]strResult
+
+	// factoryBodies are the bodies of the functions a wrapper FACTORY returns.
+	// A call inside one is the wrapper's forwarding call, never a call site, and
+	// that stays true whether or not the factory's result was ever bound.
+	factoryBodies []span
 }
 
 type strResult struct {
@@ -160,10 +167,21 @@ func LoadSource(src, path string) (*Script, error) {
 
 // blankExports replaces a leading `export ` keyword with spaces, preserving
 // every subsequent byte offset.
+//
+// The match is made against the CODE, never against the raw bytes. A prompt is a
+// template literal, and a prompt line reading `export PATH=/usr/local/bin` — an
+// ordinary thing to hand an agent — begins a line with the seven bytes this
+// looks for: it was blanked to `       PATH=/usr/local/bin`, so every check
+// reading a resolved prompt quoted a line the file does not contain, and
+// `wfcheck` escalated a placeholder INFO to a WARN on the indent it had just
+// invented. `jstext.StripNonCode` blanks comments and literals IN PLACE,
+// preserving every offset, so an offset that still spells `export ` there is
+// code by construction.
 func blankExports(src string) string {
 	out := []byte(src)
-	for i := 0; i+7 <= len(out); i++ {
-		if (i == 0 || out[i-1] == '\n') && string(out[i:i+7]) == "export " {
+	code := jstext.StripNonCode(src)
+	for i := 0; i+7 <= len(code); i++ {
+		if (i == 0 || code[i-1] == '\n') && code[i:i+7] == "export " {
 			copy(out[i:i+7], "       ")
 		}
 	}

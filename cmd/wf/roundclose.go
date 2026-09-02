@@ -313,7 +313,10 @@ func findingNums(rows []ws.FindingRow) []string {
 	var out []string
 	for _, r := range rows {
 		if !r.Malformed && !r.Placeholder() {
-			out = append(out, r.Num)
+			// Through `numKey`: the list is what the refusal tells the
+			// operator to type, and it once named `#1` — a spelling the
+			// command then rejected.
+			out = append(out, numKey(r.Num))
 		}
 	}
 	if len(out) == 0 {

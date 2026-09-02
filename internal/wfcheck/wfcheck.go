@@ -84,7 +84,10 @@ func Run(path, root string) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	root, rootNote := resolveRoot(root)
+	root, rootNote, err := resolveRoot(root)
+	if err != nil {
+		return nil, err
+	}
 	r := &Report{}
 	if rootNote != "" {
 		r.add(INFO, 1, "%s", rootNote)
@@ -273,14 +276,30 @@ func checkInventory(r *Report, s *wfscript.Script, calls []wfscript.AgentCall) {
 		}
 		declared[w.Name][w.Line] = true
 	}
+	// The names the INVENTORY never resolved are counted too, and that is what
+	// makes the arithmetic a backstop rather than a restatement. A wrapper
+	// produced by a factory the resolver cannot follow — `const spawn =
+	// makeSpawn(base)` — is not a name this loop knows, so its call sites left
+	// BOTH populations at once and the subtraction balanced: `wfcheck` exited 0
+	// over a script whose every spawn it had lost. Counting them here puts them
+	// back into the textual half only, so the two disagree and the ERROR fires.
+	unresolved := s.UnresolvedWrapperNames()
 	textual := 0
-	for _, name := range append([]string{"agent"}, names...) {
+	for _, name := range append(append([]string{"agent"}, names...), unresolved...) {
 		for _, loc := range regexp.MustCompile(`\b`+regexp.QuoteMeta(name)+`\s*\(`).FindAllStringIndex(code, -1) {
 			if declared[name][lineAt(code, loc[0])] {
 				continue
 			}
 			textual++
 		}
+	}
+	// A wrapper held as a PROPERTY — `const W = { spawn: … }; W.spawn(p, o)` —
+	// is reported rather than resolved, because the alternative is silence: the
+	// inventory follows no member call, and the backstop counts by NAME so
+	// `W.spawn(` is in neither population. Named here, with the patch.
+	for _, ow := range s.ObjectWrappers() {
+		r.add(ERROR, ow.Line, "%s.%s forwards to agent(), and this checker follows no call through an object property — every `%s.%s(...)` is missing from the inventory above and from every check below. Bind the wrapper to a name: `const %s = %s.%s` beside it, or declare it as a plain const",
+			ow.Name, ow.Prop, ow.Name, ow.Prop, ow.Prop, ow.Name, ow.Prop)
 	}
 	forwards := 0
 	for _, w := range ws {

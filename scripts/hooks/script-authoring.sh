@@ -40,12 +40,28 @@ if printf '%s' "$input" | grep -q 'export const meta' &&
 fi
 [ "$orchestration" = 1 ] || exit 0
 
+# Once per SESSION needs a session to key on. Without an id the first version
+# fell back to a marker named `nosession`, shared by every session on the box:
+# the reminder fired once ever and was silent for every later session — the
+# degradation ran in the silent direction, which is the failure the hook
+# exists to prevent. With no id it now fires and keeps no marker (loud, once
+# per write), and a marker it cannot write is treated the same way: the
+# redirection order `: >"$marker" 2>/dev/null` applied the silence AFTER the
+# failure, so an unwritable TMPDIR printed the shell's own error — and then
+# fired on every write, or not at all, depending on the shell.
 sid=$(field session_id)
-[ -n "$sid" ] || sid=nosession
-marker="${TMPDIR:-/tmp}/wfgate-authoring-$(printf '%s' "$sid" | tr -c 'A-Za-z0-9._-' '_')"
-[ -e "$marker" ] && exit 0
-: >"$marker" 2>/dev/null || true
+if [ -n "$sid" ]; then
+	marker="${TMPDIR:-/tmp}/wfgate-authoring-$(printf '%s' "$sid" | tr -c 'A-Za-z0-9._-' '_')"
+	[ -e "$marker" ] && exit 0
+	# `touch`, not `: >"$marker"`: `:` is a SPECIAL builtin, and POSIX makes a
+	# redirection error on one fatal to a non-interactive shell — so an
+	# unwritable TMPDIR ended the script before the reminder was printed.
+	touch "$marker" 2>/dev/null || true
+fi
 
+# Context only — no `permissionDecision`. `allow` bypasses the permission
+# prompt entirely, and the first version emitted it on every orchestration
+# write the hook matched. See workflow-preflight.sh.
 cat <<'EOF'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"workflow-gate authoring reminder injected","additionalContext":"workflow-gate: this looks like a Workflow orchestration script. The operating manual is MANDATORY BEFORE authoring one, not only before launching it — load the workflow-gate skill, or run `wf docs authoring` and `wf docs routing` now. Written from memory, a script costs a gate round to correct what the manual would have said for free: every agent() carries an explicit model AND an explicit effort, the spawn wrapper turns a throw into null, a coordinate into a document under the same gate comes from its headings and never from its line numbers, and ownership is declared in the YOU OWN form wfcheck parses."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"workflow-gate: this looks like a Workflow orchestration script. The operating manual is MANDATORY BEFORE authoring one, not only before launching it — load the workflow-gate skill, or run `wf docs authoring` and `wf docs routing` now. Written from memory, a script costs a gate round to correct what the manual would have said for free: every agent() carries an explicit model AND an explicit effort, the spawn wrapper turns a throw into null, a coordinate into a document under the same gate comes from its headings and never from its line numbers, and ownership is declared in the YOU OWN form wfcheck parses."}}
 EOF

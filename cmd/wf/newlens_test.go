@@ -344,8 +344,27 @@ func TestNewLensGuardsThatNothingProved(t *testing.T) {
 		// verbatim printed a line whose second word is a positional.
 		o, err := runWF(t, wsDir, "new-lens", "e", "-asks", "closure ripple", "-o", out("echo"))
 		noErr(t, err, "new-lens with a space-separated -asks")
-		if !strings.Contains(o, "-asks closure,ripple") {
-			t.Errorf("the printed follow-up does not comma-join the parsed asks:\n%s", o)
+		// Comma-joined AND quoted: a comma-bearing argument is one word only
+		// inside quotes, and the line is printed to be pasted.
+		if !strings.Contains(o, `-asks "closure,ripple"`) {
+			t.Errorf("the printed follow-up does not comma-join and quote the parsed asks:\n%s", o)
+		}
+	})
+
+	// The other half of the same rule: with no -asks the clause is DROPPED, never
+	// filled with a `<Q,Q>` placeholder. `<` and `>` are shell redirections, so
+	// the printed line truncated at `-asks` and left an empty file named `Q,Q` in
+	// the operator's working directory — a follow-up the command prints and
+	// cannot be run with, which is the defect the quoting above already answers
+	// at the other end.
+	t.Run("no -asks prints no -asks clause", func(t *testing.T) {
+		o, err := runWF(t, wsDir, "new-lens", "noasks", "-o", out("noasks"))
+		noErr(t, err, "new-lens with no -asks")
+		if strings.Contains(o, "-asks") {
+			t.Errorf("an -asks clause was printed for a lens that claims none:\n%s", o)
+		}
+		if strings.Contains(o, "<Q,Q>") {
+			t.Errorf("the placeholder is a shell redirection when pasted:\n%s", o)
 		}
 	})
 

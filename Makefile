@@ -173,7 +173,7 @@ check-tools: build
 
 # The repository's own manual is a gate corpus like any other, and the two
 # checks that read prose had never been run over it. Measured 2026-08-27 over
-# the shipped set (README + SKILL + the six references): `wf check rules`
+# the shipped set (README + SKILL + the references, six then and ten now): `wf check rules`
 # reported 2 conflict(s) — [R2] and [R3] marked on POINTERS inside one README
 # command cell, which is the class the ninth wave banked a rule against,
 # standing in the manual that ships the check. The rules half is a BAR because
@@ -182,7 +182,7 @@ check-tools: build
 # a rule verbatim is not drift, and a bar that fails on that is `dup`'s own
 # 161-groups-of-176 lesson repeated.
 #
-# Three assertions guard the rig itself. An empty artifact set makes `wf check
+# Four assertions guard the rig itself, and two more the [M-nn] citation scheme. An empty artifact set makes `wf check
 # rules` refuse, but an artifact set that carries no markers exits ZERO under a
 # header reading "NOT A PASS, nothing was compared" — so a copy step that
 # silently narrowed the corpus would read as a green bar. The file count and the
@@ -208,7 +208,7 @@ check-docs: build
 	[ "$$marks" -ge "$$floor" ] 2>/dev/null || { echo "check-docs: $$marks marked site(s) against a floor of $$floor — the corpus narrowed and the checks went quieter, which is not the same as the manual agreeing"; rm -rf $$d; exit 1; }; \
 	[ $$rc = 0 ] || { echo "$$out"; echo "check-docs: the shipped manual disagrees with itself — see the sites above"; rm -rf $$d; exit 1; }; \
 	dup=$$(cd $$d/docs && $(CURDIR)/wf check dup 2>&1 | head -1); \
-	case "$$dup" in *"statement(s)"*) echo "$$dup";; *) echo "check-docs: `wf check dup` printed no population ($$dup) — a crashed check is not a clean one"; rm -rf $$d; exit 1;; esac; \
+	case "$$dup" in *"statement(s)"*) echo "$$dup";; *) echo "check-docs: 'wf check dup' printed no population ($$dup) — a crashed check is not a clean one"; rm -rf $$d; exit 1;; esac; \
 	R=skills/workflow-gate/references; \
 	used=$$(cat skills/workflow-gate/SKILL.md $$(ls $$R/*.md | grep -v '/measured\.md$$') | grep -oE '\[M-[0-9]+\]' | tr -d '[]' | sort -u); \
 	def=$$(grep -hoE '^## M-[0-9]+' $$R/measured.md | sed 's/^## //' | sort -u); \
@@ -223,5 +223,12 @@ check-docs: build
 	echo "check-docs: $$want document(s), $$marks marked site(s), every id compared agrees; $$nm provenance entry(ies), all cited, $$boxes checkbox entries"; \
 	rm -rf $$d
 
+# The sweep agent's worktrees live under `.claude/worktrees/` INSIDE the root,
+# gitignored — and the plugin copy does not read `.gitignore`. Measured
+# 2026-09-02: 20 MB of the 23 MB cached plugin version was one such worktree's
+# `wf`, the 1.2 GB defect back through a door `rm -f $(BINS)` never opened.
+# A worktree that is still registered is left alone (only its binaries go);
+# `install.sh` refuses to stage the tree while any binary remains.
 clean:
 	rm -f $(BINS)
+	rm -f .claude/worktrees/*/wf .claude/worktrees/*/wfcheck .claude/worktrees/*/wfdry

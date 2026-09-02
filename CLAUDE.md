@@ -1585,6 +1585,131 @@ number the tool prints, on a gate whose authoring window reads 2.1 minutes.
   make wrong, and the end-of-file branch of the section index is unreachable
   in the reference as shipped because its last heading carries no id.
 
+**The twenty-sixth wave — a bug hunt over the whole plugin by five vectors, and
+the two hooks that had been granting permission** (no gate feedback behind it:
+four Opus reviewers, one per unit — the plugin shell, the `wf` CLI, the
+script-gate tools, the manual against the code — plus the operator's own
+probes over `internal/check`, every finding REPRODUCED before it was written
+down; the consolidated table was 47 rows, 8 of BLOCKER shape, and every one of
+the top twenty was re-checked against the code or re-run by hand before a fix
+was started). What ships closes the first twenty and the reachable half of the
+rest; each new guard is proven by a test that fails with its fix reverted
+(twelve mutations on the operator's chunk, twelve killed), and the review
+round below is the wave's own reviewer.
+
+- *Both PreToolUse hooks emitted `"permissionDecision":"allow"`, which the
+  hook contract defines as "bypasses the permission system entirely".* A
+  reminder hook whose stated purpose is to inject a sentence was auto-approving
+  every `Workflow` launch — the one tool that spawns a fleet — and the first
+  orchestration-script `Write`/`Edit` of every session. `additionalContext`
+  stands alone in the contract, and it does now; the hooks decide nothing. Two
+  smaller defects in the same script: with no `session_id` the marker fell
+  back to one name shared by every session on the box, so the reminder fired
+  ONCE EVER (it fires per write now, loud rather than silent), and `: >"$marker"
+  2>/dev/null` applied the silence after the failure — and because `:` is a
+  SPECIAL builtin, a redirection error on it ends a non-interactive `sh`, so
+  an unwritable TMPDIR ended the script before the reminder printed. `touch`.
+- *`wf apply -f` wrote outside `artifacts/`, and `-closes` then closed a
+  BLOCKER with the commit.* `SafeJoin` refuses only what escapes the WORKSPACE,
+  so `=== artifacts/../gate-checks.md` rewrote the pinned reference every
+  reviewer is briefed from, `-closes 1` closed a BLOCKER with that commit,
+  and `wf freeze` and `wf verify` — which watch `artifacts/` alone — printed
+  clean. `-whole` had refused the same path since it shipped, and the
+  comment on `-closes` asserted an invariant ("touched artifacts by
+  construction") that nothing enforced. One `underArtifacts` now, for `-f`,
+  `-whole` and `wf add`, refused before the plan.
+- *A ledger row numbered `#1` could be closed by NO spelling, and after an
+  ingest it closed the WRONG row.* The column is headed `#`, the reports
+  print `#3`, and `wf round record` accepts either; `wf round close` stripped
+  the argument's `#` and compared it against the raw cell. `wf round ingest`
+  read numbers with `Atoi` and skipped `#1`, numbered its first row `1`, and
+  `wf round close '#1'` — the spelling the row itself carried — closed the
+  ingested MINOR and left the BLOCKER open, silently. One `numKey` now, in the
+  planner, in ingest's next number and duplicate read-back, and in the list
+  the refusal prints (which used to name a spelling the command rejected).
+- *`wf check closure` reported a MERGE as a FILE miss while `wf round close`
+  accepted it.* `git show` prints a combined diff for a merge — `diff --cc`,
+  `@@@` hunks the parser does not read — and NOTHING for a clean one, so the
+  commit was counted as checked and every path "did not touch". `CommitPaths`
+  had been given `-m` for exactly this shape in the twenty-fourth wave; the
+  reader one function over had not. And `fileOnly` was counted on a closure
+  that missed the FILE, so its note told the operator to cite the line the
+  finding had cited: what a row cites is read off the row now, before the
+  commit decides anything.
+- *`SectionRanges` gave EVERY id in a heading the section's range, so a
+  finding about D1 was reported closed by a commit that touched only D2 —
+  because D2's heading said it replaced the D1 rule.* Reproduced both ways in
+  one workspace: with the mention, `0 not closed`; without it, `1 not closed …
+  NOT any section it cites: D1 (3-6)`. Measured over the 537 headings of the
+  gate workspaces on disk: 11 carry a second id and every one is a mention in
+  passing or a `[R4]` marker. A heading names the ids at its HEAD and mentions
+  the rest (`leadingIDs`); two ids joined by a separator still both head it.
+- *`wf check stale` printed `swept: 1 of 1 … survive NOWHERE` and the summary
+  said `stale: clean` over ZERO scanned sentences.* Every retired token
+  survives nowhere in an empty corpus; `vacuous` was armed on `Mined == 0`
+  alone. Two existing tests ASSERTED the defect — their one-sentence fixtures
+  scanned nothing and expected the complete-sweep line — and both gained an
+  untouched sentence rather than a weaker assertion. `Scanned == 0` is a third
+  `NOT A PASS` case now, naming what it swept against.
+- *`wf round ingest` read a fenced example table as findings, and refused a
+  report ending in a summary table with a message about pipes.* The last
+  table is read; `lastTable` walks fences from the top now and a row inside
+  one is not a row, and the refusal names BOTH patches (the findings table
+  comes last; a pipe inside it is `\|`).
+- *The script-gate tools, by the reviewer that read them* — a wrapper produced
+  by a FACTORY (`const spawn = makeSpawn({…})`) was invisible to the inventory
+  and the textual backstop's arithmetic balanced over it, so `wfcheck` exited
+  0 over `effort: 'nonsense'`; the dual-ownership ERROR was lost when one owner
+  was inline and the other composed at run time (`parsed[path]` silenced the
+  text half per PATH rather than per BLOCK); `wfdry` threw a bare
+  `SyntaxError` on `export const meta =` with the brace on the next line;
+  `blankExports` blanked `export ` inside a prompt's template literal, so
+  `wfcheck` quoted a line the file did not contain; `regexCanStart` did not
+  know `return /['"]/`, so a quote inside the regex blanked the code to the
+  end of the line and `agent(` left the backstop's population — the comment
+  said it "can only over-count"; and `failBools` synthesised `noFailures`
+  FALSE in `clean`, firing a guard whose message asserted the opposite of what
+  happened. The fixes and their mutation-proven tests are in the review
+  round's commit; see `internal/wfscript`, `internal/wfcheck`, `internal/wfdry`
+  and `internal/jstext` for the measured comments.
+- *The plugin shell.* `install.sh`'s drift repair ran `uninstall` then
+  `install || true`, and `wf docs` is SILENT with no plugin installed, so a
+  failed reinstall printed "reinstalled, the manual is in step" — the absent
+  measurement in the register of a measured one, in the installer. The
+  reinstall's exit status is read, the success line prints only over a
+  registration `claude plugin list` can see, and `--uninstall` reports per
+  step instead of claiming three removals it did not check (with no `claude`
+  on PATH it printed all three and exited 0). And **20 MB of the 23 MB cached
+  plugin version was a sweep agent's worktree** under `.claude/worktrees/` —
+  gitignored, and the plugin copy does not read `.gitignore` — carrying its
+  own built `wf`: the 1.2 GB defect back through a door `rm -f $(BINS)` never
+  opened. `make clean` clears those binaries, `install.sh` refuses to stage a
+  tree holding any file over 2 MB outside `.git`, and the worktree itself was
+  removed. `plugin.json` was also one bump behind: `1efe2ef` edited two
+  references under `1.74.0`, which is the hard rule three sections below,
+  broken in the commit before this one.
+- *The manual against the code, seventeen sites.* The sharpest: `interview.md`
+  still ended "Then, and only then: `wf init`, …" — the exact order its own
+  opening paragraph, SKILL.md and `pre-flight-gate.md` had been changed to
+  forbid one wave earlier, three sites of four. `wf -h` said `round ingest`
+  does NOT commit (it does); `pre-flight-gate.md` described `dead-reviews`
+  as stem matching with `verif` when the code matches a closed list of
+  spellings and `verif:one` survives; `authoring.md` counted four artifact
+  checks of seven; `wf add -as` was documented nowhere; the emitted script's
+  `NAV` comment carried the 251-navigation reading `measured.md` had already
+  corrected to 186; its reviewer prompt restated the scale without the
+  open-question clause its own schema carries eleven lines up; SKILL.md and
+  `model-routing.md` quoted two different perishable round counts. The rest
+  are in the diff.
+- *Measured and NOT done:* the exit-code contract (`2` usage) holds for two
+  subcommands and the rest exit 1 from a usage line — left as documented
+  drift rather than re-plumbed, because no wrapper in the corpus branches on
+  it; `wf delta` prints the ledger's scaffold preamble into the brief, which
+  is a per-round pinned copy of the scale rather than a stale one; and the
+  gate census on disk is NINETEEN workspaces now (a6 and p6a-d are new) — the
+  pooled numbers in the state section below were not re-derived this wave
+  and say fourteen, which is the reading they were taken under.
+
 ## Hard rules
 
 - **origin is Gitea** `ssh://git@git.sumka.site:2222/yakov/wfgate.git`, branch
@@ -1780,7 +1905,7 @@ code. Everything is English — code, comments, and documents alike (the workflo
 is Latin-script by policy; Cyrillic may appear only as quoted DATA, e.g. test
 fixtures for the non-ASCII anchor detector).
 
-## State as of 2026-09-01 — read before trusting
+## State as of 2026-09-02 — read before trusting
 
 - **SIXTEEN gates have run entirely through `wf` and closed, and the newest is
   A4** (`docs/feedbacks/FEEDBACK-a4.md`, `~/projects/gates/mocker-a4-mcp-reach`,

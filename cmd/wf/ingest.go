@@ -114,7 +114,13 @@ func cmdRoundIngest(args []string) error {
 		for _, r := range ws.ParseFindings([]byte(block)) {
 			line := start + r.Line - 1
 			if r.Malformed {
-				return fmt.Errorf("%s line %d is a table row of %d cell(s), not 4 (%s) — a literal pipe in a finding is written \\|, and a backtick code span is NOT an escape; nothing was ingested", rep, line, r.Cells, trunc(r.Raw, 60))
+				// Two mistakes reach this line and the patch differs: a
+				// summary table appended AFTER the findings (the LAST table
+				// is read, so the findings must come last) and a literal pipe
+				// inside a cell. The first version named only the pipe, and
+				// an operator whose report ended with a two-column metrics
+				// table was told to escape a pipe that was not there.
+				return fmt.Errorf("%s line %d is a table row of %d cell(s), not 4 (%s) — the LAST table of a report is the one read, so the findings table must come last; inside it a literal pipe is written \\|, and a backtick code span is NOT an escape; nothing was ingested", rep, line, r.Cells, trunc(r.Raw, 60))
 			}
 			if r.Placeholder() {
 				st.empty++
@@ -141,7 +147,7 @@ func cmdRoundIngest(args []string) error {
 	// the form and is replaced rather than numbered around.
 	next := 0
 	for _, r := range have {
-		if v, err := strconv.Atoi(strings.TrimSpace(r.Num)); err == nil && v > next {
+		if v, err := strconv.Atoi(numKey(r.Num)); err == nil && v > next {
 			next = v
 		}
 	}
@@ -212,7 +218,7 @@ func cmdRoundIngest(args []string) error {
 		if r.Malformed {
 			return fmt.Errorf("the ledger would read back with a malformed row at line %d — nothing was written", r.Line)
 		}
-		seen[strings.TrimSpace(r.Num)]++
+		seen[numKey(r.Num)]++
 	}
 	for k, v := range seen {
 		if v > 1 {
@@ -277,9 +283,29 @@ func cmdRoundIngest(args []string) error {
 // way; this reads the same one.
 func lastTable(s string) (string, int) {
 	lines := strings.Split(s, "\n")
+	// A row inside a fenced block is not a row: a lens quoting the ledger's
+	// own scaffold, or a table it cites as an example, inside ``` at the END
+	// of its report was ingested as findings. Fences are walked from the top
+	// because they only make sense read forward.
+	fenced := make([]bool, len(lines))
+	fence := ""
+	for i, l := range lines {
+		t := strings.TrimSpace(l)
+		if f := check.FenceOf(t); f != "" {
+			switch {
+			case fence == "":
+				fence = f
+			case strings.HasPrefix(f, fence[:1]):
+				fence = ""
+			}
+			fenced[i] = true
+			continue
+		}
+		fenced[i] = fence != ""
+	}
 	start, end := -1, -1
 	for i := len(lines) - 1; i >= 0; i-- {
-		isRow := strings.HasPrefix(strings.TrimSpace(lines[i]), "|")
+		isRow := !fenced[i] && strings.HasPrefix(strings.TrimSpace(lines[i]), "|")
 		if end < 0 {
 			if isRow {
 				end = i

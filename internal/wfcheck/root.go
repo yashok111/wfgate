@@ -2,6 +2,7 @@ package wfcheck
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -21,13 +22,23 @@ import (
 // It returns the root and the note explaining where it came from — a resolution
 // the reader did not ask for must say so, or the next divergence between the two
 // trees reads as a script defect.
-func resolveRoot(root string) (string, string) {
+func resolveRoot(root string) (string, string, error) {
 	if root != "" {
-		return root, ""
+		// An explicit root was taken on trust, and a typo in it is SILENT in the
+		// register of a script defect: `-root /nonexistent` produced one "owns X,
+		// which does not exist and is not marked NEW" WARN per owned path — a
+		// wall of them on a correct script — with nothing in the report saying
+		// the tree they were read against is not there. It is refused rather than
+		// noted because the note would sort BELOW those WARNs (findings order by
+		// level), which is where the reader stops.
+		if st, err := os.Stat(root); err != nil || !st.IsDir() {
+			return "", "", fmt.Errorf("-root %s is not a directory — a script's owned paths are relative to the REPOSITORY under review, so every file-existence check below would report every one of them missing; pass the repo root, or omit -root inside a gate workspace to read its target", root)
+		}
+		return root, "", nil
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		return ".", ""
+		return ".", "", nil
 	}
 	w, err := ws.Find(cwd)
 	// No workspace above here is the ordinary case and says nothing. A
@@ -37,17 +48,17 @@ func resolveRoot(root string) (string, string) {
 	// expected the workspace to supply one.
 	if err != nil {
 		if errors.Is(err, ws.ErrNotFound) {
-			return cwd, ""
+			return cwd, "", nil
 		}
-		return cwd, "a gate workspace is here but could not be read (" + err.Error() + ") — the file-existence checks below read " + cwd + ", which is the workspace and not the repository under review"
+		return cwd, "a gate workspace is here but could not be read (" + err.Error() + ") — the file-existence checks below read " + cwd + ", which is the workspace and not the repository under review", nil
 	}
 	if w.M.Target == "" {
-		return cwd, "gate workspace " + filepath.Base(w.Root) + " names no target — the file-existence checks below read " + cwd + " instead"
+		return cwd, "gate workspace " + filepath.Base(w.Root) + " names no target — the file-existence checks below read " + cwd + " instead", nil
 	}
 	if st, err := os.Stat(w.M.Target); err != nil || !st.IsDir() {
 		// A workspace naming a target that is not there is worth saying out
 		// loud: the ownership checks are then answering about the wrong tree.
-		return cwd, "gate workspace " + filepath.Base(w.Root) + " names target " + w.M.Target + ", which is not a directory — the file-existence checks below read " + cwd + " instead"
+		return cwd, "gate workspace " + filepath.Base(w.Root) + " names target " + w.M.Target + ", which is not a directory — the file-existence checks below read " + cwd + " instead", nil
 	}
-	return w.M.Target, "-root not given: reading " + w.M.Target + ", the target of gate workspace " + filepath.Base(w.Root) + " (a script's owned paths are relative to the repository under review, never to the workspace)"
+	return w.M.Target, "-root not given: reading " + w.M.Target + ", the target of gate workspace " + filepath.Base(w.Root) + " (a script's owned paths are relative to the repository under review, never to the workspace)", nil
 }

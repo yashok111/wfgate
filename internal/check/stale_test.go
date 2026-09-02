@@ -716,3 +716,69 @@ func TestFindStale_aDoubledConsonantIsStillOneWord(t *testing.T) {
 		t.Fatalf("stop/stopping is one word too: %+v %d (retired %v)", rep.Hits, rep.Reinflected, rep.Retired)
 	}
 }
+
+// A heading NAMES the ids at its head and MENTIONS the rest: 11 of 537
+// headings across the gate workspaces carry a second id, every one a mention
+// in passing or a rule marker, and giving each of them the section's range
+// reported a finding about D1 closed by a commit that touched only D2 —
+// because D2's heading said it replaced the D1 rule.
+func TestSectionRanges_onlyTheLeadingIDsHeadASection(t *testing.T) {
+	body := []byte(strings.Join([]string{
+		"# Doc",
+		"",
+		"## D1 the allocator",
+		"",
+		"Rule.",
+		"",
+		"## D2 the reader, which replaces the D1 rule",
+		"",
+		"Readers.",
+		"",
+		"### D5.2 the invariant, and D7 is its other half [R4]",
+		"",
+		"Text.",
+		"",
+		"## D8, D9 shared",
+		"",
+		"Both.",
+		"",
+		"## §G. Section 6 — the criterion (C1–C4 and C12)",
+		"",
+		"Tail.",
+	}, "\n"))
+	got := SectionRanges(body)
+	if got["D1"] != [2]int{3, 6} {
+		t.Fatalf("D1 must be its own section only, got %v", got["D1"])
+	}
+	if got["D2"] != [2]int{7, 14} {
+		t.Fatalf("D2 got %v", got["D2"])
+	}
+	for _, id := range []string{"D7", "R4", "C1", "C4", "C12"} {
+		if _, ok := got[id]; ok {
+			t.Fatalf("%s is mentioned, not a heading, and must head no section; got %v", id, got[id])
+		}
+	}
+	if got["D5"] != [2]int{11, 14} {
+		t.Fatalf("D5.2 heads D5's subsection, got %v", got["D5"])
+	}
+	if got["D8"] != [2]int{15, 18} || got["D9"] != [2]int{15, 18} {
+		t.Fatalf("two ids joined by a separator both head the section, got D8=%v D9=%v", got["D8"], got["D9"])
+	}
+}
+
+// `./artifacts/decisions.md:12` named nothing: a `/` is not a boundary (so
+// `other/decisions.md` stays a different file), and the `./` an operator
+// writes for the workspace root fell under the same rule.
+func TestPathsNamed_dotSlashSpelling(t *testing.T) {
+	arts := []string{"artifacts/decisions.md"}
+	n, _ := PathsNamed("see ./artifacts/decisions.md:12 here", arts)
+	if n["artifacts/decisions.md"] == nil || n["artifacts/decisions.md"][0] != [2]int{12, 12} {
+		t.Fatalf("./ spelling must name the artifact, got %v", n)
+	}
+	if n, _ := PathsNamed("see other/artifacts/decisions.md:12", arts); len(n) != 0 {
+		t.Fatalf("a path under another directory is a different file, got %v", n)
+	}
+	if n, _ := PathsNamed("see x./artifacts/decisions.md:12", arts); len(n) != 0 {
+		t.Fatalf("`./` glued to a word is not the workspace root, got %v", n)
+	}
+}

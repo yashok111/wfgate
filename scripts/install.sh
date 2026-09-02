@@ -25,11 +25,27 @@ need() {
 }
 
 if [ "${1:-}" = "--uninstall" ]; then
+	# Each step reports its own outcome. The first version ran both plugin
+	# commands under `|| true` and printed "uninstalled: binaries, plugin and
+	# marketplace registration" with no `claude` on PATH at all — exit 0, the
+	# plugin and its hooks still installed and still firing.
+	need claude "remove the plugin registration"
 	rm -f "$HOME/.local/bin/wf" "$HOME/.local/bin/wfcheck" "$HOME/.local/bin/wfdry"
-	claude plugin uninstall wfgate 2>/dev/null || true
-	claude plugin marketplace remove wfgate-tools 2>/dev/null || true
-	echo "uninstalled: binaries, plugin and marketplace registration"
-	exit 0
+	echo "uninstalled: binaries from ~/.local/bin"
+	rc=0
+	if claude plugin uninstall wfgate >/dev/null 2>&1; then
+		echo "uninstalled: plugin wfgate"
+	else
+		echo "install: plugin wfgate was NOT uninstalled (claude plugin uninstall failed or it was not installed) — run: claude plugin uninstall wfgate" >&2
+		rc=1
+	fi
+	if claude plugin marketplace remove wfgate-tools >/dev/null 2>&1; then
+		echo "uninstalled: marketplace registration wfgate-tools"
+	else
+		echo "install: marketplace wfgate-tools was NOT removed — run: claude plugin marketplace remove wfgate-tools" >&2
+		rc=1
+	fi
+	exit $rc
 fi
 
 need git "clone/pull the repo"
@@ -51,6 +67,19 @@ make -C "$ROOT" check-tools
 # `make build` regenerates them in seconds, and every bar that needs them
 # depends on that target.
 make -C "$ROOT" clean
+# And refuse to stage the tree while ANY binary is still in it. `make clean`
+# knows the paths it builds to; a sweep agent's worktree under
+# `.claude/worktrees/` carries its own built `wf` (measured 2026-09-02: 20 MB
+# of a 23 MB cached version), and the next place a binary appears is a place
+# nobody has listed yet. Anything over 2 MB outside `.git` is not a skill or a
+# hook, and the plugin copy takes everything.
+big=$(find "$ROOT" -path "$ROOT/.git" -prune -o -type f -size +2M -print)
+if [ -n "$big" ]; then
+	echo "install: the tree still holds files no plugin should carry (the plugin copy is the RAW tree, .gitignore not consulted):" >&2
+	echo "$big" | sed 's/^/  /' >&2
+	echo "         remove them (a finished sweep worktree: git worktree remove <path>) and re-run" >&2
+	exit 1
+fi
 
 # The marketplace is the LOCAL CLONE, not a remote: the binary needs the clone
 # anyway, so there is exactly one checkout to keep fresh. After a `git pull`,
@@ -86,16 +115,32 @@ fi
 # and the script does nothing — an unclearable warning, which is the failure
 # this repo keeps finding in its own tools.
 drift() { "$HOME/.local/bin/wf" docs 2>&1 >/dev/null | grep -q 'differs from the one this binary carries'; }
+# `drift` is SILENT with no plugin installed at all (`wf docs` has nothing to
+# compare), so "no drift" after a reinstall proved only that the uninstall
+# half ran. Measured with a stub `claude` whose install exits 1: the plugin was
+# gone and the script printed "reinstalled, the manual is in step with the
+# binary", exit 0. The reinstall's own exit status is read, and the success
+# line is printed only over a registration `claude plugin list` can see.
+registered() { claude plugin list 2>/dev/null | grep -q '^wfgate\|wfgate@'; }
 if drift; then
 	echo "plugin: the installed manual is behind this clone — reinstalling to force a copy"
 	claude plugin uninstall wfgate >/dev/null 2>&1 || true
-	claude plugin install wfgate@wfgate-tools --scope user >/dev/null 2>&1 || true
+	if ! claude plugin install wfgate@wfgate-tools --scope user >/dev/null 2>&1; then
+		echo "install: the plugin was uninstalled and the reinstall FAILED — the plugin is not installed now. Run by hand:" >&2
+		echo "         claude plugin install wfgate@wfgate-tools --scope user" >&2
+		exit 1
+	fi
 	if drift; then
 		echo "install: the installed manual is STILL behind this clone. Bump \"version\" in" >&2
 		echo "         .claude-plugin/plugin.json and re-run: plugin update is version-keyed." >&2
 	else
 		echo "plugin: reinstalled, the manual is in step with the binary"
 	fi
+fi
+if ! registered; then
+	echo "install: \`claude plugin list\` does not show wfgate — the plugin is NOT installed, whatever the lines above said. Run by hand:" >&2
+	echo "         claude plugin install wfgate@wfgate-tools --scope user" >&2
+	exit 1
 fi
 
 # Every `claude plugin update` writes a NEW version directory and keeps the old

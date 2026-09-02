@@ -33,6 +33,7 @@ import (
 
 	"git.sumka.site/yakov/wfgate/internal/check"
 
+	"git.sumka.site/yakov/wfgate/internal/jstext"
 	"git.sumka.site/yakov/wfgate/internal/wfscript"
 )
 
@@ -460,8 +461,13 @@ func neutraliseMeta(src, path string) (string, error) {
 	}
 	out := []byte(src)
 	blankKeyword := func(at int) {
-		// walk back over whitespace to a preceding `const`/`let`/`var`, then to
-		// `export`, and blank only that keyword.
+		// Walk back to the start of the DECLARATION's own line and blank an
+		// `export` found there. The index handed in is the declared NAME's, never
+		// the initialiser's: `export const meta =` with the `{` on the next line
+		// put the initialiser on line 2, this walked line 2 only, `export`
+		// survived, and goja died with a bare `SyntaxError: Line 1:19 Unexpected
+		// reserved word` — 0/1 modes and no diagnosis, over a file `wfcheck` read
+		// clean.
 		i := at
 		for i > 0 && out[i-1] != '\n' {
 			i--
@@ -472,18 +478,40 @@ func neutraliseMeta(src, path string) (string, error) {
 		}
 	}
 	for name, c := range sc.Consts() {
-		off := sc.Offset(c.Init)
-		if off < 0 {
+		at := sc.NameOffset(c)
+		if at < 0 {
 			continue
 		}
-		blankKeyword(off)
+		blankKeyword(at)
 		if name == "meta" {
-			if at := sc.NameOffset(c); at >= 0 && at+4 <= len(out) && string(out[at:at+4]) == "meta" {
+			if at+4 <= len(out) && string(out[at:at+4]) == "meta" {
 				copy(out[at:at+4], "_mtA")
 			}
 		}
 	}
+	// A surviving `export` is a SyntaxError the engine reports against a line and
+	// a column with no word about the keyword — the shape that reaches here is an
+	// export this loop does not iterate, `export function` or `export default`,
+	// which the parse pre-pass blanks for the PARSER and this one leaves standing
+	// for the ENGINE. The runner knows what it failed to neutralise, so it says
+	// so rather than handing the operator goja's message.
+	if line, ok := survivingExport(string(out)); ok {
+		return "", fmt.Errorf("line %d still begins with `export`, which this runner could not neutralise — it neutralises `export const`, and goja parses scripts rather than modules, so the engine would die with a bare SyntaxError. Drop the keyword: `wfdry` never imports the file, and a workflow script is not imported by anything else either", line)
+	}
 	return string(out), nil
+}
+
+// survivingExport finds a line-initial `export ` left in the CODE — a string or
+// a comment containing one is not module syntax, and jstext blanks those in
+// place, so an offset that still spells the keyword there is code.
+func survivingExport(src string) (int, bool) {
+	code := jstext.StripNonCode(src)
+	for i := 0; i+7 <= len(code); i++ {
+		if (i == 0 || code[i-1] == '\n') && code[i:i+7] == "export " {
+			return jstext.LineAt(src, i), true
+		}
+	}
+	return 0, false
 }
 
 func min(a, b int) int {
@@ -864,6 +892,13 @@ func runMode(src, mode string, o Options) Result {
 	if bad := prefixed(r.defaulted, arrayPolarityKey); len(bad) > 0 {
 		r.Notes = append(r.Notes, "unreadable `x-pass` in the `$comment` of array field(s) — "+strings.Join(bad, ", ")+" — so the array's polarity was decided by its NAME after all: an array is returned EMPTY in the passing modes only when its name carries one of the defect words ("+arrayVocabulary+"), and otherwise holds one placeholder in every mode. Write it as `\"$comment\": \"x-pass: false\"` — a populated array is then the failure shape — or `true` for the opposite; the value must read as true or false. It lives in `$comment` and NOT as a schema keyword because the launch refuses the whole schema over an unknown keyword (probed)")
 	}
+	// The field the clean-mode verdict guard could not name. That guard says "no
+	// fixture in this mode can produce that verdict" and stops; when the verdict
+	// is derived from a schema boolean this synthesiser set from its NAME, the
+	// operator has no way from the report to the field. This note is that way.
+	if named := prefixed(r.defaulted, boolPolarityKey); len(named) > 0 {
+		r.Notes = append(r.Notes, "boolean(s) this mode valued from their NAME — "+strings.Join(named, "; ")+" — a verdict derived from one of them was derived from this runner's vocabulary, not from the script. If the polarity is wrong, declare it: `\"$comment\": \"x-pass: true\"` on the field, or false for a failure flag — NOT as a schema keyword, which the launch refuses")
+	}
 	if names := prefixed(r.defaulted, ""); len(names) > 0 {
 		// The NAME is the contract, and the note has to say so. Without this
 		// clause the message named the fields and not the rule they broke, so
@@ -1145,6 +1180,46 @@ var enumFailWords = []string{
 // opposite.
 var enumNegators = []string{"not", "non", "free", "less", "without", "never"}
 
+// boolNegators is that list plus `no`, and the boolean side carries `no` where
+// the enum side must not: in an enum `no` is a MEMBER meaning failure
+// (`['yes','no']`, and enumFailWords lists it), while in a field NAME it is the
+// prefix that inverts the word after it — `noFailures`.
+var boolNegators = append([]string{"no"}, enumNegators...)
+
+// boolNegated reports a field NAME carrying a negator as a WHOLE token.
+//
+// Whole, not a prefix: `hasWord` matches prefixes so a plural finds its singular
+// (`blockers` finds `blocker`), and a negator has no plural — under the prefix
+// rule `noticedErrors` matched `not` and a failure flag became a pass flag,
+// which is the inversion this file exists to refuse.
+func boolNegated(name string) bool {
+	for _, t := range camelTokens(name) {
+		for _, w := range boolNegators {
+			if t == w {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// camelTokens splits a field NAME the way enumTokens splits an enum member, plus
+// the lower→upper transition. The two differ deliberately: a field is written
+// `noFailures`, an enum MEMBER is written `not-run`, and enumTokens leaves
+// camelCase alone so an enum spelled that way falls to the path that SAYS it was
+// unread rather than being guessed at.
+func camelTokens(name string) []string {
+	var b strings.Builder
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if i > 0 && c >= 'A' && c <= 'Z' && name[i-1] >= 'a' && name[i-1] <= 'z' {
+			b.WriteByte(' ')
+		}
+		b.WriteByte(c)
+	}
+	return enumTokens(b.String())
+}
+
 // enumTokens splits a member into comparable words: lower-case, and cut on
 // anything that is not a letter or a digit, so `not-run`, `not_run`, `notRun`
 // and `NOT RUN` are one shape. camelCase is not split — a member written that
@@ -1263,6 +1338,12 @@ var (
 // record map, so the two notes cannot describe each other's population.
 const arrayPolarityKey = "array x-pass: "
 
+// boolPolarityKey prefixes a boolean whose value this mode decided from its NAME
+// rather than from a declared polarity. It travels in the same map under its own
+// prefix for the same reason arrayPolarityKey does: the unrecognised-field note
+// says the field was NOT recognised, which is the opposite claim.
+const boolPolarityKey = "bool by name: "
+
 // prefixed splits that map: with a prefix it returns the matching names with
 // the prefix stripped, and with the empty one the names carrying NO prefix.
 func prefixed(rec map[string]int, prefix string) []string {
@@ -1271,7 +1352,7 @@ func prefixed(rec map[string]int, prefix string) []string {
 		switch {
 		case prefix != "" && strings.HasPrefix(n, prefix):
 			out = append(out, strings.TrimPrefix(n, prefix))
-		case prefix == "" && !strings.HasPrefix(n, arrayPolarityKey):
+		case prefix == "" && !strings.HasPrefix(n, arrayPolarityKey) && !strings.HasPrefix(n, boolPolarityKey):
 			out = append(out, n)
 		}
 	}
@@ -1494,6 +1575,29 @@ func value(name string, v map[string]any, mode, label string, depth, idx int, re
 			return mode != "acceptfail"
 		}
 		if failBools.MatchString(name) {
+			// The negator rule the ENUM vocabulary has had since it was written,
+			// applied to the other vocabulary that reads a NAME. `noFailures` and
+			// `errorFree` carry a failure word and are PASS flags — the comment on
+			// failVerdicts names both, and that guard is anchored precisely so it
+			// does not convict them — but the fixture synthesiser matched the
+			// substring, returned FALSE in `clean`, and the script derived a
+			// verdict the clean-mode guard then reported as "no fixture in this
+			// mode can produce that verdict": a red run over a correct script,
+			// with no note naming the field that produced it.
+			if boolNegated(name) {
+				if rec != nil {
+					rec[boolPolarityKey+name+" (a NEGATED failure word — read as a PASS flag)"]++
+				}
+				return mode != "acceptfail"
+			}
+			if rec != nil && passFixture(mode) {
+				// Recorded only where the value is the SURPRISING one. A failure
+				// word is false in a passing mode by design, and that is exactly
+				// the value a verdict derived from it inverts — so this is the
+				// population the guard's message could not name, and reporting the
+				// other modes too would paint every run with what they expect.
+				rec[boolPolarityKey+name+" (a failure word — FALSE in this passing mode)"]++
+			}
 			return !passFixture(mode)
 		}
 		// An unrecognised boolean defaults to FALSE in every mode, not to "true

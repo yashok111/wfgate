@@ -44,9 +44,9 @@ const usage = `wf — gate harness
   wf status                       manifest, round, dirty artifacts
   wf apply -f <edits> [-closes 1,2]   all-or-nothing batch (JSON array or === text blocks), then commit; -closes fills those findings' closure cells with that commit
   wf apply -whole <path> [-rule RN] [-rule-ack]   adopt a file rewritten in the worktree: the diff IS the batch, and it is verified by NOTHING
-  wf add <file>...                bring a newly authored artifact under the workspace and commit it
+  wf add <file>... [-as name]     bring a newly authored artifact under the workspace and commit it (-as stores it under another name)
   wf round new [-title T] [-kind full|delta|tool|run]  open the next round, scaffold its findings file
-  wf round ingest <report>... [-round N] [-lens NAME]   append the rows of each reviewer's LAST table to the open round's ledger, numbered and tagged [lens: NAME]; not committed — dedup, then record
+  wf round ingest <report>... [-round N] [-lens NAME]   append the rows of each reviewer's LAST table to the open round's ledger, numbered and tagged [lens: NAME]; committed like a banked lens — dedup and re-derive levels by hand, then wf round record banks it
   wf round record <file> [-round N]   fill a round's findings.md from a file (- reads stdin), validate closures, commit
   wf round close <finding#> <commit> [-round N] [-replace]   fill one finding's closure cell without splitting the row on its pipes
   wf round close <finding#> -prose "why" [-round N] [-replace] the same cell for a row no commit closes
@@ -282,7 +282,7 @@ func cmdApply(args []string) error {
 		return fmt.Errorf("unexpected argument(s) %s: the batch is one file, named by `-f` or as the single positional argument", strings.Join(pos, " "))
 	}
 	if *file == "" && *whole == "" {
-		return fmt.Errorf("usage: wf apply -f edits.json [-m msg] [-rule RN] [-rule-ack] [--dry-run]\n       wf apply <edits.json> is the same thing\n       wf apply -whole <path> [-m msg] [-rule RN] [-rule-ack] [--dry-run]")
+		return fmt.Errorf("usage: wf apply -f edits.json [-closes 1,2] [-m msg] [-rule RN] [-rule-ack] [--dry-run]\n       wf apply <edits.json> is the same thing\n       wf apply -whole <path> [-closes 1,2] [-m msg] [-rule RN] [-rule-ack] [--dry-run]")
 	}
 	// The two are different acts, not two spellings of one: `-f` plans a batch
 	// and verifies it, `-whole` records a rewrite it did not watch. Taking both
@@ -357,6 +357,22 @@ func cmdApply(args []string) error {
 	}
 	if len(edits) == 0 {
 		return fmt.Errorf("edits: empty batch")
+	}
+	// The same boundary `-whole` and `wf add` draw, and it was missing here:
+	// `SafeJoin` refuses a path that escapes the WORKSPACE, so a batch header
+	// reading `artifacts/../gate-checks.md` rewrote the pinned reference every
+	// reviewer is briefed from, `-closes` then closed a BLOCKER with that
+	// commit, and `wf freeze` and `wf verify` — which watch `artifacts/` alone —
+	// both printed clean over it. Refused BEFORE the plan, so no FAIL row is
+	// printed for a file the command would never write.
+	for _, e := range edits {
+		_, key, err := apply.SafeJoin(w.Root, e.File)
+		if err != nil {
+			return fmt.Errorf("edits: %w", err)
+		}
+		if !underArtifacts(key) {
+			return fmt.Errorf("edits: %s is not under artifacts/; a batch edits a reviewed artifact, and the workspace's own bookkeeping (the pinned gate-checks.md, the ledgers, gate.json) is not one — nothing was written", e.File)
+		}
 	}
 
 	results, bufs, planErr := apply.Plan(w.Root, edits)
@@ -539,7 +555,7 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 	// round's edits to a REVIEWED document. `wf apply -whole gate.json` is
 	// otherwise accepted and prices the workspace's own bookkeeping into the
 	// cost meter — the same boundary `wf add` draws, for the same reason.
-	if key != "artifacts" && !strings.HasPrefix(key, "artifacts"+string(filepath.Separator)) {
+	if !underArtifacts(key) {
 		return "", fmt.Errorf("%s is not under artifacts/; `-whole` prices a round's edits to a reviewed artifact, and the workspace's own bookkeeping is not one", key)
 	}
 	st, err := os.Stat(abs)
@@ -687,6 +703,14 @@ func applyWhole(w *ws.Workspace, arg, msg, ruleID, rulePhrase string, ruleAck, d
 // restructure legitimately rewrites the whole document, and generating one
 // minimal block per change failed twice on uniqueness on that same gate. What
 // it must not do is look like a batch the tool verified.
+// underArtifacts is the ONE spelling of the workspace boundary every writer
+// draws: `wf add`, `wf apply -f`, `wf apply -whole`. A bare `artifacts` is the
+// directory itself, which no edit names, and it is accepted so `-whole
+// artifacts/` reaches its own refusal (ONE regular file) rather than this one.
+func underArtifacts(key string) bool {
+	return key == "artifacts" || strings.HasPrefix(key, "artifacts"+string(filepath.Separator))
+}
+
 func noteWholeArtifact(results []apply.Result, before string) {
 	for _, r := range results {
 		// Half the file. The shape this names is the whole-artifact rewrite,
@@ -2394,7 +2418,7 @@ func cmdCheck(args []string) error {
 	at := fs.String("at", "", "cite: verify against this target revision (`frozen` = the revision the newest freeze names) instead of the working tree")
 	thr := fs.Float64("threshold", 0.82, "dup: similarity threshold for a near match")
 	minWords := fs.Int("min-words", 8, "dup: shortest statement compared")
-	round := fs.Int("round", 0, "drift: frozen round to measure from (default the newest)")
+	round := fs.Int("round", 0, "drift: the frozen round to measure from (default the newest); closure: the round whose ledger to check (default every round)")
 	since := fs.String("since", "", "dup: show only groups with a copy touched after this ref; stale: the fix range to mine, schema: the reference to compare against (default the newest freeze)")
 	// Calibrated on a live gate's real fix range (450 sentences, 1050 lines):
 	// at 8 the report was 26 hits carrying "were", "right", "tell", "stays" —
@@ -3052,6 +3076,13 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	switch {
 	case rep.Mined == 0:
 		fmt.Printf("  note: NOT A PASS — this range retired no vocabulary at all, so nothing was swept. A fix that only ADDED text, or one whose every removed word survives elsewhere in the diff, is invisible to this check\n")
+	case rep.Scanned == 0:
+		// Every retired token "survives nowhere" in a corpus of zero
+		// sentences. Measured on a one-artifact workspace whose only sentence
+		// over -min-words was the one the fix rewrote: `swept: 1 of 1` and
+		// `stale: clean` in the summary, over nothing compared — the absent
+		// measurement in the register of a measured one.
+		fmt.Printf("  note: NOT A PASS — the range wrote every sentence this check could have compared (%d), so there is no untouched corpus to find a consumer in; the %d retired token(s) were swept against nothing\n", rep.Touched, rep.Mined)
 	case rep.Swept > 0:
 		// TWO readings, and the check cannot tell them apart. A retired token
 		// surviving nowhere means the fix reached every consumer — or that the
@@ -3087,7 +3118,7 @@ func runStale(w *ws.Workspace, arts []string, since string, minWords, maxDF int)
 	if len(rep.Hits) > 0 {
 		fmt.Printf("  note: a hit is a sentence the fix did not touch that still uses the words the fix retired. Which of them ARGUES from the superseded rule and which merely shares its vocabulary is judgement — this check reports, it never rewrites\n")
 	}
-	return checkVerdict{bad: len(rep.Hits) > 0, vacuous: rep.Mined == 0}, nil
+	return checkVerdict{bad: len(rep.Hits) > 0, vacuous: rep.Mined == 0 || rep.Scanned == 0}, nil
 }
 
 // runClosure asks of every claimed closure the question `wf round record` does
@@ -3125,7 +3156,13 @@ func runClosure(w *ws.Workspace, arts []string, round int) (checkVerdict, error)
 		// `show` it is an unknown flag and every closure then reads as "a commit
 		// git could not read", which the report duly printed as an absent
 		// measurement over a workspace where every commit was fine.
-		raw, err := w.Git.Run("-c", "core.quotePath=false", "show", "--no-renames", "--no-ext-diff",
+		// `-m`, for the reason `gitx.CommitPaths` carries it: a MERGE prints
+		// a combined diff (`diff --cc`, `@@@` hunks) that `parseUnified` does
+		// not read, and a clean merge prints nothing at all — so a merge that
+		// carried a real artifact fix was counted as CHECKED and reported as a
+		// FILE miss, while `wf round close` accepted the same commit. With
+		// `-m` it is one ordinary diff per parent and the hunks union.
+		raw, err := w.Git.Run("-c", "core.quotePath=false", "show", "-m", "--no-renames", "--no-ext-diff",
 			"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "--format=", sha)
 		var r map[string][][2]int
 		if err == nil {
@@ -3331,7 +3368,19 @@ func runClosure(w *ws.Workspace, arts []string, round int) (checkVerdict, error)
 			// finding naming two paths could be counted twice and the headline
 			// could exceed the number of claims it was drawn from.
 			var why []string
-			sawSection, sawLine := false, false
+			// What the row CITES is a property of the row, not of the commit:
+			// it used to be read only on a path the commit touched, so a
+			// closure that missed the FILE was also counted `fileOnly` and the
+			// note told the operator to "cite the section id or the line" over
+			// a finding that cited a line.
+			sawSection, sawLine := len(check.SectionsNamed(r.Text)) > 0, false
+			for _, rs := range named {
+				for _, rng := range rs {
+					if rng[0] != 0 {
+						sawLine = true
+					}
+				}
+			}
 			for _, p := range sortedKeys(named) {
 				touchedAnywhere := false
 				for _, sha := range r.Shas() {
@@ -3374,13 +3423,12 @@ func runClosure(w *ws.Workspace, arts []string, round int) (checkVerdict, error)
 				// by a commit whose hunks covered 450-453 and 455-457, because
 				// 454 is the one unchanged line inside the span the finding
 				// drew. All four line misses of that gate were that shape.
-				lineHit, lineChecked, lineUnmappable := false, false, 0
+				lineHit, lineUnmappable := false, 0
 				var lineMiss []string
 				for _, rng := range named[p] {
 					if rng[0] == 0 {
 						continue
 					}
-					lineChecked = true
 					covered, unmappable := false, false
 					for _, sha := range r.Shas() {
 						at, edited, moved := shifted(n, sha, p, rng)
@@ -3416,12 +3464,6 @@ func runClosure(w *ws.Workspace, arts []string, round int) (checkVerdict, error)
 				// above already says a section mentioned in passing is not a
 				// finding about it, and this is that sentence reaching the
 				// verdict.
-				if anySection {
-					sawSection = true
-				}
-				if lineChecked {
-					sawLine = true
-				}
 				// The strongest evidence there is: the cited section was
 				// reached. Skip the lines rather than complain about a span
 				// inside a section that moved. Written as `hitSection` alone:

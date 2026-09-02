@@ -799,9 +799,50 @@ func TestResolveRoot(t *testing.T) {
 	}
 
 	t.Run("an explicit root wins and says nothing", func(t *testing.T) {
-		got, note := resolveRoot("/somewhere")
-		if got != "/somewhere" || note != "" {
+		dir := t.TempDir()
+		got, note, err := resolveRoot(dir)
+		if err != nil {
+			t.Fatalf("a real directory was refused: %v", err)
+		}
+		if got != dir || note != "" {
 			t.Fatalf("got %q, note %q", got, note)
+		}
+	})
+
+	// An explicit root was taken on trust, so a typo in it printed one "owns X,
+	// which does not exist and is not marked NEW" WARN per owned path — a wall of
+	// them on a correct script — with nothing saying the tree is not there. It is
+	// REFUSED rather than noted because a note sorts below those WARNs, which is
+	// where the reader has already stopped.
+	t.Run("a -root that is not a directory is refused", func(t *testing.T) {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "not-a-dir")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, bad := range []string{filepath.Join(dir, "nonexistent"), file} {
+			_, _, err := resolveRoot(bad)
+			if err == nil {
+				t.Fatalf("-root %s was accepted", bad)
+			}
+			if !strings.Contains(err.Error(), "is not a directory") ||
+				!strings.Contains(err.Error(), "relative to the REPOSITORY under review") {
+				t.Fatalf("the refusal does not carry the patch: %v", err)
+			}
+		}
+	})
+
+	// And through the whole command, because Run is what the operator calls: a
+	// bad -root must stop the report rather than colour it.
+	t.Run("Run refuses a -root that is not a directory", func(t *testing.T) {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "s.mjs")
+		if err := os.WriteFile(p, []byte(preamble+"phase('P')\nreturn {done:true}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rep, err := Run(p, filepath.Join(dir, "nope"))
+		if err == nil {
+			t.Fatalf("a nonexistent -root produced a report:\n%s", dump(rep))
 		}
 	})
 
@@ -809,7 +850,7 @@ func TestResolveRoot(t *testing.T) {
 		target := t.TempDir()
 		wsDir := newWS(t, `{"name":"g","target":"`+target+`"}`)
 		chdir(t, wsDir)
-		got, note := resolveRoot("")
+		got, note, _ := resolveRoot("")
 		if got != target {
 			t.Fatalf("got %q, want the target %q", got, target)
 		}
@@ -829,7 +870,7 @@ func TestResolveRoot(t *testing.T) {
 		}
 		wsDir := newWS(t, `{"name":"g","target":"`+file+`"}`)
 		chdir(t, wsDir)
-		got, note := resolveRoot("")
+		got, note, _ := resolveRoot("")
 		if got == file {
 			t.Fatal("a file is not a tree to check against")
 		}
@@ -841,7 +882,7 @@ func TestResolveRoot(t *testing.T) {
 	t.Run("a workspace that cannot be read is named", func(t *testing.T) {
 		wsDir := newWS(t, `{"name": broken`)
 		chdir(t, wsDir)
-		_, note := resolveRoot("")
+		_, note, _ := resolveRoot("")
 		if !strings.Contains(note, "could not be read") {
 			t.Fatalf("a manifest that will not parse is not the absence of a workspace: %q", note)
 		}
@@ -850,7 +891,7 @@ func TestResolveRoot(t *testing.T) {
 	t.Run("no workspace at all is the silent case", func(t *testing.T) {
 		dir := t.TempDir()
 		chdir(t, dir)
-		got, note := resolveRoot("")
+		got, note, _ := resolveRoot("")
 		if note != "" {
 			t.Fatalf("the ordinary case says nothing: %q", note)
 		}

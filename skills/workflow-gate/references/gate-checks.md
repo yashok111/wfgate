@@ -264,8 +264,10 @@ becomes a wrong instruction that no downstream step questions.
       verdict by name (`rules`, `stale`, `closure`, `schema`, `wfdry --prompt-diff`), and most of them
       print it because they were caught printing a clean line over the same hole; `cite` and `dup`
       answer it in the other shape, by publishing the unverified or hidden POPULATION rather than a
-      verdict, so on those two the population line IS the third verdict and there is no phrase to look
-      for. Prose has no such habit at all, and an absent measurement written in the register of a
+      verdict, so on those two the population line IS the third verdict and their own HEADER carries
+      no phrase to look for. The SUMMARY does carry one: `wf check` with no argument ends in a single
+      `## check —` line naming all five checks it ran, and a check that compared nothing reads
+      `nothing compared (NOT A PASS)` there rather than `clean`. Prose has no such habit at all, and an absent measurement written in the register of a
       measured pass is a defect this corpus has committed in every wave that reviewed itself. Say
       which of the three, every time — and a NOT A PASS names WHY no observation could be made. An
       observation nobody ATTEMPTED is not a verdict: it is an open question, and it is filed as one

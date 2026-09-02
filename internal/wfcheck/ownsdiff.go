@@ -60,7 +60,10 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 	}
 	// The source is already in memory: a second read adds an I/O error path and
 	// a window in which the two copies disagree.
-	root, rootNote := resolveRoot(root)
+	root, rootNote, err := resolveRoot(root)
+	if err != nil {
+		return rep, err
+	}
 	rep.Root, rep.RootNote = root, rootNote
 
 	files := map[string]bool{}

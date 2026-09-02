@@ -78,7 +78,8 @@ FIRST.
 
    **It ends when the frontier is empty AND the operator says the understanding is shared** — an
    interviewer that runs out of questions and starts drafting has replaced the interview with its own
-   opinion. Then, and only then: `wf init`, `wf add <draft>`, `wf round new`, and round 1 reads it.
+   opinion. Then, and only then — the workspace has been open since step -1: `wf add <draft>`,
+   `wf round new`, and round 1 reads it.
    The interview is NOT a round: it dispatches no reviewer, files no finding, banks no lens, and
    nothing about having run one lowers the round count you budget for. The checks never impersonate
    coverage and neither does this — an interview is the author sharpening their own thinking, a round

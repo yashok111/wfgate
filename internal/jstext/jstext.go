@@ -37,7 +37,8 @@ import "strings"
 // quote — opened a string literal that ran to the end of its line and BLANKED
 // the code after it, so a call there vanished from the population and the check
 // went quiet. A `/` opens a regex only where a value cannot precede it, which is
-// decided by the last significant character; anywhere else it is division.
+// decided by the last significant TOKEN — a punctuator, or a keyword such as
+// `return`; anywhere else it is division.
 func StripNonCode(src string) string {
 	out := []byte(src)
 	scan(src, func(i, j int) { blank(out, i, j) }, nil, 0, false)
@@ -170,7 +171,7 @@ func scan(src string, onBlank func(i, j int), onProse func(i, j, kind int), i in
 			call(onBlank, i, end)
 			callProse(onProse, min(i+2, len(src)), min(j, len(src)), spanBlockComment)
 			i = end
-		case src[i] == '/' && regexCanStart(prev):
+		case src[i] == '/' && regexCanStart(src, i, prev):
 			i = scanRegex(src, onBlank, i)
 		case src[i] == '\'' || src[i] == '"':
 			i = scanQuoted(src, onBlank, onProse, i)
@@ -195,18 +196,54 @@ func scan(src string, onBlank func(i, j int), onProse func(i, j, kind int), i in
 	return i
 }
 
+// regexKeywords are the keywords a `/` can legally follow, where it opens a
+// regex and never divides: a keyword is not a value, so nothing can be divided.
+// The list is what a script actually writes — `return /['"]/.test(s)` is the
+// ordinary way to ask whether a string is quoted.
+var regexKeywords = map[string]bool{
+	"return": true, "case": true, "typeof": true, "in": true, "of": true,
+	"new": true, "delete": true, "void": true, "do": true, "else": true,
+	"yield": true, "await": true, "throw": true,
+}
+
 // regexCanStart reports a position where a `/` cannot be division, because no
-// value can precede it. Everything else — an identifier, a literal, a closing
-// bracket — makes it an operator, so a regex opening a STATEMENT (`return /x/`,
-// or one on its own line after a call) is read as division and its body is
-// scanned as code. That is deliberate: it can only over-count, and the check
-// that reads the code already has to explain a population that is too large.
-func regexCanStart(prev byte) bool {
+// value can precede it: an opening punctuator, an operator, or one of the
+// keywords above.
+//
+// The punctuation list alone was NOT merely an over-count, which is what this
+// comment used to claim. A regex after a KEYWORD — `return /['"]/.test(s) &&
+// agent(p, o)` — was read as division, so the `'` inside the character class
+// opened a string literal that ran to the end of its line and BLANKED the code
+// after it: the `agent(` vanished from the backstop's population, and the
+// blanked bytes were handed to the PROSE reader as a sentence nobody wrote.
+// Under-counting the code is the one direction a backstop cannot report.
+func regexCanStart(src string, i int, prev byte) bool {
 	switch prev {
 	case 0, '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^':
 		return true
 	}
-	return false
+	if !isWordByte(prev) {
+		return false
+	}
+	// The last significant TOKEN, not the last character: `prev` cannot tell
+	// `return` from `retur` + `n`. Whitespace between the word and the `/` is
+	// skipped, and a comment cannot be in the gap — the scanner consumed it, so
+	// `prev` would be its closing `/` rather than a word byte.
+	j := i
+	for j > 0 && isSpaceByte(src[j-1]) {
+		j--
+	}
+	end := j
+	for j > 0 && isWordByte(src[j-1]) {
+		j--
+	}
+	return regexKeywords[src[j:end]]
+}
+
+// isWordByte reports a byte that can be part of an identifier or a keyword.
+func isWordByte(c byte) bool {
+	return c == '_' || c == '$' || (c >= '0' && c <= '9') ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // scanRegex walks one regex literal and returns the offset just past it. A `/`

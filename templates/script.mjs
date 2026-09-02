@@ -47,8 +47,10 @@ const MAX_FIX_ROUNDS = 1
 // told to read with `cat`/`sed -n` and search with `grep` hands that habit to
 // every agent this script spawns, and neither the script nor its pre-flight
 // gate can see it. Measured on one live producer, the largest agent of its run:
-// 256 Bash, 64 Edit, 6 Read — and exactly five of the 256 were bars. The other
-// 251 were navigation, each a separate round-trip carrying the whole context.
+// 256 Bash, 64 Edit, 6 Read — of the 256, 56 carried a build, test, lint or
+// format command and 186 were navigation alone (`sed -n`, `rg`, `cat`, `grep`),
+// each a separate round-trip carrying the whole context. 186 against 6 Read is
+// the ratio the rule rests on; see `wf docs measured` [M-29] for the reading.
 const NAV = 'NAVIGATION\n' +
   'Read files with Read, search with Grep and Glob. Reserve Bash for the bars, for git, and for what genuinely needs a shell: a `cat` or a `sed -n` where Read would do is a round-trip that carries your entire context to fetch one file.\n'
 
@@ -178,7 +180,7 @@ async function runGate(cfg) {
       'A finding\'s level is decided by what catches it downstream, never by how bad it reads.\n' +
       'blocker = no later gate catches it, so it ships; a finding that makes a guard or a tripwire VACUOUS starts here.\n' +
       'major = a real defect, and your summary NAMES the later gate that catches it; cannot name one means blocker.\n' +
-      'minor = a real defect cheaper to leave standing. note = not a defect, asserts no failure.\n' +
+      'minor = a real defect cheaper to leave standing. note = not a defect, asserts no failure, and an OPEN question is not one -- a row that cannot state its own fix says which observation settles it and who owns the call, and it is a blocker.\n' +
       'For each finding give the file, a one-sentence summary, the concrete failure it produces, and a fix.\n' +
       'Set verdict to blockers when any finding is a blocker, otherwise pass. An empty findings array is a legitimate result.',
       { label: 'review:' + cfg.slug + ':' + rev.slug, phase: cfg.phase, schema: FINDINGS_SCHEMA, model: rev.model, effort: 'high' }

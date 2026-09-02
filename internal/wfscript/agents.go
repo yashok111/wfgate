@@ -1,6 +1,7 @@
 package wfscript
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/dop251/goja/ast"
@@ -46,6 +47,16 @@ type Wrapper struct {
 	PromptOpaque bool
 	OptsOpaque   bool
 	Forwards     int // how many `agent()` calls its body makes
+
+	// baseSub/baseParams bind a wrapper FACTORY's parameters to the arguments of
+	// the call that produced this wrapper: `const spawn = makeSpawn({model:
+	// 'sonnet'})`. The forwarding call inside the returned arrow reads
+	// `agent(p, {...base, ...o})`, and `base` is the factory's parameter — with
+	// no binding for it the options resolve from a global of that name or from
+	// nothing, which is the whole reason the wrapper's own parameters are bound
+	// this way too.
+	baseSub    map[string]ast.Expression
+	baseParams []string
 }
 
 type span struct{ from, to file.Idx }
@@ -99,8 +110,23 @@ func (a AgentCall) Opt(name string) (ast.Expression, bool) {
 func (s *Script) Wrappers() []Wrapper {
 	var out []Wrapper
 	seen := map[string]bool{}
+	// The FACTORIES first, because a factory is not a wrapper and the difference
+	// decides both populations. `function makeSpawn(base){ return async (p, o) =>
+	// agent(p, {...base, ...o}) }` has an `agent()` call in its body, so
+	// wrapperOf read it as a wrapper: every `spawn(...)` produced by it vanished
+	// from the inventory, the factory's own INVOCATION was inventoried as the
+	// script's one call site, and the backstop's arithmetic balanced — `wfcheck`
+	// exited 0 over an `effort: 'nonsense'` it never looked at.
+	factories := s.factories()
+	s.factoryBodies = s.factoryBodies[:0]
+	for _, f := range factories {
+		s.factoryBodies = append(s.factoryBodies, f.Body)
+	}
 	add := func(name string, idx file.Idx, init ast.Expression) {
 		if name == "" || seen[name] || init == nil {
+			return
+		}
+		if _, isFactory := factories[name]; isFactory {
 			return
 		}
 		if w, ok := s.wrapperOf(name, init); ok {
@@ -133,6 +159,61 @@ func (s *Script) Wrappers() []Wrapper {
 			}
 		}
 	})
+	// A binding whose initialiser CALLS a factory is an alias of what the factory
+	// returns, with the factory's own arguments bound: that is what makes
+	// `spawn(...)` a call site again, and what lets its options be read at all.
+	// It runs before the two loops below so a wrapper-on-wrapper and an alias of
+	// a factory-produced wrapper are both reachable.
+	if len(factories) > 0 {
+		s.Walk(func(n ast.Node) {
+			bindFactory := func(id *ast.Identifier, init ast.Expression) {
+				if init == nil || seen[string(id.Name)] {
+					return
+				}
+				c, ok := init.(*ast.CallExpression)
+				if !ok {
+					return
+				}
+				cid, ok := c.Callee.(*ast.Identifier)
+				if !ok {
+					return
+				}
+				f, ok := factories[string(cid.Name)]
+				if !ok {
+					return
+				}
+				w, ok := s.wrapperOf(string(id.Name), f.Inner)
+				if !ok {
+					return
+				}
+				w.Line = s.Line(id.Idx)
+				w.baseParams = f.Params
+				w.baseSub = map[string]ast.Expression{}
+				for i, p := range f.Params {
+					if p == "" || i >= len(c.ArgumentList) {
+						continue
+					}
+					w.baseSub[p] = c.ArgumentList[i]
+				}
+				seen[w.Name] = true
+				out = append(out, w)
+			}
+			switch v := n.(type) {
+			case *ast.LexicalDeclaration:
+				for _, b := range v.List {
+					if id, ok := b.Target.(*ast.Identifier); ok {
+						bindFactory(id, b.Initializer)
+					}
+				}
+			case *ast.VariableDeclaration:
+				for _, b := range v.List {
+					if id, ok := b.Target.(*ast.Identifier); ok {
+						bindFactory(id, b.Initializer)
+					}
+				}
+			}
+		})
+	}
 	// A wrapper ON a wrapper is a wrapper: `const review = (p, o) => spawn(p,
 	// {...o, effort:'max'})` forwards to `agent` one hop further out, and
 	// without this its call sites vanished while the inner forwarding call was
@@ -203,6 +284,270 @@ func (s *Script) Wrappers() []Wrapper {
 			}
 		})
 	}
+	return out
+}
+
+// wrapperFactory is a function that RETURNS a wrapper instead of being one.
+type wrapperFactory struct {
+	Params []string
+	Inner  ast.Expression // the returned arrow or function literal
+	Body   span           // its body, so the forwarding call inside is never a call site
+}
+
+// factories finds every binding whose value is a wrapper FACTORY.
+//
+// The test is what it RETURNS, not what its body mentions: wrapperOf walks the
+// whole body and finds the `agent()` call inside the returned arrow, so a
+// factory read as a wrapper — which is what happened — puts the factory's own
+// invocation in the inventory and takes every real call site out of it.
+func (s *Script) factories() map[string]wrapperFactory {
+	out := map[string]wrapperFactory{}
+	consider := func(name string, e ast.Expression) {
+		if name == "" || e == nil {
+			return
+		}
+		if _, dup := out[name]; dup {
+			return
+		}
+		if f, ok := s.factoryOf(e); ok {
+			out[name] = f
+		}
+	}
+	s.Walk(func(n ast.Node) {
+		switch v := n.(type) {
+		case *ast.LexicalDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					consider(string(id.Name), b.Initializer)
+				}
+			}
+		case *ast.VariableDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					consider(string(id.Name), b.Initializer)
+				}
+			}
+		case *ast.FunctionDeclaration:
+			if v.Function != nil {
+				consider(string(v.Function.Name.Name), v.Function)
+			}
+		}
+	})
+	return out
+}
+
+// factoryOf reads one function as a factory: it returns a function literal, and
+// that literal is itself a wrapper.
+func (s *Script) factoryOf(e ast.Expression) (wrapperFactory, bool) {
+	var body ast.Node
+	switch fn := e.(type) {
+	case *ast.ArrowFunctionLiteral:
+		body = fn.Body
+	case *ast.FunctionLiteral:
+		body = fn.Body
+	default:
+		return wrapperFactory{}, false
+	}
+	var inner ast.Expression
+	switch b := body.(type) {
+	case *ast.ExpressionBody:
+		inner = fnLiteral(b.Expression)
+	case *ast.BlockStatement:
+		// The TOP-LEVEL returns of this body only. A `return` found by a walk
+		// could belong to the returned function itself, which would read every
+		// wrapper as a factory of itself.
+		for _, st := range b.List {
+			ret, ok := st.(*ast.ReturnStatement)
+			if !ok || ret.Argument == nil {
+				continue
+			}
+			if f := fnLiteral(ret.Argument); f != nil {
+				inner = f
+				break
+			}
+		}
+	}
+	if inner == nil {
+		return wrapperFactory{}, false
+	}
+	w, ok := s.wrapperOf("", inner)
+	if !ok {
+		return wrapperFactory{}, false
+	}
+	return wrapperFactory{Params: paramNames(paramList(e)), Inner: inner, Body: w.Body}, true
+}
+
+func fnLiteral(e ast.Expression) ast.Expression {
+	switch e.(type) {
+	case *ast.ArrowFunctionLiteral, *ast.FunctionLiteral:
+		return e
+	}
+	return nil
+}
+
+// ObjectWrapper is a wrapper held as a PROPERTY of an object literal —
+// `const W = { spawn: async (p, o) => agent(p, o) }` — whose call sites are
+// written `W.spawn(...)` and which this resolver follows to nothing.
+//
+// It is reported rather than resolved. The value of saying it is that the
+// alternative is silence: every `W.spawn(...)` is missing from the inventory,
+// every check below runs over the smaller set, and the backstop counts calls by
+// NAME so it sees nothing either.
+type ObjectWrapper struct {
+	Name string // the binding
+	Prop string // the property holding the wrapper
+	Line int
+}
+
+// ObjectWrappers returns those bindings.
+func (s *Script) ObjectWrappers() []ObjectWrapper {
+	known := map[string]bool{}
+	for _, w := range s.Wrappers() {
+		known[w.Name] = true
+	}
+	var out []ObjectWrapper
+	consider := func(name string, e ast.Expression) {
+		obj, ok := e.(*ast.ObjectLiteral)
+		if !ok || name == "" || known[name] {
+			return
+		}
+		for _, p := range obj.Value {
+			kv, ok := p.(*ast.PropertyKeyed)
+			if !ok {
+				continue
+			}
+			k, ok := propKey(kv.Key)
+			if !ok {
+				continue
+			}
+			if _, isWrap := s.wrapperOf(k, kv.Value); isWrap {
+				out = append(out, ObjectWrapper{Name: name, Prop: k, Line: s.Line(kv.Value.Idx0())})
+			}
+		}
+	}
+	s.Walk(func(n ast.Node) {
+		switch v := n.(type) {
+		case *ast.LexicalDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					consider(string(id.Name), b.Initializer)
+				}
+			}
+		case *ast.VariableDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					consider(string(id.Name), b.Initializer)
+				}
+			}
+		}
+	})
+	sort.Slice(out, func(a, b int) bool {
+		if out[a].Line != out[b].Line {
+			return out[a].Line < out[b].Line
+		}
+		return out[a].Name+"."+out[a].Prop < out[b].Name+"."+out[b].Prop
+	})
+	return out
+}
+
+// UnresolvedWrapperNames returns the names bound to the result of calling a
+// FUNCTION-RETURNING function which Wrappers() did not resolve into a wrapper.
+//
+// It exists for the backstop's arithmetic. That check counts `NAME(` for every
+// name it knows, and an unresolved wrapper is by definition a name it does not
+// know — so the population it compares against the inventory shrank by exactly
+// the calls the inventory had lost, and the two balanced. Adding these names
+// puts the calls back into the textual half only, which is what a backstop is:
+// the ERROR fires because the two disagree, not because this pass understood
+// the script.
+func (s *Script) UnresolvedWrapperNames() []string {
+	known := map[string]bool{}
+	for _, w := range s.Wrappers() {
+		known[w.Name] = true
+	}
+	// Every binding whose value is a function that RETURNS a function. Narrow on
+	// purpose: `const rs = await parallel(...)` is the shape the manual
+	// prescribes and must not be read as a lost wrapper.
+	returnsFn := map[string]bool{}
+	fnOf := func(e ast.Expression) ast.Expression { return fnLiteral(e) }
+	s.Walk(func(n ast.Node) {
+		record := func(name string, e ast.Expression) {
+			if name == "" || fnOf(e) == nil {
+				return
+			}
+			var body ast.Node
+			switch f := e.(type) {
+			case *ast.ArrowFunctionLiteral:
+				body = f.Body
+			case *ast.FunctionLiteral:
+				body = f.Body
+			}
+			switch b := body.(type) {
+			case *ast.ExpressionBody:
+				if fnLiteral(b.Expression) != nil {
+					returnsFn[name] = true
+				}
+			case *ast.BlockStatement:
+				for _, st := range b.List {
+					if ret, ok := st.(*ast.ReturnStatement); ok && ret.Argument != nil && fnLiteral(ret.Argument) != nil {
+						returnsFn[name] = true
+					}
+				}
+			}
+		}
+		switch v := n.(type) {
+		case *ast.LexicalDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					record(string(id.Name), b.Initializer)
+				}
+			}
+		case *ast.VariableDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					record(string(id.Name), b.Initializer)
+				}
+			}
+		case *ast.FunctionDeclaration:
+			if v.Function != nil {
+				record(string(v.Function.Name.Name), v.Function)
+			}
+		}
+	})
+	var out []string
+	seen := map[string]bool{}
+	s.Walk(func(n ast.Node) {
+		bind := func(name string, e ast.Expression) {
+			if name == "" || known[name] || seen[name] || e == nil {
+				return
+			}
+			c, ok := e.(*ast.CallExpression)
+			if !ok {
+				return
+			}
+			id, ok := c.Callee.(*ast.Identifier)
+			if !ok || !returnsFn[string(id.Name)] {
+				return
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+		switch v := n.(type) {
+		case *ast.LexicalDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					bind(string(id.Name), b.Initializer)
+				}
+			}
+		case *ast.VariableDeclaration:
+			for _, b := range v.List {
+				if id, ok := b.Target.(*ast.Identifier); ok {
+					bind(string(id.Name), b.Initializer)
+				}
+			}
+		}
+	})
+	sort.Strings(out)
 	return out
 }
 
@@ -407,6 +752,11 @@ func (s *Script) AgentCalls() []AgentCall {
 		wraps[w.Name] = w
 		bodies = append(bodies, w.Body)
 	}
+	// A FACTORY's returned function, whether or not anything bound its result.
+	// Its `agent()` call is the wrapper's forwarding call and never a call site;
+	// without this a factory nobody invokes contributed a "call straight to
+	// agent() with no wrapper" WARN about the one shape the guide asks for.
+	bodies = append(bodies, s.factoryBodies...)
 	// One body may back several names (an alias shares it); dedupe so the span
 	// list stays small.
 	inWrapper := func(i file.Idx) bool {
@@ -579,7 +929,25 @@ func (s *Script) callOf(c *ast.CallExpression, name string, w Wrapper, isWrap bo
 			if w.OptsOpaque {
 				oe = nil
 			}
-			s.withScope(sub, w.Params, func() { read(pe, oe, w.LabelIdx) })
+			// The factory's binding sits UNDER the wrapper's own, never over it:
+			// a wrapper parameter shadows a factory parameter of the same name,
+			// which is what JavaScript says too.
+			scopeParams := w.Params
+			if len(w.baseParams) > 0 {
+				scopeParams = append(append([]string{}, w.Params...), w.baseParams...)
+				for _, p := range w.baseParams {
+					if p == "" {
+						continue
+					}
+					if _, bound := sub[p]; bound || unbound[p] {
+						continue
+					}
+					if e, ok := w.baseSub[p]; ok {
+						sub[p] = e
+					}
+				}
+			}
+			s.withScope(sub, scopeParams, func() { read(pe, oe, w.LabelIdx) })
 			if w.PromptOpaque {
 				a.PromptSet, a.PromptOK = true, false
 			}

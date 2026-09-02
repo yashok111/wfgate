@@ -198,11 +198,18 @@ func cmdNewLens(args []string) error {
 	// a spelling parseAsks accepts and echoing it verbatim produced a line
 	// whose second word is a positional argument, which `wf round lens` then
 	// refuses -- a follow-up the command prints and cannot be run with.
-	shown := "<Q,Q>"
+	// The clause is DROPPED when no asks were given, rather than falling back to
+	// a `<Q,Q>` placeholder: `<` and `>` are shell redirections, so the printed
+	// line truncated the command at `-asks` and created an empty file named `Q,Q`
+	// in the operator's cwd. A follow-up the command prints must be a line that
+	// can be pasted. When asks WERE given they are quoted, because the parsed
+	// list is joined with commas and a comma-bearing argument is one word only
+	// inside quotes.
+	asksArg := ""
 	if len(parsedAsks) > 0 {
-		shown = strings.Join(parsedAsks, ",")
+		asksArg = fmt.Sprintf(" -asks %q", strings.Join(parsedAsks, ","))
 	}
-	fmt.Printf("    wf round lens %q -name %q -model sonnet -asks %s -round %d\n", dst, name, shown, n)
+	fmt.Printf("    wf round lens %q -name %q -model sonnet%s -round %d\n", dst, name, asksArg, n)
 	return nil
 }
 

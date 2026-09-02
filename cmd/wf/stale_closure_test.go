@@ -396,7 +396,8 @@ func TestCheckStale_aCompleteSweepIsNotAVacuousOne(t *testing.T) {
 	seed := filepath.Join(tmp, "seed.txt")
 	write(t, seed, "=== artifacts/decisions.md  count=1  note=state the rule\n"+
 		"<<<<\nEntry point: `src/main.go:3#NeedleFn`.\n====\n"+
-		"The sequence counter is bumped in place by one on every single write.\n>>>>\n")
+		"The sequence counter is bumped in place by one on every single write.\n\n"+
+		"A second paragraph about the storage layout, which the fix below never touches.\n>>>>\n")
 	if _, err := runWF(t, wsDir, "apply", "-f", seed); err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +405,10 @@ func TestCheckStale_aCompleteSweepIsNotAVacuousOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The fix reaches the only sentence that carried the vocabulary: nothing is
-	// left to re-read anywhere.
+	// left to re-read anywhere. The second paragraph is what makes that a
+	// MEASUREMENT: it is the untouched corpus the retired words were looked
+	// for in. Without it the check scanned zero sentences and called that a
+	// complete sweep — the wave-26 defect, and this test asserted it.
 	fix := filepath.Join(tmp, "fix.txt")
 	write(t, fix, "=== artifacts/decisions.md  count=1  note=allocator\n"+
 		"<<<<\nThe sequence counter is bumped in place by one on every single write.\n====\n"+

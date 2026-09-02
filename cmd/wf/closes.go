@@ -64,7 +64,13 @@ func planClosure(w *ws.Workspace, n int, nums []string, replace bool) (*ledgerCl
 		for _, r := range rows {
 			// No `!r.Malformed` test: a malformed row carries no Num at all,
 			// so it never equals one. The conjunct survived every mutation.
-			if strings.TrimSpace(r.Num) == num {
+			// Compared through `numKey`, because the column is headed `#` and
+			// a row written `| #1 |` passed `wf round record` unremarked:
+			// the argument had its `#` stripped and the cell did not, so that
+			// row could be closed by NO spelling — and after `wf round ingest`
+			// numbered a new row `1` beside it, `wf round close '#1'` closed
+			// the wrong one, silently.
+			if numKey(r.Num) == num {
 				hit = append(hit, r)
 			}
 		}
@@ -95,9 +101,19 @@ func planClosure(w *ws.Workspace, n int, nums []string, replace bool) (*ledgerCl
 func (p *ledgerClosure) nums() []string {
 	out := make([]string, 0, len(p.rows))
 	for _, r := range p.rows {
-		out = append(out, strings.TrimSpace(r.Num))
+		out = append(out, numKey(r.Num))
 	}
 	return out
+}
+
+// numKey is the ONE reading of a ledger row's `#` cell: whitespace and a
+// leading `#` are not part of the number. Every comparison of a finding number
+// against a ledger goes through it — the closure planner, `wf round ingest`'s
+// next number and its duplicate read-back, and the list a refusal prints —
+// because two readers of one cell that disagree about `#1` were how a closure
+// landed on the wrong row.
+func numKey(cell string) string {
+	return strings.TrimPrefix(strings.TrimSpace(cell), "#")
 }
 
 // write fills every planned row's closure cell with value, re-parses the bytes
@@ -183,9 +199,13 @@ func closeWithBatch(w *ws.Workspace, p *ledgerClosure, sha string) error {
 	}
 	fmt.Printf("closed finding(s) %s in round %d by %s  (ledger committed %s)\n", strings.Join(p.nums(), ", "), p.n, value, short(commit))
 	// The check that reads these cells, named where they were just filled.
-	// This commit touched artifacts by construction, so the refusal `wf round
-	// close` makes about bookkeeping commits has nothing to test here; what
-	// it cannot know is whether the batch reached what EACH finding names.
+	// This commit touched artifacts by construction — `cmdApply` refuses a
+	// batch naming a path outside `artifacts/` before it plans, and `-whole`
+	// draws the same line — so the refusal `wf round close` makes about
+	// bookkeeping commits has nothing to test here. It was NOT by construction
+	// until that refusal existed: a header reading `artifacts/../gate-checks.md`
+	// passed `SafeJoin`, and this line closed a BLOCKER with it. What the check
+	// still cannot know is whether the batch reached what EACH finding names.
 	fmt.Printf("  `wf check closure -round %d` asks whether that commit touched what each finding names\n", p.n)
 	return nil
 }

@@ -20,7 +20,7 @@ can drift apart from itself, and nothing here compares the copies.
 | "This edit is one word — quicker by hand than through `wf apply`" | The hand edit gives up all-or-nothing AND the declared occurrence count, and it drops the round out of the cost meter. One gate did it for several rounds and found out at close, with those rounds printing a bare zero | step 2, and `gate-checks.md` I |
 | "`wfcheck` is 0/0 and `wfdry` is 7/7, so the script is checked" | `wfdry` runs control flow; `wfcheck` reads the parsed program and only what a prompt or an `owns` array DECLARES. A file named in neither is invisible to both, and one gate's round-19 blockers included two of exactly that shape | `pre-flight-gate.md`, steps 0 and 2b |
 | "This vector came back early and its findings are obviously correct — I will start fixing now" | Fixes land at a barrier. One gate applied a returning vector's fixes while two others were still reading, and one of those then reported as open a blocker that was already closed | `gate-checks.md` I |
-| "The check printed its numbers, so something was measured" | An empty population prints numbers too. `rules`, `stale`, `closure` and `schema` say NOT A PASS when they compared nothing; `cite` and `dup` say it in the other shape, by printing the unverified or hidden population — on those two, that line IS the verdict and there is no phrase to search for | `gate-checks.md` A |
+| "The check printed its numbers, so something was measured" | An empty population prints numbers too. `rules`, `stale`, `closure` and `schema` say NOT A PASS when they compared nothing; `cite` and `dup` say it in the other shape, by printing the unverified or hidden population — on those two the per-check HEADER carries no phrase to search for and that population line IS the verdict. `wf check` with no argument does end in one `## check —` summary naming all five, where a check that compared nothing reads `nothing compared (NOT A PASS)` rather than `clean` | `gate-checks.md` A |
 | "The freeze is stale — I will delete the tag and freeze again" | A hand `git tag -d` moves every window `wf stats` derives from it. The tool then refuses that round a ratio and drops it from the prediction basis BY NUMBER, so what the shortcut costs is the measurement, not merely its accuracy. `wf freeze -refreeze` republishes, moves the tag and records the supersession | step 2 |
 
 ## -1. Open a gate workspace, and change artifacts through `wf apply`
@@ -265,7 +265,9 @@ can drift apart from itself, and nothing here compares the copies.
    nothing at all, and three more checked a small fraction of their closures while printing a headline
    that read like a pass — only the most recent gates are genuinely covered. Two closures recorded on a live
    gate that no commit touched rode through exactly that way. The scaffold `wf round new` writes states
-   both table rules — name the artifact path, escape a `|` inside a cell.
+   all THREE table rules — name the artifact path, escape a `|` inside a cell, and mark a finding the
+   PREVIOUS round's own fix introduced with `[fix-induced]`, which is opt-in and the only way that
+   share is ever measured.
 
 ## 2. Freeze the manifest, and verify before the launch
 

@@ -417,8 +417,12 @@ func PathsNamed(text string, arts []string) (named map[string][][2]int, ambiguou
 	for sp, owners := range spellings {
 		for _, at := range indexAll(text, sp) {
 			// A spelling is only a mention when it stands on its own: the
-			// artifact `notes.md` must not match inside `release-notes.md`.
-			if at > 0 && !isBoundary(text[at-1]) {
+			// artifact `notes.md` must not match inside `release-notes.md`,
+			// and `decisions.md` inside `other/decisions.md` names a different
+			// file — a `/` is not a boundary. The one exception is the `./`
+			// a finding writes for the workspace itself: `./artifacts/x.md`
+			// named nothing while this comment's own paragraph said it did.
+			if at > 0 && !isBoundary(text[at-1]) && !dotSlashBefore(text, at) {
 				continue
 			}
 			if len(owners) > 1 {
@@ -510,6 +514,12 @@ func isBoundary(c byte) bool {
 	return true
 }
 
+// dotSlashBefore says whether the mention at `at` is preceded by a `./` that
+// itself stands on a boundary — the relative spelling of the workspace root.
+func dotSlashBefore(text string, at int) bool {
+	return at >= 2 && text[at-2:at] == "./" && (at == 2 || isBoundary(text[at-3]))
+}
+
 func uniqueRanges(xs [][2]int) [][2]int {
 	seen := map[[2]int]bool{}
 	var out [][2]int
@@ -559,6 +569,7 @@ var sectionIDRe = regexp.MustCompile(`\b[A-Z]{1,3}[0-9]{1,3}\b`)
 // check then measures a commit against. An id heading two real sections gets
 // the UNION of them — a finding citing it is closed by a fix reaching either,
 // which is the same "any" rule the closure check applies to the ids themselves.
+// Only the ids at the HEAD of a heading are its own; see leadingIDs.
 func SectionRanges(body []byte) map[string][2]int {
 	lines := strings.Split(string(body), "\n")
 	type open struct {
@@ -593,7 +604,7 @@ func SectionRanges(body []byte) map[string][2]int {
 		t := strings.TrimSpace(l)
 		// A fence opens with three or more backticks or tildes and closes with
 		// the same character. Everything between belongs to the code.
-		if f := fenceOf(t); f != "" {
+		if f := FenceOf(t); f != "" {
 			switch {
 			case fence == "":
 				fence = f
@@ -623,7 +634,7 @@ func SectionRanges(body []byte) map[string][2]int {
 			continue
 		}
 		closeTo(level, i) // the previous section ends on the line before this heading
-		ids := sectionIDRe.FindAllString(t, -1)
+		ids := leadingIDs(t[level+1:])
 		if len(ids) == 0 {
 			continue
 		}
@@ -633,8 +644,32 @@ func SectionRanges(body []byte) map[string][2]int {
 	return out
 }
 
-// fenceOf returns the fence marker a line opens or closes with, or "".
-func fenceOf(t string) string {
+// leadingIDs reads the ids a heading NAMES — the ones at its head — and stops
+// at the first word that is not one. A heading mentions other sections in
+// passing (`## D3. One of A2's four D16 premises is wrong`, `### D5.2 …, and
+// D7 is its other half`, `### D3.2 The base scope … [R4]`: 11 of 537 headings
+// across the gate workspaces on disk carry a second id, and every one of them
+// is a mention or a rule marker), and the first version gave EVERY id in the
+// heading the section's range. So a finding citing D1 was reported closed by
+// a commit that touched only D2, because D2's heading said it replaced the D1
+// rule — the false pass this check exists to refuse, produced by the check.
+// Two ids joined by a separator (`## D1, D2 shared`) are both the heading's.
+func leadingIDs(title string) []string {
+	var out []string
+	rest := title
+	for {
+		rest = strings.TrimLeft(rest, " \t.,;:/&+()[]—–-")
+		loc := sectionIDRe.FindStringIndex(rest)
+		if loc == nil || loc[0] != 0 {
+			return out
+		}
+		out = append(out, rest[:loc[1]])
+		rest = rest[loc[1]:]
+	}
+}
+
+// FenceOf returns the fence marker a line opens or closes with, or "".
+func FenceOf(t string) string {
 	for _, c := range []string{"```", "~~~"} {
 		if strings.HasPrefix(t, c) {
 			return c

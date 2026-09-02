@@ -57,7 +57,7 @@ cites.
 | review a script or gate its artifacts (the pre-flight gate) | `references/pre-flight-gate.md` + `references/gate-checks.md` |
 | add per-section review gates inside a script | `references/section-gate.md` |
 | estimate or cut cost, plan fan-out width | `references/cost-discipline.md` |
-| brief a gate REVIEWER | hand them the workspace's `gate-checks.md` (written by `wf init`) |
+| brief a gate REVIEWER | `wf new-lens <name>` — it emits the FIXED half of the brief (the reading list, which points at the workspace's pinned `gate-checks.md` written by `wf init`, the three asks a delta round may never drop, and the output contract) and leaves the VECTOR as a marker line for you to write; `wf round lens` refuses to bank a prompt still carrying that marker |
 | CONTRADICT a rule, or propose dropping one | `references/measured.md` — what that rule was measured on, cited from its text by `[M-nn]`. Never read to FOLLOW a rule; the rule is stated where it is stated |
 
 ## Invariants that hold regardless of activity
@@ -72,8 +72,9 @@ cites.
   decision gate before it, and every section-gate reviewer. Opus on a reviewer
   is a per-round exception that NAMES the miss it guards against and is banked
   in the round's roster (`wf round lens -model`). A reviewer's tier is paid once
-  per ROUND, not once per gate: the ten gates on record spent 166 rounds, and
-  the round nobody dispatches because the quota ran out finds nothing at all.
+  per ROUND, not once per gate, so the tier MULTIPLIES by the round count — read
+  it off `wf stats -time`, per workspace, rather than from a figure quoted here —
+  and the round nobody dispatches because the quota ran out finds nothing at all.
 - No Workflow launches without the pre-flight gate: static check (`wfcheck`),
   dry-run (`wfdry`, BEFORE the freeze), freeze, `wf verify` green.
 - The gate's bookkeeping goes through `wf` (workspace, rounds, apply, freeze,
