@@ -99,8 +99,12 @@ func cmdClose(args []string) error {
 	if err := closeBlockersOpen(w, last); err != nil {
 		return err
 	}
-	manifestChanged, err := closeAgainstTheRule(w, last, *early)
-	if err != nil {
+	// Decided here, WRITTEN only at the commit below: gate.json used to be
+	// saved at this point, and a failure between here and the commit (an
+	// unreadable round, an artifact that would not open) left the manifest
+	// dirty with a call the retry never staged, because the retry saw the call
+	// already banked and had nothing of its own to change.
+	if err := closeAgainstTheRule(w, last, *early); err != nil {
 		return err
 	}
 
@@ -237,10 +241,14 @@ func cmdClose(args []string) error {
 	}
 
 	sort.Strings(written)
-	// gate.json rides in the close commit when the owner's call changed it —
-	// named explicitly, never `add -A`, like every other commit here.
+	// gate.json rides in the close commit whenever it differs from what is
+	// committed — the call this run made OR one a failed earlier run left on
+	// disk — named explicitly, never `add -A`, like every other commit here.
+	if err := w.Save(); err != nil {
+		return err
+	}
 	staged := written
-	if manifestChanged {
+	if d, derr := w.Git.Dirty(ws.ManifestName); derr == nil && len(d) > 0 {
 		staged = append(append([]string(nil), written...), ws.ManifestName)
 	}
 	sha, err := w.Git.Commit(fmt.Sprintf("gate: close %s after %d round(s)\n\nwf-close: %d file(s), wf %s\n",
@@ -328,71 +336,72 @@ func closeBlockersOpen(w *ws.Workspace, round int) error {
 
 // closeAgainstTheRule decides whether this close meets the stop rule — the last
 // REVIEWER round produced no BLOCKER — and, when it does not, whether the owner
-// has said why. It returns whether gate.json changed and must ride in the
-// commit.
+// has said why. It changes the manifest IN MEMORY only; the caller saves it
+// beside the commit, so a refusal leaves nothing on disk.
 //
 // Every BLOCKER row counts, closed or not: closeBlockersOpen has already
 // refused the open ones, and a closed one is still a blocker that round FOUND,
 // which is what the rule reads. A `-kind tool` round is skipped when looking
-// for the last reviewer round, as the stop rule skips it everywhere else.
+// for the last reviewer round, as the stop rule skips it everywhere else; a
+// gate with NO reviewer round has no descent to close against, and the flag is
+// refused there rather than banked over a tool round's empty scaffold.
 //
-// Three refusals, each before a byte is written:
+// Refusals, each before a byte is written:
 //   - a blocker round and no `-early`: the operator is about to bank an ending
 //     the record cannot distinguish from the rule's own, and the message names
 //     both roads;
 //   - `-early` over a round with no blocker: the flag would record a decision
 //     nobody made, and an absent measurement must not print in the register of
 //     a measured one;
-//   - a banked early close from an EARLIER round than the current last one:
-//     the gate was re-opened after it, so the call is stale and is dropped —
-//     re-made with the flag if the new last round has a blocker, forgotten if
-//     it does not.
+//   - a banked call that no longer describes the round: from an EARLIER round
+//     (`wf round new` drops it too), or for this round but over a DIFFERENT
+//     blocker count — the round was re-published with `wf freeze -refreeze`
+//     after the call was made, and a decision about three blockers is not a
+//     decision about five. Both are dropped and the flag is required afresh.
 //
 // The prescribed flow is close -> fill feedback.md -> close again, so a banked
-// call for THIS round satisfies the second close without the flag repeated.
-func closeAgainstTheRule(w *ws.Workspace, last int, reason string) (bool, error) {
+// call that still describes the last round satisfies the second close without
+// the flag repeated.
+func closeAgainstTheRule(w *ws.Workspace, last int, reason string) error {
 	kinds := roundKinds(w)
 	lastRev := last
 	for lastRev > 0 && kinds[lastRev] == "tool" {
 		lastRev--
 	}
+	reason = strings.TrimSpace(reason)
 	if lastRev == 0 {
-		lastRev = last
+		w.M.ClosedEarly = nil
+		if reason != "" {
+			return fmt.Errorf("no round of this gate dispatched a reviewer (every round is `-kind tool`), so there is no stop rule to close against and `-early` would bank a decision over no evidence — drop the flag; nothing was written")
+		}
+		return nil
 	}
 	b, err := os.ReadFile(filepath.Join(w.RoundDir(lastRev), "findings.md"))
 	if err != nil {
-		return false, fmt.Errorf("round %d has no findings file to read: %w", lastRev, err)
+		return fmt.Errorf("round %d has no findings file to read: %w", lastRev, err)
 	}
+	// A malformed row is not refused HERE: `wf freeze` refuses one in every
+	// closed round before a tag can move past it, so the clause this loop
+	// carried survived its mutation on the only fixture that could reach it
+	// (the sweep over the twenty-seventh wave) and was deleted, not shipped.
 	standing := 0
 	for _, r := range ws.ParseFindings(b) {
-		if r.Malformed {
-			return false, fmt.Errorf("round %d has a ledger row that is not four cells; fix it before closing", lastRev)
-		}
 		if !r.Placeholder() && r.Blocker() {
 			standing++
 		}
 	}
-	changed := false
-	if e := w.M.ClosedEarly; e != nil && e.Round != lastRev {
+	if e := w.M.ClosedEarly; e != nil && (e.Round != lastRev || e.Blockers != standing) {
 		w.M.ClosedEarly = nil
-		changed = true
 	}
-	reason = strings.TrimSpace(reason)
 	switch {
 	case reason != "" && standing == 0:
-		return false, fmt.Errorf("round %d produced no BLOCKER, so this gate ends ON the stop rule and `-early` would bank a decision nobody made — drop the flag; nothing was written", lastRev)
+		return fmt.Errorf("round %d produced no BLOCKER, so this gate ends ON the stop rule and `-early` would bank a decision nobody made — drop the flag; nothing was written", lastRev)
 	case reason != "":
 		w.M.ClosedEarly = &ws.EarlyClose{Round: lastRev, Blockers: standing, Reason: reason, Decided: time.Now().UTC().Format(time.RFC3339)}
-		changed = true
 	case standing > 0 && w.M.ClosedEarly == nil:
-		return false, fmt.Errorf("round %d produced %d BLOCKER(s), and the gate ends on a REVIEWER round that produces none [R1] — so this close is AGAINST the stop rule, and the record would not say so.\n  Either open the next round (`wf round new -kind delta`), or close on the owner's call and bank why:\n    wf close -early \"<why these blockers do not hold the gate — e.g. all %d are about the artifact's own guards, none about the subject>\"\n  The reason lands in gate.json and `wf stats` prints it; nothing was written", lastRev, standing, standing)
+		return fmt.Errorf("round %d produced %d BLOCKER(s), and the gate ends on a REVIEWER round that produces none [R1] — so this close is AGAINST the stop rule, and the record would not say so.\n  Either open the next round (`wf round new -kind delta`), or close on the owner's call and bank why:\n    wf close -early \"<why these blockers do not hold the gate — e.g. all %d are about the artifact's own guards, none about the subject>\"\n  The reason lands in gate.json and `wf stats` prints it; nothing was written", lastRev, standing, standing)
 	}
-	if changed {
-		if err := w.Save(); err != nil {
-			return false, err
-		}
-	}
-	return changed, nil
+	return nil
 }
 
 // closeFeedback prefills what the tool knows and leaves the rest as headings.

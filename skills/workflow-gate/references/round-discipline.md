@@ -160,7 +160,7 @@ sequence is `pre-flight-gate.md`.
   re-filing a guard? Measured: a round left three blockers, every one about the artifact's own
   guards (an enumeration by coordinates that was not the population, a class list closed by
   instance, a defeat clause asking for a judgement) and none a claim that the SUBJECT was wrong; the
-  owner chose to build, and the build found the class's two remaining members in an afternoon, both
+  owner chose to build, and the build found two more members of the class, both
   "a promise in the document with no surface behind it", which no reading of the document produces.
   When every standing blocker is about a guard, the cheapest next reviewer is the compiler. What is
   NOT permitted is a bare close: `wf close` refuses a last reviewer round carrying a BLOCKER unless
@@ -247,8 +247,8 @@ sequence is `pre-flight-gate.md`.
   in every one of them and produced a blocker in three, so nothing matching "a run of ones" fired and
   the gate took four rounds to act on a signal that had been true since the second. `wf stats`
   prints the section form as well — `<path>#<anchor> is cited by a BLOCKER in rounds N-M` — over
-  the anchors the finding rows cite, whatever file each blocker names; a bare `#D5` later in a row
-  is attributed to the document the row already cited. It fired twice on the gate that paid for
+  the anchors the finding rows cite, whatever file each blocker names; a bare `#D5` is attributed
+  to the first document the row cites with an anchor, wherever in the row it stands. It fired twice on the gate that paid for
   it [M-42], where the run of ones never did.
 
   **A guard is closed by ENUMERATING its inputs, not by fixing the direction the last reviewer looked

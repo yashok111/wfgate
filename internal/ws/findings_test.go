@@ -339,6 +339,10 @@ func TestSetNum_rewritesTheFirstCellInPlace(t *testing.T) {
 	if !ok || got != "| 7 | MINOR | quotes `a \\| b` | x |" {
 		t.Fatalf("SetNum = %q, %v", got, ok)
 	}
+	// An escaped pipe in the first cell is not a cell boundary.
+	if got, ok := SetNum("| a \\| b | MINOR | x |", "7"); !ok || got != "| 7 | MINOR | x |" {
+		t.Fatalf("escaped pipe counted as a boundary: %q, %v", got, ok)
+	}
 	if _, ok := SetNum("no pipes here", "1"); ok {
 		t.Fatal("a line with no row shape must report false")
 	}

@@ -724,8 +724,10 @@ operator found the second run by reading three ledgers side by side.
 `grep -c '[GIVES-UP]'` over the decisions document that defined the tag: 13 against a list of
 twelve, the thirteenth the sentence introducing the tag. Found by running the command. The same
 slice, the other repository, a different hand: a census sentence in the target's `CLAUDE.md`
-containing the literal `//nolint` was counted by the `rg --max-columns=200 --max-columns-preview -c '//nolint'` it described. Twice in one
-slice across two repositories.
+containing the literal `//nolint` was counted by the `rg -c '//nolint' cmd internal` it described.
+Twice in one slice across two repositories. (The first banked copy of this entry quoted that
+command with two flags nobody typed — a shell hook rewrote the `rg` inside the heredoc that wrote
+the file, the class `wf round record`'s refusal was built for, and this file was not exempt.)
 
 ## M-44 — the checklist that went stale against itself
 

@@ -1178,10 +1178,22 @@ loses it is that nobody remembered while writing the row.
 		return err
 	}
 	w.M.Round = n
+	// A new round REOPENS a gate that was closed against the stop rule: the
+	// owner's call was about the round that stood last, and it no longer does.
+	// Dropped here, where the manifest is rewritten and committed anyway,
+	// rather than only inside `wf close` — there the drop lived in memory and a
+	// refusal on the same run left `wf stats` printing a call about a round
+	// that was no longer the last (the external vector of the twenty-seventh
+	// wave's review round).
+	reopened := w.M.ClosedEarly != nil
+	w.M.ClosedEarly = nil
 	if err := w.Save(); err != nil {
 		return err
 	}
 	rel, _ := filepath.Rel(w.Root, f)
+	if reopened {
+		fmt.Printf("  note: the gate had been closed AGAINST the stop rule; opening round %d reopens it and the banked call is dropped\n", n)
+	}
 	sha, err := w.Git.Commit(fmt.Sprintf("round %d: open (%s) — %s", n, *kind, t), []string{rel, ws.ManifestName})
 	if err != nil {
 		return err
@@ -3879,12 +3891,12 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 					if r.FixInduced() {
 						fixInducedBlockers++
 					}
-					if kinds[n] != "tool" {
-						for _, s := range blockerSections(r.Text) {
-							if rs := sectionRounds[s]; len(rs) == 0 || rs[len(rs)-1] != n {
-								sectionRounds[s] = append(rs, n)
-							}
-						}
+					// Collected blindly: `sectionRuns` drops rounds that are not
+					// in the reviewer sequence and folds a section cited twice in
+					// one round, so a filter here was a guard no mutation could
+					// make fail (the sweep over the twenty-seventh wave).
+					for _, s := range blockerSections(r.Text) {
+						sectionRounds[s] = append(sectionRounds[s], n)
 					}
 				}
 				// Counted, never subtracted. Every banked total in this corpus
@@ -5554,7 +5566,7 @@ var citePathRe = regexp.MustCompile(`\b([\w./-]*[\w-]{2,}\.[A-Za-z]{2,8})(?::\d+
 // name is the same token to both readers; a `(47a)` suffix is outside it and
 // `A.9` is the section. The anchor must carry a LETTER: `#12` in a finding is
 // an issue or a row number, never a heading.
-var citeAnchorRe = regexp.MustCompile(`(?:\b([\w./-]*[\w-]{2,}\.[A-Za-z]{2,8}))?#([A-Za-z0-9_.\-]+)`)
+var citeAnchorRe = regexp.MustCompile(`(?:(?:^|[^\p{L}\p{N}_./-])([\p{L}\p{N}_./-]*[\p{L}\p{N}_-]{2,}\.[A-Za-z]{2,8})(?::\d+(?:-\d+)?)?)?#([A-Za-z0-9_.\-]+)`)
 
 // blockerSections lists the `path#anchor` sections one finding text cites, in
 // order of first mention and without repeats. A bare `#anchor` is attributed to
@@ -5573,9 +5585,18 @@ func blockerSections(text string) []string {
 			out = append(out, s)
 		}
 	}
-	for _, m := range citeAnchorRe.FindAllStringSubmatch(text, -1) {
+	for _, loc := range citeAnchorRe.FindAllStringSubmatchIndex(text, -1) {
+		m := []string{text[loc[0]:loc[1]], "", text[loc[4]:loc[5]]}
+		if loc[2] >= 0 {
+			m[1] = text[loc[2]:loc[3]]
+		}
 		anchor := strings.TrimRight(m[2], ".")
 		if anchor == "" || !hasLetter(anchor) {
+			continue
+		}
+		// A URL's fragment is not a section of anything this gate reviews:
+		// `https://host/page.html#top` would otherwise be `page.html#top`.
+		if m[1] != "" && (strings.HasPrefix(m[1], "//") || strings.HasSuffix(text[:loc[2]], "://")) {
 			continue
 		}
 		if m[1] != "" {
@@ -5636,6 +5657,11 @@ func sectionRuns(cited map[string][]int, reviewer []int) []sectionRun {
 		for _, n := range rounds {
 			p, ok := pos[n]
 			if !ok {
+				continue
+			}
+			// A section two blockers of ONE round cite is one round of the
+			// run, not a break in it — that shape is the signal's own.
+			if len(run) > 0 && run[len(run)-1] == n {
 				continue
 			}
 			if len(run) > 0 && pos[run[len(run)-1]]+1 != p {
@@ -5755,7 +5781,9 @@ func isAdoption(msgOf func(string) (string, bool), shas []string) bool {
 // numberRows fills the `#` cell of every finding row that has none, in place,
 // continuing from the highest numeric id the ledger already carries — the same
 // counter `wf round ingest` continues from. The scaffold's own unfilled row is
-// a form and is left alone; a malformed row is refused before this runs.
+// a form and is left alone. A malformed row is refused by the caller before
+// this runs, and a clause for it here survived its mutation — deleted, not
+// shipped.
 // Returns the rewritten bytes and the ids it assigned, in row order.
 func numberRows(b []byte, rows []ws.FindingRow) ([]byte, []int) {
 	next := 0
@@ -5767,7 +5795,7 @@ func numberRows(b []byte, rows []ws.FindingRow) ([]byte, []int) {
 	lines := strings.Split(string(b), "\n")
 	var assigned []int
 	for _, r := range rows {
-		if r.Malformed || r.Placeholder() || strings.TrimSpace(r.Num) != "" || r.Line < 1 || r.Line > len(lines) {
+		if r.Placeholder() || strings.TrimSpace(r.Num) != "" || r.Line < 1 || r.Line > len(lines) {
 			continue
 		}
 		next++

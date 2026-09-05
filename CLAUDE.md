@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 26 — what each change answered and the command
+maintenance record, waves 2 to 27 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -357,7 +357,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 26 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 27 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -393,8 +393,8 @@ proposing something that may already be on the do-not-build list. Its index:
 | 23 | The reviewer's brief is a scaffold | `wf new-lens`; an open question is a BLOCKER; `agents/gate-sweep.md` and the model pin refused; the `-o` refusal that compared an absolute path |
 | 24 | A4, the report nobody read (`docs/feedbacks/FEEDBACK-a4.md`) | Closure halves ORed per SPAN; bookkeeping commits refused as closures via `CommitPaths`; ownership normalised against `REPO` in the skeleton; the routing TRANSITION row; a pinned number re-derived by the round that READS it |
 | 25 | Where a round's MINUTES go | The brief's reading rule and section index by line; `wf apply -closes`; `wf check` with one summary line and `stale` from the newest freeze; `wf round ingest`; `wf init` FIRST; the external vector that died |
-| 27 | A18, the gate that closed with three blockers standing (`docs/feedbacks/FEEDBACK-a18.md`) | `wf close -early` banking the owner's call; the SECTION run in `wf stats` over the anchors a blocker cites; `round record` numbering empty `#` cells; `target:<sha>` as a prose closure; three manual rules (a guard counting its own statement, shapes never coordinates, the build as a `-kind run` round) |
 | 26 | A bug hunt by five vectors | 47 findings, 8 BLOCKER: hooks granting permission, `apply` writing outside `artifacts/`, a `#1` row closing the wrong one, factory wrappers invisible to `wfcheck`, a heading's passing mention closing a section; the 68-mutation sweep and the symlink, merge and fence findings of its review round |
+| 27 | A18, the gate that closed with three blockers standing (`docs/feedbacks/FEEDBACK-a18.md`) | `wf close -early` banking the owner's call; the SECTION run in `wf stats` over the anchors a blocker cites; `round record` numbering empty `#` cells; `target:<sha>` as a prose closure; three manual rules (a guard counting its own statement, shapes never coordinates, the build as a `-kind run` round) |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
@@ -537,7 +537,7 @@ the wave it came from; the measurement is there.
 
 - **A mutation that breaks the BUILD is not a surviving guard.** The sweep
   scores a compile error as "the bars stayed green", and this file records the
-  trap being met four separate times (waves 14, 16). Two more read as SURVIVED
+  trap being met six separate times (waves 14, 16, 26, 27). Two more read as SURVIVED
   and had not been because `sd` exits ZERO when it replaces nothing (wave 11):
   verify the replacement LANDED, never the exit code. And a mutation sweep
   poisons the tree it runs in — a concurrent reader of one reads a mutated file,
@@ -662,9 +662,8 @@ or contradicted). What an agent needs without opening it:
 - **A18 is the first gate that did NOT close on the stop rule**, and it closed
   correctly: its last round's three blockers were all about its own GUARDS, not
   about the subject, and the target's owner chose to build. `wf close` banked it
-  with no field saying so; since the twenty-seventh wave a bare close over a
-  blocker round is refused and `wf close -early "<why>"` banks the call in
-  `gate.json`, at the head of `wf stats` and in the record. Read that
+  with no field saying so; `close -early` (in "Why each command is the way it
+  is") is the answer, and A18's own workspace predates it. Read that
   feedback before quoting the stop rule as a thing every closed gate met.
 - **Run `wf stats -time` inside a workspace before reasoning about cost.** The
   commit timestamps are what price a round and nothing else records them; a

@@ -67,6 +67,32 @@ func TestStatsNamesASectionRunWhateverFilesTheBlockersName(t *testing.T) {
 
 // A tool round between two reviewer rounds neither breaks the run nor extends
 // it — the same reading the run of ones uses.
+// The sweep over this wave: a gap breaks the run; every qualifying section
+// is printed, in section order; and two blockers of one round citing one
+// section are one round of the run, not a break in it.
+func TestStatsSectionRunShapes(t *testing.T) {
+	t.Run("a gap breaks the run", func(t *testing.T) {
+		wsDir := newGate(t)
+		d5 := "| 1 | BLOCKER | `decisions.md#D5` again | x |\n"
+		gateOfRounds(t, wsDir, []string{d5, d5, "| 1 | BLOCKER | `decisions.md#D9` instead | x |\n", d5})
+		out, err := runWF(t, wsDir, "stats")
+		noErr(t, err, "stats")
+		mustNotContain(t, out, "is cited by a BLOCKER")
+	})
+	t.Run("every run, in section order, and a doubled round is one round", func(t *testing.T) {
+		wsDir := newGate(t)
+		both := "| 1 | BLOCKER | `decisions.md#D9` list | x |\n| 2 | BLOCKER | `decisions.md#D5` sites | x |\n"
+		twice := both + "| 3 | BLOCKER | `decisions.md#D5` once more, same round | x |\n"
+		gateOfRounds(t, wsDir, []string{both, twice, both})
+		out, err := runWF(t, wsDir, "stats")
+		noErr(t, err, "stats")
+		mustContain(t, out, "decisions.md#D5 is cited by a BLOCKER in rounds 1-3", "decisions.md#D9 is cited by a BLOCKER in rounds 1-3")
+		if strings.Index(out, "#D5 is cited") > strings.Index(out, "#D9 is cited") {
+			t.Fatalf("runs must print in section order, got:\n%s", out)
+		}
+	})
+}
+
 func TestStatsSectionRunSkipsAToolRound(t *testing.T) {
 	wsDir := newGate(t)
 	d5 := "| 1 | BLOCKER | `decisions.md#D5` again | x |\n"
@@ -196,12 +222,13 @@ func TestCloseEarlyIsDroppedWhenTheGateReopens(t *testing.T) {
 // from the highest id present, and announced only when it happened.
 func TestRecordNumbersRowsThatCarryNoId(t *testing.T) {
 	wsDir := newGate(t)
-	ledger(t, wsDir, 1, "| 4 | MAJOR | first | x |\n|  | MINOR | second quotes `a \\| b` | x |\n|  | NOTE | third |  |\n")
+	ledger(t, wsDir, 1, "| 4 | MAJOR | first | x |\n|  | MINOR | second quotes `a \\| b` | x |\n|  | NOTE | third |  |\n|  |  |  |  |\n")
 	out, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
 	noErr(t, err, "round record")
 	mustContain(t, out, "numbered 2 row(s) that carried no #: 5, 6")
 	b := read(t, filepath.Join(wsDir, "rounds", "r1", "findings.md"))
-	mustContain(t, b, "| 4 | MAJOR | first | x |", "| 5 | MINOR | second quotes `a \\| b` | x |", "| 6 | NOTE | third |  |")
+	// The scaffold's blank row is a form, not a finding, and keeps its bytes.
+	mustContain(t, b, "| 4 | MAJOR | first | x |", "| 5 | MINOR | second quotes `a \\| b` | x |", "| 6 | NOTE | third |  |", "|  |  |  |  |")
 
 	// Idempotent: a second record over the numbered ledger numbers nothing.
 	out, err = runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"))
@@ -248,4 +275,125 @@ func TestCloseLooksPastAToolRoundForTheBlockers(t *testing.T) {
 	out, err = runWF(t, wsDir, "close", "-early", "guards only")
 	noErr(t, err, "close -early past a tool round")
 	mustContain(t, out, "round 1 ended with 1 BLOCKER(s) standing")
+}
+
+// The review round's external vector over this wave.
+
+// A `path:line#anchor` citation used to leave a BARE anchor behind — the line
+// broke the path off — which was then attributed to the row's document: a
+// blocker on `src/main.go:3#NeedleFn` became `decisions.md#NeedleFn`. A URL's
+// fragment is nobody's section, and a path may carry non-ASCII letters, as the
+// citation grammar in `internal/check` allows.
+func TestBlockerSectionsExternalVector(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"path:line#anchor keeps its path", "`decisions.md#D5` names src/main.go:3#NeedleFn", []string{"decisions.md#D5", "src/main.go#NeedleFn"}},
+		{"line range too", "src/main.go:3-9#NeedleFn is wrong", []string{"src/main.go#NeedleFn"}},
+		{"url fragment dropped", "see https://host/page.html#top and `decisions.md#D5`", []string{"decisions.md#D5"}},
+		{"unicode path", "docs/решения.md#D2 is stale", []string{"docs/решения.md#D2"}},
+	}
+	for _, c := range cases {
+		got := blockerSections(c.in)
+		if strings.Join(got, ",") != strings.Join(c.want, ",") {
+			t.Errorf("%s: blockerSections = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A banked call describes a blocker COUNT; a round re-published with more
+// blockers is not the round the owner decided about, and the second close
+// must ask again.
+func TestCloseEarlyIsStaleAfterARefreezeWithMoreBlockers(t *testing.T) {
+	wsDir := newGate(t)
+	gateOfRounds(t, wsDir, []string{"| 1 | BLOCKER | `decisions.md#D5` guard | prose: re-asked |\n"})
+	_, err := runWF(t, wsDir, "close", "-early", "one guard")
+	noErr(t, err, "close -early")
+	ledger(t, wsDir, 1, "| 1 | BLOCKER | `decisions.md#D5` guard | prose: re-asked |\n| 2 | BLOCKER | `decisions.md#D9` list | prose: re-asked |\n")
+	if _, err := runWF(t, wsDir, "round", "record", filepath.Join(wsDir, "rounds", "r1", "findings.md"), "-round", "1"); err != nil {
+		t.Fatal(err)
+	}
+	// -refreeze republishes CHANGED artifact bytes; the ledger alone is not one.
+	art := filepath.Join(wsDir, "artifacts", "decisions.md")
+	write(t, art, read(t, art)+"\nA sentence the second publication carries.\n")
+	gitIn(t, wsDir, "commit", "-qam", "edit")
+	if _, err := runWF(t, wsDir, "freeze", "-refreeze"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runWF(t, wsDir, "close")
+	if err == nil {
+		t.Fatalf("a re-published round with a different blocker count must need a fresh -early, got:\n%s", out)
+	}
+	mustContain(t, err.Error(), "round 1 produced 2 BLOCKER(s)")
+	out, err = runWF(t, wsDir, "close", "-early", "both guards")
+	noErr(t, err, "fresh -early")
+	mustContain(t, out, "round 1 ended with 2 BLOCKER(s) standing")
+}
+
+// `wf round new` REOPENS the gate: the call is dropped where the manifest is
+// rewritten and committed anyway, so nothing downstream can read it stale.
+func TestRoundNewDropsTheBankedEarlyClose(t *testing.T) {
+	wsDir := newGate(t)
+	gateOfRounds(t, wsDir, []string{"| 1 | BLOCKER | `decisions.md#D5` guard | prose: re-asked |\n"})
+	_, err := runWF(t, wsDir, "close", "-early", "one guard")
+	noErr(t, err, "close -early")
+	out, err := runWF(t, wsDir, "round", "new", "-title", "reopened", "-kind", "delta")
+	noErr(t, err, "round new")
+	mustContain(t, out, "reopens it and the banked call is dropped")
+	mustNotContain(t, read(t, filepath.Join(wsDir, "gate.json")), "closedEarly")
+	stats, err := runWF(t, wsDir, "stats")
+	noErr(t, err, "stats")
+	mustNotContain(t, stats, "AGAINST the stop rule")
+}
+
+// A gate whose every round is `tool` has no reviewer descent; `-early` there
+// would bank a decision over no evidence.
+func TestCloseEarlyIsRefusedOnAToolOnlyGate(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	write(t, filepath.Join(target, "src", "main.go"), "package main\n")
+	gitIn(t, target, "init", "-q", "-b", "main")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "initial")
+	wsDir := filepath.Join(tmp, "ws")
+	_, err := runWF(t, tmp, "init", "demo", "-target", target, "-dir", wsDir)
+	noErr(t, err, "init")
+	art := filepath.Join(tmp, "decisions.md")
+	write(t, art, "# Decisions\n")
+	_, err = runWF(t, wsDir, "add", art)
+	noErr(t, err, "add")
+	if _, err := runWF(t, wsDir, "round", "new", "-title", "bookkeeping", "-kind", "tool"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runWF(t, wsDir, "freeze"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = runWF(t, wsDir, "close", "-early", "no reviewer ran")
+	if err == nil {
+		t.Fatal("-early over a tool-only gate must be refused")
+	}
+	mustContain(t, err.Error(), "every round is `-kind tool`", "nothing was written")
+	out, err := runWF(t, wsDir, "close")
+	noErr(t, err, "bare close over a tool-only gate")
+	mustNotContain(t, out, "round 0")
+	mustContain(t, out, "is a `tool` round")
+}
+
+// A call left on disk by a close that failed AFTER deciding (the manifest was
+// saved, the commit never happened) is staged by the retry, because the
+// staging reads the file's dirt and not this run's memory.
+func TestCloseStagesAManifestAnEarlierRunLeftDirty(t *testing.T) {
+	wsDir := newGate(t)
+	gateOfRounds(t, wsDir, []string{"| 1 | BLOCKER | `decisions.md#D5` guard | prose: re-asked |\n"})
+	g := read(t, filepath.Join(wsDir, "gate.json"))
+	write(t, filepath.Join(wsDir, "gate.json"), strings.Replace(g, "\"round\": 1", "\"round\": 1,\n  \"closedEarly\": {\"round\": 1, \"blockers\": 1, \"reason\": \"left by a failed run\", \"decided\": \"2026-09-05T00:00:00Z\"}", 1))
+	out, err := runWF(t, wsDir, "close")
+	noErr(t, err, "close over a dirty manifest")
+	mustContain(t, out, "left by a failed run")
+	status, err := runWF(t, wsDir, "status")
+	noErr(t, err, "status")
+	mustContain(t, status, "tree clean")
 }
