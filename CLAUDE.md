@@ -663,7 +663,7 @@ or contradicted). What an agent needs without opening it:
   correctly: its last round's three blockers were all about its own GUARDS, not
   about the subject, and the target's owner chose to build. `wf close` banked it
   with no field saying so; `close -early` (in "Why each command is the way it
-  is") is the answer, and A18's own workspace predates it. Read that
+  is") is the answer, banked into A18's workspace retroactively. Read that
   feedback before quoting the stop rule as a thing every closed gate met.
 - **Run `wf stats -time` inside a workspace before reasoning about cost.** The
   commit timestamps are what price a round and nothing else records them; a
