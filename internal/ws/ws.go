@@ -32,6 +32,26 @@ type Manifest struct {
 	Target  string `json:"target"`  // absolute path of the repo under review
 	Created string `json:"created"` // RFC3339
 	Round   int    `json:"round"`   // the round currently open; 0 before the first
+
+	// ClosedEarly records a gate closed AGAINST the stop rule — its last
+	// reviewer round produced a BLOCKER and the target's owner chose to build
+	// anyway. It is the one fact about a gate's end that git cannot derive:
+	// the tag, the ledger and the close commit look identical for a gate that
+	// met the rule and one that did not. Measured on A18: closed at three
+	// standing blockers, all three about the artifact's own guards, and the
+	// record said nothing, so a reader of the corpus could not tell the two
+	// apart without re-reading round 4's ledger by hand.
+	ClosedEarly *EarlyClose `json:"closedEarly,omitempty"`
+}
+
+// EarlyClose is the owner's call, banked: which round it overrode, how many
+// BLOCKERs stood, and why. `wf close -early` writes it; `wf stats` and the
+// close record print it; nothing else reads it.
+type EarlyClose struct {
+	Round    int    `json:"round"`
+	Blockers int    `json:"blockers"`
+	Reason   string `json:"reason"`
+	Decided  string `json:"decided"` // RFC3339
 }
 
 type Workspace struct {

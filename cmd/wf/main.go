@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	wfgate "git.sumka.site/yakov/wfgate"
 	"git.sumka.site/yakov/wfgate/internal/apply"
@@ -1417,11 +1418,22 @@ func cmdRoundRecord(args []string) error {
 			open++
 		}
 	}
+	// A row with no `#` is a finding a later round's brief cannot name, and
+	// `wf apply -closes #N` cannot close. Measured on A18: every row of round
+	// 1 was recorded with the cell empty — the lens brief says the operator
+	// numbers the rows, the operator did not, and the ledger was renumbered by
+	// a script after the fact. Numbered HERE, in place, continuing from the
+	// highest id the file already carries, and announced only when it
+	// happened: a line restating ids the operator typed would paint every run.
+	b, numbered := numberRows(b, rows)
 	dir := w.RoundDir(n)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	dst := filepath.Join(dir, "findings.md")
+	if len(numbered) > 0 {
+		fmt.Printf("  numbered %d row(s) that carried no #: %s — a row without an id cannot be named by a later round's brief\n", len(numbered), roundList(numbered))
+	}
 	if err := os.WriteFile(dst, b, 0o644); err != nil {
 		return err
 	}
@@ -3727,6 +3739,15 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		return fmt.Errorf("no rounds yet")
 	}
 	_, _ = fmt.Fprintf(out, "## stats — workspace %s, %d round(s)\n", w.M.Name, w.M.Round)
+	// In the HEADER, before any round line: a gate closed against the stop
+	// rule prints the same per-round lines as one that met it, and the one
+	// fact that separates them must not sit under twenty lines that read like
+	// a pass. Printed only where the decision was made — a gate that closed on
+	// the rule says nothing here, because "closed on the rule" is what every
+	// other line already claims.
+	if e := w.M.ClosedEarly; e != nil {
+		_, _ = fmt.Fprintf(out, "  closed AGAINST the stop rule: round %d ended with %d BLOCKER(s) standing and the owner chose to build — %s\n", e.Round, e.Blockers, e.Reason)
+	}
 	// Whether the workspace has a population at all is a different question
 	// from whether each round's share of it can be attributed. Deriving the
 	// first from the per-round totals made a workspace with one unattributable
@@ -3782,6 +3803,11 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 	var oneBlockerText []string
 	var flatRuns [][]int
 	var flatTexts [][]string
+	// The SECTION signal, which the run of ones is only one shape of: for
+	// every `path#anchor` a BLOCKER cites, the reviewer rounds that cited it.
+	// See the note where it is printed.
+	sectionRounds := map[string][]int{}
+	var reviewerRounds []int
 	revF, revB, toolF, toolB, toolRounds := 0, 0, 0, 0, 0
 	revFIB := 0
 	unparsable, notes, offScale := 0, 0, 0
@@ -3852,6 +3878,13 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 					soleBlocker = r.Text
 					if r.FixInduced() {
 						fixInducedBlockers++
+					}
+					if kinds[n] != "tool" {
+						for _, s := range blockerSections(r.Text) {
+							if rs := sectionRounds[s]; len(rs) == 0 || rs[len(rs)-1] != n {
+								sectionRounds[s] = append(rs, n)
+							}
+						}
 					}
 				}
 				// Counted, never subtracted. Every banked total in this corpus
@@ -3961,6 +3994,9 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		// for every "at least N" there is an N. A run of them is the signature of
 		// a guard asking the wrong KIND of question, and only the ROUND SHAPE is
 		// mechanical — the reading stays the operator's.
+		if kinds[n] != "tool" {
+			reviewerRounds = append(reviewerRounds, n)
+		}
 		if kinds[n] != "tool" && blockers == 1 {
 			oneBlockerRun = append(oneBlockerRun, n)
 			oneBlockerText = append(oneBlockerText, soleBlocker)
@@ -4135,6 +4171,21 @@ func statsReport(w *ws.Workspace, showTimeFlag bool, out io.Writer) error {
 		if p := sharedPath(flatTexts[i]); p != "" {
 			_, _ = fmt.Fprintf(out, "  note: every blocker in that run cites %s — one region, %d rounds: re-ask what the guard over it is FOR before patching it again\n", p, len(run))
 		}
+	}
+	// The SECTION signal, independent of the blocker count and of which file
+	// each blocker names. The manual has said since the P3-era gates that the
+	// general form of the flat-descent signal is "the same artifact section
+	// produces a blocker in three consecutive rounds, whatever the round totals
+	// are", and named a gate that ran 1, 4, 6, 3 while one property was
+	// rewritten in every round — and this report implemented only the run of
+	// ones. Measured again on A18 (rounds at 3, 1, 2, 3): `decisions.md#D5` and
+	// the D9 class list each drew a blocker in rounds 2, 3 and 4, the cited
+	// FILES changed every round, the run of ones never fired, and the operator
+	// found the second run by reading three ledgers side by side. The unit is
+	// the anchor as the row writes it (`decisions.md#D5`); a bare `#D5` later
+	// in the same row is attributed to the path the row already cited.
+	for _, sr := range sectionRuns(sectionRounds, reviewerRounds) {
+		_, _ = fmt.Fprintf(out, "  note: %s is cited by a BLOCKER in rounds %s — the same SECTION %d reviewer rounds running, whatever file each blocker names: a guard over it is being patched rather than re-asked; re-ask what it is FOR before the next round\n", sr.section, roundList(sr.rounds), len(sr.rounds))
 	}
 	// Zero over a whole gate is a POPULATION, and it has to say so. P2f applied
 	// 27 batches and this meter printed "0 apply batch(es)" thirteen times
@@ -5497,6 +5548,112 @@ func sharedPath(texts []string) string {
 // rule is the one `internal/check/cite.go` already applies to a citation.
 var citePathRe = regexp.MustCompile(`\b([\w./-]*[\w-]{2,}\.[A-Za-z]{2,8})(?::\d+)?\b`)
 
+// An anchored citation as a ledger row writes it — `decisions.md#D5`,
+// `decisions.md#A.9(47a)` — or a bare `#D5` standing for "the same document".
+// The anchor class is the one `internal/check/cite.go` accepts, so a section
+// name is the same token to both readers; a `(47a)` suffix is outside it and
+// `A.9` is the section. The anchor must carry a LETTER: `#12` in a finding is
+// an issue or a row number, never a heading.
+var citeAnchorRe = regexp.MustCompile(`(?:\b([\w./-]*[\w-]{2,}\.[A-Za-z]{2,8}))?#([A-Za-z0-9_.\-]+)`)
+
+// blockerSections lists the `path#anchor` sections one finding text cites, in
+// order of first mention and without repeats. A bare `#anchor` is attributed to
+// the first path the row cited WITH an anchor — that is how the row reads
+// ("`decisions.md#D9`'s list ... omits `#D5`'s bundle bump") — and a bare
+// anchor in a row that cites no such path is dropped rather than guessed at.
+func blockerSections(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	doc := ""
+	type bare struct{ anchor string }
+	var pending []bare
+	add := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, m := range citeAnchorRe.FindAllStringSubmatch(text, -1) {
+		anchor := strings.TrimRight(m[2], ".")
+		if anchor == "" || !hasLetter(anchor) {
+			continue
+		}
+		if m[1] != "" {
+			if doc == "" {
+				doc = m[1]
+				for _, p := range pending {
+					add(doc + "#" + p.anchor)
+				}
+				pending = nil
+			}
+			add(m[1] + "#" + anchor)
+			continue
+		}
+		if doc != "" {
+			add(doc + "#" + anchor)
+		} else {
+			pending = append(pending, bare{anchor})
+		}
+	}
+	return out
+}
+
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// sectionRun is one section a BLOCKER cited in three or more consecutive
+// reviewer rounds. Consecutive in the REVIEWER sequence: a tool round between
+// two of them neither breaks the run nor extends it, the same reading the run
+// of ones uses, because the stop rule reads reviewer evidence only.
+type sectionRun struct {
+	section string
+	rounds  []int
+}
+
+// sectionRuns returns every qualifying run — every one, not the longest, for
+// the reason the flat-descent note records — sorted by section so the report
+// is stable.
+func sectionRuns(cited map[string][]int, reviewer []int) []sectionRun {
+	pos := map[int]int{}
+	for i, n := range reviewer {
+		pos[n] = i
+	}
+	var out []sectionRun
+	for s, rounds := range cited {
+		var run []int
+		flush := func() {
+			if len(run) >= 3 {
+				out = append(out, sectionRun{section: s, rounds: append([]int(nil), run...)})
+			}
+			run = nil
+		}
+		for _, n := range rounds {
+			p, ok := pos[n]
+			if !ok {
+				continue
+			}
+			if len(run) > 0 && pos[run[len(run)-1]]+1 != p {
+				flush()
+			}
+			run = append(run, n)
+		}
+		flush()
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].section != out[j].section {
+			return out[i].section < out[j].section
+		}
+		return out[i].rounds[0] < out[j].rounds[0]
+	})
+	return out
+}
+
 // refuseInsideTarget stops a workspace whose root resolves inside the
 // repository under review, BEFORE the directory is created.
 //
@@ -5593,4 +5750,34 @@ func isAdoption(msgOf func(string) (string, bool), shas []string) bool {
 		}
 	}
 	return true
+}
+
+// numberRows fills the `#` cell of every finding row that has none, in place,
+// continuing from the highest numeric id the ledger already carries — the same
+// counter `wf round ingest` continues from. The scaffold's own unfilled row is
+// a form and is left alone; a malformed row is refused before this runs.
+// Returns the rewritten bytes and the ids it assigned, in row order.
+func numberRows(b []byte, rows []ws.FindingRow) ([]byte, []int) {
+	next := 0
+	for _, r := range rows {
+		if v, err := strconv.Atoi(numKey(r.Num)); err == nil && v > next {
+			next = v
+		}
+	}
+	lines := strings.Split(string(b), "\n")
+	var assigned []int
+	for _, r := range rows {
+		if r.Malformed || r.Placeholder() || strings.TrimSpace(r.Num) != "" || r.Line < 1 || r.Line > len(lines) {
+			continue
+		}
+		next++
+		if l, ok := ws.SetNum(lines[r.Line-1], strconv.Itoa(next)); ok {
+			lines[r.Line-1] = l
+			assigned = append(assigned, next)
+		}
+	}
+	if len(assigned) == 0 {
+		return b, nil
+	}
+	return []byte(strings.Join(lines, "\n")), assigned
 }

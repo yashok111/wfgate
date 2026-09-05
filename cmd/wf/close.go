@@ -50,6 +50,16 @@ func cmdClose(args []string) error {
 	// names each of them before it removes them.
 	withArts := fs.Bool("artifacts", true,
 		"bank the artifacts themselves (default true; -artifacts=false keeps only history, stats, rounds and the feedback form)")
+	// The owner's call, as a FACT. The stop rule ends a gate on a reviewer round
+	// with no BLOCKER; A18 ended on a round with three, all of them about the
+	// artifact's own guards and none about the subject, and the owner chose to
+	// build. Right call — the build found what the rounds would not have — and
+	// the close banked it with no field saying so, so `wf stats` printed what
+	// a gate that met the rule prints. A bare close over a blocker round is now
+	// refused; the reason given here is banked in gate.json and printed by
+	// stats, the close and the record.
+	early := fs.String("early", "",
+		"close AGAINST the stop rule, on the owner's call: WHY the last reviewer round's BLOCKER(s) do not hold the gate (banked in gate.json, printed by `wf stats`)")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
@@ -87,6 +97,10 @@ func cmdClose(args []string) error {
 		return fmt.Errorf("artifacts or rounds are not committed, so the snapshot would record a state nobody reviewed:\n  %s", strings.Join(names, "\n  "))
 	}
 	if err := closeBlockersOpen(w, last); err != nil {
+		return err
+	}
+	manifestChanged, err := closeAgainstTheRule(w, last, *early)
+	if err != nil {
 		return err
 	}
 
@@ -223,8 +237,14 @@ func cmdClose(args []string) error {
 	}
 
 	sort.Strings(written)
+	// gate.json rides in the close commit when the owner's call changed it —
+	// named explicitly, never `add -A`, like every other commit here.
+	staged := written
+	if manifestChanged {
+		staged = append(append([]string(nil), written...), ws.ManifestName)
+	}
 	sha, err := w.Git.Commit(fmt.Sprintf("gate: close %s after %d round(s)\n\nwf-close: %d file(s), wf %s\n",
-		w.M.Name, last, len(written), version), written)
+		w.M.Name, last, len(written), version), staged)
 	if err != nil {
 		return err
 	}
@@ -234,6 +254,9 @@ func cmdClose(args []string) error {
 	// dispatched none did not end on the rule; it stopped next to it.
 	if roundKinds(w)[last] == "tool" {
 		fmt.Printf("  note: round %d is a `tool` round — this gate's last round dispatched no reviewer, and the stop rule reads the REVIEWER descent\n", last)
+	}
+	if e := w.M.ClosedEarly; e != nil {
+		fmt.Printf("  closed AGAINST the stop rule: round %d ended with %d BLOCKER(s) standing and the owner chose to build — %s\n", e.Round, e.Blockers, e.Reason)
 	}
 	for _, f := range written {
 		fmt.Printf("  %s\n", f)
@@ -303,6 +326,75 @@ func closeBlockersOpen(w *ws.Workspace, round int) error {
 	return nil
 }
 
+// closeAgainstTheRule decides whether this close meets the stop rule — the last
+// REVIEWER round produced no BLOCKER — and, when it does not, whether the owner
+// has said why. It returns whether gate.json changed and must ride in the
+// commit.
+//
+// Every BLOCKER row counts, closed or not: closeBlockersOpen has already
+// refused the open ones, and a closed one is still a blocker that round FOUND,
+// which is what the rule reads. A `-kind tool` round is skipped when looking
+// for the last reviewer round, as the stop rule skips it everywhere else.
+//
+// Three refusals, each before a byte is written:
+//   - a blocker round and no `-early`: the operator is about to bank an ending
+//     the record cannot distinguish from the rule's own, and the message names
+//     both roads;
+//   - `-early` over a round with no blocker: the flag would record a decision
+//     nobody made, and an absent measurement must not print in the register of
+//     a measured one;
+//   - a banked early close from an EARLIER round than the current last one:
+//     the gate was re-opened after it, so the call is stale and is dropped —
+//     re-made with the flag if the new last round has a blocker, forgotten if
+//     it does not.
+//
+// The prescribed flow is close -> fill feedback.md -> close again, so a banked
+// call for THIS round satisfies the second close without the flag repeated.
+func closeAgainstTheRule(w *ws.Workspace, last int, reason string) (bool, error) {
+	kinds := roundKinds(w)
+	lastRev := last
+	for lastRev > 0 && kinds[lastRev] == "tool" {
+		lastRev--
+	}
+	if lastRev == 0 {
+		lastRev = last
+	}
+	b, err := os.ReadFile(filepath.Join(w.RoundDir(lastRev), "findings.md"))
+	if err != nil {
+		return false, fmt.Errorf("round %d has no findings file to read: %w", lastRev, err)
+	}
+	standing := 0
+	for _, r := range ws.ParseFindings(b) {
+		if r.Malformed {
+			return false, fmt.Errorf("round %d has a ledger row that is not four cells; fix it before closing", lastRev)
+		}
+		if !r.Placeholder() && r.Blocker() {
+			standing++
+		}
+	}
+	changed := false
+	if e := w.M.ClosedEarly; e != nil && e.Round != lastRev {
+		w.M.ClosedEarly = nil
+		changed = true
+	}
+	reason = strings.TrimSpace(reason)
+	switch {
+	case reason != "" && standing == 0:
+		return false, fmt.Errorf("round %d produced no BLOCKER, so this gate ends ON the stop rule and `-early` would bank a decision nobody made — drop the flag; nothing was written", lastRev)
+	case reason != "":
+		w.M.ClosedEarly = &ws.EarlyClose{Round: lastRev, Blockers: standing, Reason: reason, Decided: time.Now().UTC().Format(time.RFC3339)}
+		changed = true
+	case standing > 0 && w.M.ClosedEarly == nil:
+		return false, fmt.Errorf("round %d produced %d BLOCKER(s), and the gate ends on a REVIEWER round that produces none [R1] — so this close is AGAINST the stop rule, and the record would not say so.\n  Either open the next round (`wf round new -kind delta`), or close on the owner's call and bank why:\n    wf close -early \"<why these blockers do not hold the gate — e.g. all %d are about the artifact's own guards, none about the subject>\"\n  The reason lands in gate.json and `wf stats` prints it; nothing was written", lastRev, standing, standing)
+	}
+	if changed {
+		if err := w.Save(); err != nil {
+			return false, err
+		}
+	}
+	return changed, nil
+}
+
 // closeFeedback prefills what the tool knows and leaves the rest as headings.
 // Measured need: three post-mortems were written by hand, and the first of them
 // closed its gate on 99 findings and 27 blockers against a true 98 and 26 —
@@ -314,7 +406,11 @@ func closeFeedback(w *ws.Workspace, stats *bytes.Buffer) []byte {
 	b.WriteString("retype it. The sections are fixed so that a corpus of gates can be searched by\n")
 	b.WriteString("them. An empty section and a section with nothing to report are different\n")
 	b.WriteString("claims: write \"nothing\" rather than leaving one blank.*\n\n")
-	fmt.Fprintf(&b, "Target: `%s`\nTool: wf %s\nClosed: %s\n\n", w.M.Target, version, time.Now().UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "Target: `%s`\nTool: wf %s\nClosed: %s\n", w.M.Target, version, time.Now().UTC().Format(time.RFC3339))
+	if e := w.M.ClosedEarly; e != nil {
+		fmt.Fprintf(&b, "Closed AGAINST the stop rule: round %d ended with %d BLOCKER(s) standing, on the owner's call — %s\n", e.Round, e.Blockers, e.Reason)
+	}
+	b.WriteString("\n")
 	b.WriteString("## What this run was\n\n```\n")
 	b.WriteString(strings.TrimRight(stats.String(), "\n"))
 	b.WriteString("\n```\n\n")

@@ -646,7 +646,10 @@ mechanically: which edits belong together is judgement, and all-or-nothing is pe
    feedback scaffold with the derived numbers already filled in — and the artifacts themselves, whose
    CONTENT is the one thing prune destroys that nothing else holds. `-artifacts=false` opts out for a
    gate whose artifacts live somewhere that outlives the workspace, and prune then names each of them
-   before it removes them. Fill the scaffold and
+   before it removes them. A last reviewer round carrying a BLOCKER is refused unless
+   `-early "<why>"` names the owner's reason — the ending a bare close cannot distinguish from the
+   rule's own (`round-discipline.md`, the stop rule) — and the banked call satisfies the second close
+   without the flag repeated. Fill the scaffold and
    run `wf close` again to bank it; a filled form is never overwritten. `-archive DIR` (or
    `$WF_ARCHIVE`) copies the record out to a corpus that outlives the workspace.
 

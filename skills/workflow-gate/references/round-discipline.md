@@ -155,6 +155,21 @@ sequence is `pre-flight-gate.md`.
   own awk: it prints each round's findings, blockers, closure split and apply batches from the ledger
   and git, and it knows the open round's scaffold placeholder is not a finding — a hand count closed
   a gate on the wrong totals for exactly that reason [M-12].
+- **A gate may end AGAINST the rule on the target OWNER's call, and the record must say so [M-42].**
+  The question is `gate-checks.md` §0's — would a fleet BUILD the wrong thing, or is the round
+  re-filing a guard? Measured: a round left three blockers, every one about the artifact's own
+  guards (an enumeration by coordinates that was not the population, a class list closed by
+  instance, a defeat clause asking for a judgement) and none a claim that the SUBJECT was wrong; the
+  owner chose to build, and the build found the class's two remaining members in an afternoon, both
+  "a promise in the document with no surface behind it", which no reading of the document produces.
+  When every standing blocker is about a guard, the cheapest next reviewer is the compiler. What is
+  NOT permitted is a bare close: `wf close` refuses a last reviewer round carrying a BLOCKER unless
+  `-early "<why>"` names the reason, and banks it in `gate.json`, at the head of `wf stats` and in
+  the record, so a reader of the corpus can tell the two endings apart without re-reading a ledger.
+  And the build is a review round the ledger otherwise never sees: open it as
+  `wf round new -kind run` BEFORE `wf close`, record what the compiler and the smoke found as its
+  findings, and a class that grows during the build is in the descent rather than in a carve-out
+  file by hand.
 - **The blocker descent is not monotone, and a BUMP is the corpus norm.** Every gate workspace on
   record bounces at least once, and gates have closed on the rule with a bump inside their last few
   rounds. A bump is NOT reliably "the round after a large fix" — one followed the smallest fix of its
@@ -230,7 +245,11 @@ sequence is `pre-flight-gate.md`.
   general one is *the same artifact section produces a blocker in three consecutive rounds*, whatever
   the round totals are. A later gate's rounds ran at 1, 4, 6 and 3 while one property was rewritten
   in every one of them and produced a blocker in three, so nothing matching "a run of ones" fired and
-  the gate took four rounds to act on a signal that had been true since the second.
+  the gate took four rounds to act on a signal that had been true since the second. `wf stats`
+  prints the section form as well — `<path>#<anchor> is cited by a BLOCKER in rounds N-M` — over
+  the anchors the finding rows cite, whatever file each blocker names; a bare `#D5` later in a row
+  is attributed to the document the row already cited. It fired twice on the gate that paid for
+  it [M-42], where the run of ones never did.
 
   **A guard is closed by ENUMERATING its inputs, not by fixing the direction the last reviewer looked
   from [M-26].** Each round of such a run files a finding that is individually correct and a fix that

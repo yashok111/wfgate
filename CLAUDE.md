@@ -393,6 +393,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 23 | The reviewer's brief is a scaffold | `wf new-lens`; an open question is a BLOCKER; `agents/gate-sweep.md` and the model pin refused; the `-o` refusal that compared an absolute path |
 | 24 | A4, the report nobody read (`docs/feedbacks/FEEDBACK-a4.md`) | Closure halves ORed per SPAN; bookkeeping commits refused as closures via `CommitPaths`; ownership normalised against `REPO` in the skeleton; the routing TRANSITION row; a pinned number re-derived by the round that READS it |
 | 25 | Where a round's MINUTES go | The brief's reading rule and section index by line; `wf apply -closes`; `wf check` with one summary line and `stale` from the newest freeze; `wf round ingest`; `wf init` FIRST; the external vector that died |
+| 27 | A18, the gate that closed with three blockers standing (`docs/feedbacks/FEEDBACK-a18.md`) | `wf close -early` banking the owner's call; the SECTION run in `wf stats` over the anchors a blocker cites; `round record` numbering empty `#` cells; `target:<sha>` as a prose closure; three manual rules (a guard counting its own statement, shapes never coordinates, the build as a `-kind run` round) |
 | 26 | A bug hunt by five vectors | 47 findings, 8 BLOCKER: hooks granting permission, `apply` writing outside `artifacts/`, a `#1` row closing the wrong one, factory wrappers invisible to `wfcheck`, a heading's passing mention closing a section; the 68-mutation sweep and the symlink, merge and fence findings of its review round |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
@@ -422,6 +423,21 @@ so the record holds the artifacts themselves by default — their CONTENT is wha
 nothing else keeps, and a record of the bookkeeping alone is not a record of the
 gate. `wf close -artifacts=false` opts out, and prune then names every artifact
 by name before removing it.
+
+**`close -early` is a refusal first and a field second.** The stop rule ends a
+gate on a reviewer round with no BLOCKER; A18 ended on one with three, all
+about the artifact's own guards, and the owner's call to build was right — the
+build found the two class members the rounds would not have. But the close
+banked it with nothing saying so, and `wf stats` printed the summary of a gate
+that met the rule: the tag, the ledger and the close commit are identical for
+the two endings, so it is the one fact about a gate's end git cannot derive.
+A bare close over a blocker round is refused with both roads named; the reason
+given is banked in `gate.json` and printed in the header of `wf stats`, the
+close and the record; `-early` over a round with NO blocker is refused too,
+because an absent measurement must not print in the register of a measured
+one; and a banked call is dropped when the gate is re-opened past it. The
+last REVIEWER round is what is read — a `tool` round after it dispatched
+nobody — which is the same reading every other consumer of the stop rule uses.
 
 **`parseMixed` instead of `fs.Parse`.** `flag.FlagSet` stops at the first
 positional argument, so `wf init p2c -target X` silently dropped `-target` and
@@ -646,7 +662,9 @@ or contradicted). What an agent needs without opening it:
 - **A18 is the first gate that did NOT close on the stop rule**, and it closed
   correctly: its last round's three blockers were all about its own GUARDS, not
   about the subject, and the target's owner chose to build. `wf close` banked it
-  with no field saying so, which `FEEDBACK-a18.md` §1 asks for. Read that
+  with no field saying so; since the twenty-seventh wave a bare close over a
+  blocker round is refused and `wf close -early "<why>"` banks the call in
+  `gate.json`, at the head of `wf stats` and in the record. Read that
   feedback before quoting the stop rule as a thing every closed gate met.
 - **Run `wf stats -time` inside a workspace before reasoning about cost.** The
   commit timestamps are what price a round and nothing else records them; a

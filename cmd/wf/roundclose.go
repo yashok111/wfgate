@@ -257,8 +257,13 @@ func proseValue(s string) (string, error) {
 	// this asks, rather than a second detector. `wf freeze` would then demand
 	// that commit exist and `wf check closure` would test what it touched,
 	// both against a row whose author meant a sentence.
+	//
+	// The case two gates in a row hit (P4a, A18): the sha is a commit in the
+	// TARGET repository — the finding was closed by building the thing — and
+	// "close it with that commit instead" names a commit this workspace does
+	// not have. The message now carries the spelling `Shas()` leaves alone.
 	if shas := (ws.FindingRow{ClosedBy: v}).Shas(); len(shas) > 0 {
-		return "", fmt.Errorf("the prose contains %q, which every reader downstream reads as a COMMIT claim (a hex token of 7-40 chars with a digit) — close it with that commit instead, or reword", shas[0])
+		return "", fmt.Errorf("the prose contains %q, which every reader downstream reads as a COMMIT claim (a hex token of 7-40 chars with a digit) — close it with that commit instead, or reword; if it is a commit in the TARGET repository, write it `%s%s`: that spelling is read as prose and verified by nobody here, which is its honest state", shas[0], ws.TargetShaPrefix, shas[0])
 	}
 	// The escape the ledger's own format requires. Written HERE rather than
 	// refused: the operator typed a sentence, and a shell pipeline quoted

@@ -233,6 +233,15 @@ becomes a wrong instruction that no downstream step questions.
       an unanchored citation gets once the TARGET moves, classifying each as EDITED, SHIFTED, GONE or
       UNRESOLVED. The citation grammar, the ASCII-anchor rule and the extensionless-path trap are
       `gate-harness.md` (`wf docs harness`) [M-15].
+- [ ] **A decisions document enumerates what the fleet must VISIT by SHAPE, never by coordinate
+      [M-44].** A `file:line` checklist inside a document that is read before the code is written
+      goes stale on the first edit — including the gate's OWN edits: one enumeration listed ten sites
+      by `file:line`, two were wrong by round 4, and the document had drifted against ITSELF twice
+      while nobody had touched the target. The shape list beside it ("the version lives in six forms,
+      and one command over one form reaches none of the others") survived every round, because it
+      names no coordinate. A citation supporting a CLAIM about the tree as it stands is the bullet
+      above; a list of sites to edit is this one, and the acceptance command finds the coordinates
+      when it runs.
 - [ ] **Every symbol named in a prompt exists** with that exact name, arity and parameter order.
 - [ ] **A status measured on a bare router is not the status the service returns.** Middleware in front
       of the router answers first: a request without the media type or origin the CSRF layer demands
@@ -416,6 +425,14 @@ compiles, passes every test, and does nothing.
       is what found it, at the one step where changing production code is usually forbidden [M-36].
       This is the bars rule one row up applied to every other number in the section: derived from a
       reading of the code, a count is an assertion; run, it is an observation.
+- [ ] **A guard's command run over the document that STATES the guard counts the statement
+      [M-43].** `grep -c '[GIVES-UP]'` over the decisions document that defined the tag returned 13
+      against a list of twelve: the thirteenth was the sentence introducing the tag. The same shape
+      then recurred in the target, from a different hand — a census sentence written into `CLAUDE.md`
+      contained the literal it counted. Twice in one slice, in two repositories, is a class. Anchor
+      the pattern to the SHAPE of a real member (`^[0-9]+\. .*\[GIVES-UP\]`) or exclude the
+      document that carries the rule, and it is found by RUNNING the command, never by reading it —
+      which is what the bullet above already requires.
 - [ ] **And it is re-derived by the round that READS a clause resting on it, not only by the round
       that wrote it.** A baseline table is measured ONCE, early, by one agent, and every later round
       reads it as an OBSERVATION rather than as the claim it is. Measured on the gate that shipped

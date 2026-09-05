@@ -162,14 +162,63 @@ var shaRe = regexp.MustCompile(`\b[0-9a-f]{7,40}\b`)
 // lowercased first: an UPPERCASE sha pasted from some UI is the same claim, and
 // classifying it as prose silently demotes a verifiable closure to "verify by
 // hand" (measured on the first live run).
+//
+// A token written `target:<sha>` is NOT a claim: it names a commit in the
+// repository under review, which this workspace cannot check and no reader here
+// verifies, so it counts as prose. Two gates in a row (P4a, A18) fought `wf
+// round close -prose` over exactly this — the closure was "built in the target
+// at 39f4fc9", the detector read a commit claim, and the refusal's advice
+// ("close it with that commit instead") named a commit the workspace does not
+// have. The prefix is the spelling the refusal now prescribes.
 func (r FindingRow) Shas() []string {
 	var out []string
-	for _, m := range shaRe.FindAllString(strings.ToLower(r.ClosedBy), -1) {
-		if strings.ContainsAny(m, "0123456789") {
-			out = append(out, m)
+	lower := strings.ToLower(r.ClosedBy)
+	for _, loc := range shaRe.FindAllStringIndex(lower, -1) {
+		m := lower[loc[0]:loc[1]]
+		if !strings.ContainsAny(m, "0123456789") {
+			continue
 		}
+		if strings.HasSuffix(lower[:loc[0]], TargetShaPrefix) {
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
+}
+
+// TargetShaPrefix marks a sha in a closure cell as belonging to the TARGET
+// repository: unverifiable here by construction, read as prose by every reader.
+const TargetShaPrefix = "target:"
+
+// SetNum rewrites the `#` cell of one findings row IN PLACE — the first cell,
+// between the first and second unescaped pipes — and leaves every other byte of
+// the line as written. Same discipline as SetClosedBy: the row is never split
+// and re-joined. The second return is false when the line does not carry an
+// opening pipe followed by a second unescaped one.
+func SetNum(row, val string) (string, bool) {
+	esc := false
+	first, second := -1, -1
+	for i, r := range row {
+		switch {
+		case esc:
+			esc = false
+		case r == '\\':
+			esc = true
+		case r == '|':
+			if first < 0 {
+				first = i
+			} else {
+				second = i
+			}
+		}
+		if second >= 0 {
+			break
+		}
+	}
+	if first < 0 || second < 0 {
+		return row, false
+	}
+	return row[:first+1] + " " + val + " " + row[second:], true
 }
 
 // ParseFindings extracts the table rows from a findings document. A document

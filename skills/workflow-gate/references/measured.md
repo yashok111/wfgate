@@ -701,3 +701,37 @@ The session before `wf init`: 05:05 to 06:46 UTC, **101 minutes** — the interv
 agents, three design agents, the draft — against 169 minutes from `wf init` to `wf close` (2.8 h by
 `wf stats -time`, first commit to last). 37% of the session outside every number `wf` prints, on a gate whose `wf stats` authoring window reads 2.1
 minutes.
+
+## M-42 — the gate that closed against the stop rule, and the build that reviewed it
+
+One gate, four rounds: findings 34, 17, 14, 10 against blockers 3, 1, 2, 3. Round 4 left three
+blockers standing, every one about the artifact's own guards — an enumeration by coordinates that
+was not the population, a class list closed by instance, a defeat clause asking a reader to re-derive
+the class — and none a claim that the subject was wrong. Asked directly, the target's owner chose to
+close and build. The build took the class list from 12 to 14: two more members of the shape every
+round had missed, "a promise in the document with no surface behind it" — a preview route that
+refuses the kind it is documented for, a repository method named for a store that has a different
+one. No reading of the document produces those. `wf close` banked the gate with no field saying it
+had ended against the rule, and `wf stats` printed what a gate that met it prints.
+
+The same gate is where the SECTION signal was measured against the run of ones: two sections drew a
+blocker in three and four consecutive rounds while the cited files changed every round, the blocker
+counts were 3, 1, 2, 3, and the run of ones — the only form `wf stats` printed — never fired. The
+operator found the second run by reading three ledgers side by side.
+
+## M-43 — the guard that counted its own statement
+
+`grep -c '[GIVES-UP]'` over the decisions document that defined the tag: 13 against a list of
+twelve, the thirteenth the sentence introducing the tag. Found by running the command. The same
+slice, the other repository, a different hand: a census sentence in the target's `CLAUDE.md`
+containing the literal `//nolint` was counted by the `rg --max-columns=200 --max-columns-preview -c '//nolint'` it described. Twice in one
+slice across two repositories.
+
+## M-44 — the checklist that went stale against itself
+
+A decisions document enumerated ten sites by `file:line` for the fleet to visit. By round 4 two were
+wrong, and the document had drifted against ITSELF twice while nobody had touched the target — the
+coordinates moved under the gate's own fixes. The shape list beside it ("the version lives in six
+forms, and one command over one form reaches none of the others") survived every round unchanged,
+because it named no coordinate. Three rounds to rediscover a corollary the general rule — a guard
+over a report asks "is this what the document NAMES" — already implied.

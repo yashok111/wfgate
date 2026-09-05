@@ -315,3 +315,34 @@ func TestSetClosedBy(t *testing.T) {
 		})
 	}
 }
+
+// A sha written `target:<sha>` names a commit in the repository under review,
+// which this workspace cannot check; it is prose to every reader. Two gates in
+// a row fought `wf round close -prose` over exactly this spelling's absence.
+func TestShas_targetPrefixIsProse(t *testing.T) {
+	cases := map[string]int{
+		"built in the target at target:39f4fc9a":  0,
+		"built in the target at 39f4fc9a":         1,
+		"TARGET:39F4FC9A then also 784f636d here": 1,
+		"target: 39f4fc9a":                        1, // the space breaks the prefix; the sha is bare
+	}
+	for in, want := range cases {
+		if got := (FindingRow{ClosedBy: in}).Shas(); len(got) != want {
+			t.Errorf("%q: Shas = %v, want %d", in, got, want)
+		}
+	}
+}
+
+func TestSetNum_rewritesTheFirstCellInPlace(t *testing.T) {
+	row := "|  | MINOR | quotes `a \\| b` | x |"
+	got, ok := SetNum(row, "7")
+	if !ok || got != "| 7 | MINOR | quotes `a \\| b` | x |" {
+		t.Fatalf("SetNum = %q, %v", got, ok)
+	}
+	if _, ok := SetNum("no pipes here", "1"); ok {
+		t.Fatal("a line with no row shape must report false")
+	}
+	if _, ok := SetNum("| only one pipe", "1"); ok {
+		t.Fatal("a line with one pipe must report false")
+	}
+}
