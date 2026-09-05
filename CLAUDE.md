@@ -634,14 +634,20 @@ numbers and the command that re-derives them — is `GATES.md`, moved out of
 this file on 2026-09-02 (27 KB, read only when a number is about to be quoted
 or contradicted). What an agent needs without opening it:
 
-- **Sixteen gates have run entirely through `wf`**, the newest A4
-  (`~/projects/gates/mocker-a4-mcp-reach`, `docs/feedbacks/FEEDBACK-a4.md`),
-  and **NINETEEN gate workspaces are on disk** — `~/gates/{p2d,p2e,p2f}` and
-  sixteen under `~/projects/gates/`, of which `mocker-a-mcp` is pruned to its
-  record and a6, p6a, p6b, p6c and p6d have no bullet in `GATES.md` yet. nova
-  ran on another machine and has no workspace here. Re-count with
+- **Seventeen gates have run entirely through `wf`**, the newest A18
+  (`~/projects/gates/mocker-a18-functions`, `docs/feedbacks/FEEDBACK-a18.md`),
+  and **TWENTY-TWO gate workspaces are on disk** — `~/gates/{p2d,p2e,p2f}` and
+  nineteen under `~/projects/gates/`, of which `mocker-a-mcp` is pruned to its
+  record and a6, p6a, p6b, p6c, p6d and p7 have no bullet in `GATES.md` yet.
+  nova ran on another machine and has no workspace here. Re-count with
   `ls -d ~/projects/gates/*/ ~/gates/*/`; the count has been inherited wrong
-  four times.
+  four times, and was inherited wrong again between A4 and A18 — the line said
+  nineteen while the directory held twenty-two.
+- **A18 is the first gate that did NOT close on the stop rule**, and it closed
+  correctly: its last round's three blockers were all about its own GUARDS, not
+  about the subject, and the target's owner chose to build. `wf close` banked it
+  with no field saying so, which `FEEDBACK-a18.md` §1 asks for. Read that
+  feedback before quoting the stop rule as a thing every closed gate met.
 - **Run `wf stats -time` inside a workspace before reasoning about cost.** The
   commit timestamps are what price a round and nothing else records them; a
   hand pooling of the same spans has moved five per-gate medians and been
