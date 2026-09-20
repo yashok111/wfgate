@@ -68,8 +68,11 @@ ROOT is the plugin, the three freshly built binaries rode into every cached
 version: 36 MB of each 39 MB directory, and `claude plugin update` keeps every
 superseded version forever, so 37 releases had accumulated **1.2 GB** for a
 skill and two hooks that weigh 300 KB. `install.sh` now runs `make clean`
-before the plugin step and prunes every cache version but the one it just
-installed. Neither is a Makefile change: `make install` is also run alone by
+before the plugin step, drops `evals/results/` — `claude plugin eval` writes a
+timestamped report and scored JSON there per run, which `.gitignore` keeps out
+of the repository and therefore out of everywhere BUT the plugin copy, and
+which the 2 MB tripwire is too coarse to see — and prunes every cache version
+but the one it just installed. Neither is a Makefile change: `make install` is also run alone by
 somebody who wants `./wf` to stay. Before consolidation, 866 lines of
 gate-guarding tooling and both specs had no version control at all, and the
 P2e false green lived in exactly such a file. The mechanics/judgement split
@@ -593,6 +596,17 @@ make clean       # remove the three built binaries
 
 `make test` counting `ok` lines is not a green bar — one package can fail while
 the count looks right. Read the FAIL lines.
+
+**`evals/` is NOT a bar, and must not be run like one.** `claude plugin eval .`
+measures whether the `workflow-gate` skill CHANGES an agent's answer — it runs
+each case twice, with the plugin and without, and reports the delta — and every
+run is a full `claude` child process on the operator's own credential. Four
+cases at the default three runs is twenty-four of them, so it is an instrument
+an operator reaches for deliberately, not a step in a commit. `evals/README.md`
+is the reference: what each case measures, why the three `skill-loaded` graders
+are `arm: with-only` (a plugin scored for loading itself is the "absent
+measurement in the register of a measured one" class), and why a NEGATIVE delta
+on `no-false-fire` is that case's finding rather than its failure.
 
 `make check-docs` stages README, SKILL.md and the ten references into a scratch
 workspace and runs the two checks that read prose over them. It exists because

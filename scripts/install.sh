@@ -67,6 +67,19 @@ make -C "$ROOT" check-tools
 # `make build` regenerates them in seconds, and every bar that needs them
 # depends on that target.
 make -C "$ROOT" clean
+# Same class, one directory over: `claude plugin eval` writes a timestamped
+# results directory per run — the scored JSON, the self-contained HTML report
+# and the mock recordings — under `evals/results/`, and the plugin copy takes
+# it along with everything else. It is run OUTPUT: `.gitignore` keeps it out of
+# the repository, which is exactly why the plugin copy is where it would
+# otherwise accumulate, one kept version per release. The size tripwire below
+# cannot see it — a report is well under 2 MB — so it is named here.
+# `--eval-dir` and the manifest's `experimental.evals` can point the suite
+# somewhere else; this covers the default, which is what this repo uses.
+if [ -d "$ROOT/evals/results" ]; then
+	echo "install: dropping eval run output before the plugin copy: evals/results/"
+	rm -rf "$ROOT/evals/results"
+fi
 # And refuse to stage the tree while ANY binary is still in it. `make clean`
 # knows the paths it builds to; a sweep agent's worktree under
 # `.claude/worktrees/` carries its own built `wf` (measured 2026-09-02: 20 MB

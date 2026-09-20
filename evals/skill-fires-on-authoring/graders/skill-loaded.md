@@ -1,0 +1,10 @@
+---
+type: tool_used
+tool: Skill
+input_match: workflow-gate
+min: 1
+arm: with-only
+weight: 1
+---
+
+The plugin-fired indicator: authoring a script must load the operating manual.
