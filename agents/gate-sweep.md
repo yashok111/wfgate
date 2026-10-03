@@ -2,12 +2,13 @@
 name: gate-sweep
 description: >
   Mutation sweep over a wfgate tooling change: delete or invert each new guard,
-  run the bars, report which guards SURVIVED. LAUNCH IT WITH
-  isolation: "worktree" — a sweep poisons the tree it runs in, and isolation is
-  a parameter of the Agent CALL, not of this frontmatter. Use for the
-  correctness vector of a wave's review round, or before claiming a guard is
-  proven. Reports; never fixes.
+  run the bars, report which guards SURVIVED. It always runs in its own git
+  worktree (the frontmatter sets isolation; no call parameter needed), so an
+  UNCOMMITTED change is not in its tree: commit before launching it. Use for
+  the correctness vector of a wave's review round, or before claiming a guard
+  is proven. Reports; never fixes.
 tools: [Read, Grep, Glob, Bash, Edit]
+isolation: worktree
 omitClaudeMd: true
 experimental:
   cacheTtl: "1h"
@@ -44,7 +45,7 @@ Three more rules the file you no longer load used to give you:
 
 - **Confirm the change under sweep is in your tree before the first mutation.**
   An isolated worktree starts at HEAD — measured, sometimes its PARENT — and an
-  uncommitted change is not in it at all. Check `git log -1` against the brief,
+  uncommitted change is not in it at all. Check `/usr/bin/git log -1` against the brief,
   and grep for one guard the brief names; if it is absent, stop and say so.
   Sweeping the wrong revision reports every guard as untested.
 - **Revert from a `cp` backup, never with `git checkout` or `git restore`.** If
@@ -64,9 +65,18 @@ environment variable and the `subagentPromptCacheTtl` setting.
 
 A sweep poisons the tree it runs in. A concurrent reader of a mutated file
 reported a red bar that reproduced in no later run — a real finding filed
-against a tree nobody was reviewing. Work only inside the worktree you were
-handed; if you were not handed one, create one (`git worktree add`) before the
-first mutation and say so in your report.
+against a tree nobody was reviewing. `isolation: worktree` in this file's
+frontmatter puts you in a fresh worktree on every spawn, with or without the
+caller asking — measured 2026-10-03 on a probe plugin agent spawned with no
+isolation parameter. Work only inside it.
+
+**Call git by its absolute path** (`command -v git` prints it, usually
+`/usr/bin/git`). Claude Code refuses a git command in an isolated agent unless it
+can see that the command targets the agent's own worktree, and a PreToolUse hook
+that rewrites `git log` into a wrapper (`rtk git log` on the operator's box)
+makes that unreadable: measured, `git log -1 --oneline` and `git status` were
+refused while `/usr/bin/git log -1 --oneline` ran. `make` and `wf` run git as a
+child process, which the check does not see, so the bars are unaffected.
 
 ## The two traps, both measured, both met more than once here
 

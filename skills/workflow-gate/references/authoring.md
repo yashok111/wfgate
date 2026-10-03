@@ -362,6 +362,15 @@ single-tree half of the step. Size the fan-out against the concurrency cap rathe
 count — the cap decides how many of the N actually run at once [M-30] — and if a property cannot be
 observed by a package-scoped command, that property belongs in the single-tree half too.
 
+**A worktree-isolated agent calls git by its ABSOLUTE PATH, and its prompt says so.** Claude Code
+refuses a git command in an isolated agent unless it can see that the command targets the agent's own
+worktree, and a PreToolUse hook that rewrites `git …` into a wrapper on the operator's box makes that
+unreadable: the agent's `git log` and `git status` are refused while `/usr/bin/git log` runs [M-45].
+The script cannot see the operator's hooks, so it cannot know whether its agents will hit this; the
+prompt of every agent given `isolation: 'worktree'` that touches git carries one line telling it to
+call git by the path `command -v git` prints. `make`, `go test` and `wf` run git as a child process,
+which the check does not read, so the bars themselves are unaffected.
+
 **A subagent inherits the LAUNCHING SESSION's instructions, not only its `effort`.** `model-routing.md`
 states the effort half of this; the other half is that every standing instruction the launching session
 carries — how to read a file, how to search, which tool to prefer — reaches every agent the script

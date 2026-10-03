@@ -747,3 +747,17 @@ coordinates moved under the gate's own fixes. The shape list beside it ("the ver
 forms, and one command over one form reaches none of the others") survived every round unchanged,
 because it named no coordinate. Three rounds to rediscover a corollary the general rule — a guard
 over a report asks "is this what the document NAMES" — already implied.
+
+## M-45 — git refused inside a worktree-isolated agent, by the operator's own hook
+
+Measured 2026-10-03 on Claude Code 2.1.288 with a throwaway plugin loaded by `--plugin-dir`: one agent
+carrying `isolation: worktree` in its frontmatter, spawned by a headless `claude -p` in a scratch
+repository with no isolation parameter, so it ran in `.claude/worktrees/agent-…` (a control agent
+without the key ran in the repository root, which is also how the frontmatter key was proven to be
+honoured). Inside the worktree, `git log -1 --oneline` and `git status --short` were refused — "this
+command runs rtk with a git command among its operands … Refusing to run it — a worktree-isolated
+agent's git operations must target its own worktree" — because the operator's rtk PreToolUse hook had
+rewritten them to `rtk git …`. `/usr/bin/git log -1 --oneline` and `/usr/bin/git status --short` ran;
+so did `git rev-parse` and `make`, which rtk does not rewrite. `rtk rewrite '<cmd>'` shows what the hook
+does to a given spelling. The guard is Claude Code's (the August notes: "isolation now applies to file
+edits and Bash in every session"), the wrapper is the operator's, and a script sees neither.

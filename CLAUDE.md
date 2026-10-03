@@ -126,11 +126,14 @@ Re-count them against `ls internal/` before quoting the number.
 - `agents/gate-sweep.md` — the plugin's mutation-sweep reviewer, and the ONLY
   agent definition this repo ships. It pins the tool list, `omitClaudeMd` (every
   rule a sweep acts on is in the file, so the ~50 KB of WHY here is not loaded
-  into it) and a one-hour prompt cache, and no model: the
+  into it), a one-hour prompt cache and `isolation: worktree` — honoured from
+  a plugin agent's frontmatter, measured 2026-10-03 with a probe spawned
+  without the parameter — and no model: the
   case for pinning a MODEL was refused on measurement (the sonnet rule shows
   88 opus / 0 sonnet before it and zero opus in the five gates after the one it
-  landed in, so a pin buys nothing), and `isolation` is a parameter of the Agent
-  CALL rather than frontmatter, so the definition SAYS to pass it.
+  landed in, so a pin buys nothing). Inside that worktree a plain `git` is
+  refused once a PreToolUse hook rewrites it into a wrapper, so the agent calls
+  git by absolute path.
 - `templates/script.mjs` — the orchestration-script harness, embedded and
   emitted by `wf new-script`. Measured over the six tracked scripts of one
   repository (10 823 lines): the blocks recurring in five or more of them hold

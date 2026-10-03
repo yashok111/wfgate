@@ -293,9 +293,9 @@ check-plugin:
 		done; rm -rf "$$d"; \
 		[ "$$n" -ge 2 ] || { echo "check-plugin: $$n hooks.json command(s) run, 2 expected — the population narrowed"; exit 1; }; \
 		echo "check-plugin: $$n hooks.json command(s) run from a path with a space, each injects its reminder"
-	@[ "$$(yq --front-matter=extract '.omitClaudeMd == true and .experimental.cacheTtl == "1h"' agents/gate-sweep.md)" = true ] \
-		|| { echo "check-plugin: agents/gate-sweep.md lost omitClaudeMd or experimental.cacheTtl — the validator accepts a misspelled key, so this bar reads them"; exit 1; }; \
-		echo "check-plugin: gate-sweep frontmatter carries omitClaudeMd and a 1h cache"
+	@[ "$$(yq --front-matter=extract '.omitClaudeMd == true and .experimental.cacheTtl == "1h" and .isolation == "worktree"' agents/gate-sweep.md)" = true ] \
+		|| { echo "check-plugin: agents/gate-sweep.md lost omitClaudeMd, experimental.cacheTtl or isolation — the validator accepts a misspelled key, so this bar reads them"; exit 1; }; \
+		echo "check-plugin: gate-sweep frontmatter carries omitClaudeMd, a 1h cache and worktree isolation"
 
 # The sweep agent's worktrees live under `.claude/worktrees/` INSIDE the root,
 # gitignored — and the plugin copy does not read `.gitignore`. Measured
