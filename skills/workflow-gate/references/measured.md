@@ -435,7 +435,17 @@ carried it for months in a form missing its floor: it is
 in the same chunk that carries the `Workflow harness` strings. The two forms agree from 4 cores up and
 disagree below — the written one gives 1 on three cores and 0 on two, the real one never goes under 2.
 No environment variable is read there; `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20) is the Agent
-tool's limiter and a different code path. Re-derive from a completed run's state file:
+tool's limiter and a different code path. **That sentence aged.** Claude Code 2.1.269 (2026-09-11) added
+`CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS`, read at the same site as `env ?? <formula>` — found
+2026-10-03 by reading two months of release notes, not by any check here, and confirmed in the 2.1.288
+binary. The manual carried "there is no knob" for three weeks after it shipped, which is the reason
+`cost-discipline.md` now tells the reader to re-derive the set from the binary. One more confound for
+the start gaps above: since 2.1.229 (2026-08-12) a fan-out staggers same-prefix sibling agents so the
+later ones read the cached prompt prefix (`CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS`, `0` disables), so
+part of a 6.8-8.3 s gap after a slot frees may be that stagger rather than the queue. Whether it
+applies is unknown — this entry records no run dates or Claude Code versions — and it is small at most:
+the stagger holds a follower only while a same-prefix leader is still warming the cache, about 5 s at
+the most. The ten-way fan-out's two-at-a-time shape is the cap either way. Re-derive from a completed run's state file:
 `jq -r '.workflowProgress[]|select(.type=="workflow_agent")|[.startedAt,.lastProgressAt]|@tsv'
 ~/.claude/projects/<slug>/workflows/wf_<id>.json` and sweep for the maximum overlap; note that the
 runner writes that file only when the run ENDS, so an in-flight run has to be reconstructed from its

@@ -20,6 +20,12 @@ in the two binaries below),
 scripts, reading the parsed program; run it before the gate and after every fix) and
 `~/.local/bin/wfdry` (a dynamic runner that executes the script with stubbed hooks across the modes a
 real run can enter; run it before each freeze).
+**This manual is not the script API.** The signatures and semantics of `agent()`, `parallel()`,
+`pipeline()`, `phase()` and resume are the built-in `workflow-authoring` skill. Until Claude Code 2.1.248
+they rode in the Workflow tool's own description, so any agent that could see the tool had them; since
+then the description is a stub and the reference is a skill that loads only when asked for. Load it
+beside this one before the first line: an API recalled from memory costs the same gate round a rule
+recalled from memory does.
 All of it — the three binaries and these references — is versioned in the wfgate repository
 (`~/projects/wfgate`). Two delivery channels: `make install` copies the three version-stamped binaries
 into `~/.local/bin`, and the wfgate PLUGIN carries this skill and the PreToolUse hook. Either way a fix

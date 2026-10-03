@@ -1,8 +1,14 @@
 # Workflow model and effort routing
 
 No `CLAUDE_CODE_SUBAGENT_MODEL` env override — removed 2026-05-29 (it silently overrode per-call
-`opts.model`, contrary to documented order, so a `model:'opus'` agent quietly ran on sonnet). Do NOT
-re-add it; never rely on any env/session default. Set the model EXPLICITLY, per agent.
+`opts.model`, contrary to documented order, so a `model:'opus'` agent quietly ran on sonnet). Since
+Claude Code 2.1.251 that variable is only a DEFAULT that an explicit per-spawn model beats, and the old
+override lives on as `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` (2.1.257) — so the failure no longer happens by
+accident, but an environment can still force it. Do NOT re-add either; never rely on any env/session
+default. Set the model EXPLICITLY, per agent. Since 2.1.223 a requested model the account may not use
+prints a warning and something else runs: for a family alias (`'opus'`, `'sonnet'`) the newest model of
+that family the account allows (2.1.222), for a full model id the PARENT's model. An `opts.model` is a
+request, and a reviewer tier the roster banks is only what ran if no such warning appeared.
 
 **HARD RULE — every `agent()` call MUST carry an explicit `model`**, chosen by the workflow-owner
 agent per task. A model-less `agent()` is a bug; fix before running.

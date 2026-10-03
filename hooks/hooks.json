@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/workflow-preflight.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/workflow-preflight.sh\"",
             "timeout": 10
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/script-authoring.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/script-authoring.sh\"",
             "timeout": 10
           }
         ]

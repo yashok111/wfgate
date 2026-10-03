@@ -5,7 +5,7 @@ PKGS := ./cmd/... ./internal/...
 # like a run against the new one; freeze.json records this value.
 VERSION := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 
-.PHONY: build test lint fmt install clean check-tools check-docs
+.PHONY: build test lint fmt install clean check-tools check-docs check-plugin
 
 build:
 	@for b in $(BINS); do \
@@ -177,7 +177,7 @@ check-tools: build
 	@# workflow-preflight.sh was read by no bar at all.
 	@for h in scripts/hooks/workflow-preflight.sh scripts/hooks/script-authoring.sh; do \
 		out=$$(printf '{"session_id":"pd","tool_name":"Write","tool_input":{"file_path":"/tmp/run.mjs","content":"x"}}' | TMPDIR=$$(mktemp -d) sh $$h); \
-		echo "$$out" | grep -q '"additionalContext"' || { echo "hook $$h: no additionalContext — the reminder is not injected"; exit 1; }; \
+		printf '%s' "$$out" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null 2>&1 || { echo "hook $$h: no additionalContext in valid JSON — Claude Code drops a reminder it cannot parse"; exit 1; }; \
 		echo "$$out" | grep -q 'permissionDecision' && { echo "hook $$h: emits a permissionDecision — a reminder must not grant permission"; exit 1; }; \
 		echo "hook $$(basename $$h): injects context and decides nothing"; \
 	done
@@ -247,6 +247,55 @@ check-docs: build
 	[ "$$boxes" -ge "$$cbfloor" ] 2>/dev/null || { echo "check-docs: gate-checks.md carries $$boxes checkbox entries against a floor of $$cbfloor — an edit that swallows an entry reads exactly like an edit that shortened one, and the reviewer's list is the population"; rm -rf $$d; exit 1; }; \
 	echo "check-docs: $$want document(s), $$marks marked site(s), every id compared agrees; $$nm provenance entry(ies), all cited, $$boxes checkbox entries"; \
 	rm -rf $$d
+
+# The plugin is what a session actually receives, and nothing here validated it:
+# `claude plugin validate` (2.1.281 and later) warned that both hooks left
+# ${CLAUDE_PLUGIN_ROOT} unquoted — a plugin path with a space splits the
+# command — and the warning sat unread because no bar ran the validator. Both
+# manifests are checked: the marketplace is what `claude plugin install` reads
+# first, and it once carried its own stale copy of the version. ONE warning is expected: the
+# repo ROOT is the plugin, so this file's CLAUDE.md sits where a plugin's would
+# not be loaded, and that is the agent context for working on the repo, not
+# context the plugin ships. Any other warning fails the bar. Without `claude`
+# on PATH it says NOT RUN and exits non-zero: an unvalidated plugin must not
+# read as a validated one; the same holds for jq, and for a report jq cannot
+# parse — an empty list of unexpected warnings must come from a read report.
+# The expected warning is pinned to the root CLAUDE.md FILE, not only to its
+# message, and a warning with no message is reported rather than dropped by a
+# failing filter. The validator does not run a hook's command or read agent
+# frontmatter keys (a lost exec bit, a typo in the path and `omitClaudeMD` all
+# validated clean), so the hooks.json commands are RUN here as Claude Code runs
+# them — through `sh -c` from a plugin root with a space — and the two agent
+# keys are read with yq.
+# No arm counts the expected warning: the validator emits it once per root
+# file, so a "more than one" arm is reachable only by mutating its threshold.
+# An ERROR needs no arm of its own: the validator
+# exits non-zero on one (measured with an invalid `name`), and a `success` and
+# an error-count arm written beside the exit check survived that mutation.
+check-plugin:
+	@command -v claude >/dev/null || { echo "check-plugin: NOT RUN — no claude on PATH, the plugin was not validated"; exit 1; }
+	@command -v jq >/dev/null || { echo "check-plugin: NOT RUN — no jq on PATH, the report could not be read"; exit 1; }
+	@command -v yq >/dev/null || { echo "check-plugin: NOT RUN — no yq on PATH, the agent frontmatter could not be read"; exit 1; }
+	@for m in .claude-plugin/plugin.json .claude-plugin/marketplace.json; do \
+		out=$$(claude plugin validate --json $$m 2>&1) || { printf '%s\n' "$$out"; echo "check-plugin: $$m failed validation"; exit 1; }; \
+		extra=$$(printf '%s\n' "$$out" | jq -r '[.manifest.warnings[], (.contents[]? | .file as $$f | .warnings[] | select((($$f | tostring | endswith("/CLAUDE.md")) and ((.message // "") | startswith("CLAUDE.md at the plugin root"))) | not))] | map(.message // "a warning with no message") | .[]') \
+			|| { printf '%s\n' "$$out"; echo "check-plugin: $$m — the report is not the JSON this bar reads, so nothing was checked"; exit 1; }; \
+		[ -z "$$extra" ] || { printf '%s\n' "$$extra"; echo "check-plugin: $$m — unexpected warning(s) above"; exit 1; }; \
+		echo "check-plugin: $$m valid, no unexpected warning"; \
+	done
+	@d=$$(mktemp -d); mkdir -p "$$d/with space/scripts" && cp -Rp scripts/hooks "$$d/with space/scripts/"; \
+		n=0; for c in $$(jq -r '.hooks[][].hooks[].command | @base64' hooks/hooks.json); do \
+			cmd=$$(printf '%s' "$$c" | base64 -d); n=$$((n+1)); \
+			out=$$(printf '{"session_id":"cp","tool_name":"Write","tool_input":{"file_path":"/tmp/run.mjs","content":"x"}}' \
+				| CLAUDE_PLUGIN_ROOT="$$d/with space" TMPDIR="$$d" sh -c "$$cmd" 2>&1); \
+			printf '%s' "$$out" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null 2>&1 \
+				|| { printf '%s\n' "$$out"; echo "check-plugin: hooks.json command $$cmd, run as Claude Code runs it from a plugin path with a space, printed no reminder"; rm -rf "$$d"; exit 1; }; \
+		done; rm -rf "$$d"; \
+		[ "$$n" -ge 2 ] || { echo "check-plugin: $$n hooks.json command(s) run, 2 expected — the population narrowed"; exit 1; }; \
+		echo "check-plugin: $$n hooks.json command(s) run from a path with a space, each injects its reminder"
+	@[ "$$(yq --front-matter=extract '.omitClaudeMd == true and .experimental.cacheTtl == "1h"' agents/gate-sweep.md)" = true ] \
+		|| { echo "check-plugin: agents/gate-sweep.md lost omitClaudeMd or experimental.cacheTtl — the validator accepts a misspelled key, so this bar reads them"; exit 1; }; \
+		echo "check-plugin: gate-sweep frontmatter carries omitClaudeMd and a 1h cache"
 
 # The sweep agent's worktrees live under `.claude/worktrees/` INSIDE the root,
 # gitignored — and the plugin copy does not read `.gitignore`. Measured

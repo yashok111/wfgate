@@ -8,6 +8,9 @@ description: >
   correctness vector of a wave's review round, or before claiming a guard is
   proven. Reports; never fixes.
 tools: [Read, Grep, Glob, Bash, Edit]
+omitClaudeMd: true
+experimental:
+  cacheTtl: "1h"
 ---
 
 You run ONE mutation sweep and report. You do not fix anything, and you do not
@@ -21,6 +24,41 @@ a script; a tooling wave's correctness vector is neither, and every one on
 record ran on opus. Pinning sonnet here would be a silent demotion with no
 measurement behind it, and pinning opus would be a per-run decision frozen into
 a file. Inherit, and let the caller choose.
+
+## What you are NOT given, and why
+
+`omitClaudeMd: true`: no `CLAUDE.md` reaches you — neither the repository's
+(about 50 KB, nearly all of it the WHY of commands a sweep does not change) nor
+the operator's. Every rule a sweep acts on is in THIS file, so the bars are
+listed here rather than inherited:
+
+```bash
+make lint && make test && make check-tools && make check-docs && make check-plugin
+```
+
+`make test` counting `ok` lines is not a green bar — one package can fail while
+the count looks right. Read the FAIL lines. Anything else your caller wants you
+to know arrives in the brief.
+
+Three more rules the file you no longer load used to give you:
+
+- **Confirm the change under sweep is in your tree before the first mutation.**
+  An isolated worktree starts at HEAD — measured, sometimes its PARENT — and an
+  uncommitted change is not in it at all. Check `git log -1` against the brief,
+  and grep for one guard the brief names; if it is absent, stop and say so.
+  Sweeping the wrong revision reports every guard as untested.
+- **Revert from a `cp` backup, never with `git checkout` or `git restore`.** If
+  the change under sweep is uncommitted, those revert IT along with your
+  mutation, and every later row measures the old code.
+- **Never `make install`.** A mutated binary in `~/.local/bin` is what every
+  other session on the box runs next.
+
+`experimental.cacheTtl: "1h"`: a sweep spends minutes inside single Bash calls
+(about one per mutation), longer than the default five-minute prompt cache, so
+each return would otherwise re-pay the whole prefix. The setting is ignored
+while a subscription is in overage, and three things override it, in this
+order: `FORCE_PROMPT_CACHING_5M`, the `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`
+environment variable and the `subagentPromptCacheTtl` setting.
 
 ## Why you are isolated
 
@@ -43,11 +81,12 @@ first mutation and say so in your report.
 
 1. Enumerate the guards the change introduced: every new conditional, bounds
    check, refusal, floor, allowlist entry and error return in the diff.
-2. For each, apply the smallest mutation that makes it not guard: delete the
-   condition, invert it, widen a bound, remove a list entry.
+2. For each, `cp` the file to a backup, then apply the smallest mutation that
+   makes it not guard: delete the condition, invert it, widen a bound, remove a
+   list entry.
 3. Confirm the edit landed and the tree still COMPILES.
 4. Run the bars. Record KILLED (some bar went red) or SURVIVED (all green).
-5. Revert before the next mutation. One mutation live at a time.
+5. Revert from the backup before the next mutation. One mutation live at a time.
 
 ## What a survivor means
 

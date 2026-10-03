@@ -170,6 +170,15 @@ if [ -n "$KEEP" ] && [ -d "$CACHE/$KEEP" ]; then
 		find "$CACHE" -maxdepth 1 -mindepth 1 -type d ! -name "$KEEP" -exec rm -rf {} +
 		echo "plugin: pruned $stale superseded cache version(s), kept $KEEP"
 	fi
+	# The copy is the raw tree, so the repository's OWN `.claude/` rides along:
+	# the `verify` skill this repo runs before its commits, and any sweep
+	# worktree. Neither belongs to the plugin, and a project skill sitting in a
+	# cache directory is one a session started above it could discover. Removed
+	# from the installed copy only — the clone keeps it.
+	if [ -d "$CACHE/$KEEP/.claude" ]; then
+		rm -rf "$CACHE/$KEEP/.claude"
+		echo "plugin: dropped the repository's own .claude/ from the installed copy"
+	fi
 fi
 
 echo

@@ -25,9 +25,15 @@ to exceed ~15-20 tool calls, its scope is too wide — split or narrow it.
 
 **4. Stop/resume is lossy.** On resume, only FULLY-COMPLETED `agent()` calls cache; in-flight agents are
 discarded and re-run from scratch. Do NOT repeatedly stop/resume a large workflow (each stop wastes up
-to the concurrency-cap's worth of partial agents). If a pause is likely (usage limit, time pressure),
-split the work into smaller sequential `Workflow` calls at phase boundaries so each completes and
-caches, rather than one long run you keep interrupting.
+to the concurrency-cap's worth of partial agents). If a pause is likely (time pressure, a session you
+may lose), split the work into smaller sequential `Workflow` calls at phase boundaries so each completes
+and caches, rather than one long run you keep interrupting. A claude.ai USAGE LIMIT is usually no
+longer one of those pauses: since Claude Code 2.1.271, with `/config` → "Continue automatically at
+usage limit" on (the default, setting `autoContinueAtUsageLimit`), the run waits for the reset and
+continues instead of dropping the affected agents — but only for a reset at most 24 hours out, at most
+twice per run, and while the server has not switched the feature off. A weekly limit, a third limit in
+one run, the setting off or usage-based billing all bring the old advice back: split at phase
+boundaries.
 
 Losing the SESSION (a dead terminal multiplexer, a killed process) kills the run the same way, and the
 recovery has three parts, in order:
@@ -41,16 +47,22 @@ recovery has three parts, in order:
   is the previous phase, so this diff is exactly what this run produced". Moving HEAD mid-run makes the
   completed phases invisible to every reviewer that follows.
 
-The concurrency cap is `Math.min(16, Math.max(2, cpus - 2))`, computed ONCE from
+The concurrency cap DEFAULTS to `Math.min(16, Math.max(2, cpus - 2))`, computed ONCE from
 `os.availableParallelism()` — so on a 4-core box a "parallel" phase of three runs two and queues one,
-worth knowing both for wall-clock estimates and because it bounds what a kill can lose. **There is no
-knob**, and the reading is: the formula sits at the cap site with no environment variable beside it
-(`grep -aoE "CLAUDE_CODE_[A-Z_]*" <the claude binary>` lists every one it reads, and none is a workflow
-concurrency), the settings schema carries none (`/config`, or the schema the `update-config` skill
-prints), and `agent()`'s own options carry none. `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
-(default 20) governs the Agent tool and does NOT reach a workflow, and `availableParallelism()` cannot be
-inflated above the machine's real cores — affinity and cgroup limits only lower it. The floor of 2 is why
-a two-reviewer gate never queues anywhere, and the only lever is the machine [M-30].
+worth knowing both for wall-clock estimates and because it bounds what a kill can lose. **There is
+exactly one knob, `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1-256, Claude Code 2.1.269 and
+later)**: the cap site reads it as `env ?? <the formula>` and writes `workflow: concurrent agent gate =
+N` to the debug log when it is set. It is an environment variable of the SESSION that launches the run
+(the shell, or a settings `env` entry) — the settings schema carries no workflow concurrency of its own
+and `agent()`'s options carry none, so a script cannot raise it for itself. Re-derive the set with
+`grep -aoE "CLAUDE_CODE_WORKFLOW_[A-Z_]*" <the claude binary>` rather than trusting this paragraph —
+it said "there is no knob" for three weeks after one shipped [M-30].
+The knob buys SLOTS, not cores: raise it for an inference-bound fan-out (read-only reviewers, readers),
+and leave it alone for agents that each build or run a test suite — the machine bounds those whatever the
+cap says, and a test suite beside a docker build and the agents' own processes has taken a box down
+[M-31]. `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
+(default 20) governs the Agent tool and does NOT reach a workflow. At the default, the floor of 2 is why
+a two-reviewer gate never queues anywhere [M-30].
 
 **5. Fan-out does NOT save a shared budget.** Under a constrained window (the 5-hour usage limit),
 parallel fan-out spends the SAME quota FASTER, not cheaper — it buys wall-clock, not tokens. For

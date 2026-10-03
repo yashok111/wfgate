@@ -12,9 +12,10 @@ The gate = **at least 2 reviewer subagents in parallel** (a `parallel()` barrier
 **Two is the FLOOR, not the width, but a vector past the CONCURRENCY CAP costs a whole extra wave.**
 Section boundaries force serialism and cannot be argued away — they are compile boundaries, above — and
 the reviewers inside one are read-only, so they mutate nothing, share no tree state and conflict with
-nothing. What they do contend for is a slot: the cap is `min(16, max(2, cpus - 2))`, so on a 4-core box it is
+nothing. What they do contend for is a slot: the cap defaults to `min(16, max(2, cpus - 2))`, so on a 4-core box it is
 TWO, and a third reviewer does not run beside the other two — it waits for one of them to finish
-[M-30]. **Reviewer width is `min(the section's failure surfaces, the free slots)`.** Under the cap the
+[M-30]. Read-only reviewers are exactly the inference-bound case `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS`
+exists for (`cost-discipline.md`, point 4), so "the free slots" below is whatever the launching session set. **Reviewer width is `min(the section's failure surfaces, the free slots)`.** Under the cap the
 extra vector is genuinely cheap: one more sonnet read of one section diff, finishing inside the wave
 the other reviewers are already spending. Past the cap it is a second wave, and the gate's wall-clock
 is then the two slowest reviewers rather than the one — measured at 437 seconds of slot wait for the
@@ -23,7 +24,8 @@ a third one buys is not a second opinion but a second QUESTION: a prompt asks wh
 else, and two lenses reading the same lines, both correct and both thorough, routinely find different
 defects — the one that found the blocker was the one asked the other question [M-27]. Four vectors that
 all read "correctness" is one vector billed four times, and on a small box it is billed over two waves.
-Run `nproc` before widening; do not reason from a remembered cap.
+Run `nproc` before widening, and check whether the launching session set
+`CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS`; do not reason from a remembered cap.
 
 Rules:
 - **Reviewers are `model: 'sonnet'` and `effort: 'high'` by DEFAULT.** Both axes are explicit on every

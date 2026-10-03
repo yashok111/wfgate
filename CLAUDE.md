@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 27 — what each change answered and the command
+maintenance record, waves 2 to 28 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -83,10 +83,7 @@ judgement.
 
 Fifteen units, each one decision — nine Go packages under `internal/`, plus
 the TWO emitted templates, the dispatcher, the hooks, the skill and the agent.
-Re-count them
-against `ls internal/` before quoting the number; it said "eleven" for four
-units, which is this file's own most-banked defect class committed in its
-opening line.
+Re-count them against `ls internal/` before quoting the number.
 
 - `internal/gitx` — the only place that runs `git`. Git is not an integration
   here, it is the storage layer; the wrapper exists so that "the workspace is a
@@ -127,7 +124,9 @@ opening line.
   aim is left as a marker line and `wf round lens` refuses to bank a prompt
   still carrying it.
 - `agents/gate-sweep.md` — the plugin's mutation-sweep reviewer, and the ONLY
-  agent definition this repo ships. It pins the tool list and nothing else: the
+  agent definition this repo ships. It pins the tool list, `omitClaudeMd` (every
+  rule a sweep acts on is in the file, so the ~50 KB of WHY here is not loaded
+  into it) and a one-hour prompt cache, and no model: the
   case for pinning a MODEL was refused on measurement (the sonnet rule shows
   88 opus / 0 sonnet before it and zero opus in the five gates after the one it
   landed in, so a pin buys nothing), and `isolation` is a parameter of the Agent
@@ -178,75 +177,30 @@ opening line.
   the module root embeds the references into the binary; `wf docs guide`
   CONCATENATES them at runtime rather than storing a monolith — a second copy
   of a spec is this project's most-repeated defect class.
-  The nine were six until 2026-08-30, when `pre-flight-gate.md` — 1108 lines
-  under ONE heading, 40% of the whole manual — was cut along the boundaries
-  SKILL.md's routing table was already drawing in PROSE — the operator mechanics
-  against the reviewer's half, in a file written in step order, which is NOT the
-  order it is executed (the sentence quoted here for two waves left SKILL.md in
-  `8ebc159` and `grep -rn 'operator mechanics' skills/` now finds nothing). A table
-  that has to explain a file's structure is the structure problem admitted in
-  the front door. The four are `interview.md` (step -2, before a workspace
-  exists), `pre-flight-gate.md` (the gate itself: steps 0, 1, 2b, 3 and the
-  three vectors), `gate-harness.md` (the operator's `wf` mechanics: steps -1,
-  -1b, 2, 4, the checks, the fix protocol and the cost meter) and
-  `round-discipline.md` (barrier, delta rounds, the descent, the stop rule).
-  Verified as PACKAGING and not a rewrite by a token census over the four
-  against the original — **18 705** tokens in, every one of them out, the only losses the
-  `**Round discipline**` lead line and the bare `Rules:` label, both of which became file headings
-  (the census is `tr -s '[:space:]' '\n' | grep -c .`; an earlier reading of 18 706 came from a
-  different tokenizer and was banked without its command, which is the defect the manual's own
-  section A names) — plus eleven
-  cross-references re-aimed because they now cross a file (a `below` that no
-  longer has anything below it is the citation-drift class this repo built
-  `check drift` for, one layer up). What it buys is per-activity load: a
-  reviewer read 2237 lines and now reads 1572 (296 + 1060 + 216), and an
-  operator running the workspace read 1108 and now reads 557 — figures re-derived after the
-  de-duplication commit (`WAVES.md`, the restructure entry), which shrank all four files and left this line reading 1667/558 for
-  as long as it took a review round to run `wc -l`. Same class, one commit deep, for the third wave
-  running.
-  `wf docs` grew `interview`, `harness` and `rounds`, and `make check-docs`
-  went from 8 staged documents to 11, and to 12 once `measured.md` landed.
-  The tenth is `measured.md` (2026-08-30, the same day): the manual's PROVENANCE,
-  never auto-loaded and deliberately out of `wf docs guide`. The rule the
-  seventeenth wave banked for perishable NUMBERS — a figure belongs in the
-  manual only if an agent CHANGES ITS BEHAVIOUR from the value — was applied to
-  the STORY around them, which that pass left untouched: an agent acts on "a fix
-  is the largest single source of blockers", not on which gate that was or how
-  its rounds split. The entries are cited from the rules by `[M-nn]`, and
-  `make check-docs` prints how many there are — it fails on a citation with no
-  entry, on an entry nothing cites, and on an entry citing itself.
-  Six topics were also collapsed to ONE home apiece, each of which had been
-  stated at full length in two files in different words — the class `dup`
-  structurally cannot see, and this file's own most-repeated defect:
-  `wfdry`'s modes and floors to `pre-flight-gate.md` step 2b, the schema width
-  band and the fixture vocabularies to `authoring.md`, `dup`/`[RN]`/`stale` to
-  `gate-harness.md`, the fix protocol to `gate-checks.md` §I (with the operator's
-  half re-cut as a seven-step COMMAND runbook, which is what the prose blob kept
-  losing), and the delta round's three asks and the severity scale to
-  `gate-checks.md` §0b and §0. The marked sites were preserved deliberately:
-  collapsing an `R2` or `R3` statement into a pointer would drop that id to
-  one site, and `wf check rules` would then compare nothing while
-  `make check-docs`'s marker floor read the narrowing as agreement.
-  **Measured, and it is well under the estimate the plan was sold on.** The
-  loaded manual — every reference but `measured.md` — went 250 475 to 236 953
-  bytes, **-5.4%**; a reviewer's set (pre-flight + checks + rounds) 153 408 to
-  140 841, **-8.2%**. The estimate given before the work was 25-35%, and it was
-  wrong because most of a de-duplicated passage becomes a pointer plus the
-  clauses the other copy did not carry, not nothing. What would actually reach
-  25% is a harvest across all hundred-odd `gate-checks.md` checkboxes, which is a
-  much larger edit at a much higher risk of dropping a rule; it is not done.
-  `make check-docs` grew a bar for the citation scheme — it fails on an `[M-nn]`
-  with no entry and on an entry nothing cites — and all THREE arms are proven by
-  mutation, each failing with its own message: the third is an entry citing
-  ITSELF, which used to mask its own absence because the `used` set was read from
-  every reference INCLUDING `measured.md`. Nothing was masking anything yet; the
-  guard was one edit away from being defeated by the file it guards.
-
-  The harvest across `gate-checks.md` that this wave deferred was done the
-  same day, and the restructure earned a review round of its own; both are
-  in `WAVES.md` under "The manual restructure of 2026-08-30", with the
-  numbers (98 246 to 87 165 bytes for `gate-checks.md`, a reviewer's set
-  -34.0%, one swallowed checkbox and the floor it grew).
+  The references are cut by ACTIVITY, not by topic: `interview.md` is step -2,
+  before a workspace exists; `pre-flight-gate.md` is the gate itself (steps 0,
+  1, 2b, 3 and the three vectors); `gate-harness.md` is the operator's `wf`
+  mechanics (steps -1, -1b, 2, 4, the checks, the fix protocol and the cost
+  meter); `round-discipline.md` is the barrier, delta rounds, the descent and
+  the stop rule. A reviewer loads pre-flight + checks + rounds, an operator
+  the harness — re-derive what each costs with `wc -l`, never from a number
+  written here. `wf docs` serves `interview`, `harness` and `rounds` apiece.
+  `measured.md` is the manual's PROVENANCE: never auto-loaded and deliberately
+  out of `wf docs guide`, because an agent acts on the rule ("a fix is the
+  largest single source of blockers"), not on which gate measured it. Rules
+  cite it by `[M-nn]`; `make check-docs` fails on a citation with no entry, an
+  entry nothing cites, and an entry citing itself.
+  Each topic has ONE home — `wfdry`'s modes and floors in `pre-flight-gate.md`
+  step 2b, the schema width band and fixture vocabularies in `authoring.md`,
+  `dup`/`[RN]`/`stale` in `gate-harness.md`, the fix protocol in
+  `gate-checks.md` §I, the delta round's three asks and the severity scale in
+  `gate-checks.md` §0b and §0 — EXCEPT the marked sites: collapsing an `R2` or
+  `R3` statement into a pointer would drop that id to one site, and
+  `wf check rules` would then compare nothing while `make check-docs`'s marker
+  floor read the narrowing as agreement.
+  How the split was made, verified and measured — the token census, the sizes
+  before and after, the `gate-checks.md` harvest and the review round it
+  earned — is `WAVES.md`, "The manual restructure of 2026-08-30".
 
 ## Why each command is the way it is
 
@@ -360,7 +314,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 27 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 28 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -398,6 +352,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 25 | Where a round's MINUTES go | The brief's reading rule and section index by line; `wf apply -closes`; `wf check` with one summary line and `stale` from the newest freeze; `wf round ingest`; `wf init` FIRST; the external vector that died |
 | 26 | A bug hunt by five vectors | 47 findings, 8 BLOCKER: hooks granting permission, `apply` writing outside `artifacts/`, a `#1` row closing the wrong one, factory wrappers invisible to `wfcheck`, a heading's passing mention closing a section; the 68-mutation sweep and the symlink, merge and fence findings of its review round |
 | 27 | A18, the gate that closed with three blockers standing (`docs/feedbacks/FEEDBACK-a18.md`) | `wf close -early` banking the owner's call; the SECTION run in `wf stats` over the anchors a blocker cites; `round record` numbering empty `#` cells; `target:<sha>` as a prose closure; three manual rules (a guard counting its own statement, shapes never coordinates, the build as a `-kind run` round) |
+| 28 | Two months of Claude Code release notes (2.1.221 to 2.1.288), read against the plugin | The manual's "there is no knob" for workflow concurrency, three weeks stale; usage-limit pauses that now resume; the script API moved out of the Workflow tool into a skill; `make check-plugin`; `omitClaudeMd` and a 1h cache on the sweep agent; the repo's `verify` skill |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
@@ -474,8 +429,10 @@ stopped here, not discovered by a commit in the wrong tree.
   that agrees with itself. Written `R2`, never in the bracket form the check scans for. Run
   `wf check rules` over the manual AND these three files together when in doubt —
   it must report the manual's own 9 marked sites and nothing else.
-- **A change under `skills/`, `hooks/` or `agents/` bumps `version` in
-  `.claude-plugin/plugin.json`.** `claude plugin update` is VERSION-keyed —
+- **A change under `skills/`, `hooks/`, `agents/` or `scripts/hooks/` bumps
+  `version` in `.claude-plugin/plugin.json`.** `scripts/hooks/` is listed
+  because `hooks/hooks.json` executes those files: they ship in the plugin as
+  surely as the manual does. `claude plugin update` is VERSION-keyed —
   measured: it copies nothing when the declared version is the one already
   installed, so a spec fix committed without a bump never reaches a session.
   `scripts/install.sh` forces a reinstall when `wf docs` reports drift, but that
@@ -589,6 +546,7 @@ make lint        # go vet + gofmt (+ golangci-lint when installed)
 make build       # ./wf ./wfcheck ./wfdry with the version stamp (-ldflags)
 make check-tools # the BUILT binaries against the banked fixtures (meta-guard must FAIL)
 make check-docs  # `wf check rules` over the shipped manual — it is a gate corpus too
+make check-plugin # validate both manifests, RUN each hooks.json command, read agent keys (needs claude, jq, yq)
 make fmt         # gofmt -w; `make lint` only REPORTS the diff
 make install     # ~/.local/bin/{wf,wfcheck,wfdry} — owed after every code change
 make clean       # remove the three built binaries
