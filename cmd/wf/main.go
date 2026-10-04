@@ -4640,9 +4640,11 @@ var guideOrder = []string{"authoring", "routing", "interview", "preflight", "har
 // the plugin is read IN PLACE from when it is (empty when the session loads a
 // cached copy).
 //
-// Measured: the plugin sat at the version it was installed at while the clone
-// moved four releases on. Every reference differed, and the SKILL.md sessions
-// loaded still described a rule the manual had since replaced. A binary and a
+// Measured: the cached plugin sat at the version it was installed at while
+// the clone moved four releases on, every reference differing and its SKILL.md
+// describing a rule the manual had since replaced (whether a session loaded
+// that copy was read off the cache, not off a session — see loadedPluginDirs).
+// A binary and a
 // skill built from one commit are the same document; when they are not, the
 // gate is briefed from one and run by the other, and nothing said so. This is
 // the freeze manifest's version stamp applied to the spec channel: a NOTE, not
@@ -4712,14 +4714,17 @@ type loadedDir struct {
 // That is not always the registered installPath. Measured 2026-10-04 on
 // 2.1.286, 2.1.288 and 2.1.289 (`claude -p --debug`: "Read hooks.json for
 // plugin wfgate: /home/yakov/projects/wfgate/hooks/hooks.json"): a plugin
-// installed from a DIRECTORY marketplace is read in place from that folder,
-// while the cache under installPath is still written and read by nothing. This
-// check compared the cache for five weeks, so its note said "the manual a
+// installed from a FOLDER marketplace is read in place from that folder,
+// while the cache under installPath is still written and no session reads it.
+// This check compared the cache for five weeks, so its note said "the manual a
 // session LOADS" about a copy no session loaded, and missed the drift that is
-// real in place — a binary older than the clone it serves. The predicate is
-// the harness's own: the plugin's source path, resolved against the
-// marketplace folder, must stay inside it. Any other marketplace keeps the
-// cached copy.
+// real in place — a binary and the clone it serves built from different trees.
+// The predicate is the harness's own (`nCe`/`Fp` in 2.1.289, the same test in
+// 2.1.286): a STRING entry source in a marketplace whose type is `directory`
+// or `file`. A string that does not start with "./" (absolute, "../x") or
+// leaves the folder is stubbed as unparseable, and the session then loads the
+// cached copy — measured with an isolated CLAUDE_CONFIG_DIR, so those fall
+// back to installPath here too. Every other marketplace is a cached copy.
 func loadedPluginDirs(home string) []loadedDir {
 	plugins := filepath.Join(home, ".claude", "plugins")
 	b, err := os.ReadFile(filepath.Join(plugins, "installed_plugins.json"))
@@ -4737,6 +4742,7 @@ func loadedPluginDirs(home string) []loadedDir {
 	var markets map[string]struct {
 		Source struct {
 			Source string `json:"source"`
+			Path   string `json:"path"`
 		} `json:"source"`
 		InstallLocation string `json:"installLocation"`
 	}
@@ -4747,10 +4753,21 @@ func loadedPluginDirs(home string) []loadedDir {
 	inPlaceRoot := func(key string) string {
 		name, market, ok := strings.Cut(key, "@")
 		m, known := markets[market]
-		if !ok || !known || m.Source.Source != "directory" || m.InstallLocation == "" {
+		if !ok || !known || m.InstallLocation == "" {
 			return ""
 		}
-		b, err := os.ReadFile(filepath.Join(m.InstallLocation, ".claude-plugin", "marketplace.json"))
+		// A `file` marketplace names its manifest; a `directory` one holds it at
+		// the conventional path. Either way entries resolve against the folder
+		// (measured: installLocation is the folder for both).
+		manifestPath := filepath.Join(m.InstallLocation, ".claude-plugin", "marketplace.json")
+		switch m.Source.Source {
+		case "directory":
+		case "file":
+			manifestPath = m.Source.Path
+		default:
+			return ""
+		}
+		b, err := os.ReadFile(manifestPath)
 		if err != nil {
 			return ""
 		}
@@ -4768,6 +4785,9 @@ func loadedPluginDirs(home string) []loadedDir {
 			// An object source (github, git, url) is fetched into the cache.
 			if p.Name != name || json.Unmarshal(p.Source, &rel) != nil {
 				continue
+			}
+			if rel != "." && !strings.HasPrefix(rel, "./") {
+				return ""
 			}
 			root := filepath.Join(m.InstallLocation, rel)
 			if r, err := filepath.Rel(m.InstallLocation, root); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
@@ -4809,10 +4829,11 @@ func noteManualDrift() {
 	fmt.Fprintf(os.Stderr, "note: the manual a session LOADS differs from the one this binary carries — %s\n", dir)
 	fmt.Fprintf(os.Stderr, "      drifted: %s\n", strings.Join(diffs, ", "))
 	if inPlace != "" {
-		// Read in place, the folder IS the manual, so the copy that is behind is
-		// this binary — or the folder holds edits no commit carries yet. A
-		// reinstall copies a cache nothing reads and changes neither.
-		fmt.Fprintf(os.Stderr, "      the plugin is read in place from %s, so this binary is what is out of step: commit there, then run `make install` in it\n", inPlace)
+		// Read in place, the folder IS the manual, so it is this binary and that
+		// folder that were built from different trees — which one is newer the
+		// check cannot know. A reinstall copies a cache nothing reads and
+		// changes neither.
+		fmt.Fprintf(os.Stderr, "      the plugin is read in place from %s, and this binary was built from another tree: commit there and run `make install` in it, unless this binary is the newer one on purpose\n", inPlace)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "      run scripts/install.sh (or `claude plugin update wfgate@wfgate-tools`) so both come from one commit\n")

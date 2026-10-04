@@ -41,20 +41,22 @@ The test reads the working tree against HEAD plus untracked files, not
 over an empty set. `claude plugin update` copies nothing when the declared
 version is the one already installed, so a fix without a bump never reaches a
 session that loads a CACHED copy. This machine's sessions read the folder
-marketplace in place (wave 29), so here the edit is live before the commit —
-the bump serves every other install.
+marketplace in place (wave 29), so here the next session loads the edit before
+it is even committed — the bump serves every other install.
 
 ## 3. After the commit, never before
 
 ```bash
 make install                              # stamps the binaries with the NEW commit
-claude plugin update wfgate@wfgate-tools  # only if step 2 applied; read the version pair
+claude plugin update wfgate@wfgate-tools  # only if step 2 applied AND the install is a cached copy (`claude plugin list` prints "Read from:" for one read in place)
 ```
 
 `make install` over a dirty tree stamps `<old-sha>-dirty` into every binary,
 and every `freeze.json` written with it records a revision nobody can check
-out. The plugin update says "Restart to apply changes", and it means it: the
-running session keeps the old skill.
+out. For a cached install the plugin update says "Restart to apply changes",
+and it means it: the running session keeps the old skill. Read in place (this
+machine), the update copies a cache no session reads; a NEW session picks the
+change up from the clone without it.
 
 ## 4. What this skill does not replace
 

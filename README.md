@@ -33,18 +33,20 @@ git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git ~/projects/wfgate
 
 After a `git pull`: re-run `scripts/install.sh`. The marketplace install.sh
 registers is this clone, a FOLDER marketplace, and a session reads a folder
-plugin IN PLACE — skills, agent and hooks.json straight from the clone, the
-cache under `~/.claude/plugins/cache/` written and read by nothing (measured on
-Claude Code 2.1.286 to 2.1.289). So after a pull the manual a session loads is
-already the new one, and what is behind is the BINARY: `wf docs` names the
+plugin IN PLACE — skills, agent and hooks.json straight from the clone; the
+cache under `~/.claude/plugins/cache/` is still written and no session reads it
+(measured on Claude Code 2.1.286 to 2.1.289). So after a pull the manual a
+session loads is already the new one and the binary is not: `wf docs` names the
 SKILL.md or any reference where the manual a session loads differs from the one
-this binary carries, and says to commit and `make install` when the plugin is
-read in place. It follows that an uncommitted edit under `skills/`, `hooks/` or
-`scripts/hooks/` is live in every session at once. A plugin from any other
-marketplace is a cached COPY that `claude plugin update` refreshes only when the
-declared version changes, which is why a change under `skills/` or `hooks/`
-still bumps `version` in `.claude-plugin/plugin.json`, and install.sh forces a
-reinstall when such a copy has drifted.
+this binary carries, and when the plugin is read in place it says to commit and
+`make install` in that folder. It follows that an uncommitted edit under
+`skills/`, `hooks/`, `agents/` or `scripts/hooks/` is what the next session
+loads, and a hook script under `scripts/hooks/` runs from the clone on every
+call, in sessions already running too. A plugin from any other marketplace is a
+cached COPY that `claude plugin update` refreshes only when the declared version
+changes, which is why a change under those four directories still bumps
+`version` in `.claude-plugin/plugin.json`, and install.sh forces a reinstall
+when such a copy has drifted.
 `scripts/install.sh --uninstall` reverses everything. Piecemeal:
 
 ```bash

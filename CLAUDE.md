@@ -76,7 +76,7 @@ but the one it just installed. Neither is a Makefile change: `make install` is a
 somebody who wants `./wf` to stay. **And no session on this machine reads that
 copy** (wave 29, 2026-10-04): a plugin from a FOLDER marketplace — which is what
 `install.sh` registers — is loaded in place from the clone on 2.1.286 to 2.1.289,
-the cache written and read by nothing. The pruning stays because the copy is
+the cache still written and read by no session. The pruning stays because the copy is
 still written; the copy is no longer what the manual's freshness hangs on.
 Before consolidation, 866 lines of
 gate-guarding tooling and both specs had no version control at all, and the
@@ -450,10 +450,12 @@ stopped here, not discovered by a commit in the wrong tree.
   longer gates delivery here and is kept for every install that is not a folder
   marketplace and for Claude Code builds older than the ones probed. The
   converse is the live risk: an UNCOMMITTED edit under these four directories
-  reaches every running session at once, a half-written hook included — edit
-  a hook in a worktree, or finish it before the next tool call anywhere fires
-  it. `wf docs` compares the manual a session actually loads, and read in
-  place the copy it finds behind is the BINARY (`make install`), not the plugin.
+  is what the next session loads, and a script under `scripts/hooks/` runs from
+  the clone on every call — in sessions already running too, a half-written
+  hook included. Edit a hook in a worktree, or finish it before the next tool
+  call anywhere fires it. `wf docs` compares the manual a session actually
+  loads; read in place, a difference means the binary and the clone were built
+  from different trees, and the patch is `make install` there, not a reinstall.
 - **Gate reviewers run on SONNET.** Every lens of a `wf` gate round — decision
   gate and script gate alike — plus the section-gate reviewers inside a script.
   Set 2026-08-29 after the round count, not the launch, turned out to be what

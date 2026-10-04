@@ -470,9 +470,11 @@ func TestDocsReadsAFolderPluginInPlace(t *testing.T) {
 		t.Fatalf("a stale cache under an in-place plugin is not what a session loads:\n%s", out)
 	}
 
-	// A source that leaves the marketplace folder, and an object source, are
-	// both fetched into the cache — and then the cache IS what a session loads.
-	for _, source := range []string{`"../elsewhere"`, `{"source":"github","repo":"x/y"}`} {
+	// A string that does not start with "./" — even an absolute path naming the
+	// folder itself — or that leaves the folder is stubbed by the harness as
+	// unparseable, and an object source is fetched: either way the session loads
+	// the cache (measured with an isolated CLAUDE_CONFIG_DIR, 2.1.289).
+	for _, source := range []string{`"../elsewhere"`, `"./../elsewhere"`, `"skills/.."`, `"` + clone + `"`, `{"source":"github","repo":"x/y"}`} {
 		market(source)
 		out, err = runWF(t, home, "docs")
 		noErr(t, err, "docs with source "+source)
@@ -495,6 +497,20 @@ func TestDocsReadsAFolderPluginInPlace(t *testing.T) {
 	out, err = runWF(t, home, "docs")
 	noErr(t, err, "docs from a github marketplace")
 	mustContain(t, out, "— "+cacheRefs, "install.sh")
+
+	// A `file` marketplace is a folder too: it names its manifest, and its
+	// entries resolve against installLocation, the folder (measured: `plugin
+	// list` printed "Read from: <folder>/plug" for source "./plug").
+	elsewhere := filepath.Join(home, "manifests", "mk.json")
+	write(elsewhere, `{"name":"wfgate-tools","plugins":[{"name":"wfgate","source":"./"}]}`)
+	market(`{"source":"github","repo":"x/y"}`)
+	write(filepath.Join(plugins, "known_marketplaces.json"),
+		`{"wfgate-tools":{"source":{"source":"file","path":"`+elsewhere+`"},"installLocation":"`+clone+`"}}`)
+	writeManual(t, cloneRefs, "authoring.md")
+	writeManual(t, cacheRefs, "")
+	out, err = runWF(t, home, "docs")
+	noErr(t, err, "docs from a file marketplace")
+	mustContain(t, out, "— "+cloneRefs, "read in place from "+clone)
 }
 
 // The refusal points at a CHARACTER. Two gates have paid for an unescaped pipe,

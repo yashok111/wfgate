@@ -95,21 +95,21 @@ if [ -n "$big" ]; then
 fi
 
 # The marketplace is the LOCAL CLONE, not a remote: the binary needs the clone
-# anyway, so there is exactly one checkout to keep fresh. After a `git pull`,
-# run `claude plugin marketplace update wfgate-tools` to refresh the plugin.
+# anyway, so there is exactly one checkout to keep fresh. A session reads a
+# folder marketplace's plugin IN PLACE (see below), so after a `git pull` the
+# manual is already current and the binary is what `make install` refreshes.
 if claude plugin marketplace list 2>/dev/null | grep -q wfgate-tools; then
 	claude plugin marketplace update wfgate-tools >/dev/null 2>&1 || true
 	echo "plugin: marketplace wfgate-tools already registered, refreshed"
 else
 	claude plugin marketplace add "$ROOT"
 fi
-# An installed plugin is a CACHED COPY, not a view of the clone, and refreshing
-# the marketplace does not touch it. Measured: the plugin sat at 1.0.0 from the
-# day it was installed while the clone reached 1.3.0 — every reference file
-# differed, and the SKILL.md that sessions actually loaded still said "every
-# agent() carries an explicit model" with no word about effort. A stale manual
-# is the class this repo already guards for binaries with a version stamp in
-# `freeze.json`; the spec channel had no such stamp and no update either.
+# The installed plugin's CACHE is a copy, and refreshing the marketplace does
+# not touch it. Measured: the cache sat at 1.0.0 from the day it was installed
+# while the clone reached 1.3.0, every reference file differing — read off the
+# cache, not off a session, and no session on 2.1.286 or later loads that copy
+# for a folder marketplace. It is still updated here: it is what any other
+# install loads, and what `claude plugin list` reported before 2.1.289.
 if claude plugin list 2>/dev/null | grep -q '^wfgate\|wfgate@'; then
 	claude plugin update wfgate@wfgate-tools -y >/dev/null 2>&1 ||
 		echo "install: plugin update needs a confirmation this shell could not give — run: claude plugin update wfgate@wfgate-tools -y" >&2
@@ -127,10 +127,11 @@ fi
 #
 # A FOLDER marketplace is read in place (measured 2026-10-04, 2.1.286 to
 # 2.1.289: skills, agent and hooks.json all loaded from the clone, the cache
-# read by nothing), and `make install` above has just built the binary from
+# read by no session), and `make install` above has just built the binary from
 # this very tree — so drift read in place means the marketplace names ANOTHER
 # folder than $ROOT, and a reinstall copies a cache that changes nothing.
-# `wf docs` says so and names the folder; that note is printed instead. Without this, the drift note tells an operator to run this script
+# `wf docs` says so and names the folder; that note is printed instead.
+# Without either branch, the drift note tells an operator to run this script
 # and the script does nothing — an unclearable warning, which is the failure
 # this repo keeps finding in its own tools.
 drift() { "$HOME/.local/bin/wf" docs 2>&1 >/dev/null | grep -q 'differs from the one this binary carries'; }
@@ -141,7 +142,13 @@ drift() { "$HOME/.local/bin/wf" docs 2>&1 >/dev/null | grep -q 'differs from the
 # binary", exit 0. The reinstall's own exit status is read, and the success
 # line is printed only over a registration `claude plugin list` can see.
 registered() { claude plugin list 2>/dev/null | grep -q '^wfgate\|wfgate@'; }
-note=$("$HOME/.local/bin/wf" docs 2>&1 >/dev/null || true)
+# A `wf docs` that FAILS prints no note, which would read as "in step": its
+# status is checked, not swallowed.
+if ! note=$("$HOME/.local/bin/wf" docs 2>&1 >/dev/null); then
+	printf '%s\n' "$note" >&2
+	echo "install: \`wf docs\` failed, so whether the manual a session loads is in step with the binary is UNKNOWN" >&2
+	exit 1
+fi
 if printf '%s\n' "$note" | grep -q 'read in place from'; then
 	printf '%s\n' "$note" >&2
 	echo "install: the plugin is read in place from another folder than $ROOT — a reinstall would not change it; follow the note above" >&2
