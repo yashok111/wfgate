@@ -326,8 +326,37 @@ func TestStatsReadsTheLastTrailer(t *testing.T) {
 	mustContain(t, out, "1 apply batch(es), 1 edit(s)")
 }
 
-// A plugin is a CACHED COPY, not a view of the clone, and refreshing the
-// marketplace does not touch it. Measured: the installed plugin sat at the
+// writeManual writes the embedded SKILL.md and references under dir (the
+// references directory), prefixing the file named stale so it differs.
+func writeManual(t *testing.T, dir string, stale string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The front door lives beside references/, and the check reads it too.
+	skill, err := wfgate.Docs.ReadFile("skills/workflow-gate/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "SKILL.md"), skill, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range docNames {
+		b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if file == stale {
+			b = append([]byte("# a stale copy\n"), b...)
+		}
+		if err := os.WriteFile(filepath.Join(dir, file), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// A plugin from any marketplace but a folder is a CACHED COPY, not a view of
+// the clone, and refreshing the marketplace does not touch it. Measured: the installed plugin sat at the
 // version it was installed at while the clone moved four releases on — every
 // reference file differed, and the SKILL.md sessions actually loaded still
 // described a rule the manual had replaced. A binary and a skill built from one
@@ -337,32 +366,6 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	writeRefs := func(dir string, stale string) {
-		t.Helper()
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		// The front door lives beside references/, and the check reads it too.
-		skill, err := wfgate.Docs.ReadFile("skills/workflow-gate/SKILL.md")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "SKILL.md"), skill, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		for _, file := range docNames {
-			b, err := wfgate.Docs.ReadFile("skills/workflow-gate/references/" + file)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if file == stale {
-				b = append([]byte("# a stale copy\n"), b...)
-			}
-			if err := os.WriteFile(filepath.Join(dir, file), b, 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
 	registry := func(installPath string) {
 		t.Helper()
 		dir := filepath.Join(home, ".claude", "plugins")
@@ -378,7 +381,7 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 	cache := filepath.Join(home, ".claude", "plugins", "cache", "wfgate-tools", "wfgate")
 	// Every reference present and identical except one, so the note has to name
 	// the file rather than the directory.
-	writeRefs(filepath.Join(cache, "1.0.0", "skills", "workflow-gate", "references"), "authoring.md")
+	writeManual(t, filepath.Join(cache, "1.0.0", "skills", "workflow-gate", "references"), "authoring.md")
 	registry(filepath.Join(cache, "1.0.0"))
 
 	out, err := runWF(t, home, "docs")
@@ -391,7 +394,7 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 	// The front door drifting is the case that actually bit: a session reads
 	// SKILL.md before any reference, and the stale one still said "every agent()
 	// call carries an explicit model" with no word about effort.
-	writeRefs(filepath.Join(cache, "1.1.0", "skills", "workflow-gate", "references"), "")
+	writeManual(t, filepath.Join(cache, "1.1.0", "skills", "workflow-gate", "references"), "")
 	if err := os.WriteFile(filepath.Join(cache, "1.1.0", "skills", "workflow-gate", "SKILL.md"), []byte("# a stale front door\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -404,13 +407,94 @@ func TestDocsNamesAManualThatDrifted(t *testing.T) {
 	// the REGISTERED path: a glob over the cache found the abandoned copy and
 	// reported drift no session could see, which is the false red this binary
 	// refuses to print anywhere else.
-	writeRefs(filepath.Join(cache, "2.0.0", "skills", "workflow-gate", "references"), "")
+	writeManual(t, filepath.Join(cache, "2.0.0", "skills", "workflow-gate", "references"), "")
 	registry(filepath.Join(cache, "2.0.0"))
 	out, err = runWF(t, home, "docs")
 	noErr(t, err, "docs after the update")
 	if strings.Contains(out, "differs from the one this binary carries") {
 		t.Fatalf("an install in step with the binary is not drift, and an abandoned cache is not an install:\n%s", out)
 	}
+}
+
+// A plugin installed from a FOLDER marketplace is read in place: measured
+// 2026-10-04, a session loaded wfgate's skill, agent and hooks.json from the
+// clone while the registered installPath pointed at a cache nothing read. The
+// check compared that cache, so it named a copy no session loaded and could
+// not see the drift that is real in place — a binary behind its clone.
+func TestDocsReadsAFolderPluginInPlace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	plugins := filepath.Join(home, ".claude", "plugins")
+	clone := filepath.Join(home, "src", "wfgate")
+	cache := filepath.Join(plugins, "cache", "wfgate-tools", "wfgate", "1.0.0")
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	market := func(source string) {
+		t.Helper()
+		write(filepath.Join(clone, ".claude-plugin", "marketplace.json"),
+			`{"name":"wfgate-tools","plugins":[{"name":"wfgate","source":`+source+`}]}`)
+	}
+	write(filepath.Join(plugins, "installed_plugins.json"),
+		`{"plugins":{"wfgate@wfgate-tools":[{"scope":"user","installPath":"`+cache+`","version":"1.0.0"}]}}`)
+	write(filepath.Join(plugins, "known_marketplaces.json"),
+		`{"wfgate-tools":{"source":{"source":"directory","path":"`+clone+`"},"installLocation":"`+clone+`"}}`)
+	cloneRefs := filepath.Join(clone, "skills", "workflow-gate", "references")
+	cacheRefs := filepath.Join(cache, "skills", "workflow-gate", "references")
+	market(`"."`)
+
+	// The clone drifted, the cache is in step: the note names the CLONE and the
+	// patch that fixes it there. A reinstall would copy a cache nothing reads.
+	writeManual(t, cloneRefs, "authoring.md")
+	writeManual(t, cacheRefs, "")
+	out, err := runWF(t, home, "docs")
+	noErr(t, err, "docs over a drifted clone")
+	mustContain(t, out, "LOADS differs from the one this binary carries — "+cloneRefs,
+		"drifted: authoring.md", "read in place from "+clone, "`make install`")
+	if strings.Contains(out, "install.sh") {
+		t.Fatalf("a reinstall changes nothing a session reads in place:\n%s", out)
+	}
+
+	// The clone in step, the cache stale: no note. The cache is read by nothing.
+	writeManual(t, cloneRefs, "")
+	writeManual(t, cacheRefs, "authoring.md")
+	out, err = runWF(t, home, "docs")
+	noErr(t, err, "docs over a stale cache")
+	if strings.Contains(out, "differs from the one this binary carries") {
+		t.Fatalf("a stale cache under an in-place plugin is not what a session loads:\n%s", out)
+	}
+
+	// A source that leaves the marketplace folder, and an object source, are
+	// both fetched into the cache — and then the cache IS what a session loads.
+	for _, source := range []string{`"../elsewhere"`, `{"source":"github","repo":"x/y"}`} {
+		market(source)
+		out, err = runWF(t, home, "docs")
+		noErr(t, err, "docs with source "+source)
+		mustContain(t, out, "— "+cacheRefs, "drifted: authoring.md", "install.sh")
+	}
+
+	// The entry is matched by NAME: a sibling plugin read in place says nothing
+	// about this one.
+	write(filepath.Join(clone, ".claude-plugin", "marketplace.json"),
+		`{"name":"wfgate-tools","plugins":[{"name":"other","source":"."},{"name":"wfgate","source":{"source":"github","repo":"x/y"}}]}`)
+	out, err = runWF(t, home, "docs")
+	noErr(t, err, "docs beside a sibling plugin")
+	mustContain(t, out, "— "+cacheRefs, "install.sh")
+
+	// A marketplace that is not a folder has a local clone too, and its plugin
+	// is still copied into the cache: in place is the FOLDER source only.
+	market(`"."`)
+	write(filepath.Join(plugins, "known_marketplaces.json"),
+		`{"wfgate-tools":{"source":{"source":"github","repo":"x/y"},"installLocation":"`+clone+`"}}`)
+	out, err = runWF(t, home, "docs")
+	noErr(t, err, "docs from a github marketplace")
+	mustContain(t, out, "— "+cacheRefs, "install.sh")
 }
 
 // The refusal points at a CHARACTER. Two gates have paid for an unescaped pipe,

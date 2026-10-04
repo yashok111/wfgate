@@ -121,10 +121,16 @@ fi
 
 # `claude plugin update` is VERSION-keyed: measured, it copies nothing when
 # plugin.json declares the version already installed, so a spec fix committed
-# without a version bump never reaches a session. `wf docs` answers whether the
-# installed manual is in step (it compares the cached SKILL.md and references
-# with the ones embedded in the binary), and the only way to force a copy is a
-# reinstall. Without this, the drift note tells an operator to run this script
+# without a version bump never reaches a session that loads the cached copy.
+# `wf docs` answers whether the manual a session loads is in step with the
+# binary, and for a cached copy the only way to force one is a reinstall.
+#
+# A FOLDER marketplace is read in place (measured 2026-10-04, 2.1.286 to
+# 2.1.289: skills, agent and hooks.json all loaded from the clone, the cache
+# read by nothing), and `make install` above has just built the binary from
+# this very tree — so drift read in place means the marketplace names ANOTHER
+# folder than $ROOT, and a reinstall copies a cache that changes nothing.
+# `wf docs` says so and names the folder; that note is printed instead. Without this, the drift note tells an operator to run this script
 # and the script does nothing — an unclearable warning, which is the failure
 # this repo keeps finding in its own tools.
 drift() { "$HOME/.local/bin/wf" docs 2>&1 >/dev/null | grep -q 'differs from the one this binary carries'; }
@@ -135,7 +141,11 @@ drift() { "$HOME/.local/bin/wf" docs 2>&1 >/dev/null | grep -q 'differs from the
 # binary", exit 0. The reinstall's own exit status is read, and the success
 # line is printed only over a registration `claude plugin list` can see.
 registered() { claude plugin list 2>/dev/null | grep -q '^wfgate\|wfgate@'; }
-if drift; then
+note=$("$HOME/.local/bin/wf" docs 2>&1 >/dev/null || true)
+if printf '%s\n' "$note" | grep -q 'read in place from'; then
+	printf '%s\n' "$note" >&2
+	echo "install: the plugin is read in place from another folder than $ROOT — a reinstall would not change it; follow the note above" >&2
+elif drift; then
 	echo "plugin: the installed manual is behind this clone — reinstalling to force a copy"
 	claude plugin uninstall wfgate >/dev/null 2>&1 || true
 	if ! claude plugin install wfgate@wfgate-tools --scope user >/dev/null 2>&1; then
@@ -187,4 +197,4 @@ echo "  wf, wfcheck, wfdry $("$HOME/.local/bin/wf" version | cut -d' ' -f2)  -> 
 echo "  wfgate plugin               -> workflow-gate skill, the gate-sweep agent, PreToolUse hooks (Workflow, Write|Edit)"
 echo
 echo "verify in a NEW session: the skill list shows wfgate:workflow-gate; wf docs | head"
-echo "  (wf docs names any reference where the installed plugin has drifted from this binary)"
+echo "  (wf docs names any reference where the manual a session loads has drifted from this binary)"

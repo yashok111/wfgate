@@ -40,7 +40,9 @@ The test reads the working tree against HEAD plus untracked files, not
 `--cached`: run before `git add`, a staged-only test answers "no bump owed"
 over an empty set. `claude plugin update` copies nothing when the declared
 version is the one already installed, so a fix without a bump never reaches a
-session.
+session that loads a CACHED copy. This machine's sessions read the folder
+marketplace in place (wave 29), so here the edit is live before the commit —
+the bump serves every other install.
 
 ## 3. After the commit, never before
 

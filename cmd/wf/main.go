@@ -4636,8 +4636,9 @@ var docNames = map[string]string{
 var guideOrder = []string{"authoring", "routing", "interview", "preflight", "harness", "rounds", "section-gate", "cost"}
 
 // manualDrift compares the references EMBEDDED in this binary with the copy a
-// session actually loads — the installed plugin's cached tree — and returns the
-// files that differ.
+// session actually loads and returns the files that differ, plus the folder
+// the plugin is read IN PLACE from when it is (empty when the session loads a
+// cached copy).
 //
 // Measured: the plugin sat at the version it was installed at while the clone
 // moved four releases on. Every reference differed, and the SKILL.md sessions
@@ -4647,21 +4648,22 @@ var guideOrder = []string{"authoring", "routing", "interview", "preflight", "har
 // the freeze manifest's version stamp applied to the spec channel: a NOTE, not
 // a refusal — a rebuilt binary legitimately serves an older plugin until the
 // next install.
-func manualDrift() (string, []string) {
+func manualDrift() (dir string, diffs []string, inPlace string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", nil
+		return "", nil, ""
 	}
-	// The REGISTERED install path, never a glob over the cache: an update leaves
+	// The REGISTERED install, never a glob over the cache: an update leaves
 	// the previous version's directory behind, and a glob found the abandoned
 	// one and reported drift no session could see. A check that fires on a
 	// correct install is the false red this binary refuses to print elsewhere.
-	dirs := registeredPluginDirs(home)
+	dirs := loadedPluginDirs(home)
 	// The retired user-level symlink. install.sh removes it, and a machine that
 	// still has one is loading a manual from a path nothing updates.
-	dirs = append(dirs, filepath.Join(home, ".claude", "skills", "workflow-gate", "references"))
+	dirs = append(dirs, loadedDir{refs: filepath.Join(home, ".claude", "skills", "workflow-gate", "references")})
 	{
-		for _, dir := range dirs {
+		for _, d := range dirs {
+			dir := d.refs
 			// A path that is not there is not a stale manual. The legacy symlink
 			// is absent on a machine that never had one, and reporting six
 			// missing files over it would be a note about nothing.
@@ -4691,17 +4693,36 @@ func manualDrift() (string, []string) {
 			}
 			if len(diffs) > 0 {
 				sort.Strings(diffs)
-				return dir, diffs
+				return dir, diffs, d.inPlace
 			}
 		}
 	}
-	return "", nil
+	return "", nil, ""
 }
 
-// registeredPluginDirs returns the references directory of every wfgate plugin
-// the harness has actually INSTALLED, read from its own registry.
-func registeredPluginDirs(home string) []string {
-	b, err := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
+// loadedDir is the references directory a session loads, and the plugin root
+// when that directory is read in place from a folder marketplace.
+type loadedDir struct {
+	refs, inPlace string
+}
+
+// loadedPluginDirs returns the references directory a session LOADS for every
+// wfgate plugin the harness has installed, read from its own registry.
+//
+// That is not always the registered installPath. Measured 2026-10-04 on
+// 2.1.286, 2.1.288 and 2.1.289 (`claude -p --debug`: "Read hooks.json for
+// plugin wfgate: /home/yakov/projects/wfgate/hooks/hooks.json"): a plugin
+// installed from a DIRECTORY marketplace is read in place from that folder,
+// while the cache under installPath is still written and read by nothing. This
+// check compared the cache for five weeks, so its note said "the manual a
+// session LOADS" about a copy no session loaded, and missed the drift that is
+// real in place — a binary older than the clone it serves. The predicate is
+// the harness's own: the plugin's source path, resolved against the
+// marketplace folder, must stay inside it. Any other marketplace keeps the
+// cached copy.
+func loadedPluginDirs(home string) []loadedDir {
+	plugins := filepath.Join(home, ".claude", "plugins")
+	b, err := os.ReadFile(filepath.Join(plugins, "installed_plugins.json"))
 	if err != nil {
 		return nil
 	}
@@ -4713,31 +4734,87 @@ func registeredPluginDirs(home string) []string {
 	if json.Unmarshal(b, &reg) != nil {
 		return nil
 	}
-	var out []string
-	for _, entries := range reg.Plugins {
-		for _, e := range entries {
-			if e.InstallPath == "" {
+	var markets map[string]struct {
+		Source struct {
+			Source string `json:"source"`
+		} `json:"source"`
+		InstallLocation string `json:"installLocation"`
+	}
+	if b, err := os.ReadFile(filepath.Join(plugins, "known_marketplaces.json")); err == nil {
+		_ = json.Unmarshal(b, &markets)
+	}
+	// inPlaceRoot resolves "name@market" to the folder a session reads, or "".
+	inPlaceRoot := func(key string) string {
+		name, market, ok := strings.Cut(key, "@")
+		m, known := markets[market]
+		if !ok || !known || m.Source.Source != "directory" || m.InstallLocation == "" {
+			return ""
+		}
+		b, err := os.ReadFile(filepath.Join(m.InstallLocation, ".claude-plugin", "marketplace.json"))
+		if err != nil {
+			return ""
+		}
+		var manifest struct {
+			Plugins []struct {
+				Name   string          `json:"name"`
+				Source json.RawMessage `json:"source"`
+			} `json:"plugins"`
+		}
+		if json.Unmarshal(b, &manifest) != nil {
+			return ""
+		}
+		for _, p := range manifest.Plugins {
+			var rel string
+			// An object source (github, git, url) is fetched into the cache.
+			if p.Name != name || json.Unmarshal(p.Source, &rel) != nil {
 				continue
 			}
-			dir := filepath.Join(e.InstallPath, "skills", "workflow-gate", "references")
-			if st, err := os.Stat(dir); err == nil && st.IsDir() {
-				out = append(out, dir)
+			root := filepath.Join(m.InstallLocation, rel)
+			if r, err := filepath.Rel(m.InstallLocation, root); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+				return ""
+			}
+			return root
+		}
+		return ""
+	}
+	var out []loadedDir
+	for key, entries := range reg.Plugins {
+		root := inPlaceRoot(key)
+		for _, e := range entries {
+			d := loadedDir{inPlace: root}
+			switch {
+			case root != "":
+				d.refs = filepath.Join(root, "skills", "workflow-gate", "references")
+			case e.InstallPath != "":
+				d.refs = filepath.Join(e.InstallPath, "skills", "workflow-gate", "references")
+			default:
+				continue
+			}
+			if st, err := os.Stat(d.refs); err == nil && st.IsDir() {
+				out = append(out, d)
 			}
 		}
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].refs < out[j].refs })
 	return out
 }
 
 // noteManualDrift prints the drift to STDERR, so `wf docs guide > file` still
 // captures the manual and the warning still reaches a person.
 func noteManualDrift() {
-	dir, diffs := manualDrift()
+	dir, diffs, inPlace := manualDrift()
 	if len(diffs) == 0 {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "note: the manual a session LOADS differs from the one this binary carries — %s\n", dir)
 	fmt.Fprintf(os.Stderr, "      drifted: %s\n", strings.Join(diffs, ", "))
+	if inPlace != "" {
+		// Read in place, the folder IS the manual, so the copy that is behind is
+		// this binary — or the folder holds edits no commit carries yet. A
+		// reinstall copies a cache nothing reads and changes neither.
+		fmt.Fprintf(os.Stderr, "      the plugin is read in place from %s, so this binary is what is out of step: commit there, then run `make install` in it\n", inPlace)
+		return
+	}
 	fmt.Fprintf(os.Stderr, "      run scripts/install.sh (or `claude plugin update wfgate@wfgate-tools`) so both come from one commit\n")
 }
 

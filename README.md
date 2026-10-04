@@ -31,15 +31,20 @@ git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git ~/projects/wfgate
 ~/projects/wfgate/scripts/install.sh      # three binaries + plugin (skill + hooks), and it UPDATES an installed plugin
 ```
 
-After a `git pull`: re-run `scripts/install.sh`. An installed plugin is a cached
-COPY, and refreshing the marketplace alone does not touch it — the copy sat four
-releases behind the clone once, so the manual a session loaded described a rule
-the manual had already replaced. `wf docs` names the SKILL.md or any
-reference where the installed copy differs from the one this binary carries, and
-install.sh forces a reinstall when it does — `claude plugin update` is
-version-keyed and copies nothing when the declared version has not changed, so a
-change under `skills/` or `hooks/` must bump `version` in
-`.claude-plugin/plugin.json`.
+After a `git pull`: re-run `scripts/install.sh`. The marketplace install.sh
+registers is this clone, a FOLDER marketplace, and a session reads a folder
+plugin IN PLACE — skills, agent and hooks.json straight from the clone, the
+cache under `~/.claude/plugins/cache/` written and read by nothing (measured on
+Claude Code 2.1.286 to 2.1.289). So after a pull the manual a session loads is
+already the new one, and what is behind is the BINARY: `wf docs` names the
+SKILL.md or any reference where the manual a session loads differs from the one
+this binary carries, and says to commit and `make install` when the plugin is
+read in place. It follows that an uncommitted edit under `skills/`, `hooks/` or
+`scripts/hooks/` is live in every session at once. A plugin from any other
+marketplace is a cached COPY that `claude plugin update` refreshes only when the
+declared version changes, which is why a change under `skills/` or `hooks/`
+still bumps `version` in `.claude-plugin/plugin.json`, and install.sh forces a
+reinstall when such a copy has drifted.
 `scripts/install.sh --uninstall` reverses everything. Piecemeal:
 
 ```bash

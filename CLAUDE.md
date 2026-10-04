@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 28 — what each change answered and the command
+maintenance record, waves 2 to 29 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -73,7 +73,12 @@ timestamped report and scored JSON there per run, which `.gitignore` keeps out
 of the repository and therefore out of everywhere BUT the plugin copy, and
 which the 2 MB tripwire is too coarse to see — and prunes every cache version
 but the one it just installed. Neither is a Makefile change: `make install` is also run alone by
-somebody who wants `./wf` to stay. Before consolidation, 866 lines of
+somebody who wants `./wf` to stay. **And no session on this machine reads that
+copy** (wave 29, 2026-10-04): a plugin from a FOLDER marketplace — which is what
+`install.sh` registers — is loaded in place from the clone on 2.1.286 to 2.1.289,
+the cache written and read by nothing. The pruning stays because the copy is
+still written; the copy is no longer what the manual's freshness hangs on.
+Before consolidation, 866 lines of
 gate-guarding tooling and both specs had no version control at all, and the
 P2e false green lived in exactly such a file. The mechanics/judgement split
 stands: this repo is the mechanics, the gate-checks reference is the
@@ -317,7 +322,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 28 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 29 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -356,6 +361,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 26 | A bug hunt by five vectors | 47 findings, 8 BLOCKER: hooks granting permission, `apply` writing outside `artifacts/`, a `#1` row closing the wrong one, factory wrappers invisible to `wfcheck`, a heading's passing mention closing a section; the 68-mutation sweep and the symlink, merge and fence findings of its review round |
 | 27 | A18, the gate that closed with three blockers standing (`docs/feedbacks/FEEDBACK-a18.md`) | `wf close -early` banking the owner's call; the SECTION run in `wf stats` over the anchors a blocker cites; `round record` numbering empty `#` cells; `target:<sha>` as a prose closure; three manual rules (a guard counting its own statement, shapes never coordinates, the build as a `-kind run` round) |
 | 28 | Two months of Claude Code release notes (2.1.221 to 2.1.288), read against the plugin | The manual's "there is no knob" for workflow concurrency, three weeks stale; usage-limit pauses that now resume; the script API moved out of the Workflow tool into a skill; `make check-plugin`; `omitClaudeMd` and a 1h cache on the sweep agent; the repo's `verify` skill |
+| 29 | Claude Code 2.1.289, read against the plugin | A folder-marketplace plugin is read IN PLACE, not from the cache; `wf docs` compared a copy no session loaded; install.sh no longer reinstalls over in-place drift; `plugin validate` on a folder had skipped the plugin, `make check-plugin` never affected |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
@@ -437,11 +443,17 @@ stopped here, not discovered by a commit in the wrong tree.
   because `hooks/hooks.json` executes those files: they ship in the plugin as
   surely as the manual does. `claude plugin update` is VERSION-keyed —
   measured: it copies nothing when the declared version is the one already
-  installed, so a spec fix committed without a bump never reaches a session.
-  `scripts/install.sh` forces a reinstall when `wf docs` reports drift, but that
-  is the backstop; the bump is the mechanism. The plugin sat four releases
-  behind the clone once, and the SKILL.md sessions loaded described a rule the
-  manual had already replaced.
+  installed, so a spec fix committed without a bump never reaches a session
+  that loads the CACHED copy. On this machine no session does: a folder
+  marketplace is read IN PLACE (wave 29 — measured on 2.1.286 to 2.1.289, the
+  skill, the agent and hooks.json all load from the clone), so the bump no
+  longer gates delivery here and is kept for every install that is not a folder
+  marketplace and for Claude Code builds older than the ones probed. The
+  converse is the live risk: an UNCOMMITTED edit under these four directories
+  reaches every running session at once, a half-written hook included — edit
+  a hook in a worktree, or finish it before the next tool call anywhere fires
+  it. `wf docs` compares the manual a session actually loads, and read in
+  place the copy it finds behind is the BINARY (`make install`), not the plugin.
 - **Gate reviewers run on SONNET.** Every lens of a `wf` gate round — decision
   gate and script gate alike — plus the section-gate reviewers inside a script.
   Set 2026-08-29 after the round count, not the launch, turned out to be what
