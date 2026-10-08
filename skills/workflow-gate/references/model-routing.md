@@ -14,10 +14,11 @@ request, and a reviewer tier the roster banks is only what ran if no such warnin
 agent per task. A model-less `agent()` is a bug; fix before running.
 
 **Tier by what the subagent does:**
-- **haiku** — trivial/mechanical: grep-and-report, rename, format-preserving tweak, log extraction,
-  yes/no checks. No reasoning.
-- **sonnet** — DEFAULT for ordinary work: localized edits, single-file TDD slices, test writing,
-  structured extraction, routine review.
+- **haiku** — every role that passes the HAIKU TEST below. Mechanical work passes it trivially
+  (grep-and-report, rename, format-preserving tweak, log extraction, yes/no checks); since Haiku 5.5 a
+  wider class does, which is why this is a test and not a list.
+- **sonnet** — DEFAULT for ordinary work that fails the haiku test: localized edits, single-file TDD
+  slices, test writing, routine review, and every role whose output nothing re-checks.
 - **opus** — ONLY if ALL THREE hold (else → sonnet): (1) hard enough that sonnet plausibly errs — many
   *interacting* constraints, or intricate logic (subtle concurrency, invariant-heavy refactor, tricky
   algorithm); (2) the error is NOT cheaply caught downstream — if the section-review gate (below) or a
@@ -27,9 +28,41 @@ agent per task. A model-less `agent()` is a bug; fix before running.
   sonnet); adversarial verification of money-/data-loss/auth/crypto claims. "Multi-step", "cross-file",
   "synthesis", "ambiguous" are NOT triggers on their own — apply the three.
 
+**The haiku test — haiku when ALL THREE hold, else sonnet.** It is the opus test turned around: there,
+an error something cheap downstream catches is a reason NOT to upgrade; here it is the reason to
+downgrade.
+1. **Something checks the output before anything trusts it.** A schema-checked return that a sonnet or
+   opus verifier or fan-in reads, a candidate list a later stage confirms, a build, test or `wfcheck`
+   that fails loudly on a wrong answer. An output taken as truth by nothing that re-reads it fails: the
+   fan-in's own synthesis, a gate reviewer's verdict (the verdict IS the check), a final report. An
+   edit that lands in the tree passes only on paper — what catches a bad edit is a section-gate round,
+   which costs more than the tier saved — so producers that write code stay sonnet, the mechanical
+   edits above excepted.
+2. **Its input is a NAMED SLICE, not an exploration.** It reads what its prompt hands it — one file,
+   one function, one citation, one log, one diff hunk — and finishes in a handful of tool calls. A
+   subagent's prompt grows with every turn (system prompt, tools, everything read so far), and Haiku
+   is billed at several times its base rate once a prompt passes 100K tokens, so an exploring haiku
+   loses most of the price advantage exactly where it is likeliest to lose the thread. An agent that
+   must search to find its own scope fails.
+3. **The answer is LOCAL.** It can be judged from the slice alone: does this cited line say what the
+   sentence claims, which of these categories is this, extract these fields, map this file. An answer
+   that depends on constraints spread across files — a cross-file invariant, a design choice,
+   reconciling two reports — fails.
+
+Where it pays is WIDTH: the per-item stage of a fan-out (map each file, classify each finding, check
+each citation, triage each log, extract from each record) under ONE sonnet verifier or fan-in that
+reads their outputs; and the first half of a find-then-verify pair, where haiku proposes candidates
+over narrow slices and sonnet confirms only the candidates. Recall is bought with DIFFERENT slices, not
+with N haiku over the same one — duplicates on one slice are read-amplification
+(`cost-discipline.md` §1). The test is derived from where an error is caught and from the price
+model, not from a run comparing the two tiers on one role, and whether the claude.ai usage quota
+weighs haiku the way the API price does is unmeasured too: a role the test placed on haiku that
+measurably misses goes back to sonnet.
+
 **HARD RULE — inside a fan-out, producers are cheap.** For agents *within* a `parallel()`/`pipeline()`
 over N items (a standalone agent not in a fan-out — e.g. top-level design — is governed by the tier
-list above): per-item producers are sonnet (or haiku), never opus. The ONLY opus-eligible role is a
+list above): per-item producers are haiku where the haiku test passes and sonnet where it does not,
+never opus. The ONLY opus-eligible role is a
 SINGLE fan-in convergence agent that reads all N outputs, runs ONCE, and clears the three-prong gate (a
 mechanical merge won't). A per-item *terminal* stage runs N times → NOT that agent → sonnet. N
 same-role opus producers in parallel is banned — if you think you need it, the decomposition is wrong;
@@ -42,7 +75,8 @@ and it is what an operator's quota actually runs out on.)
 
 **Tie-breaks & round-ups:**
 - Unsure between two tiers → pick cheaper. Default sonnet; escalate ONE fan-in agent before upgrading a
-  whole fan-out.
+  whole fan-out. The one exception is haiku against sonnet when you are unsure whether anything checks
+  the output: that is the haiku test's first condition failing, so it is sonnet.
 - Auto round-up to opus ONLY for genuine money-/data-loss/auth/crypto reasoning. For an irreversible
   external action with no cheap rollback (prod deploy, fund transfer, destructive data op), round up the
   agent that *decides/verifies* it, NOT the one that merely executes — and NOT for ordinary git/PR/
@@ -82,8 +116,9 @@ efforts names them in that entry's `detail` string, exactly as a mixed-tier phas
 
 **Tier by how the answer is REACHED, not by how important the step is:**
 - **low** — mechanical, single pass, nothing to weigh: grep-and-report, extraction, rename, a
-  format-preserving tweak, a yes/no check, harvesting a log. The same population the tier list gives to
-  haiku.
+  format-preserving tweak, a yes/no check, harvesting a log. The mechanical END of what the haiku test
+  places on haiku, not all of it: a haiku judging whether a cited line supports a claim has something to
+  weigh, and is `medium`.
 - **medium** — DEFAULT for ordinary producers: a localized edit, a single-file TDD slice, test writing,
   structured extraction, routine review.
 - **high** — a step whose error is NOT cheaply caught downstream: a section-gate reviewer, adversarial

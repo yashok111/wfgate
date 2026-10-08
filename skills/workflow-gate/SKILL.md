@@ -67,7 +67,9 @@ cites.
 - Every `agent()` call carries an explicit `model` AND an explicit `effort` —
   an omitted one inherits the launching session, so the script's cost is not
   written in the script. Producers inside a fan-out are cheap on both axes;
-  opus and `high`+ are the exceptions that must argue for themselves.
+  opus and `high`+ are the exceptions that must argue for themselves, and
+  haiku against sonnet is decided per role by the haiku test in
+  `references/model-routing.md`.
 - Gate REVIEWERS are **sonnet** — every lens of the pre-flight gate and of the
   decision gate before it, and every section-gate reviewer. Opus on a reviewer
   is a per-round exception that NAMES the miss it guards against and is banked
