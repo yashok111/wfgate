@@ -15,8 +15,8 @@ agent per task. A model-less `agent()` is a bug; fix before running.
 
 **Tier by what the subagent does:**
 - **haiku** — every role that passes the HAIKU TEST below. Mechanical work passes it trivially
-  (grep-and-report, rename, format-preserving tweak, log extraction, yes/no checks); since Haiku 5.5 a
-  wider class does, which is why this is a test and not a list.
+  (grep-and-report, rename, format-preserving tweak, log extraction, yes/no checks); a current haiku
+  passes it for a wider class, which is why this is a test and not a list.
 - **sonnet** — DEFAULT for ordinary work that fails the haiku test: localized edits, single-file TDD
   slices, test writing, routine review, and every role whose output nothing re-checks.
 - **opus** — ONLY if ALL THREE hold (else → sonnet): (1) hard enough that sonnet plausibly errs — many
@@ -41,17 +41,16 @@ downgrade.
    tier saved — so producers that write code stay sonnet, the mechanical edits above excepted.
 2. **Its input is a NAMED SLICE, not an exploration.** Its prompt names every input it reads — paths,
    line ranges, records, one diff hunk — and asks for no search of its own; that is decidable from the
-   script, a tool-call count is not. A subagent's prompt grows with every turn (system prompt, tools,
-   everything read so far), and past a 100K-token prompt Haiku's cache reads — the bulk of a long
-   agent's bill — go from an order of magnitude cheaper than sonnet's to about half, so an exploring
-   haiku pays most of sonnet's price. The capability side agrees: the vendor's own benchmarks put
-   Haiku 5.5 close to sonnet on single-answer knowledge and reasoning tasks and at about half of it on
-   multi-step agentic terminal coding.
+   script, a tool-call count is not. Price and capability point the same way: a subagent's prompt
+   grows with every turn (system prompt, tools, everything read so far), haiku's price advantage
+   shrinks sharply once a prompt gets long, and its gap to sonnet is widest on multi-step agentic work
+   and narrow on single-answer tasks. An exploring haiku pays most of sonnet's price for a weaker
+   answer.
 3. **The answer is LOCAL.** It can be judged from the slice alone: does this cited line say what the
    sentence claims, which of these categories is this, extract these fields, map this file. An answer
    that depends on constraints spread across files — a cross-file invariant, a design choice,
    reconciling two reports — fails. So does a slice of offensive-security content (exploit
-   techniques, attack paths): Haiku 5.5's cyber safeguards are stricter than its predecessor's, and a
+   techniques, attack paths): the current haiku's cyber safeguards are stricter than its predecessors', and a
    refusal is an answer a fan-in can read as "nothing found".
 
 Where it pays is WIDTH: the per-item stage of a fan-out (check each citation, classify each finding,
@@ -60,7 +59,7 @@ re-judges; and the first half of a find-then-verify pair, where haiku proposes c
 slices and sonnet confirms only the candidates. Recall is bought with DIFFERENT slices, not with N
 haiku over the same one — duplicates on one slice are read-amplification (`cost-discipline.md` §1).
 The test is derived from where an error is caught, from the price model and from the vendor's
-positioning — Anthropic calls Haiku 5.5 "best suited to more narrowly scoped tasks" and says sonnet
+positioning — Anthropic calls its haiku "best suited to more narrowly scoped tasks" and says sonnet
 and opus "remain better choices for complex agentic coding tasks" — not from a run in this harness
 comparing the two tiers on one role. Whether the claude.ai usage quota weighs haiku the way the API
 price does is unmeasured too: a role the test placed on haiku that measurably misses goes back to

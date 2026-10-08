@@ -64,9 +64,8 @@ cap says, and a test suite beside a docker build and the agents' own processes h
 (default 20) governs the Agent tool and does NOT reach a workflow. At the default, the floor of 2 is why
 a two-reviewer gate never queues anywhere [M-30].
 Two more variables of the same family move only a WARNING: `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_AGENTS`
-and `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_TOKENS` set when the run list shows "Large workflow" — a few
-dozen scheduled agents, or a projected token total of the order of a million, by default (re-derive both
-from the binary; it projects tokens per agent from the agents already started). The token axis counts raw
+and `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_TOKENS` set when the run list shows "Large workflow" — by agent count or by projected
+tokens, defaults in the binary (it projects tokens per agent from the agents already started). The token axis counts raw
 tokens with every model weighted alike, so a wide cheap-model fan-out trips it as early as an opus one.
 It stops nothing — read it as a prompt to redo point 8's estimate, not as a cap.
 
