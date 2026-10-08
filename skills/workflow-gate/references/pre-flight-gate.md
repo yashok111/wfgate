@@ -7,9 +7,10 @@ reviewer's tier is paid once per ROUND, not once per gate, so the tier MULTIPLIE
 the cost function this manual already names — and that product, not the launch, is what an operator
 runs out of. A gate that stops because the quota stopped is the worse outcome: the round that is never
 dispatched finds nothing at all, and `wf stats` cannot tell it from a round that found nothing [M-11].
-Depth is the axis to keep, and it is the cheaper one: for these out-of-band `Agent` calls a reviewer's
-depth comes from the reviewing SESSION rather than from a per-call `effort` (`model-routing.md`), so
-do not drop the session's effort while a round is running. **Opus on a gate reviewer is a per-round
+Depth is the axis to keep, and it is the cheaper one: write `effort: 'xhigh'` on every reviewer's
+`Agent` call — omitted, it falls back to the agent definition's effort, else the reviewing SESSION's,
+and `model-routing.md` says
+why `xhigh` and not `high`. **Opus on a gate reviewer is a per-round
 exception the operator argues for out loud**, in the round's own lens roster
 (`wf round lens <prompt-file> -name N -model opus -asks Q`): a security-/correctness-critical artifact
 where a subtle, high-cost-if-missed defect is plausible, or a single fan-in lens reconciling genuinely

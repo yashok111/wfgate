@@ -111,7 +111,14 @@ loop the gate; the LEVEL you file is on the closed BLOCKER/MAJOR/MINOR/NOTE scal
 this section's own words not a defect — file MINOR where the row names a concrete cost). A MISSING effort is a blocker, because
 that is not a tier judgement — it is a script whose cost is written in someone else's session.
 
-**The pre-flight gate's own reviewers carry no effort knob.** They are out-of-band `Agent` calls, whose
-options are the model and the agent type; their depth comes from the reviewing session and from the
-agent definition. Do not report a missing `effort` on them — and do not drop the session's effort while
-a gate round is running, because that is the one place the setting silently reaches.
+**The pre-flight gate's own reviewers carry `effort: 'xhigh'`, written on the `Agent` call.** They are
+out-of-band `Agent` calls, and the `Agent` tool takes an `effort` since Claude Code 2.1.292; before
+that its options were the model and the agent type, and a reviewer ran at its agent definition's effort,
+else the reviewing session's — which is still what an omitted one does, the same reproducibility hole
+the hard rule above closes for `agent()`. The tool sets it only when instructions such as a skill ask
+for a level, so this paragraph is that ask. `xhigh` is not the tier list's `high`: every banked gate
+round inherited its effort from the session that ran it, those sessions are configured at `xhigh`, and
+no roster recorded the level, so `xhigh` keeps what was measured. Dropping a reviewer to `high` is a
+measurement to run first, not a default to assume. Nothing checks an `Agent` call the way `wfcheck`
+checks an `agent()`, so an omitted one is the operator's slip, not a finding against the script under
+review.
