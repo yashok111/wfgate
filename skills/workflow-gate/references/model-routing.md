@@ -31,33 +31,40 @@ agent per task. A model-less `agent()` is a bug; fix before running.
 **The haiku test — haiku when ALL THREE hold, else sonnet.** It is the opus test turned around: there,
 an error something cheap downstream catches is a reason NOT to upgrade; here it is the reason to
 downgrade.
-1. **Something checks the output before anything trusts it.** A schema-checked return that a sonnet or
-   opus verifier or fan-in reads, a candidate list a later stage confirms, a build, test or `wfcheck`
-   that fails loudly on a wrong answer. An output taken as truth by nothing that re-reads it fails: the
-   fan-in's own synthesis, a gate reviewer's verdict (the verdict IS the check), a final report. An
-   edit that lands in the tree passes only on paper — what catches a bad edit is a section-gate round,
-   which costs more than the tier saved — so producers that write code stay sonnet, the mechanical
-   edits above excepted.
-2. **Its input is a NAMED SLICE, not an exploration.** It reads what its prompt hands it — one file,
-   one function, one citation, one log, one diff hunk — and finishes in a handful of tool calls. A
-   subagent's prompt grows with every turn (system prompt, tools, everything read so far), and Haiku
-   is billed at several times its base rate once a prompt passes 100K tokens, so an exploring haiku
-   loses most of the price advantage exactly where it is likeliest to lose the thread. An agent that
-   must search to find its own scope fails.
+1. **A later step RE-JUDGES the output against its source before anything trusts it.** A verifier
+   that re-reads the slice the haiku read, a later stage that confirms each candidate on its own, a
+   build, test or `wfcheck` that fails loudly on a wrong answer. A schema checks SHAPE only, and a
+   fan-in that merges outputs without re-reading their sources trusts them — neither counts. An
+   output taken as truth by nothing that re-judges it fails: the fan-in's own synthesis, a gate
+   reviewer's verdict (the verdict IS the check), a final report. An edit that lands in the tree
+   passes only on paper — what catches a bad edit is a section-gate round, which costs more than the
+   tier saved — so producers that write code stay sonnet, the mechanical edits above excepted.
+2. **Its input is a NAMED SLICE, not an exploration.** Its prompt names every input it reads — paths,
+   line ranges, records, one diff hunk — and asks for no search of its own; that is decidable from the
+   script, a tool-call count is not. A subagent's prompt grows with every turn (system prompt, tools,
+   everything read so far), and past a 100K-token prompt Haiku's cache reads — the bulk of a long
+   agent's bill — go from an order of magnitude cheaper than sonnet's to about half, so an exploring
+   haiku pays most of sonnet's price. The capability side agrees: the vendor's own benchmarks put
+   Haiku 5.5 close to sonnet on single-answer knowledge and reasoning tasks and at about half of it on
+   multi-step agentic terminal coding.
 3. **The answer is LOCAL.** It can be judged from the slice alone: does this cited line say what the
    sentence claims, which of these categories is this, extract these fields, map this file. An answer
    that depends on constraints spread across files — a cross-file invariant, a design choice,
-   reconciling two reports — fails.
+   reconciling two reports — fails. So does a slice of offensive-security content (exploit
+   techniques, attack paths): Haiku 5.5's cyber safeguards are stricter than its predecessor's, and a
+   refusal is an answer a fan-in can read as "nothing found".
 
-Where it pays is WIDTH: the per-item stage of a fan-out (map each file, classify each finding, check
-each citation, triage each log, extract from each record) under ONE sonnet verifier or fan-in that
-reads their outputs; and the first half of a find-then-verify pair, where haiku proposes candidates
-over narrow slices and sonnet confirms only the candidates. Recall is bought with DIFFERENT slices, not
-with N haiku over the same one — duplicates on one slice are read-amplification
-(`cost-discipline.md` §1). The test is derived from where an error is caught and from the price
-model, not from a run comparing the two tiers on one role, and whether the claude.ai usage quota
-weighs haiku the way the API price does is unmeasured too: a role the test placed on haiku that
-measurably misses goes back to sonnet.
+Where it pays is WIDTH: the per-item stage of a fan-out (check each citation, classify each finding,
+triage each log, extract from each record) whose every answer the sonnet stage acting on it
+re-judges; and the first half of a find-then-verify pair, where haiku proposes candidates over narrow
+slices and sonnet confirms only the candidates. Recall is bought with DIFFERENT slices, not with N
+haiku over the same one — duplicates on one slice are read-amplification (`cost-discipline.md` §1).
+The test is derived from where an error is caught, from the price model and from the vendor's
+positioning — Anthropic calls Haiku 5.5 "best suited to more narrowly scoped tasks" and says sonnet
+and opus "remain better choices for complex agentic coding tasks" — not from a run in this harness
+comparing the two tiers on one role. Whether the claude.ai usage quota weighs haiku the way the API
+price does is unmeasured too: a role the test placed on haiku that measurably misses goes back to
+sonnet.
 
 **HARD RULE — inside a fan-out, producers are cheap.** For agents *within* a `parallel()`/`pipeline()`
 over N items (a standalone agent not in a fan-out — e.g. top-level design — is governed by the tier
@@ -75,8 +82,8 @@ and it is what an operator's quota actually runs out on.)
 
 **Tie-breaks & round-ups:**
 - Unsure between two tiers → pick cheaper. Default sonnet; escalate ONE fan-in agent before upgrading a
-  whole fan-out. The one exception is haiku against sonnet when you are unsure whether anything checks
-  the output: that is the haiku test's first condition failing, so it is sonnet.
+  whole fan-out. The one exception is haiku against sonnet when you are unsure whether a later step
+  re-judges the output: that is the haiku test's first condition failing, so it is sonnet.
 - Auto round-up to opus ONLY for genuine money-/data-loss/auth/crypto reasoning. For an irreversible
   external action with no cheap rollback (prod deploy, fund transfer, destructive data op), round up the
   agent that *decides/verifies* it, NOT the one that merely executes — and NOT for ordinary git/PR/
