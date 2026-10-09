@@ -77,6 +77,9 @@ cites.
   per ROUND, not once per gate, so the tier MULTIPLIES by the round count — read
   it off `wf stats -time`, per workspace, rather than from a figure quoted here —
   and the round nobody dispatches because the quota ran out finds nothing at all.
+- An interview round with the operator goes through the `AskUserQuestion`
+  tool, never as a numbered list in a message — `references/interview.md`
+  step -2 says how a frontier maps onto it.
 - No Workflow launches without the pre-flight gate: static check (`wfcheck`),
   dry-run (`wfdry`, BEFORE the freeze), freeze, `wf verify` green.
 - The gate's bookkeeping goes through `wf` (workspace, rounds, apply, freeze,

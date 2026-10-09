@@ -23,11 +23,25 @@ FIRST.
    tree: every decision branches into the decisions that hang off it. The **frontier** is every
    decision whose prerequisites are already settled — the questions that can honestly be asked
    without guessing at an answer nobody has given yet — and a **round** is one frontier, asked in
-   full: number each question, put the recommended answer on its own line so the round is answerable
-   by number, and then WAIT. Two questions never share a round if one depends on the other; a
+   full, and then WAIT. Two questions never share a round if one depends on the other; a
    question hanging on an answer still open belongs to the next round. Answers push the frontier
    outward and the next round is recomputed, never pre-written. This is not a `Workflow` and it
    spawns no fan-out; it is the operator's own session asking and the operator answering.
+
+   **A round is asked through the `AskUserQuestion` tool, never as a list in a message.** Each
+   question is one entry, its candidate answers are the options, the recommended one goes FIRST and
+   its label ends in "(Recommended)", and a choice between code shapes, layouts or configs carries a
+   `preview` per option. The tool caps how many questions one call carries; a frontier larger than
+   that is the SAME round split across consecutive calls, which is safe because questions inside one
+   frontier are independent by construction. A question with no enumerable answer still goes through
+   the tool — offer the plausible candidates, the tool always adds a free-text "Other". A
+   recommendation the tool marks is still an OPTION (below): an unanswered or dismissed question is
+   unsettled. Why it is a rule and not a style: the operator reported, repeatedly, that interviewers
+   dumped the whole frontier as a numbered list in one message — the answer then has to be typed out
+   by number, nothing pairs it back to its question, and a list of ten reads as ten things to hold in
+   mind at once. This file prescribed exactly that list until 2026-10-09, so an interviewer following
+   it to the letter was doing it wrong. A text-only fallback is for a session that has no such tool,
+   and it says so in its first line.
 
    **Facts are the interviewer's job, decisions are the operator's.** A frontier question the
    filesystem, the target repository or a command can settle is dispatched to a sub-agent — cheap
