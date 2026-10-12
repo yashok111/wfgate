@@ -92,12 +92,16 @@ func cmdNewScript(args []string) error {
 	// deleting those from the build skeleton by hand and writing down the
 	// deviation. A type taken from the workspace is announced with the flag
 	// that overrides it, because the two skeletons share almost no lines.
+	//
+	// The type is read from the workspace the skeleton LANDS in, not the one
+	// the operator stands in: `-o` into a review workspace from outside any
+	// emitted the build skeleton in silence (the review round's claims vector).
 	runType := *typ
 	if runType == "" {
-		runType = ws.TypeBuild
-		if w, err := open(); err == nil {
-			runType = w.M.RunType()
-			fmt.Printf("type %s — from %s; -type overrides\n", runType, filepath.Join(w.Root, ws.ManifestName))
+		t, src := ws.TypeAt(dst)
+		runType = t
+		if strings.HasPrefix(src, "gate.json") {
+			fmt.Printf("type %s — from %s; -type overrides\n", t, src)
 		}
 	}
 	if err := ws.ValidType(runType); err != nil {

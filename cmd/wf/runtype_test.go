@@ -108,3 +108,22 @@ func TestEveryTypeHasATemplate(t *testing.T) {
 		}
 	}
 }
+
+// The type is read where the skeleton LANDS: `-o` into a review workspace
+// from outside any emitted the build skeleton in silence.
+func TestNewScriptReadsTheDestinationsType(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+	target := mkTarget(t, tmp)
+	rev := filepath.Join(tmp, "rev")
+	_, err := runWF(t, tmp, "init", "r", "-target", target, "-dir", rev, "-type", "review")
+	noErr(t, err, "init")
+	dst := filepath.Join(rev, "artifacts", "far.mjs")
+	out, err := runWF(t, tmp, "new-script", "far", "-target", target, "-o", dst)
+	noErr(t, err, "new-script -o")
+	mustContain(t, out, "type review — from gate.json at")
+	b, _ := os.ReadFile(dst)
+	if !strings.Contains(string(b), "phase('Find')") {
+		t.Fatalf("-o into a review workspace must emit the review skeleton")
+	}
+}

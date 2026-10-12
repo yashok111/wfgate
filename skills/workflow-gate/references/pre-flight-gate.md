@@ -194,7 +194,10 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    that derive each report from the `schema` the script hands that call — the schema
    IS the fixture contract, so nothing is hand-authored per run. Your own `spawn` wrapper is NOT
    stubbed: it is left in place and exercised, which is what makes the note below about a swallowed
-   throw true. It must complete every mode before the gate runs. The seven modes are `clean`, `blockers`
+   throw true. It must complete every mode before the gate runs. What follows is a BUILD run's
+   modes; a review run's (`wf init -type review`) differ — no `acceptfail` or `unfixed`, an added
+   `empty` and `dead-finders`, `dead-reviews` killing verifiers and critics — and are stated in
+   `run-types.md`. The seven modes are `clean`, `blockers`
    (every gate returns one), `acceptfail`, `unfixed` (a fix round that leaves blockers open),
    `throw-serial`, `dead-reviews` and `no-args` (the script runs with no `args`; every other mode hands
    it a representative object). `dead-reviews` decides what a reviewer is from the label's SEGMENTS: a
@@ -346,4 +349,4 @@ is COVERAGE & PRECISION instead — `run-types.md`, "Gating a review script".
 
 - Collect findings, then ACT: a blocker from ANY reviewer means fix the script source and re-run the gate as a delta round (whatever vectors you ran — a fix in one can break another) before the `Workflow` call; advisory findings — MAJOR, MINOR or NOTE on the closed scale — are recorded and surfaced.
 - **Proportionality.** The full 3-reviewer gate is required only when the script can actually blow up: a data-driven fan-out over a dynamic N, a `while` / `budget` loop, multiple opus agents (or an opus agent inside a loop/fan-out), or parallel file mutation. For a small script with none of those (e.g. a fixed 2-3 agent `pipeline()`/`parallel()`, all sonnet/haiku, no loops, no file writes), a single reviewer — or the authoring agent's own careful re-read — suffices.
-- Skip the gate entirely only for a trivial throwaway script (a single `agent()` call, or a pure read-only locate/extract that mutates nothing) — `log()` or state that it was skipped and why. A read-only FAN-OUT is not that: a review that spends a fleet and returns a report nobody can trust has failed as surely as a build that broke its tree, and it is gated in full with a review workspace (`run-types.md`).
+- Skip the gate entirely only for a trivial throwaway script (a single `agent()` call, or a pure read-only locate/extract that mutates nothing) — `log()` or state that it was skipped and why. A read-only FAN-OUT is not that: a review that spends a fleet and returns a report nobody can trust has failed as surely as a build that broke its tree, so it is never exempt — it is gated with a review workspace (`run-types.md`), and the proportionality bullet above still sets how many reviewers.

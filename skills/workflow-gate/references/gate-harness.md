@@ -558,7 +558,10 @@ the ones the harness had named, and nothing in the other direction [M-34].
 It exits zero whatever it finds: every row is a question for a human, and a bar that failed a run on an
 incidental edit would be answered by switching it off. In a READ-ONLY workspace (`wf init -type
 review`) the same command is a bar instead: the tree must be unchanged, untracked files included, and
-HEAD must still be the base — it exits 1 otherwise, and names the files (`run-types.md`).
+HEAD must still be the base — it exits 1 otherwise, and names the files. The base must be a SHA
+recorded before the run, never a ref, and the run starts from a clean tree: the bar does not see
+gitignored paths or other refs, and cannot tell the run's writes from dirt already there
+(`run-types.md`).
 
 **Steps 4, 5 and the three checks in 7 are a list of QUESTIONS, not a dependency chain.** Every one
 of them READS the snapshot step 2 committed and none of them writes: `dup`, `stale`, `schema`,

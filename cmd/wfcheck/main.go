@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"git.sumka.site/yakov/wfgate/internal/cli"
@@ -70,6 +71,10 @@ usage:
 		return
 	}
 
+	if *typ != "" && *ownsDiff == "" {
+		fmt.Fprintln(os.Stderr, "wfcheck: -type applies to --owns-diff only; the static check reads every script the same way")
+		os.Exit(2)
+	}
 	if *ownsDiff != "" {
 		runType := *typ
 		if runType == "" {
@@ -178,6 +183,14 @@ func printOwnsDiff(path, root, base string) error {
 // read-only script and stopped there, so the one check the run needed was hand
 // built (a stamp file, `find -newer`, `git status`) on the gate that had one.
 func printUnchanged(path, root, base, typ string) (bool, error) {
+	// A SHA, never a ref. A ref resolves NOW: a run that committed onto the
+	// branch it was given moved that branch along with HEAD, the base resolves
+	// to the new commit, and the range reads empty with HEAD "unmoved" — found
+	// by the wave's review round. `HEAD` itself is the same case at its
+	// plainest.
+	if !shaLike.MatchString(base) {
+		return false, fmt.Errorf("base %q is a ref, and a ref resolves now — a run that committed moved it too, and the bar would read green. Pass the commit SHA the run started from (`git rev-parse HEAD` in the target BEFORE the run)", base)
+	}
 	rep, err := wfcheck.OwnsDiff(path, root, base)
 	if err != nil {
 		return false, err
@@ -189,21 +202,25 @@ func printUnchanged(path, root, base, typ string) (bool, error) {
 	clean := true
 	if rep.HeadMoved {
 		clean = false
-		fmt.Printf("HEAD MOVED: HEAD is no longer %s — a read-only run moved a ref, or the base is not the commit the run started from\n", rep.Base)
+		fmt.Printf("HEAD MOVED: HEAD is no longer %s — a read-only run moved HEAD, or the base is not the commit the run started from\n", rep.Base)
 	}
 	if rep.Changed > 0 {
 		clean = false
 		fmt.Printf("CHANGED %d file(s) — a read-only run wrote into its target:\n", rep.Changed)
-		for _, p := range rep.Unowned {
+		for _, p := range rep.Paths {
 			fmt.Println("  " + p)
 		}
 	}
 	if clean {
 		fmt.Println("unchanged: HEAD is the base and the working tree matches it, untracked files included")
 	}
-	fmt.Println("note: the range is base..WORKING TREE, so anything already uncommitted when the run started is counted as the run's")
+	// What the bar does not see, said on every run rather than discovered:
+	// probed in the review round, all three exit 0.
+	fmt.Println("not checked: gitignored paths and other refs (branches, tags, stash); and anything already uncommitted when the run started is counted as the run's — start from a clean tree")
 	return clean, nil
 }
+
+var shaLike = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 
 // freezeScript copies the script under .wf/gate/ named by its own hash, so the
 // reviewers read one immutable revision while fixes land on the working copy.

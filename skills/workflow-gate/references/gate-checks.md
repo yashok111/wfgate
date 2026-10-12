@@ -632,7 +632,8 @@ compiles, passes every test, and does nothing.
       ReferenceError at launch with zero agents spawned. Escape it — and note that no static
       checker can catch this, because the reference is syntactically valid.
 - [ ] **Dry-run the script with stubbed hooks BEFORE the freeze, and READ the counts, not the
-      verdict.** `wfdry <script>` must complete every one of its seven modes; a parse is not an
+      verdict.** `wfdry <script>` must complete every one of its modes (seven for a build, seven
+      different ones for a review — `wf docs types`); a parse is not an
       execution, and the clean path is the one that matters most, because reviewers read the failure
       branches where the risk looks like it lives. Ordering it before the freeze is not taste: a
       dry-run defect found after freezing costs a republished round nobody reviewed. **7/7 is not the

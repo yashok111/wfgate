@@ -15,8 +15,8 @@ export const meta = {
 // script's happy path as "found some, verified them, merged them" — the build
 // skeleton's producers, bars, fix round and acceptance step are absent on
 // purpose, because a run that writes nothing has nothing for them to check.
-// After the run: `wfcheck --owns-diff <the commit the run started from>` from
-// the workspace asserts that the tree did not change.
+// After the run: `wfcheck --owns-diff <the SHA the run started from> <script>`
+// from the workspace asserts that the tree did not change.
 
 // ---------------------------------------------------------------------------
 // Shared facts. Keep this block SMALL: it is paid once per fan-out agent.
@@ -85,9 +85,10 @@ function live(label, result) {
 const FINDINGS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['coverage', 'findings'],
+  required: ['coverage', 'gaps', 'findings'],
   properties: {
-    coverage: { type: 'string', description: 'two sentences: which files you actually read, and which you did not reach' },
+    coverage: { type: 'string', description: 'two sentences: which files you actually read' },
+    gaps: { type: 'array', items: { type: 'string' }, description: 'repo-relative paths in your scope that you did NOT read; an empty list only if you read all of it' },
     findings: {
       type: 'array',
       items: {
@@ -149,7 +150,7 @@ function finderPrompt(lens, unit) {
     'Report only what this lens finds. A defect outside the lens is another finder\'s; a defect outside the diff is out of scope unless the diff makes it reachable.\n\n' +
     'SEVERITY: ' + SEVERITY + '\n\n' +
     READ_ONLY + NAV +
-    '\nReturn through the StructuredOutput schema. An empty findings list is a legitimate answer; say in coverage what you read to reach it.'
+    '\nReturn through the StructuredOutput schema. An empty findings list is a legitimate answer; say in coverage what you read to reach it, and list in gaps every file in your scope you did not read.'
 }
 
 function verifierPrompt(f) {
@@ -192,23 +193,32 @@ const coverage = []
 const found = []
 const seen = new Set()
 let nextId = 1
+let malformed = 0
 cells.forEach((c) => {
   const r = reports.get('find:' + c.lens.id + ':' + c.unit.id)
   const cell = c.lens.id + ' x ' + c.unit.id
   if (!r) {
-    coverage.push({ cell, dead: true, count: 0, read: '' })
+    coverage.push({ cell, dead: true, count: 0, read: '', gaps: [] })
     return
   }
   let kept = 0
+  if (!Array.isArray(r.findings)) malformed++
   ;(Array.isArray(r.findings) ? r.findings : []).forEach((f) => {
-    if (!f || typeof f.file !== 'string') return
-    const key = f.file + ':' + f.line
+    if (!f || typeof f.file !== 'string') {
+      malformed++
+      return
+    }
+    // One lens may report a location once; two lenses at one line are two
+    // claims until the merge says they share a cause — a `file:line` key alone
+    // dropped the second lens's defect before anything verified it.
+    const key = f.file + ':' + f.line + ':' + c.lens.id
     if (seen.has(key)) return
     seen.add(key)
     found.push(Object.assign({}, f, { id: 'F' + String(nextId++).padStart(3, '0'), lens: c.lens.id }))
     kept++
   })
-  coverage.push({ cell, dead: false, count: kept, read: String(r.coverage || '') })
+  const gaps = Array.isArray(r.gaps) ? r.gaps.filter((g) => typeof g === 'string' && g) : []
+  coverage.push({ cell, dead: false, count: kept, read: String(r.coverage || ''), gaps })
 })
 log(found.length + ' finding(s) after dedup from ' + cells.length + ' finder cell(s)')
 
@@ -242,7 +252,14 @@ if (confirmed.length > 1) {
   phase('Merge')
   const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', schema: MERGE_SCHEMA })
   if (!m) mergeDied = true
-  else groups = (Array.isArray(m.groups) ? m.groups : []).filter((g) => g && Array.isArray(g.ids) && g.ids.length > 1)
+  else {
+    // A group may only name findings the merger was handed: an id it invented
+    // would print as a root cause nothing confirmed.
+    const known = new Set(confirmed.map((f) => f.id))
+    groups = (Array.isArray(m.groups) ? m.groups : [])
+      .map((g) => ({ title: g && g.title, ids: g && Array.isArray(g.ids) ? g.ids.filter((id) => known.has(id)) : [] }))
+      .filter((g) => g.title && g.ids.length > 1)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -251,10 +268,14 @@ if (confirmed.length > 1) {
 // ---------------------------------------------------------------------------
 
 const deadCells = coverage.filter((c) => c.dead).map((c) => c.cell)
+const gapCells = coverage.filter((c) => c.gaps && c.gaps.length).map((c) => c.cell + ' (' + c.gaps.join(', ') + ')')
+const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.length === 0
 const out = []
 out.push('Review of ' + BASE + '...' + HEAD_REF + ' in ' + REPO + ': ' + (cells.length - deadCells.length) + ' of ' + cells.length + ' finder cell(s) reported' + (deadCells.length ? ' — NOT COVERED: ' + deadCells.join(', ') : '') + '.')
-out.push(found.length + ' finding(s) after dedup: ' + confirmed.length + ' confirmed, ' + refuted.length + ' refuted, ' + unverified.length + ' unverified.')
-if (!confirmed.length) out.push(deadCells.length || unverified.length ? 'No finding was confirmed, over INCOMPLETE coverage — this is not a clean review.' : 'No finding survived verification over the cells above.')
+if (gapCells.length) out.push('Files a finder did not read: ' + gapCells.join('; ') + '.')
+out.push(found.length + ' finding(s) after dedup: ' + confirmed.length + ' confirmed, ' + refuted.length + ' refuted, ' + unverified.length + ' unverified' + (malformed ? ', ' + malformed + ' malformed report(s) dropped' : '') + '.')
+if (!complete) out.push('INCOMPLETE: ' + [deadCells.length ? deadCells.length + ' dead cell(s)' : '', gapCells.length ? gapCells.length + ' cell(s) with unread files' : '', unverified.length ? unverified.length + ' unverified finding(s)' : ''].filter(Boolean).join(', ') + ' — what follows is not a clean review of the whole diff.')
+if (!confirmed.length) out.push(found.length ? 'No finding survived verification.' : 'Nothing was found over the cells listed below.')
 out.push('')
 confirmed.forEach((f) => out.push('- [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  failure: ' + f.failure + '\n  fix: ' + f.fix + '\n  verified: ' + f.reason))
 groups.forEach((g) => out.push('- shared root cause (' + g.ids.join(', ') + '): ' + g.title))
@@ -270,7 +291,7 @@ return {
   // complete is the review's coverage, not its outcome: a review that found
   // nothing over every cell IS complete, and one that found ten while a finder
   // died is not.
-  complete: deadCells.length === 0 && unverified.length === 0,
+  complete,
   report: out.join('\n'),
   confirmed: confirmed.map((f) => ({ id: f.id, severity: f.finalSeverity, file: f.file, line: f.line, summary: f.summary })),
   refuted: refuted.length,

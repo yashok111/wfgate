@@ -59,6 +59,14 @@ var Modes = []string{
 // "clean" — and it was walked by no mode at all until it had one.
 const emptyMode = "empty"
 
+// deadFindersMode is `dead-reviews` split in two for the read-only types. One
+// mode that killed finders AND verifiers killed the finders first, so no
+// verifier was ever spawned to die: a review whose `complete` ignored its
+// unverified findings passed every mode (the wave's adversarial review,
+// probe p1). `dead-finders` kills the finders and leaves the verifiers alive;
+// `dead-reviews` kills the verifiers and critics and leaves the finders alive.
+const deadFindersMode = "dead-finders"
+
 // ModesFor is the mode list a run of this type enters. A read-only run has no
 // acceptance step and no fix agent, so `acceptfail` and `unfixed` would walk
 // vocabulary its script does not carry, and it gains `empty`. A type the
@@ -67,7 +75,7 @@ func ModesFor(typ string) []string {
 	if !ws.ReadOnly(normType(typ)) {
 		return Modes
 	}
-	return []string{"clean", "blockers", emptyMode, "throw-serial", "dead-reviews", "no-args"}
+	return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", "no-args"}
 }
 
 func normType(typ string) string {
@@ -92,7 +100,7 @@ func normType(typ string) string {
 // and a verdict that reads as failure there is a script treating "no findings"
 // as "did not run".
 func passFixture(mode string) bool {
-	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode
+	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode
 }
 
 // Options configure one run.
@@ -144,6 +152,7 @@ type Result struct {
 	// static reader sees one of them. The prompt sweep is built on this.
 	Prompts   []check.NamedText
 	defaulted map[string]int // report fields the fixture contract did not recognise
+	family    map[string]int // spawns per label family, read-only runs only
 	badRefs   map[string]int // `$ref`s the fixture could not expand, with the reason
 
 	// What this mode actually handed each agent back, by label and in spawn
@@ -450,7 +459,7 @@ func noteCollapse(rs []Result, ro bool) {
 			if ro && r.Mode == "blockers" {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. In a read-only run this is the mode in which every verifier refuted, so a step that consumes CONFIRMED findings has nothing to consume; it does mean those phases ran in the happy path alone and no failure mode covers them",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
-			} else if r.Mode == "dead-reviews" {
+			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. This mode's shortfall can be the runner's own injection (a script that HALTS when a reviewer dies is doing what it is told), which is why it is not a failure; it can equally be an abort guard that ends the run wider than it meant to, and then every section behind those phases, and every gate over them, is covered by no failure mode",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
 			} else {
@@ -461,14 +470,17 @@ func noteCollapse(rs []Result, ro bool) {
 		if r.Spawned*2 >= base {
 			continue
 		}
-		// In a read-only run `dead-reviews` kills the FINDERS, and a review
-		// whose finders returned nothing has nothing to verify: the narrowing
-		// is the runner's injection, the same reason its phase shortfall above
-		// is a note. Measured on the hunt script on disk, run as a review: 199
-		// agents against 494, every one of the missing ones a verifier of a
-		// finding no dead finder produced.
-		if ro && r.Mode == "dead-reviews" {
-			r.Notes = append(r.Notes, fmt.Sprintf("%s: reached %d agent(s) against %d in `%s` — expected when the dead agents are finders, whose findings were all the verifiers had to read; it is not evidence that the verification path is covered by any failure mode", r.Mode, r.Spawned, base, baseMode))
+		// In a read-only run every failure mode narrows by the runner's own
+		// injection: `dead-finders` leaves nothing to verify, `dead-reviews`
+		// and `blockers` leave nothing CONFIRMED, and a review that stops
+		// after rounds with no confirmed finding stops early in all three.
+		// Measured on the hunt script on disk, run as a review: 199, 261 and
+		// 271 agents against 596 in `clean`, every one of them a correct dry
+		// stop. So the ratio is a note there, never a violation — which also
+		// means no read-only mode can catch an abort guard by its width, and
+		// the note says so.
+		if ro {
+			r.Notes = append(r.Notes, fmt.Sprintf("%s: reached %d agent(s) against %d in `%s` — in a review this mode leaves nothing to verify or nothing confirmed, so a narrower run is expected; it is also why the width check cannot tell that from an abort guard here, and the phases named above are what to read", r.Mode, r.Spawned, base, baseMode))
 			continue
 		}
 		// The MODE's name is in the text, because the tail of the run
@@ -585,7 +597,7 @@ func min(a, b int) int {
 }
 
 func runMode(src, mode string, o Options) Result {
-	r := Result{Mode: mode, defaulted: map[string]int{}, badRefs: map[string]int{}}
+	r := Result{Mode: mode, defaulted: map[string]int{}, badRefs: map[string]int{}, family: map[string]int{}}
 	vm := goja.New()
 	ro := ws.ReadOnly(normType(o.Type))
 
@@ -709,11 +721,21 @@ func runMode(src, mode string, o Options) Result {
 		if mode == "throw-serial" && r.Spawned == 1 {
 			panic(vm.ToValue("stubbed throw at the first spawn"))
 		}
-		if mode == "dead-reviews" && (reviewish(label) || (ro && findish(label))) {
+		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())
 		}
-		fixture := synth(opts.Get("schema"), mode, label, ro, 0, r.defaulted, r.badRefs)
+		// In a read-only run the Nth agent of one label family takes the
+		// opposite vocabulary on its top-level severity, the way item 1 of an
+		// array already does: every verifier came back `minor` in `clean`, so
+		// the skeleton confirmed only minors and no mode confirmed a blocker.
+		top := 0
+		if ro {
+			fam := firstSegment(label)
+			top = r.family[fam] % 2
+			r.family[fam]++
+		}
+		fixture := synth(opts.Get("schema"), mode, label, ro, top, 0, r.defaulted, r.badRefs)
 		// One entry per DISTINCT fixture, not per label. A label spawned in a
 		// loop usually synthesises the same shape and a list with a hundred
 		// copies of it in is a list nobody reads — but a label whose schema is
@@ -842,14 +864,22 @@ func runMode(src, mode string, o Options) Result {
 	// `empty` is held to the same verdict: the finders found nothing, which is
 	// a result, and a run that reports it as a failure — or as incomplete —
 	// cannot tell "the code is fine" from "nobody looked".
+	//
+	// In a read-only `clean` only a COVERAGE word is held true: the fixture there
+	// IS "found defects", so a verdict about the code under review — `clean`,
+	// `passed`, `ok` — honestly reads false (probe p8b was a false red). In
+	// `empty` nothing was found and nothing failed, and every pass word holds.
 	if (mode == "clean" || mode == emptyMode) && r.ReturnOK && len(r.Killed) == 0 {
 		for _, k := range verdictKeys(r.Return) {
+			if ro && mode == "clean" && !coverageWord.MatchString(k) {
+				continue
+			}
 			b, _ := r.Return.(map[string]any)[k].(bool)
 			switch {
 			case passBools.MatchString(k) && !b:
-				r.Violations = append(r.Violations, mode+": the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not."+fixtureAdvice)
+				r.Violations = append(r.Violations, mode+": the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not."+fixtureAdvice+roAdvice(ro))
 			case failVerdicts.MatchString(k) && b:
-				r.Violations = append(r.Violations, mode+": the run returned `"+k+": true` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not."+fixtureAdvice)
+				r.Violations = append(r.Violations, mode+": the run returned `"+k+": true` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not."+fixtureAdvice+roAdvice(ro))
 			}
 		}
 	}
@@ -868,7 +898,7 @@ func runMode(src, mode string, o Options) Result {
 	// from the verdict this constrains: a producer-only script has no reviewer
 	// label, kills nobody, and is correct to come back green — the note below
 	// already says that run proved nothing.
-	if mode == "dead-reviews" && r.ReturnOK && len(r.Killed) > 0 {
+	if (mode == "dead-reviews" || mode == deadFindersMode) && r.ReturnOK && len(r.Killed) > 0 {
 		// A verdict this guard cannot READ is not a verdict it checked. Three
 		// one-line variants of the banked fixture — the verdict nested in an
 		// object, under an unrecognised key, or as the string 'yes' — all came
@@ -899,7 +929,7 @@ func runMode(src, mode string, o Options) Result {
 			}
 		}
 		if len(pass) > 0 && !saidFail {
-			r.Violations = append(r.Violations, "dead-reviews: the run returned "+strings.Join(pass, ", ")+" and nothing to the contrary, while "+plural(len(r.Killed), "agent")+" it spawned returned NOTHING ("+strings.Join(r.Killed, ", ")+") — every other agent reported success, so this verdict does not depend on those agents having run")
+			r.Violations = append(r.Violations, mode+": the run returned "+strings.Join(pass, ", ")+" and nothing to the contrary, while "+plural(len(r.Killed), "agent")+" it spawned returned NOTHING ("+strings.Join(r.Killed, ", ")+") — every other agent reported success, so this verdict does not depend on those agents having run")
 		}
 	}
 	// A mode that completes having spawned NOTHING is indistinguishable from a
@@ -915,9 +945,23 @@ func runMode(src, mode string, o Options) Result {
 		// over an empty set wearing a green verdict.
 		segs := "review/fix/closeout/verify/accept"
 		if ro {
-			segs += "/find/hunt/scan/critic"
+			segs += "/critic/skeptic"
 		}
 		r.Notes = append(r.Notes, "no label matched a "+segs+" segment — this mode killed nobody and proved nothing")
+	}
+	// In a review the finders are not optional, so a `dead-finders` that killed
+	// nobody is a VIOLATION, not the note above: the coverage accounting — a
+	// dead finder reported as a hole — then ran in no mode, and a script that
+	// drops dead finders from its verdict passed every one (probe p6).
+	if mode == deadFindersMode && r.Spawned > 0 && len(r.Killed) == 0 {
+		r.Violations = append(r.Violations, deadFindersMode+": no label matched a "+strings.Join(sortedKeys(findSegments), "/")+" segment — this mode killed nobody, so a dead finder's accounting ran in no mode. Label the finders `find:<lens>:<unit>`, or name them with --dead")
+	}
+	// `empty` claims to walk "the review found nothing". If the run's schemas
+	// carry no array it can read as a deliverable, it emptied nothing and walked
+	// the clean path under another name — measured, a finder array renamed
+	// `results` gave `empty` the same agents and phases as `clean`, in silence.
+	if ro && mode == emptyMode && r.Spawned > 0 && len(prefixed(r.defaulted, deliverableKey)) == 0 {
+		r.Violations = append(r.Violations, emptyMode+": no finding-shaped array was synthesised, so this mode emptied nothing and walked the clean path — name the finders' array one of findings/issues/defects/problems, or declare `\"$comment\": \"x-pass: true\"` on it")
 	}
 	// A label the operator NAMED that never spawned. `--dead reviwer` is a
 	// clean run of every guard over the empty set, reported as OK: the same
@@ -1135,6 +1179,45 @@ var reviewSegments = func() map[string]bool {
 	return m
 }()
 
+// coverageWord is the slice of the pass vocabulary a read-only `clean` holds
+// true: completion, not the outcome of the review.
+var coverageWord = regexp.MustCompile(`(?i)(complete|completed|done|finished)$`)
+
+func roAdvice(ro bool) string {
+	if !ro {
+		return ""
+	}
+	return " In a review a finding-shaped array is the deliverable and is POPULATED here; if one of this run's arrays is a defect list instead — a critic grading the report — declare `\"$comment\": \"x-pass: false\"` on it."
+}
+
+func firstSegment(label string) string {
+	if segs := labelSegments(label); len(segs) > 0 {
+		return segs[0]
+	}
+	return label
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// criticish adds the read-only types' own reviewers to `dead-reviews`: a critic
+// grading a review's coverage, a skeptic re-judging a finding.
+func criticish(label string) bool {
+	for _, seg := range labelSegments(label) {
+		switch seg {
+		case "critic", "critics", "skeptic", "skeptics":
+			return true
+		}
+	}
+	return false
+}
+
 // findish is reviewish for the read-only types, whose finders are the
 // reviewers: a review that filters a dead finder out of its coverage and calls
 // itself complete reviewed less than it says. Read-only only, because in a
@@ -1155,7 +1238,10 @@ var findSegments = func() map[string]bool {
 		"find", "finds", "finder", "finders",
 		"hunt", "hunts", "hunter", "hunters",
 		"scan", "scans", "scanner", "scanners",
-		"critic", "critics",
+		"audit", "audits", "auditor", "auditors",
+		"lens", "lenses",
+		"inspect", "inspector", "inspectors",
+		"analyze", "analyzer", "analyzers", "analyst", "analysts",
 	} {
 		m[w] = true
 	}
@@ -1400,9 +1486,15 @@ func pickEnum(name string, members []string, mode string, idx int, rec map[strin
 	return members[0]
 }
 
+var severityName = regexp.MustCompile(`(?i)severity|level|priority`)
+
 // deliverableRe is the read-only types' finding vocabulary: the subset of
 // failArrayRe that names what a review RETURNS rather than what went wrong.
-var deliverableRe = regexp.MustCompile(`(?i)finding|issue|defect|problem|^bugs?`)
+//
+// ANCHORED, the whole name: a substring rule matched `unverifiedFindings` and
+// `openIssues` — failure-qualified lists — and gave them deliverable polarity.
+// A deliverable under another name declares `"$comment": "x-pass: true"`.
+var deliverableRe = regexp.MustCompile(`^(findings?|issues?|defects?|problems?)$`)
 
 var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|concern|dead|unverified|violation|gap|risk|defect|error|issue|problem|finding`)
 
@@ -1456,6 +1548,11 @@ const boolPolarityKey = "bool by name: "
 // about a categorical label no branch depended on.
 const enumFallbackKey = "enum by first member: "
 
+// deliverableKey records a pass-shaped array — a review's deliverable — that a
+// fixture synthesised. It is not a note: `empty` reads it to know whether it
+// emptied anything at all.
+const deliverableKey = "deliverable: "
+
 // prefixed splits that map: with a prefix it returns the matching names with
 // the prefix stripped, and with the empty one the names carrying NO prefix.
 func prefixed(rec map[string]int, prefix string) []string {
@@ -1464,7 +1561,7 @@ func prefixed(rec map[string]int, prefix string) []string {
 		switch {
 		case prefix != "" && strings.HasPrefix(n, prefix):
 			out = append(out, strings.TrimPrefix(n, prefix))
-		case prefix == "" && !strings.HasPrefix(n, arrayPolarityKey) && !strings.HasPrefix(n, boolPolarityKey) && !strings.HasPrefix(n, enumFallbackKey):
+		case prefix == "" && !strings.HasPrefix(n, arrayPolarityKey) && !strings.HasPrefix(n, boolPolarityKey) && !strings.HasPrefix(n, enumFallbackKey) && !strings.HasPrefix(n, deliverableKey):
 			out = append(out, n)
 		}
 	}
@@ -1483,7 +1580,7 @@ func passBoolVocabulary() string {
 		", optionally prefixed by " + strings.Join(passBoolPrefixes, "/")
 }
 
-func synth(schema goja.Value, mode, label string, ro bool, depth int, rec, refs map[string]int) any {
+func synth(schema goja.Value, mode, label string, ro bool, top, depth int, rec, refs map[string]int) any {
 	if schema == nil || goja.IsUndefined(schema) || goja.IsNull(schema) || depth > 6 {
 		return map[string]any{}
 	}
@@ -1511,7 +1608,7 @@ func synth(schema goja.Value, mode, label string, ro bool, depth int, rec, refs 
 	for _, k := range keys {
 		pv, _ := props[k].(map[string]any)
 		// The top-level schema is one object, never an array element.
-		out[k] = value(k, pv, mode, label, ro, depth, 0, rec)
+		out[k] = value(k, pv, mode, label, ro, depth, top, rec)
 	}
 	return out
 }
@@ -1534,6 +1631,9 @@ func arrayOf(name string, v map[string]any, mode, label string, ro bool, depth i
 	// `false` says a populated array is the failure shape (empty in the passing
 	// modes), `true` says it is the pass shape (empty in `acceptfail`).
 	if xp, state := declaredPolarity(v); state == polarityOK {
+		if xp && rec != nil {
+			rec[deliverableKey+name]++
+		}
 		return itemsOf(name, v, mode, label, ro, depth, rec, xpassCount(xp, mode))
 	} else if state == polarityBad {
 		// Present and unreadable, named rather than ignored: the author who
@@ -1561,6 +1661,9 @@ func arrayOf(name string, v map[string]any, mode, label string, ro bool, depth i
 	// meaning — a critic grading the report — declares `x-pass: false`, which
 	// the branch above reads first.
 	if ro && deliverableRe.MatchString(low) {
+		if rec != nil {
+			rec[deliverableKey+name]++
+		}
 		n := 2
 		if mode == emptyMode {
 			n = 0
@@ -1671,6 +1774,12 @@ func value(name string, v map[string]any, mode, label string, ro bool, depth, id
 			}
 		}
 		if len(members) > 0 {
+			// The top-level ordinal reaches a SEVERITY only: alternating every
+			// top-level enum would hand every second gate-style critic of a
+			// review `verdict: 'blockers'` in the mode where nothing failed.
+			if depth == 0 && !severityName.MatchString(name) {
+				idx = 0
+			}
 			return pickEnum(name, members, mode, idx, rec)
 		}
 	}

@@ -775,6 +775,13 @@ matched no review segment — and said so in a WARN. `wfcheck --owns-diff` answe
 script declares no ownership" and stopped, so the hunt's decision document built the unchanged-tree
 check by hand (a stamp file, `find -newer`, `git status`), and its section 11 recorded deleting the build
 skeleton's producers, bars, fix round and acceptance step. After the type: the same script run as a
-review reaches all 12 phases in `clean` at 494 agents; on the emitted review skeleton `blockers`
-confirmed both findings until pass-shaped booleans followed the fixture (a review has no `acceptfail`,
-the one mode in which the build rule made them false).
+review reaches all 12 phases in `clean` (494 agents, 596 once verifier severities alternated); on the
+emitted review skeleton `blockers` confirmed both findings until pass-shaped booleans followed the
+fixture (a review has no `acceptfail`, the one mode in which the build rule made them false). The
+review round's adversarial probes then showed what one `dead-reviews` killing finders AND verifiers
+cost: the finders died first, no verifier spawned, and a skeleton whose `complete` ignored unverified
+findings passed every mode — hence `dead-finders` and `dead-reviews` as two modes. The hunt's failure
+modes under the review reading reach 199, 261 and 271 agents against 596, each a correct early stop
+after rounds that confirmed nothing, which is why a review's width check is a note. The perf-review
+script, a gate-style reviewer schema (`verdict` plus `findings`), runs 7/7 under the review reading,
+its `findings` read as a deliverable.

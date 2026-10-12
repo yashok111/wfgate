@@ -120,10 +120,15 @@ check-tools: build
 		out=$$(./wfdry $$d/ws/artifacts/s.mjs --quiet 2>&1); \
 		echo "$$out" | grep -q '^type review — from gate.json' && echo "$$out" | grep -q '=== empty:' \
 			|| { rm -rf $$d; echo "wfdry in a review workspace: the type was not read from gate.json, or not announced — a review dry-run under the build rules walks its happy path in no passing mode"; exit 1; }; \
-		./wfcheck --owns-diff HEAD -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null \
+		b=$$(git -C $$d/t rev-parse HEAD); \
+		./wfcheck --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null \
 			|| { rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: exit non-zero over an UNCHANGED tree"; exit 1; }; \
+		if ./wfcheck --owns-diff HEAD -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null 2>&1; then \
+			rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: accepted a REF as the base — a run that commits moves it, and the bar reads green"; exit 1; fi; \
+		if ./wfcheck -type review $$d/ws/artifacts/s.mjs >/dev/null 2>&1; then \
+			rm -rf $$d; echo "wfcheck -type without --owns-diff: accepted and ignored — the static check reads no type"; exit 1; fi; \
 		echo b >> $$d/t/a; \
-		if ./wfcheck --owns-diff HEAD -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
+		if ./wfcheck --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
 			rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: EXIT 0 over a read-only run that wrote into its target"; exit 1; fi; \
 		rm -rf $$d; echo "review workspace: wfdry and wfcheck --owns-diff read the type from gate.json; a changed tree fails the read-only bar"
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null; \

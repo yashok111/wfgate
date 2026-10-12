@@ -131,6 +131,11 @@ func TestOwnsDiffBothDirections(t *testing.T) {
 	if rep.HeadMoved {
 		t.Errorf("HEAD did not move, the run left its work uncommitted — HeadMoved must be false")
 	}
+	// The read-only bar names EVERY changed path, owned or not: listing only
+	// the unowned ones named nothing over a run whose writes were all owned.
+	if len(rep.Paths) != rep.Changed || !hasPath(rep.Paths, "internal/router/router.go") {
+		t.Errorf("paths = %v, want all %d changed, the owned ones included", rep.Paths, rep.Changed)
+	}
 	if rep.Gates != 1 || rep.OwnedFiles != 3 {
 		t.Errorf("population misread: %d gate(s), %d owned file(s)", rep.Gates, rep.OwnedFiles)
 	}

@@ -206,6 +206,15 @@ the classifier reads. In `$comment` and not as a keyword, for the reason two rul
 refuses the whole schema over an unknown keyword, and this annotation was a keyword until a gate paid
 116 minutes to find out.
 
+**In a REVIEW run the finding list flips polarity** (`run-types.md`): an array whose WHOLE name is
+`findings`, `issues`, `defects` or `problems` (singular too) is the deliverable — a mixed pair in
+every mode but `empty`, where it is empty — and `x-pass: true` is empty in `empty` as well. A
+failure-qualified name (`unverifiedFindings`) keeps the defect polarity above; a deliverable under
+any other name declares `x-pass: true`, and `empty` FAILS a run in which it emptied nothing. Two rules
+hold for every type: item 1 of an array differs from item 0 in its scalars too (a `#2` string, an
+integer one higher), so a dedup keyed on them does not collapse the pair; and an enum none of whose
+members reads as pass or fail takes its first member in every mode, said in its own note.
+
 **Name the spawn wrapper `spawn`.** A script must wrap the spawn call — an unhandled throw at a serial
 step aborts the run (see the gate-checks' failure-handling section) — and `wfcheck` reads every later
 check off its inventory of call sites. The name is a CONVENTION the checker reports, not the mechanism

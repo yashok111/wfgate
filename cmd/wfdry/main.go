@@ -154,7 +154,7 @@ modes (read-only types): %s
 			}
 		case len(r.Violations) > 0:
 			failed++
-			fmt.Printf("\n=== %s: %d VIOLATION(S) — the script's spawn wrapper swallowed these ===\n", r.Mode, len(r.Violations))
+			fmt.Printf("\n=== %s: %d VIOLATION(S) ===\n", r.Mode, len(r.Violations))
 			killed()
 			for _, v := range r.Violations {
 				fmt.Println("  " + v)

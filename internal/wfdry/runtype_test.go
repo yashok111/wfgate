@@ -108,9 +108,9 @@ func TestReviewBlockersRefutes(t *testing.T) {
 // says. Without the finder segments `dead-reviews` killed only the verifiers,
 // whose deaths the mutant still counts, and the mutant passed.
 func TestReviewDeadFindersReachTheVerdict(t *testing.T) {
-	body := mutate(t, reviewSkeleton(t), "complete: deadCells.length === 0 && unverified.length === 0,", "complete: unverified.length === 0,")
-	r := byMode(runTyped(t, body, ws.TypeReview, "dead-reviews"), "dead-reviews")
-	wantViolation(t, r, "dead-reviews: the run returned `complete: true`")
+	body := mutate(t, reviewSkeleton(t), "const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.length === 0", "const complete = gapCells.length === 0 && unverified.length === 0")
+	r := byMode(runTyped(t, body, ws.TypeReview, "dead-finders"), "dead-finders")
+	wantViolation(t, r, "dead-finders: the run returned `complete: true`")
 	if !strings.Contains(strings.Join(r.Killed, " "), "find:") {
 		t.Fatalf("the finders must be among the killed: %v", r.Killed)
 	}
@@ -119,7 +119,7 @@ func TestReviewDeadFindersReachTheVerdict(t *testing.T) {
 // `empty` is a passing mode: a review whose verdict reads failure when it found
 // nothing cannot tell "the code is fine" from "nobody looked".
 func TestReviewEmptyIsAPassingVerdict(t *testing.T) {
-	body := mutate(t, reviewSkeleton(t), "complete: deadCells.length === 0 && unverified.length === 0,", "complete: found.length > 0 && deadCells.length === 0 && unverified.length === 0,")
+	body := mutate(t, reviewSkeleton(t), "const complete = deadCells.length === 0", "const complete = found.length > 0 && deadCells.length === 0")
 	r := byMode(runTyped(t, body, ws.TypeReview, "empty"), "empty")
 	wantViolation(t, r, "empty: the run returned `complete: false`")
 	if len(r.Phases) != 1 {
@@ -137,7 +137,7 @@ func TestReviewNarrowingIsANote(t *testing.T) {
 	rs := []Result{
 		mk("clean", 40, "Find", "Verify", "Merge"),
 		mk("empty", 4, "Find"),
-		mk("dead-reviews", 8, "Find"),
+		mk("dead-finders", 8, "Find"),
 		mk("blockers", 30, "Find", "Verify"),
 	}
 	noteCollapse(rs, true)
@@ -147,7 +147,7 @@ func TestReviewNarrowingIsANote(t *testing.T) {
 		}
 	}
 	if len(rs[2].Notes) == 0 || len(rs[3].Notes) == 0 {
-		t.Errorf("the shortfall must still be said: dead-reviews %v, blockers %v", rs[2].Notes, rs[3].Notes)
+		t.Errorf("the shortfall must still be said: dead-finders %v, blockers %v", rs[2].Notes, rs[3].Notes)
 	}
 	// The control: the same numbers in a build ARE the collapse it exists for.
 	build := []Result{mk("clean", 40, "Find", "Verify", "Merge"), mk("dead-reviews", 8, "Find"), mk("blockers", 30, "Find", "Verify")}
@@ -209,5 +209,129 @@ return { done: true, findings: r.findings.length, gaps: r.gaps.length, confirmed
 	}
 	if ok, _ := m["ok"].(bool); !ok {
 		t.Errorf("empty: a pass flag must be true — nothing failed: %+v", m)
+	}
+}
+
+// The verifiers die in `dead-reviews` and the finders live. Before the split
+// one mode killed both, the finders first, so no verifier ever spawned to die
+// and a `complete` that ignored unverified findings passed every mode.
+func TestReviewDeadVerifiersReachTheVerdict(t *testing.T) {
+	body := mutate(t, reviewSkeleton(t), "const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.length === 0", "const complete = deadCells.length === 0 && gapCells.length === 0")
+	r := byMode(runTyped(t, body, ws.TypeReview, "dead-reviews"), "dead-reviews")
+	wantViolation(t, r, "dead-reviews: the run returned `complete: true`")
+	k := strings.Join(r.Killed, " ")
+	if !strings.Contains(k, "verify:") || strings.Contains(k, "find:") {
+		t.Fatalf("dead-reviews must kill the verifiers and spare the finders: %v", r.Killed)
+	}
+}
+
+// A confirmed blocker exists in `clean`: the Nth verifier of a family takes the
+// opposite severity, as item 1 of an array does.
+func TestReviewCleanConfirmsABlocker(t *testing.T) {
+	r := byMode(runTyped(t, reviewSkeleton(t), ws.TypeReview, "clean"), "clean")
+	m, _ := r.Return.(map[string]any)
+	sev := map[string]bool{}
+	for _, c := range m["confirmed"].([]any) {
+		sev[c.(map[string]any)["severity"].(string)] = true
+	}
+	if !sev["blocker"] || len(sev) < 2 {
+		t.Fatalf("clean must confirm a MIX that includes a blocker, got %v", sev)
+	}
+}
+
+// `empty` that emptied nothing walked the clean path under another name.
+func TestEmptyThatEmptiedNothing(t *testing.T) {
+	body := strings.ReplaceAll(reviewSkeleton(t), "findings", "results")
+	r := byMode(runTyped(t, body, ws.TypeReview, "empty"), "empty")
+	wantViolation(t, r, "emptied nothing")
+	if r := byMode(runTyped(t, reviewSkeleton(t), ws.TypeReview, "empty"), "empty"); len(r.Violations) > 0 {
+		t.Fatalf("the skeleton's own empty must pass: %v", r.Violations)
+	}
+}
+
+// The deliverable vocabulary is the whole NAME: a failure-qualified finding
+// list keeps the build polarity.
+func TestDeliverableIsAnchored(t *testing.T) {
+	for _, n := range []string{"findings", "issues", "defect", "problems"} {
+		if !deliverableRe.MatchString(n) {
+			t.Errorf("%s must be a deliverable", n)
+		}
+	}
+	for _, n := range []string{"unverifiedfindings", "openissues", "results"} {
+		if deliverableRe.MatchString(n) {
+			t.Errorf("%s must not be a deliverable", n)
+		}
+	}
+}
+
+// A review's verdict ABOUT THE CODE reads false in `clean`, where the fixture
+// is "found defects" — the read-only clean guard reads coverage words only,
+// and `empty` still holds every pass word.
+func TestReviewCleanGuardReadsCoverageOnly(t *testing.T) {
+	body := mutate(t, reviewSkeleton(t), "  complete,\n", "  complete,\n  clean: confirmed.length === 0 && complete,\n")
+	rs := runTyped(t, body, ws.TypeReview, "clean", "empty")
+	if v := byMode(rs, "clean").Violations; len(v) > 0 {
+		t.Fatalf("a verdict about the code must not fail clean: %v", v)
+	}
+	if v := byMode(rs, "empty").Violations; len(v) > 0 {
+		t.Fatalf("empty: nothing found, so `clean` holds: %v", v)
+	}
+	bad := mutate(t, reviewSkeleton(t), "  complete,\n", "  complete,\n  clean: false,\n")
+	wantViolation(t, byMode(runTyped(t, bad, ws.TypeReview, "empty"), "empty"), "empty: the run returned `clean: false`")
+}
+
+// A review whose finders the runner cannot identify has a dead-finder path no
+// mode walks, and that is a violation in a review, not a note.
+func TestDeadFindersThatKilledNobody(t *testing.T) {
+	// The second lens's placeholder id carries the segment `lens`, which IS a
+	// finder word; renamed too, or the mode kills it and the case proves nothing.
+	body := strings.ReplaceAll(strings.ReplaceAll(reviewSkeleton(t), "'find:'", "'look:'"), "TODO-second-lens", "TODO-second")
+	if body == reviewSkeleton(t) {
+		t.Fatal("relabel did not land")
+	}
+	wantViolation(t, byMode(runTyped(t, body, ws.TypeReview, "dead-finders"), "dead-finders"), "killed nobody")
+}
+
+// A review's own reviewers — a critic, a skeptic — die in `dead-reviews`, and
+// only in a review: a build keeps the closed list it had.
+func TestCriticsDieInAReviewsDeadReviews(t *testing.T) {
+	body := preamble + `phase('P')
+const a = await spawn('one', { model: 'sonnet', effort: 'low', label: 'critic:r1', schema: S, phase: 'P' })
+return { done: true, dead: a ? 0 : 1 }`
+	r := byMode(runTyped(t, body, ws.TypeReview, "dead-reviews"), "dead-reviews")
+	if len(r.Killed) != 1 {
+		t.Fatalf("a review's critic must die in dead-reviews: %v", r.Killed)
+	}
+	if b := byMode(runTyped(t, body, ws.TypeBuild, "dead-reviews"), "dead-reviews"); len(b.Killed) != 0 {
+		t.Fatalf("a build's dead-reviews must not grow new segments: %v", b.Killed)
+	}
+}
+
+// The top-level alternation reaches a SEVERITY only: a gate-style verdict on
+// the second agent of a family stays a pass in the mode where nothing failed.
+func TestAlternationIsSeverityOnly(t *testing.T) {
+	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
+const S = { type: 'object', properties: { verdict: { type: 'string', enum: ['pass', 'blockers'] }, severity: { type: 'string', enum: ['blocker', 'minor'] } } }
+phase('P')
+const a = await agent('a', { model: 'sonnet', effort: 'low', label: 'critic:1', schema: S, phase: 'P' })
+const b = await agent('b', { model: 'sonnet', effort: 'low', label: 'critic:2', schema: S, phase: 'P' })
+return { done: true, v: [a.verdict, b.verdict].join(','), s: [a.severity, b.severity].join(',') }`
+	r := byMode(runTyped(t, body, ws.TypeReview, "clean"), "clean")
+	m, _ := r.Return.(map[string]any)
+	if m["v"] != "pass,pass" {
+		t.Errorf("a verdict must not alternate: %v", m["v"])
+	}
+	if m["s"] != "minor,blocker" {
+		t.Errorf("a severity must alternate across the family: %v", m["s"])
+	}
+}
+
+// A deliverable under another name declares `x-pass: true`, and `empty` then
+// counts it.
+func TestEmptyCountsAnXPassDeliverable(t *testing.T) {
+	body := mutate(t, strings.ReplaceAll(reviewSkeleton(t), "findings", "results"),
+		"    results: {\n      type: 'array',", "    results: {\n      type: 'array',\n      $comment: 'x-pass: true',")
+	if v := byMode(runTyped(t, body, ws.TypeReview, "empty"), "empty").Violations; len(v) > 0 {
+		t.Fatalf("an x-pass deliverable is a deliverable: %v", v)
 	}
 }

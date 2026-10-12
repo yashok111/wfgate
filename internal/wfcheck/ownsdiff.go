@@ -40,6 +40,7 @@ type OwnsDiffReport struct {
 	// measurement in the register of a measured one.
 	Partial bool
 	Unowned []string // the run wrote it, no section declared it
+	Paths   []string // every path the run changed, owned or not
 	// HeadMoved says HEAD is no longer the base. A build commits, so for it this
 	// is the expected state and nothing reads it; a read-only run must not move
 	// a ref, and a commit followed by its revert leaves a diff of nothing.
@@ -114,7 +115,7 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 	// base nor what a base is supposed to be.
 	baseSha, err := repo.Run("rev-parse", "--short", base)
 	if err != nil {
-		return rep, fmt.Errorf("base %q does not resolve in %s — pass the commit the run STARTED from (the producers' \"HEAD before this run\"): %w", base, root, err)
+		return rep, fmt.Errorf("base %q does not resolve in %s — pass the commit the run STARTED from (HEAD before the run): %w", base, root, err)
 	}
 	rep.Base, rep.Head = baseSha, "worktree"
 	if full, err := repo.Run("rev-parse", base+"^{commit}"); err == nil {
@@ -165,6 +166,7 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 		}
 		touched[p] = true
 		rep.Changed++
+		rep.Paths = append(rep.Paths, p)
 		if !owns(files, dirs, p) {
 			rep.Unowned = append(rep.Unowned, p)
 		}
@@ -204,6 +206,7 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 		}
 	}
 	sort.Strings(rep.Unowned)
+	sort.Strings(rep.Paths)
 	sort.Strings(rep.Untouched)
 	return rep, nil
 }
