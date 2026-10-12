@@ -1653,3 +1653,36 @@ return { done: true, k }`, n)
 		}
 	}
 }
+
+// A ceiling the run was given is checked: a script that ignores `maxAgents`
+// spawned past it with every mode green.
+func TestMaxAgentsArgIsHeld(t *testing.T) {
+	body := preamble + `phase('P')
+let k = 0
+for (let i = 0; i < 3; i++) { if (await spawn('x', { model: 'sonnet', effort: 'low', label: 'w:' + i, schema: S, phase: 'P' })) k++ }
+return { done: true, k }`
+	rs, err := Run(script(t, body), []string{"clean"}, Options{Args: `{"maxAgents":2}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantViolation(t, rs[0], "against the `maxAgents` 2")
+	rs, _ = Run(script(t, body), []string{"clean"}, Options{Args: `{"maxAgents":3}`})
+	for _, v := range rs[0].Violations {
+		if strings.Contains(v, "maxAgents") {
+			t.Fatalf("three agents under a ceiling of three hold it: %s", v)
+		}
+	}
+}
+
+// goja rejects a constant-false block around a `break` inside a loop; the run
+// says it is the engine, not the script (the banked repro is the minimised
+// mutation that read as killed by every test).
+func TestGojaCompilerBugIsNamed(t *testing.T) {
+	rs, err := Run(filepath.Join("..", "..", "testdata", "goja-compiler-bug.mjs"), []string{"clean"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rs[0].Err == nil || !strings.Contains(rs[0].Err.Error(), "defect of the dry run's JavaScript engine") {
+		t.Fatalf("the engine's compiler bug must be named as such: %v", rs[0].Err)
+	}
+}

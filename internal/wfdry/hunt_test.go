@@ -153,7 +153,7 @@ func huntRun(t *testing.T, mode string, o Options) Result {
 // each is SAID: the report's second line names the stop, and the return
 // carries it.
 func TestHuntRoundsWalkEveryStop(t *testing.T) {
-	bud := 300000
+	bud := 290000
 	for _, c := range []struct {
 		name, mode string
 		o          Options
@@ -251,12 +251,13 @@ func TestHuntDeadCriticIsReported(t *testing.T) {
 }
 
 // A re-run that reports what its cell already reported files nothing new: the
-// dedup key holds across rounds, so round 2's new findings in `clean` are the
-// critic's cell's alone.
+// dedup key holds across rounds. And a critic's cell has no failure class of
+// its own, so a location anyone already filed is not new from it either — in
+// `clean` it reports the round-1 locations and round 2 files nothing.
 func TestHuntRerunDoesNotRefile(t *testing.T) {
 	rep := retOf(huntRun(t, "clean", Options{}))["report"].(string)
-	if !strings.Contains(rep, "Round 2: 3 finder(s), 2 new") {
-		t.Fatalf("round 2's re-run cells must file nothing they filed in round 1: %s", strings.Split(rep, "\n")[1])
+	if !strings.Contains(rep, "Round 2: 3 finder(s), 0 new") {
+		t.Fatalf("round 2's re-run cells and the critic's cell must file nothing already filed: %s", strings.Split(rep, "\n")[1])
 	}
 }
 
@@ -269,13 +270,85 @@ func TestHuntDeadCellRunsAgain(t *testing.T) {
 	}
 }
 
-// The critic's share is bounded, and a bound that cut something says so.
+// MAX_EXTRAS 0 cuts every area, so the critic is not asked and no extra cell
+// runs.
 func TestHuntExtrasAreCapped(t *testing.T) {
 	r := huntRun(t, "clean", Options{Args: `{"maxExtras":0}`})
-	if strings.Contains(strings.Join(r.Calls, " "), ":extra") {
-		t.Fatalf("maxExtras 0 must run no extra cell: %v", r.Calls)
+	if c := strings.Join(r.Calls, " "); strings.Contains(c, ":extra") || strings.Contains(c, "critic:") {
+		t.Fatalf("maxExtras 0 must spawn no critic and run no extra cell: %v", r.Calls)
 	}
-	if !strings.Contains(retOf(r)["report"].(string), "only the first 0 were searched") {
-		t.Fatalf("a critic cut by MAX_EXTRAS must be reported")
+}
+
+// A re-run told to look past its earlier findings reads less than the whole
+// scope; a gap stands only while no run of the cell read the file. Walked with
+// the finders' gaps declared pass-shaped, so they are populated in `clean` —
+// one string per round — and the re-run cells' round-1 and round-2 lists share
+// nothing.
+func TestHuntGapsIntersectAcrossRuns(t *testing.T) {
+	body := mutate(t, huntSkeleton(t), "    gaps: { type: 'array', items: { type: 'string' },", "    gaps: { type: 'array', $comment: 'x-pass: true', items: { type: 'string' },")
+	rs, err := Run(script(t, body), []string{"clean"}, Options{Type: ws.TypeHunt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := retOf(rs[0])["report"].(string)
+	line := ""
+	for _, l := range strings.Split(rep, "\n") {
+		if strings.HasPrefix(l, "Files a finder did not read") {
+			line = l
+		}
+	}
+	if line == "" || strings.Contains(line, "correctness x TODO-unit") || !strings.Contains(line, "x3-1 x extra") {
+		t.Fatalf("a re-run cell's gaps must be the intersection of its runs, a single-run cell's its own: %q", line)
+	}
+}
+
+// A re-run that dies is said, even though its cell reported in round 1.
+func TestHuntDeadRerunIsReported(t *testing.T) {
+	m := retOf(huntRun(t, "clean", Options{Args: `{"maxRounds":2}`, Dead: []string{"find:r2:correctness:TODO-unit", "find:r2:correctness:TODO-unit:retry"}}))
+	if !strings.Contains(m["report"].(string), "Runs that died, of cells that reported in another round: correctness x TODO-unit (round 2)") {
+		t.Fatalf("a dead re-run must be named: %s", m["report"])
+	}
+}
+
+// No cell left after a dead critic is not "dry": nothing said no area was left.
+func TestHuntDeadCriticIsNotDry(t *testing.T) {
+	m := retOf(huntRun(t, "dead-reviews", Options{}))
+	if m["stoppedBy"] != "critic" || !strings.Contains(m["report"].(string), "stopped by a dead critic") {
+		t.Fatalf("a hunt whose critic died with no cell left must say so: %v / %s", m["stoppedBy"], m["report"])
+	}
+}
+
+// The last round reserves no critic, so four agents run a one-round hunt of
+// two cells.
+func TestHuntLastRoundReservesNoCritic(t *testing.T) {
+	r := huntRun(t, "clean", Options{Args: `{"maxAgents":4,"maxRounds":1}`})
+	if retOf(r)["rounds"] != int64(1) {
+		t.Fatalf("a one-round hunt of two cells fits in four agents: %s", retOf(r)["report"])
+	}
+}
+
+// A ceiling below round 1 ran nothing, and the report says that rather than
+// "nothing was found over the cells listed below" over no cells.
+func TestHuntNoRoundWording(t *testing.T) {
+	if rep := retOf(huntRun(t, "clean", Options{Args: `{"maxAgents":3}`}))["report"].(string); !strings.Contains(rep, "No round ran, so nothing was searched.") {
+		t.Fatalf("a hunt that ran no round must say so: %s", rep)
+	}
+}
+
+// An override cannot lift the ceiling past the Workflow cap.
+func TestHuntCeilingIsClampedToTheCap(t *testing.T) {
+	r := huntRun(t, "clean", Options{Args: `{"maxRounds":1000,"maxAgents":5000}`})
+	if r.Spawned > 1000 {
+		t.Fatalf("maxAgents 5000 must be clamped to the cap: %d spawned", r.Spawned)
+	}
+}
+
+// remaining() stops at zero, so a round that overspent the budget reads as
+// "at least" what it spent.
+func TestHuntOverspentBudgetSaysAtLeast(t *testing.T) {
+	bud := 100000
+	m := retOf(huntRun(t, "clean", Options{Budget: &bud}))
+	if m["stoppedBy"] != "tokens" || !strings.Contains(m["report"].(string), "the last round spent at least 100000") {
+		t.Fatalf("an exhausted budget must read as a lower bound: %v / %s", m["stoppedBy"], m["report"])
 	}
 }

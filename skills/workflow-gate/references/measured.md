@@ -797,4 +797,5 @@ BLOCKERs came from round 1, and 6 of the 17 MAJORs from rounds 2 and 3; the crit
 account for 32. Re-derive with `rg -o "found by \S+ in round \d" docs/BUGHUNT-2026-10-03.md`. What the
 count cannot separate: that hunt changed its lens every round, while the emitted skeleton runs every
 lens in round 1, so part of the later rounds' yield is what a one-pass hunt of this shape already
-collects.
+collects; and it re-ran every unit each round, where the skeleton re-runs only the cells that added a
+confirmed finding or died — a rule this count did not measure. A sample of one.

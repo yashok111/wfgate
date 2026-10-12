@@ -146,7 +146,7 @@ func TestNewScriptHunt(t *testing.T) {
 	if strings.Contains(string(b), "'GIT_PATH'") || !strings.Contains(string(b), "git'") {
 		t.Fatalf("the git path must be substituted at emit time")
 	}
-	mustContain(t, out, "wfcheck -type hunt --owns-diff", `--args '{"maxAgents":12}'`)
+	mustContain(t, out, "wfcheck -type hunt --owns-diff", `--args '{"maxRepro":1}'`, `--args '{"maxAgents":12}'`)
 }
 
 // The `wf docs` index names every reference `wf docs <name>` serves: `types`

@@ -335,3 +335,35 @@ func TestEmptyCountsAnXPassDeliverable(t *testing.T) {
 		t.Fatalf("an x-pass deliverable is a deliverable: %v", v)
 	}
 }
+
+// `dead-cell` kills ONE finder cell in every round and leaves the rest alive,
+// so a verdict that counts "some cell reported" as coverage is refused — a
+// partial death no other mode walks.
+func TestDeadCellWalksAPartialDeath(t *testing.T) {
+	for _, typ := range []string{ws.TypeReview, ws.TypeHunt, ws.TypeAudit} {
+		if !strings.Contains(strings.Join(ModesFor(typ), " "), deadCellMode) {
+			t.Errorf("%s must enter dead-cell", typ)
+		}
+	}
+	if strings.Contains(strings.Join(ModesFor(ws.TypeBuild), " "), deadCellMode) {
+		t.Fatalf("dead-cell is a read-only mode")
+	}
+	r := byMode(runTyped(t, huntSkeleton(t), ws.TypeHunt, deadCellMode), deadCellMode)
+	ids := map[string]bool{}
+	for _, k := range r.Killed {
+		ids[cellIdentity(k)] = true
+	}
+	if len(ids) != 1 || len(r.Killed) < 4 {
+		t.Fatalf("dead-cell must kill one cell across its rounds and retries: %v", r.Killed)
+	}
+	body := mutate(t, huntSkeleton(t), "const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.length === 0", "const complete = cells.some((c) => c.reported) && gapCells.length === 0 && unverified.length === 0")
+	wantViolation(t, byMode(runTyped(t, body, ws.TypeHunt, deadCellMode), deadCellMode), "dead-cell: the run returned `complete: true`")
+}
+
+// A `dead-cell` that kills nobody walked no partial death, and says so.
+func TestDeadCellKillingNobodyFails(t *testing.T) {
+	body := preamble + `phase('P')
+const a = await spawn('one', { model: 'sonnet', effort: 'low', label: 'gather:all', schema: S, phase: 'P' })
+return { complete: !!a }`
+	wantViolation(t, byMode(runTyped(t, body, ws.TypeReview, deadCellMode), deadCellMode), "dead-cell: no label matched")
+}

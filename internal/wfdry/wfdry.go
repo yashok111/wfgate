@@ -80,6 +80,13 @@ const deadReproMode = "dead-repro"
 // finder's.
 const deadWriterMode = "dead-writer"
 
+// deadCellMode kills ONE finder cell — every spawn of the first finder label's
+// identity, in every round, its retries included — and leaves the others
+// alive. `dead-finders` kills every finder, so a verdict that counts "some cell
+// reported" as coverage passed it: no other mode walks a PARTIAL death (the
+// multi-round hunt's review round, probe A8).
+const deadCellMode = "dead-cell"
+
 // workflowAgentCap is the number of agents one Workflow run may spawn; the
 // manual's orchestration vector and `wfcheck`'s loop guard name the same cap.
 const workflowAgentCap = 1000
@@ -93,12 +100,25 @@ func ModesFor(typ string) []string {
 		return Modes
 	}
 	if normType(typ) == ws.TypeHunt {
-		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", deadReproMode, "no-args"}
+		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, deadCellMode, "dead-reviews", deadReproMode, "no-args"}
 	}
 	if normType(typ) == ws.TypeAudit {
-		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", deadWriterMode, "no-args"}
+		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, deadCellMode, "dead-reviews", deadWriterMode, "no-args"}
 	}
-	return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", "no-args"}
+	return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, deadCellMode, "dead-reviews", "no-args"}
+}
+
+// argsInt reads one integer field of the JSON handed to the script as `args`.
+func argsInt(js, key string) (int, bool) {
+	var m map[string]any
+	if json.Unmarshal([]byte(js), &m) != nil {
+		return 0, false
+	}
+	f, ok := m[key].(float64)
+	if !ok || f != math.Trunc(f) {
+		return 0, false
+	}
+	return int(f), true
 }
 
 func normType(typ string) string {
@@ -123,7 +143,7 @@ func normType(typ string) string {
 // and a verdict that reads as failure there is a script treating "no findings"
 // as "did not run".
 func passFixture(mode string) bool {
-	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode || mode == deadReproMode || mode == deadWriterMode
+	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode || mode == deadCellMode || mode == deadReproMode || mode == deadWriterMode
 }
 
 // Options configure one run.
@@ -178,6 +198,7 @@ type Result struct {
 	family    map[string]int // spawns per label family, read-only runs only
 
 	verifiedSeen bool           // a stub has handed back `verified: true` in this mode
+	firstCell    string         // the identity `dead-cell` kills, set at the first finder spawn
 	badRefs      map[string]int // `$ref`s the fixture could not expand, with the reason
 
 	// What this mode actually handed each agent back, by label and in spawn
@@ -484,7 +505,7 @@ func noteCollapse(rs []Result, ro bool) {
 			if ro && r.Mode == "blockers" {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. In a read-only run this is the mode in which every verifier refuted, so a step that consumes CONFIRMED findings has nothing to consume; it does mean those phases ran in the happy path alone and no failure mode covers them",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
-			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode || r.Mode == deadReproMode || r.Mode == deadWriterMode {
+			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode || r.Mode == deadCellMode || r.Mode == deadReproMode || r.Mode == deadWriterMode {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. This mode's shortfall can be the runner's own injection (a script that HALTS when a reviewer dies is doing what it is told), which is why it is not a failure; it can equally be an abort guard that ends the run wider than it meant to, and then every section behind those phases, and every gate over them, is covered by no failure mode",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
 			} else {
@@ -763,7 +784,7 @@ func runMode(src, mode string, o Options) Result {
 		if normType(o.Type) == ws.TypeHunt && reproish(label) && get("isolation") != "worktree" {
 			bad(label, "a hunt's reproducer has no `isolation: 'worktree'` — it would write its failing test into the target; add the option to this call")
 		}
-		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadReproMode && reproish(label)) || (mode == deadWriterMode && writerish(label)) {
+		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadCellMode && r.oneCell(label)) || (mode == deadReproMode && reproish(label)) || (mode == deadWriterMode && writerish(label)) {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())
 		}
@@ -870,6 +891,13 @@ func runMode(src, mode string, o Options) Result {
 			r.Err = fmt.Errorf("the script did not finish within %s — an unbounded loop, or work a dry run cannot satisfy", timeout)
 		} else {
 			r.Err = jsErr(vm, err)
+			// The engine's own defect, not the script's: goja's compiler
+			// rejects a constant-false block holding a `break` inside a loop
+			// that node runs — met as a mutation (`if (false) { … break }`) that
+			// read as killed by every test.
+			if strings.Contains(r.Err.Error(), "Compiler bug") {
+				r.Err = fmt.Errorf("%w — this is a defect of the dry run's JavaScript engine (goja), not of the script; a constant condition such as `if (false)` around a `break` triggers it, so write the condition over a variable", r.Err)
+			}
 		}
 		return r
 	}
@@ -896,11 +924,18 @@ func runMode(src, mode string, o Options) Result {
 	// The runtime's agent cap, read off the count the stubs took. A loop
 	// `wfcheck` accepts — a `for` with a test, a round counter — is bounded in
 	// ITERATIONS, not in agents, and one that re-runs a growing set each round
-	// reaches the cap a real run stops at, mid-phase and with no report. The
-	// deadline catches a loop that never ends; this catches one that ends too
-	// late, which a dry run finishes in milliseconds.
+	// reaches the cap, past which every `agent()` call throws. The deadline
+	// catches a loop that never ends; this catches one that ends too late,
+	// which a dry run finishes in milliseconds.
 	if r.Spawned > workflowAgentCap {
-		r.Violations = append(r.Violations, fmt.Sprintf("%s: this mode spawned %d agents, over the %d a Workflow run is capped at — the real run stops mid-phase with no report; bound the loop by an agent count it checks before each round, not only by its iterations", mode, r.Spawned, workflowAgentCap))
+		r.Violations = append(r.Violations, fmt.Sprintf("%s: this mode spawned %d agents, over the %d a Workflow run is capped at — past it every `agent()` call throws: uncaught, the run aborts with no report; caught by the spawn wrapper, every later agent reads as dead. Bound the loop by an agent count it checks before each round, not only by its iterations", mode, r.Spawned, workflowAgentCap))
+	}
+	// A ceiling the operator handed the script is a promise this run can
+	// check: `--args '{"maxAgents":12}'` is how a hunt's ceiling stop is
+	// walked, and a script that ignored it spawned past it with every mode
+	// green (the review round's probe A6).
+	if k, ok := argsInt(o.Args, "maxAgents"); ok && mode != "no-args" && r.Spawned > k {
+		r.Violations = append(r.Violations, fmt.Sprintf("%s: this mode spawned %d agents against the `maxAgents` %d the run was given — the script's ceiling does not hold", mode, r.Spawned, k))
 	}
 	// The `clean` mode IS the run everyone wants: every producer alive, every
 	// gate clean, acceptance green. A verdict field that comes back false there
@@ -960,7 +995,7 @@ func runMode(src, mode string, o Options) Result {
 	// from the verdict this constrains: a producer-only script has no reviewer
 	// label, kills nobody, and is correct to come back green — the note below
 	// already says that run proved nothing.
-	if (mode == "dead-reviews" || mode == deadFindersMode || mode == deadReproMode || mode == deadWriterMode) && r.ReturnOK && len(r.Killed) > 0 {
+	if (mode == "dead-reviews" || mode == deadFindersMode || mode == deadCellMode || mode == deadReproMode || mode == deadWriterMode) && r.ReturnOK && len(r.Killed) > 0 {
 		// A verdict this guard cannot READ is not a verdict it checked. Three
 		// one-line variants of the banked fixture — the verdict nested in an
 		// object, under an unrecognised key, or as the string 'yes' — all came
@@ -1043,8 +1078,8 @@ func runMode(src, mode string, o Options) Result {
 	if mode == deadWriterMode && r.Spawned > 0 && len(r.Killed) == 0 {
 		r.Violations = append(r.Violations, deadWriterMode+": no label matched a write/writer/synth/synthesis/compose segment — this mode killed nobody, so the run's answer-missing path ran in no mode. Label the writer `write:answer`, or name it with --dead")
 	}
-	if mode == deadFindersMode && r.Spawned > 0 && len(r.Killed) == 0 {
-		r.Violations = append(r.Violations, deadFindersMode+": no label matched a "+strings.Join(sortedKeys(findSegments), "/")+" segment — this mode killed nobody, so a dead finder's accounting ran in no mode. Label the finders `find:<lens>:<unit>`, or name them with --dead")
+	if (mode == deadFindersMode || mode == deadCellMode) && r.Spawned > 0 && len(r.Killed) == 0 {
+		r.Violations = append(r.Violations, mode+": no label matched a "+strings.Join(sortedKeys(findSegments), "/")+" segment — this mode killed nobody, so a dead finder's accounting ran in no mode. Label the finders `find:<lens>:<unit>`, or name them with --dead")
 	}
 	// `empty` claims to walk "the review found nothing". If the run's schemas
 	// carry no array it can read as a deliverable, it emptied nothing and walked
@@ -1322,6 +1357,34 @@ func writerish(label string) bool {
 		return true
 	}
 	return false
+}
+
+// cellIdentity is a finder label with its round and retry segments dropped:
+// `find:r2:correctness:store:retry` is the cell `find:correctness:store`.
+func cellIdentity(label string) string {
+	var keep []string
+	for _, seg := range labelSegments(label) {
+		if seg == "retry" || roundSeg.MatchString(seg) {
+			continue
+		}
+		keep = append(keep, seg)
+	}
+	return strings.Join(keep, ":")
+}
+
+var roundSeg = regexp.MustCompile(`^r\d+$`)
+
+// oneCell reports whether `dead-cell` kills this label: a finder whose cell is
+// the first finder cell this mode spawned.
+func (r *Result) oneCell(label string) bool {
+	if !findish(label) {
+		return false
+	}
+	id := cellIdentity(label)
+	if r.firstCell == "" {
+		r.firstCell = id
+	}
+	return id == r.firstCell
 }
 
 func reproish(label string) bool {

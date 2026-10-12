@@ -51,25 +51,27 @@ const REPRO_HOW = 'TODO: how one focused test or command is run in this repo, e.
 // Only blockers and majors are reproduced, worst first, up to this cap; the
 // rest — and anything over the cap — are re-judged by reading, and the report
 // names which were capped. `args.maxRepro` overrides it, so a dry run can walk
-// the cap: `wfdry --args '{"maxRepro":1}'` — with the default the fixture's two
-// serious findings never reach it.
+// the cap: `wfdry --args '{"maxRepro":1}'` — with the default the fixture's
+// serious findings, four over the default rounds, never reach it.
 const argInt = (name, dflt, least) => (typeof args === 'object' && args && Number.isInteger(args[name]) && args[name] >= least) ? args[name] : dflt
 const MAX_REPRO = argInt('maxRepro', 8, 0)
 
 // The hunt runs in ROUNDS until it stops finding. On the one multi-round hunt
 // on record (photowatch native/, four rounds, 391 confirmed findings), rounds
 // 2 to 4 added 246 of them and 6 of the 17 majors — and none of its 2
-// blockers, so a later round buys breadth, not the worst defects. Round N+1
-// re-runs only the cells that added a confirmed finding in round N, plus the
-// areas a completeness critic names; MAX_ROUNDS bounds it. `args.maxRounds`
+// blockers — on that one hunt a later round bought breadth, not the worst
+// defects. Round N+1 re-runs only the cells that added a confirmed finding in
+// round N or died in it (that hunt re-ran every unit), plus the areas a
+// completeness critic names; MAX_ROUNDS bounds it. `args.maxRounds`
 // overrides it (1 is a single-pass hunt), `args.maxAgents` the ceiling and
 // `args.maxExtras` the critic's share, so a dry run can walk each of them.
 const MAX_ROUNDS = argInt('maxRounds', 3, 1)
 const MAX_EXTRAS = argInt('maxExtras', 4, 0)
 // Every spawn counts against this, under the 1000 agents a Workflow run is
-// capped at: a round that would not fit is not started, and a verifier past it
-// is not spawned and is reported unverified.
-const MAX_AGENTS = argInt('maxAgents', 950, 1)
+// capped at — an override cannot lift it past the cap: a round that would not
+// fit is not started, and a verifier past it is not spawned and is reported
+// unverified.
+const MAX_AGENTS = Math.min(argInt('maxAgents', 950, 1), 1000)
 
 // A worktree-isolated agent calls git by its ABSOLUTE PATH: a PreToolUse hook
 // that rewrites `git …` into a wrapper is refused inside a worktree
@@ -266,7 +268,7 @@ function readerPrompt(f) {
 }
 
 function criticPrompt(round) {
-  const cov = cells.filter((c) => c.runs > 0).map((c) => '- ' + c.key + ': ' + (c.reported ? c.count + ' finding(s); read: ' + c.read + (c.gaps.length ? '; NOT read: ' + c.gaps.join(', ') : '') : 'DEAD, never reported')).join('\n')
+  const cov = cells.filter((c) => c.runs > 0).map((c) => '- ' + c.key + ': ' + (c.reported ? c.count + ' finding(s); read: ' + c.reads.join('; ') + (c.gaps.length ? '; NOT read: ' + c.gaps.join(', ') : '') : 'DEAD, never reported')).join('\n')
   const conf = results.filter((r) => r.status === 'reproduced' || r.status === 'confirmed').map((r) => '- ' + r.file + ':' + r.line + ' ' + r.summary).join('\n')
   return 'You are the completeness critic of a bug hunt over ' + REPO + ' at commit ' + COMMIT + '. Round ' + round + ' just finished. Name the areas of the subsystem that NOBODY examined closely enough — files no finder read, seams between two units, a failure class no lens covers where this code is exposed to it.\n\n' +
     'WHAT EACH FINDER CELL COVERED:\n' + cov + '\n\n' +
@@ -295,7 +297,7 @@ function mergePrompt(list) {
 
 const cells = []
 function newCell(lens, unit, round) {
-  const c = { key: lens.id + ' x ' + unit.id, lens, unit, from: round, runs: 0, reported: false, diedLast: false, count: 0, read: '', gaps: [], mine: [] }
+  const c = { key: lens.id + ' x ' + unit.id, lens, unit, from: round, runs: 0, reported: false, diedLast: false, diedIn: [], count: 0, reads: [], gaps: [], mine: [] }
   cells.push(c)
   return c
 }
@@ -305,6 +307,7 @@ const found = []
 const results = []
 const capped = []
 const seen = new Set()
+const seenLoc = new Set()
 const truncations = []
 const deadCritics = []
 const roundStats = []
@@ -313,6 +316,7 @@ let malformed = 0
 let reproUsed = 0
 let rounds = 0
 let stoppedBy = 'dry'
+let criticDied = false
 let lastRoundTokens = 0
 let active = cells.slice()
 
@@ -367,11 +371,17 @@ async function verifyRound(fresh) {
 }
 
 for (let round = 1; round <= MAX_ROUNDS; round++) {
-  if (!active.length) break
+  // Nothing left to run: dry — unless the critic that would have named new
+  // areas died, and then whether anything was left is unknown.
+  if (!active.length) {
+    stoppedBy = criticDied ? 'critic' : 'dry'
+    break
+  }
   // A round is started only if all of its finders, their retries and its
-  // critic fit under the ceiling; its verifiers are refused one by one at the
-  // ceiling and reported unverified, never silently dropped.
-  const need = active.length * 2 + 1
+  // critic (none in the last round, or with MAX_EXTRAS 0) fit under the
+  // ceiling; its verifiers are refused one by one at the ceiling and reported
+  // unverified, never silently dropped.
+  const need = active.length * 2 + (round < MAX_ROUNDS && MAX_EXTRAS > 0 ? 1 : 0)
   if (MAX_AGENTS - spawnCount < need) {
     stoppedBy = 'agents'
     truncations.push('round ' + round + ' not run: ' + (MAX_AGENTS - spawnCount) + ' agent(s) left under MAX_AGENTS ' + MAX_AGENTS + ', the round needs up to ' + need)
@@ -381,7 +391,8 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   // what the last one did.
   if (budget.total && lastRoundTokens > 0 && budget.remaining() < lastRoundTokens) {
     stoppedBy = 'tokens'
-    truncations.push('round ' + round + ' not run: ' + Math.round(budget.remaining()) + ' token(s) left, the last round spent ' + Math.round(lastRoundTokens))
+    // remaining() stops at zero, so an overspent round reads as "at least".
+    truncations.push('round ' + round + ' not run: ' + Math.round(budget.remaining()) + ' token(s) left, the last round spent ' + (budget.remaining() > 0 ? '' : 'at least ') + Math.round(lastRoundTokens))
     break
   }
   const before = budget.total ? budget.remaining() : 0
@@ -404,7 +415,16 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
     c.runs++
     const r = reports.get(c.key)
     c.diedLast = !r
-    if (!r) return
+    if (!r) {
+      c.diedIn.push(round)
+      return
+    }
+    // A gap stands only while NO run of the cell read the file: a re-run told
+    // to look past its earlier findings reads less than the whole scope, and
+    // replacing the gaps with its list made every multi-round hunt incomplete.
+    const gaps = Array.isArray(r.gaps) ? r.gaps.filter((g) => typeof g === 'string' && g) : []
+    c.gaps = c.reported ? c.gaps.filter((g) => gaps.includes(g)) : gaps
+    c.reads.push((c.runs > 1 ? 'round ' + round + ': ' : '') + String(r.coverage || ''))
     c.reported = true
     if (!Array.isArray(r.findings)) malformed++
     ;(Array.isArray(r.findings) ? r.findings : []).forEach((f) => {
@@ -416,17 +436,20 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
       // line are two claims until the merge says they share a cause — a
       // `file:line` key alone dropped the second lens's defect before anything
       // verified it.
+      // A critic's cell has no failure class of its own, so a location anyone
+      // already reported is not a new claim from it: re-verifying it spent a
+      // reproduction on a finding already filed.
       const key = f.file + ':' + f.line + ':' + c.lens.id
-      if (seen.has(key)) return
+      const loc = f.file + ':' + f.line
+      if (seen.has(key) || (c.unit.id === 'extra' && seenLoc.has(loc))) return
       seen.add(key)
+      seenLoc.add(loc)
       const kept = Object.assign({}, f, { id: 'F' + String(nextId++).padStart(3, '0'), lens: c.lens.id, cell: c.key, round })
       found.push(kept)
       fresh.push(kept)
       c.mine.push(kept)
       c.count++
     })
-    c.read = String(r.coverage || '')
-    c.gaps = Array.isArray(r.gaps) ? r.gaps.filter((g) => typeof g === 'string' && g) : []
   })
 
   let verified = []
@@ -454,6 +477,12 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
     stoppedBy = 'maxRounds'
     break
   }
+  // With MAX_EXTRAS 0 the critic's areas would all be cut: it is not asked.
+  if (MAX_EXTRAS === 0) {
+    active = next
+    lastRoundTokens = budget.total ? before - budget.remaining() : 0
+    continue
+  }
 
   // The completeness critic reads what every cell covered and what was
   // confirmed, and names the areas nobody examined closely. A dead critic
@@ -461,10 +490,13 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   // reported apart and does not make the hunt incomplete.
   phase('Critic')
   const crit = await spawn(criticPrompt(round), { label: 'critic:r' + round, phase: 'Critic', model: 'sonnet', effort: 'high', schema: CRITIC_SCHEMA })
+  criticDied = !crit
   if (!crit) deadCritics.push(round)
   // An area with no scope or no ask would spawn a finder told to search
-  // nothing; a dry run's stub always fills both, so this filter is for a live
-  // critic and no fixture walks it.
+  // nothing, and a critic naming more than MAX_EXTRAS would widen the next
+  // round past its share. A dry run's stub fills both fields and names one
+  // area, so this filter and the cut below are for a live critic, and no
+  // fixture walks either.
   const areas = (crit && Array.isArray(crit.areas) ? crit.areas : []).filter((a) => a && typeof a.scope === 'string' && a.scope.trim() && typeof a.ask === 'string' && a.ask.trim())
   if (areas.length > MAX_EXTRAS) truncations.push('the round ' + round + ' critic named ' + areas.length + ' area(s); only the first ' + MAX_EXTRAS + ' were searched')
   areas.slice(0, MAX_EXTRAS).forEach((a, i) => {
@@ -508,7 +540,8 @@ if (confirmed.length > 1) {
 // ---------------------------------------------------------------------------
 
 const STOPS = {
-  dry: 'running dry — no cell added a confirmed finding and the critic named no new area',
+  dry: 'running dry — no cell was left to run: none added a confirmed finding or died, and the critic added no area',
+  critic: 'a dead critic — no cell added a confirmed finding or died, and the critic that would name new areas returned nothing, so whether any area was left is unknown',
   maxRounds: 'the round limit MAX_ROUNDS ' + MAX_ROUNDS,
   agents: 'the agent ceiling MAX_AGENTS ' + MAX_AGENTS,
   tokens: 'the token budget',
@@ -528,10 +561,12 @@ out.push(rounds + ' round(s); stopped by ' + STOPS[stoppedBy] + '.' + roundStats
 if (gapCells.length) out.push('Files a finder did not read: ' + gapCells.join('; ') + '.')
 out.push(found.length + ' finding(s) after dedup: ' + results.filter((r) => r.status === 'reproduced').length + ' reproduced, ' + results.filter((r) => r.status === 'confirmed').length + ' confirmed by reading, ' + notReproduced.length + ' not reproduced, ' + refuted.length + ' refuted, ' + unverified.length + ' unverified' + (capped.length ? ', ' + capped.length + ' serious finding(s) read rather than reproduced (MAX_REPRO: ' + capped.join(', ') + ')' : '') + (malformed ? ', ' + malformed + ' malformed report(s) dropped' : '') + '.')
 if (!complete) out.push('INCOMPLETE: ' + [deadCells.length ? deadCells.length + ' dead cell(s)' : '', gapCells.length ? gapCells.length + ' cell(s) with unread files' : '', unverified.length ? unverified.length + ' unverified finding(s)' : ''].filter(Boolean).join(', ') + ' — what follows is not a clean hunt of the whole subsystem.')
-if (deadCritics.length) out.push('The completeness critic died after round(s) ' + deadCritics.join(', ') + ': the round after each ran no extra cells.')
+if (deadCritics.length) out.push('The completeness critic died after round(s) ' + deadCritics.join(', ') + ': no extra cells came from it.')
+const diedReruns = cells.filter((c) => c.reported && c.diedIn.length).map((c) => c.key + ' (round ' + c.diedIn.join(', ') + ')')
+if (diedReruns.length) out.push('Runs that died, of cells that reported in another round: ' + diedReruns.join(', ') + '.')
 truncations.forEach((t) => out.push('Truncated: ' + t + '.'))
 if (unrun.length) out.push('Proposed by the critic and never searched, because the hunt stopped first: ' + unrun.join(', ') + '.')
-if (!confirmed.length) out.push(found.length ? 'No finding was reproduced or confirmed.' : 'Nothing was found over the cells listed below.')
+if (!confirmed.length) out.push(found.length ? 'No finding was reproduced or confirmed.' : rounds ? 'Nothing was found over the cells listed below.' : 'No round ran, so nothing was searched.')
 out.push('')
 confirmed.forEach((f) => out.push('- [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + ' (round ' + f.round + ', ' + f.cell + ')\n  trigger: ' + f.failure + '\n  fix: ' + f.fix + (f.status === 'reproduced' ? '\n  reproduced at ' + f.head + ': `' + f.command + '`\n    ' + f.output.split('\n').join('\n    ') : '\n  confirmed by reading' + (f.capped ? ' (over MAX_REPRO, not reproduced)' : '') + ': ' + f.reason)))
 groups.forEach((g) => out.push('- shared root cause (' + g.ids.join(', ') + '): ' + g.title))
@@ -540,7 +575,7 @@ refuted.filter((f) => f.capped).forEach((f) => out.push('- REFUTED BY READING, o
 notReproduced.forEach((f) => out.push('- NOT REPRODUCED [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  why: ' + f.reason))
 unverified.forEach((f) => out.push('- UNVERIFIED [' + f.severity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + ' (' + f.reason + ')'))
 out.push('')
-cells.filter((c) => c.runs > 0).forEach((c) => out.push('coverage ' + c.key + (c.name ? ' "' + c.name + '"' : '') + ' (from round ' + c.from + ', ' + c.runs + ' run(s)): ' + (c.reported ? c.count + ' kept — ' + c.read : 'DEAD')))
+cells.filter((c) => c.runs > 0).forEach((c) => out.push('coverage ' + c.key + (c.name ? ' "' + c.name + '"' : '') + ' (from round ' + c.from + ', ' + c.runs + ' run(s)): ' + (c.reported ? c.count + ' kept — ' + c.reads.join('; ') : 'DEAD')))
 
 log(spawned.length - dead.length + '/' + spawned.length + ' finder(s) came back; ' + spawnCount + ' agent(s) spawned')
 if (dead.length) log('DEAD: ' + dead.join(', '))

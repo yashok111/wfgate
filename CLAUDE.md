@@ -388,7 +388,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 32 | The owner's ask: the plugin assumed every run writes code | Run types — `wf init -type review`; the review skeleton; `wfdry` modes, fixture polarity and `dead-reviews` per type; `--owns-diff` as a bar for a read-only run; `run-types.md` |
 | 33 | The second run type | `hunt`: a subsystem at one commit, serious findings reproduced in worktrees, not-reproduced kept apart from refuted, the worktree carve-out in `--owns-diff` |
 | 34 | The third run type | `audit`: a question in parts, claims of both polarities citing `path:line#anchor`, a citation checker, one writer from verified claims, `answered` apart from `complete`, `dead-writer`, `check cite` as the mechanical acceptance |
-| 35 | The multi-round hunt queued after wave 33 | Rounds until dry: productive cells re-run with their own findings, a completeness critic's extra cells, four stops each named (`stoppedBy`), an agent ceiling under the Workflow cap; `wfdry` refuses a mode over that cap |
+| 35 | The multi-round hunt queued after wave 33 | Rounds until dry: productive cells re-run with their own findings, a completeness critic's extra cells, four stops each named (`stoppedBy`), an agent ceiling under the Workflow cap; `wfdry` refuses a mode over that cap, and its review round added `dead-cell` (one finder cell dead in every round) |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
