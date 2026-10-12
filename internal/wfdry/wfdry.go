@@ -80,6 +80,10 @@ const deadReproMode = "dead-repro"
 // finder's.
 const deadWriterMode = "dead-writer"
 
+// workflowAgentCap is the number of agents one Workflow run may spawn; the
+// manual's orchestration vector and `wfcheck`'s loop guard name the same cap.
+const workflowAgentCap = 1000
+
 // ModesFor is the mode list a run of this type enters. A read-only run has no
 // acceptance step and no fix agent, so `acceptfail` and `unfixed` would walk
 // vocabulary its script does not carry, and it gains `empty`. A type the
@@ -888,6 +892,15 @@ func runMode(src, mode string, o Options) Result {
 		r.Violations = append(r.Violations, fmt.Sprintf("the run returned %T, not an object — a verdict nothing can read", res))
 	} else {
 		r.ReturnOK = true
+	}
+	// The runtime's agent cap, read off the count the stubs took. A loop
+	// `wfcheck` accepts — a `for` with a test, a round counter — is bounded in
+	// ITERATIONS, not in agents, and one that re-runs a growing set each round
+	// reaches the cap a real run stops at, mid-phase and with no report. The
+	// deadline catches a loop that never ends; this catches one that ends too
+	// late, which a dry run finishes in milliseconds.
+	if r.Spawned > workflowAgentCap {
+		r.Violations = append(r.Violations, fmt.Sprintf("%s: this mode spawned %d agents, over the %d a Workflow run is capped at — the real run stops mid-phase with no report; bound the loop by an agent count it checks before each round, not only by its iterations", mode, r.Spawned, workflowAgentCap))
 	}
 	// The `clean` mode IS the run everyone wants: every producer alive, every
 	// gate clean, acceptance green. A verdict field that comes back false there

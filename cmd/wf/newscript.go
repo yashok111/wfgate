@@ -169,7 +169,7 @@ func cmdNewScript(args []string) error {
 		after := "a read-only run must leave the tree unchanged"
 		if ws.AllowsScratch(runType) {
 			after += ", its registered reproduction worktrees under " + ws.ScratchPrefix + " excepted"
-			fmt.Printf("    wfdry --type %s --args '{\"maxRepro\":1}' %s — walks the reproduction cap, which the default never reaches\n", runType, dst)
+			fmt.Printf("    wfdry --type %s --mode clean --args '{\"maxAgents\":12}' %s — walks the agent ceiling the rounds stop at, which the default never reaches\n", runType, dst)
 		}
 		fmt.Printf("  after the run: wfcheck -type %s --owns-diff <the SHA the run started from> %s — %s\n", runType, dst, after)
 		if runType == ws.TypeAudit {

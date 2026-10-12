@@ -146,11 +146,27 @@ findings are proven by running something. What changes against the review rules 
   — a vote of reading skeptics on the serious findings is the substitute; the skeleton does not carry
   one, and adding it is a decision for the document.
 - **Reproductions are the costliest agents of the run** — one build per worktree — so they are
-  capped (`MAX_REPRO`), worst first, and the report NAMES the serious findings that were read instead,
-  keeping one a reader refuted apart from the ordinary refuted. The dry run's two serious findings
-  never reach the default cap, so run it once more with `wfdry --args '{"maxRepro":1}'`, which the
-  skeleton reads. Hand every reproducer the ONE focused command that runs a test here (`REPRO_HOW`): several
-  whole-repo test runs at once is what an OOM killer resolves.
+  capped (`MAX_REPRO`, over the whole hunt, worst first within each round), and the report NAMES the
+  serious findings that were read instead, keeping one a reader refuted apart from the ordinary
+  refuted. `wfdry --args '{"maxRepro":1}'` moves the cap, which the skeleton reads. Hand every
+  reproducer the ONE focused command that runs a test here (`REPRO_HOW`): several whole-repo test
+  runs at once is what an OOM killer resolves.
+- **A hunt runs in ROUNDS until it stops finding.** On the one multi-round hunt on record, later
+  rounds added most of the confirmed findings and none of the blockers [M-47]: a round buys breadth,
+  not the worst defects, which is what to weigh `MAX_ROUNDS` against. Round 1 runs every cell; a
+  cell runs again only if it added a confirmed finding or died, and is handed what it already
+  reported so it looks past it; a completeness CRITIC after each round names up to `MAX_EXTRAS`
+  under-examined areas, each one finder in the next round. The rounds stop when no cell is left
+  (`dry`), at `MAX_ROUNDS`, or when the next round would not fit under `MAX_AGENTS` (every spawn
+  counts, under the Workflow's agent cap) or under the token budget — and `stoppedBy` and the
+  report's second line say which. A budget stop is not a coverage hole: a cell the critic proposed
+  for a round that never started is listed as unsearched, while a DECLARED cell that never ran makes
+  the hunt incomplete. A verifier past the ceiling is not spawned and its finding is unverified
+  with that reason; a dead critic costs the next round its extras and is reported, not counted as
+  a dead cell. `--args '{"maxRounds":1}'` is a single pass, and `--mode clean --args
+  '{"maxAgents":12}'` walks the ceiling stop in a dry run, `--budget` the token stop. A dry run of
+  any type that spawns more agents than the Workflow cap is refused: a loop bounded in iterations
+  is not bounded in agents.
 - **The tree is unchanged except for the worktrees.** Measured for an Agent-tool subagent spawned by
   a headless session [M-45]: its worktree lands under `.claude/worktrees/` of the repository the
   LAUNCHING session runs in — so launch the hunt from the target's root — and Claude Code's own

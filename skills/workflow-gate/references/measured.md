@@ -785,3 +785,16 @@ modes under the review reading reach 199, 261 and 271 agents against 596, each a
 after rounds that confirmed nothing, which is why a review's width check is a note. The perf-review
 script, a gate-style reviewer schema (`verdict` plus `findings`), runs 7/7 under the review reading,
 its `findings` read as a deliverable.
+
+## M-47 — where a multi-round hunt's findings came from
+
+Measured 2026-10-12 on the one multi-round hunt on record, photo-watch `native/` at `c89ced0`
+(`~/projects/gates/photowatch-bughunt`, its report `docs/BUGHUNT-2026-10-03.md` in the photo-watch
+repository): four rounds, a different failure-class lens per round, a completeness critic after each,
+stopped by its round limit. Counting the report's "found by … in round N" lines over its confirmed
+findings: round 1 145, round 2 102, round 3 90, round 4 54 — rounds 2 to 4 hold 246 of 391. Both
+BLOCKERs came from round 1, and 6 of the 17 MAJORs from rounds 2 and 3; the critic's extra finders
+account for 32. Re-derive with `rg -o "found by \S+ in round \d" docs/BUGHUNT-2026-10-03.md`. What the
+count cannot separate: that hunt changed its lens every round, while the emitted skeleton runs every
+lens in round 1, so part of the later rounds' yield is what a one-pass hunt of this shape already
+collects.

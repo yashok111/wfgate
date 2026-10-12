@@ -3,14 +3,15 @@ export const meta = {
   description: 'TODO one line: which subsystem this hunt searches and what it returns. Shown in the permission dialog.',
   whenToUse: 'TODO: run once, from the repo root, on a clean tree at COMMIT; the run changes nothing in the tree outside its reproduction worktrees.',
   phases: [
-    { title: 'Find', detail: 'one finder per failure class and unit, read-only — sonnet, effort medium', model: 'sonnet' },
+    { title: 'Find', detail: 'one finder per failure class and unit, read-only, in rounds — sonnet, effort medium', model: 'sonnet' },
     { title: 'Verify', detail: 'blockers and majors REPRODUCED in a throwaway worktree, the rest re-judged by reading — sonnet, effort medium', model: 'sonnet' },
+    { title: 'Critic', detail: 'one completeness critic per round, naming the areas the next round searches — sonnet, effort high', model: 'sonnet' },
     { title: 'Merge', detail: 'groups confirmed findings that share one root cause — sonnet, effort medium', model: 'sonnet' },
   ],
 }
 
-// A HUNT run: it searches a subsystem for defects and verifies the serious ones
-// by REPRODUCTION — a failing test or command written inside a throwaway
+// A HUNT run: it searches a subsystem for defects, in rounds until it stops
+// finding them, and verifies the serious ones by REPRODUCTION — a failing test or command written inside a throwaway
 // worktree (`isolation: 'worktree'`) that the run never merges. Emitted by
 // `wf new-script` in a workspace opened with `wf init -type hunt`. The tree at
 // REPO comes out of the run unchanged except for those worktrees, under
@@ -52,7 +53,23 @@ const REPRO_HOW = 'TODO: how one focused test or command is run in this repo, e.
 // names which were capped. `args.maxRepro` overrides it, so a dry run can walk
 // the cap: `wfdry --args '{"maxRepro":1}'` — with the default the fixture's two
 // serious findings never reach it.
-const MAX_REPRO = (typeof args === 'object' && args && Number.isInteger(args.maxRepro)) ? args.maxRepro : 8
+const argInt = (name, dflt, least) => (typeof args === 'object' && args && Number.isInteger(args[name]) && args[name] >= least) ? args[name] : dflt
+const MAX_REPRO = argInt('maxRepro', 8, 0)
+
+// The hunt runs in ROUNDS until it stops finding. On the one multi-round hunt
+// on record (photowatch native/, four rounds, 391 confirmed findings), rounds
+// 2 to 4 added 246 of them and 6 of the 17 majors — and none of its 2
+// blockers, so a later round buys breadth, not the worst defects. Round N+1
+// re-runs only the cells that added a confirmed finding in round N, plus the
+// areas a completeness critic names; MAX_ROUNDS bounds it. `args.maxRounds`
+// overrides it (1 is a single-pass hunt), `args.maxAgents` the ceiling and
+// `args.maxExtras` the critic's share, so a dry run can walk each of them.
+const MAX_ROUNDS = argInt('maxRounds', 3, 1)
+const MAX_EXTRAS = argInt('maxExtras', 4, 0)
+// Every spawn counts against this, under the 1000 agents a Workflow run is
+// capped at: a round that would not fit is not started, and a verifier past it
+// is not spawned and is reported unverified.
+const MAX_AGENTS = argInt('maxAgents', 950, 1)
 
 // A worktree-isolated agent calls git by its ABSOLUTE PATH: a PreToolUse hook
 // that rewrites `git …` into a wrapper is refused inside a worktree
@@ -79,8 +96,17 @@ const REPRO_RULES = 'REPRODUCTION RULES\n' +
 
 // spawn is the one wrapper every agent() call goes through. An unhandled throw
 // at a serial step aborts the whole run, so a failed agent becomes null here
-// and the caller decides what a null means.
+// and the caller decides what a null means. It is also where MAX_AGENTS holds:
+// a call past it is not made, and its label is kept so the report can say why
+// that agent's answer is missing.
+let spawnCount = 0
+const overCeiling = []
 async function spawn(prompt, opts) {
+  if (spawnCount >= MAX_AGENTS) {
+    overCeiling.push(opts && opts.label ? opts.label : '?')
+    return null
+  }
+  spawnCount++
   try {
     return await agent(prompt, opts)
   } catch (err) {
@@ -116,7 +142,7 @@ const FINDINGS_SCHEMA = {
         required: ['severity', 'file', 'line', 'summary', 'failure', 'fix'],
         properties: {
           severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'] },
-          file: { type: 'string', description: 'repo-relative path of the primary location' },
+          file: { type: 'string', description: 'repo-relative path of the primary location', examples: ['internal/store/save.go', 'cmd/app/main.go'] },
           line: { type: 'integer', minimum: 1, description: 'line of the primary location at ' + COMMIT },
           summary: { type: 'string', description: 'one sentence stating the defect' },
           failure: { type: 'string', description: 'concrete input or state, then the wrong outcome — not a restatement of the summary' },
@@ -153,6 +179,31 @@ const VERDICT_SCHEMA = {
   },
 }
 
+// The critic's areas are the PASS shape — a critic naming nothing is a hunt
+// that has run out of places to look — which the `$comment` says to a dry run.
+const CRITIC_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['areas'],
+  properties: {
+    areas: {
+      type: 'array',
+      $comment: 'x-pass: true',
+      description: 'at most ' + MAX_EXTRAS + ' under-examined areas, most promising first; an empty list if every area was searched closely',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'scope', 'ask'],
+        properties: {
+          name: { type: 'string', description: 'two or three words' },
+          scope: { type: 'string', description: 'repo-relative files or directories a finder reads in full' },
+          ask: { type: 'string', description: 'the failure class to look for there, two sentences' },
+        },
+      },
+    },
+  },
+}
+
 const MERGE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -177,11 +228,18 @@ const MERGE_SCHEMA = {
 const LEVELS = ['blocker', 'major', 'minor', 'note']
 const rank = (s) => (LEVELS.indexOf(s) < 0 ? LEVELS.length : LEVELS.indexOf(s))
 
-function finderPrompt(lens, unit) {
+// A cell's earlier findings ride in its later prompts, so a re-run looks past
+// them instead of re-reporting them a line away — which the dedup key would
+// not catch and a verifier would pay for.
+function finderPrompt(c, round) {
+  const prior = c.mine.length
+    ? '\nROUND ' + round + '. This scope and class were searched before, and these were reported — do NOT report them again; look for what they missed:\n' + c.mine.map((f) => '- ' + f.file + ':' + f.line + ' ' + f.summary).join('\n') + '\n'
+    : ''
   return 'You are one finder of a bug hunt over ' + REPO + ' at commit ' + COMMIT + '. Find defects that a user or operator would hit.\n\n' +
-    'SCOPE: ' + unit.scope + '\n' +
-    'FAILURE CLASS: ' + lens.ask + '\n' +
-    'Report only what this class finds. A defect of another class is another finder\'s; a defect outside the scope is out of scope unless code in the scope makes it reachable.\n\n' +
+    'SCOPE: ' + c.unit.scope + '\n' +
+    'FAILURE CLASS: ' + c.lens.ask + '\n' +
+    'Report only what this class finds. A defect of another class is another finder\'s; a defect outside the scope is out of scope unless code in the scope makes it reachable.\n' +
+    prior + '\n' +
     'SEVERITY: ' + SEVERITY + '\n\n' +
     READ_ONLY + NAV +
     '\nReturn through the StructuredOutput schema. An empty findings list is a legitimate answer; say in coverage what you read to reach it, and list in gaps every file in your scope you did not read.'
@@ -207,6 +265,17 @@ function readerPrompt(f) {
     '\nReturn through the StructuredOutput schema.'
 }
 
+function criticPrompt(round) {
+  const cov = cells.filter((c) => c.runs > 0).map((c) => '- ' + c.key + ': ' + (c.reported ? c.count + ' finding(s); read: ' + c.read + (c.gaps.length ? '; NOT read: ' + c.gaps.join(', ') : '') : 'DEAD, never reported')).join('\n')
+  const conf = results.filter((r) => r.status === 'reproduced' || r.status === 'confirmed').map((r) => '- ' + r.file + ':' + r.line + ' ' + r.summary).join('\n')
+  return 'You are the completeness critic of a bug hunt over ' + REPO + ' at commit ' + COMMIT + '. Round ' + round + ' just finished. Name the areas of the subsystem that NOBODY examined closely enough — files no finder read, seams between two units, a failure class no lens covers where this code is exposed to it.\n\n' +
+    'WHAT EACH FINDER CELL COVERED:\n' + cov + '\n\n' +
+    'CONFIRMED SO FAR:\n' + (conf || '(none)') + '\n\n' +
+    'Each area you name becomes one finder in the next round, so name a scope one finder can read in full and an ask it can act on. Do not name an area already covered closely: an extra finder over searched ground costs an agent and finds duplicates.\n\n' +
+    READ_ONLY + NAV +
+    '\nReturn through the StructuredOutput schema.'
+}
+
 function mergePrompt(list) {
   return 'These confirmed findings come from independent finders of one bug hunt. Group the ones that share ONE root cause, so the report names it once.\n\n' +
     list.map((f) => f.id + ' ' + f.file + ':' + f.line + ' ' + f.summary).join('\n') + '\n\n' +
@@ -215,76 +284,52 @@ function mergePrompt(list) {
 }
 
 // ---------------------------------------------------------------------------
-// Find. A finder that returns nothing is retried once; one still dead after its
-// retry is a COVERAGE hole, and the report names it — a hunt that drops a
-// dead finder and calls itself complete searched less than it says.
+// Rounds. Round 1 runs every cell. A cell runs again in the next round only if
+// it added a confirmed finding in this one or died in it, and the completeness
+// critic adds up to MAX_EXTRAS cells over the areas it judges under-examined.
+// The hunt stops when no cell is left to run, at MAX_ROUNDS, or when the next
+// round would not fit under MAX_AGENTS or the token budget — and the report
+// says which. A finder that returns nothing is retried once; a cell that never
+// reported in any round is a COVERAGE hole, and the report names it.
 // ---------------------------------------------------------------------------
 
-phase('Find')
 const cells = []
-LENSES.forEach((lens) => UNITS.forEach((unit) => cells.push({ lens, unit })))
-// Results are matched back to their cell by KEY, not by position, so the
-// `.filter(Boolean)` a thunk that throws needs cannot shift one finder's report
-// onto another's cell — a cell with no report is a dead cell either way.
-const reports = new Map((await parallel(cells.map((c) => async () => {
-  const label = 'find:' + c.lens.id + ':' + c.unit.id
-  const first = await spawn(finderPrompt(c.lens, c.unit), { label, phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
-  if (first) return { key: label, r: live(label, first) }
-  const retry = await spawn(finderPrompt(c.lens, c.unit), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
-  return { key: label, r: live(label + ':retry', retry) }
-}))).filter(Boolean).map((x) => [x.key, x.r]))
+function newCell(lens, unit, round) {
+  const c = { key: lens.id + ' x ' + unit.id, lens, unit, from: round, runs: 0, reported: false, diedLast: false, count: 0, read: '', gaps: [], mine: [] }
+  cells.push(c)
+  return c
+}
+LENSES.forEach((lens) => UNITS.forEach((unit) => newCell(lens, unit, 1)))
 
-const coverage = []
 const found = []
-const seen = new Set()
-let nextId = 1
-let malformed = 0
-cells.forEach((c) => {
-  const r = reports.get('find:' + c.lens.id + ':' + c.unit.id)
-  const cell = c.lens.id + ' x ' + c.unit.id
-  if (!r) {
-    coverage.push({ cell, dead: true, count: 0, read: '', gaps: [] })
-    return
-  }
-  let kept = 0
-  if (!Array.isArray(r.findings)) malformed++
-  ;(Array.isArray(r.findings) ? r.findings : []).forEach((f) => {
-    if (!f || typeof f.file !== 'string') {
-      malformed++
-      return
-    }
-    // One lens may report a location once; two lenses at one line are two
-    // claims until the merge says they share a cause — a `file:line` key alone
-    // dropped the second lens's defect before anything verified it.
-    const key = f.file + ':' + f.line + ':' + c.lens.id
-    if (seen.has(key)) return
-    seen.add(key)
-    found.push(Object.assign({}, f, { id: 'F' + String(nextId++).padStart(3, '0'), lens: c.lens.id }))
-    kept++
-  })
-  const gaps = Array.isArray(r.gaps) ? r.gaps.filter((g) => typeof g === 'string' && g) : []
-  coverage.push({ cell, dead: false, count: kept, read: String(r.coverage || ''), gaps })
-})
-log(found.length + ' finding(s) after dedup from ' + cells.length + ' finder cell(s)')
-
-// ---------------------------------------------------------------------------
-// Verify. Blockers and majors are REPRODUCED, worst first, up to MAX_REPRO;
-// everything else is re-judged by reading. The verifier's severity is the one
-// reported. Reproducers and readers both carry a `verify` segment in their
-// label, so a dry run's `dead-reviews` kills them both.
-// ---------------------------------------------------------------------------
-
 const results = []
 const capped = []
-if (found.length) {
-  phase('Verify')
-  const ordered = found.slice().sort((a, b) => rank(a.severity) - rank(b.severity))
+const seen = new Set()
+const truncations = []
+const deadCritics = []
+const roundStats = []
+let nextId = 1
+let malformed = 0
+let reproUsed = 0
+let rounds = 0
+let stoppedBy = 'dry'
+let lastRoundTokens = 0
+let active = cells.slice()
+
+// Verify one round's fresh findings. Blockers and majors are REPRODUCED, worst
+// first, while the run has reproductions left under MAX_REPRO; everything else
+// is re-judged by reading. The verifier's severity is the one reported.
+// Reproducers and readers both carry a `verify` segment in their label, so a
+// dry run's `dead-reviews` kills them both.
+async function verifyRound(fresh) {
+  const ordered = fresh.slice().sort((a, b) => rank(a.severity) - rank(b.severity))
   const plan = ordered.map((f) => {
     const serious = rank(f.severity) <= 1
-    if (serious && ordered.filter((g, i) => i < ordered.indexOf(f) && rank(g.severity) <= 1).length >= MAX_REPRO) {
+    if (serious && reproUsed >= MAX_REPRO) {
       capped.push(f.id)
       return { f, repro: false }
     }
+    if (serious) reproUsed++
     return { f, repro: serious }
   })
   const verdicts = new Map((await parallel(plan.map((p) => async () => ({
@@ -294,11 +339,13 @@ if (found.length) {
       ? await spawn(reproPrompt(p.f), { label: 'verify:repro:' + p.f.id, phase: 'Verify', model: 'sonnet', effort: 'medium', isolation: 'worktree', schema: REPRO_SCHEMA })
       : await spawn(readerPrompt(p.f), { label: 'verify:read:' + p.f.id, phase: 'Verify', model: 'sonnet', effort: 'medium', schema: VERDICT_SCHEMA }),
   })))).filter(Boolean).map((x) => [x.id, x]))
-  found.forEach((f) => {
+  const out = []
+  fresh.forEach((f) => {
     const x = verdicts.get(f.id)
     const v = x && x.v
     if (!v) {
-      results.push(Object.assign({}, f, { status: 'unverified', finalSeverity: f.severity, reason: 'the verifier returned nothing' }))
+      const why = overCeiling.includes((x && x.repro ? 'verify:repro:' : 'verify:read:') + f.id) ? 'not spawned: the run reached MAX_AGENTS' : 'the verifier returned nothing'
+      out.push(Object.assign({}, f, { status: 'unverified', finalSeverity: f.severity, reason: why }))
       return
     }
     const sev = LEVELS.includes(v.severity) ? v.severity : f.severity
@@ -314,9 +361,121 @@ if (found.length) {
       status = 'not-reproduced'
       reason = (!command ? 'no command reported' : 'the worktree was not confirmed at ' + COMMIT + ' (head: ' + String(v.head || '?') + ')') + '. ' + reason
     }
-    results.push(Object.assign({}, f, { status, finalSeverity: sev, reason, command, head: x.repro ? String(v.head || '') : '', output: x.repro ? String(v.output || '') : '', capped: capped.includes(f.id) }))
+    out.push(Object.assign({}, f, { status, finalSeverity: sev, reason, command, head: x.repro ? String(v.head || '') : '', output: x.repro ? String(v.output || '') : '', capped: capped.includes(f.id) }))
   })
+  return out
 }
+
+for (let round = 1; round <= MAX_ROUNDS; round++) {
+  if (!active.length) break
+  // A round is started only if all of its finders, their retries and its
+  // critic fit under the ceiling; its verifiers are refused one by one at the
+  // ceiling and reported unverified, never silently dropped.
+  const need = active.length * 2 + 1
+  if (MAX_AGENTS - spawnCount < need) {
+    stoppedBy = 'agents'
+    truncations.push('round ' + round + ' not run: ' + (MAX_AGENTS - spawnCount) + ' agent(s) left under MAX_AGENTS ' + MAX_AGENTS + ', the round needs up to ' + need)
+    break
+  }
+  // The token budget, when the run has one: the next round is assumed to cost
+  // what the last one did.
+  if (budget.total && lastRoundTokens > 0 && budget.remaining() < lastRoundTokens) {
+    stoppedBy = 'tokens'
+    truncations.push('round ' + round + ' not run: ' + Math.round(budget.remaining()) + ' token(s) left, the last round spent ' + Math.round(lastRoundTokens))
+    break
+  }
+  const before = budget.total ? budget.remaining() : 0
+  rounds = round
+
+  phase('Find')
+  // Results are matched back to their cell by KEY, not by position, so the
+  // `.filter(Boolean)` a thunk that throws needs cannot shift one finder's
+  // report onto another's cell — a cell with no report is a dead cell either way.
+  const reports = new Map((await parallel(active.map((c) => async () => {
+    const label = 'find:r' + round + ':' + c.lens.id + ':' + c.unit.id
+    const first = await spawn(finderPrompt(c, round), { label, phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
+    if (first) return { key: c.key, r: live(label, first) }
+    const retry = await spawn(finderPrompt(c, round), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
+    return { key: c.key, r: live(label + ':retry', retry) }
+  }))).filter(Boolean).map((x) => [x.key, x.r]))
+
+  const fresh = []
+  active.forEach((c) => {
+    c.runs++
+    const r = reports.get(c.key)
+    c.diedLast = !r
+    if (!r) return
+    c.reported = true
+    if (!Array.isArray(r.findings)) malformed++
+    ;(Array.isArray(r.findings) ? r.findings : []).forEach((f) => {
+      if (!f || typeof f.file !== 'string') {
+        malformed++
+        return
+      }
+      // One lens may report a location once, in any round; two lenses at one
+      // line are two claims until the merge says they share a cause — a
+      // `file:line` key alone dropped the second lens's defect before anything
+      // verified it.
+      const key = f.file + ':' + f.line + ':' + c.lens.id
+      if (seen.has(key)) return
+      seen.add(key)
+      const kept = Object.assign({}, f, { id: 'F' + String(nextId++).padStart(3, '0'), lens: c.lens.id, cell: c.key, round })
+      found.push(kept)
+      fresh.push(kept)
+      c.mine.push(kept)
+      c.count++
+    })
+    c.read = String(r.coverage || '')
+    c.gaps = Array.isArray(r.gaps) ? r.gaps.filter((g) => typeof g === 'string' && g) : []
+  })
+
+  let verified = []
+  if (fresh.length) {
+    phase('Verify')
+    verified = await verifyRound(fresh)
+    verified.forEach((x) => results.push(x))
+  }
+  const productive = new Set(verified.filter((x) => x.status === 'reproduced' || x.status === 'confirmed').map((x) => x.cell))
+  roundStats.push({ round, finders: active.length, fresh: fresh.length, confirmed: verified.filter((x) => x.status === 'reproduced' || x.status === 'confirmed').length })
+  log('round ' + round + ': ' + active.length + ' finder cell(s), ' + fresh.length + ' new finding(s), ' + productive.size + ' cell(s) with a confirmed one')
+  const next = active.filter((c) => c.diedLast || productive.has(c.key))
+
+  // At the ceiling nothing more can be spawned: the verifiers it refused are
+  // already unverified, and a critic spawned now would be refused and read
+  // as a dead one.
+  if (spawnCount >= MAX_AGENTS) {
+    stoppedBy = 'agents'
+    truncations.push('MAX_AGENTS ' + MAX_AGENTS + ' reached during round ' + round + (overCeiling.length ? ': ' + overCeiling.length + ' agent(s) not spawned' : ''))
+    break
+  }
+  // At the limit the critic is not asked, so whether anything was left to
+  // search is unknown — the stop is the limit's, never "ran dry".
+  if (round === MAX_ROUNDS) {
+    stoppedBy = 'maxRounds'
+    break
+  }
+
+  // The completeness critic reads what every cell covered and what was
+  // confirmed, and names the areas nobody examined closely. A dead critic
+  // costs the next round its extra cells, not a declared cell, so it is
+  // reported apart and does not make the hunt incomplete.
+  phase('Critic')
+  const crit = await spawn(criticPrompt(round), { label: 'critic:r' + round, phase: 'Critic', model: 'sonnet', effort: 'high', schema: CRITIC_SCHEMA })
+  if (!crit) deadCritics.push(round)
+  // An area with no scope or no ask would spawn a finder told to search
+  // nothing; a dry run's stub always fills both, so this filter is for a live
+  // critic and no fixture walks it.
+  const areas = (crit && Array.isArray(crit.areas) ? crit.areas : []).filter((a) => a && typeof a.scope === 'string' && a.scope.trim() && typeof a.ask === 'string' && a.ask.trim())
+  if (areas.length > MAX_EXTRAS) truncations.push('the round ' + round + ' critic named ' + areas.length + ' area(s); only the first ' + MAX_EXTRAS + ' were searched')
+  areas.slice(0, MAX_EXTRAS).forEach((a, i) => {
+    const c = newCell({ id: 'x' + (round + 1) + '-' + (i + 1), ask: a.ask }, { id: 'extra', scope: a.scope }, round + 1)
+    c.name = String(a.name || '')
+    next.push(c)
+  })
+  active = next
+  lastRoundTokens = budget.total ? before - budget.remaining() : 0
+}
+
 const confirmed = results.filter((r) => r.status === 'reproduced' || r.status === 'confirmed').sort((a, b) => rank(a.finalSeverity) - rank(b.finalSeverity))
 const notReproduced = results.filter((r) => r.status === 'not-reproduced')
 const refuted = results.filter((r) => r.status === 'refuted')
@@ -332,7 +491,7 @@ let mergeDied = false
 if (confirmed.length > 1) {
   phase('Merge')
   const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', schema: MERGE_SCHEMA })
-  if (!m) mergeDied = true
+  if (!m) mergeDied = overCeiling.includes('merge') ? 'the merge was not spawned (MAX_AGENTS reached)' : 'the merge agent died'
   else {
     // A group may only name findings the merger was handed: an id it invented
     // would print as a root cause nothing confirmed.
@@ -348,39 +507,60 @@ if (confirmed.length > 1) {
 // finders died is not a clean subsystem, and the two must never read alike.
 // ---------------------------------------------------------------------------
 
-const deadCells = coverage.filter((c) => c.dead).map((c) => c.cell)
-const gapCells = coverage.filter((c) => c.gaps && c.gaps.length).map((c) => c.cell + ' (' + c.gaps.join(', ') + ')')
+const STOPS = {
+  dry: 'running dry — no cell added a confirmed finding and the critic named no new area',
+  maxRounds: 'the round limit MAX_ROUNDS ' + MAX_ROUNDS,
+  agents: 'the agent ceiling MAX_AGENTS ' + MAX_AGENTS,
+  tokens: 'the token budget',
+}
+// A cell the critic proposed for a round that never started was never run: it
+// is listed as unsearched, not dead — the stop is already said, and a budget
+// stop is not a coverage hole in what was declared.
+// A DECLARED cell that never ran — a ceiling too low for round 1 — is a hole
+// like a dead one: "0 of 0 cells" must not read as a clean hunt.
+const deadCells = cells.filter((c) => (c.runs > 0 || c.from === 1) && !c.reported).map((c) => c.key + (c.runs ? '' : ' (never run)'))
+const unrun = cells.filter((c) => c.runs === 0 && c.from > 1).map((c) => c.key + (c.name ? ' "' + c.name + '"' : ''))
+const gapCells = cells.filter((c) => c.reported && c.gaps.length).map((c) => c.key + ' (' + c.gaps.join(', ') + ')')
 const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.length === 0
 const out = []
-out.push('Bug hunt over ' + REPO + ' at ' + COMMIT + ': ' + (cells.length - deadCells.length) + ' of ' + cells.length + ' finder cell(s) reported' + (deadCells.length ? ' — NOT COVERED: ' + deadCells.join(', ') : '') + '.')
+out.push('Bug hunt over ' + REPO + ' at ' + COMMIT + ': ' + (cells.length - unrun.length - deadCells.length) + ' of ' + (cells.length - unrun.length) + ' finder cell(s) reported' + (deadCells.length ? ' — NOT COVERED: ' + deadCells.join(', ') : '') + '.')
+out.push(rounds + ' round(s); stopped by ' + STOPS[stoppedBy] + '.' + roundStats.map((s) => ' Round ' + s.round + ': ' + s.finders + ' finder(s), ' + s.fresh + ' new, ' + s.confirmed + ' confirmed.').join(''))
 if (gapCells.length) out.push('Files a finder did not read: ' + gapCells.join('; ') + '.')
 out.push(found.length + ' finding(s) after dedup: ' + results.filter((r) => r.status === 'reproduced').length + ' reproduced, ' + results.filter((r) => r.status === 'confirmed').length + ' confirmed by reading, ' + notReproduced.length + ' not reproduced, ' + refuted.length + ' refuted, ' + unverified.length + ' unverified' + (capped.length ? ', ' + capped.length + ' serious finding(s) read rather than reproduced (MAX_REPRO: ' + capped.join(', ') + ')' : '') + (malformed ? ', ' + malformed + ' malformed report(s) dropped' : '') + '.')
 if (!complete) out.push('INCOMPLETE: ' + [deadCells.length ? deadCells.length + ' dead cell(s)' : '', gapCells.length ? gapCells.length + ' cell(s) with unread files' : '', unverified.length ? unverified.length + ' unverified finding(s)' : ''].filter(Boolean).join(', ') + ' — what follows is not a clean hunt of the whole subsystem.')
+if (deadCritics.length) out.push('The completeness critic died after round(s) ' + deadCritics.join(', ') + ': the round after each ran no extra cells.')
+truncations.forEach((t) => out.push('Truncated: ' + t + '.'))
+if (unrun.length) out.push('Proposed by the critic and never searched, because the hunt stopped first: ' + unrun.join(', ') + '.')
 if (!confirmed.length) out.push(found.length ? 'No finding was reproduced or confirmed.' : 'Nothing was found over the cells listed below.')
 out.push('')
-confirmed.forEach((f) => out.push('- [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  trigger: ' + f.failure + '\n  fix: ' + f.fix + (f.status === 'reproduced' ? '\n  reproduced at ' + f.head + ': `' + f.command + '`\n    ' + f.output.split('\n').join('\n    ') : '\n  confirmed by reading' + (f.capped ? ' (over MAX_REPRO, not reproduced)' : '') + ': ' + f.reason)))
+confirmed.forEach((f) => out.push('- [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + ' (round ' + f.round + ', ' + f.cell + ')\n  trigger: ' + f.failure + '\n  fix: ' + f.fix + (f.status === 'reproduced' ? '\n  reproduced at ' + f.head + ': `' + f.command + '`\n    ' + f.output.split('\n').join('\n    ') : '\n  confirmed by reading' + (f.capped ? ' (over MAX_REPRO, not reproduced)' : '') + ': ' + f.reason)))
 groups.forEach((g) => out.push('- shared root cause (' + g.ids.join(', ') + '): ' + g.title))
-if (mergeDied) out.push('- the merge agent died: findings sharing a root cause are listed separately')
+if (mergeDied) out.push('- ' + mergeDied + ': findings sharing a root cause are listed separately')
 refuted.filter((f) => f.capped).forEach((f) => out.push('- REFUTED BY READING, over MAX_REPRO and never reproduced [' + f.severity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  why: ' + f.reason))
 notReproduced.forEach((f) => out.push('- NOT REPRODUCED [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  why: ' + f.reason))
-unverified.forEach((f) => out.push('- UNVERIFIED [' + f.severity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary))
+unverified.forEach((f) => out.push('- UNVERIFIED [' + f.severity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + ' (' + f.reason + ')'))
 out.push('')
-coverage.forEach((c) => out.push('coverage ' + c.cell + ': ' + (c.dead ? 'DEAD' : c.count + ' kept — ' + c.read)))
+cells.filter((c) => c.runs > 0).forEach((c) => out.push('coverage ' + c.key + (c.name ? ' "' + c.name + '"' : '') + ' (from round ' + c.from + ', ' + c.runs + ' run(s)): ' + (c.reported ? c.count + ' kept — ' + c.read : 'DEAD')))
 
-log(spawned.length - dead.length + '/' + spawned.length + ' finder(s) came back')
+log(spawned.length - dead.length + '/' + spawned.length + ' finder(s) came back; ' + spawnCount + ' agent(s) spawned')
 if (dead.length) log('DEAD: ' + dead.join(', '))
 
 return {
   // complete is the hunt's coverage, not its outcome: a hunt that found
-  // nothing over every cell IS complete, and one that found ten while a finder
-  // died is not. A finding nobody could reproduce does not make it incomplete:
-  // it is reported apart, as unproven.
+  // nothing over every cell IS complete, and one that found ten while a cell
+  // never reported is not. A finding nobody could reproduce does not make it
+  // incomplete: it is reported apart, as unproven. Where the rounds stopped is
+  // `stoppedBy`, and a budget stop is not a coverage hole — every cell that
+  // was declared had its round.
   complete,
   report: out.join('\n'),
-  confirmed: confirmed.map((f) => ({ id: f.id, severity: f.finalSeverity, file: f.file, line: f.line, summary: f.summary, reproduced: f.status === 'reproduced', command: f.command })),
+  rounds,
+  stoppedBy,
+  confirmed: confirmed.map((f) => ({ id: f.id, severity: f.finalSeverity, file: f.file, line: f.line, summary: f.summary, round: f.round, reproduced: f.status === 'reproduced', command: f.command })),
   notReproduced: notReproduced.map((f) => f.id),
   refuted: refuted.length,
   unverified: unverified.map((f) => f.id),
   capped,
   deadCells,
+  deadCritics,
 }

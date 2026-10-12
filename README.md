@@ -653,7 +653,7 @@ back to build in silence outside a workspace:
 
 | | build | review / hunt / audit |
 |---|---|---|
-| `wf new-script` | producers → per-section gate → acceptance | finders → verifiers → merge → report; a hunt's blockers and majors are reproduced in a worktree, the rest read |
+| `wf new-script` | producers → per-section gate → acceptance | finders → verifiers → merge → report; a hunt runs in ROUNDS (productive cells and a completeness critic's areas go again, stopped dry, at `MAX_ROUNDS`, or under `MAX_AGENTS` / the token budget — `stoppedBy` says which), its blockers and majors reproduced in a worktree, the rest read |
 | `wfdry` modes | clean, blockers, acceptfail, unfixed, throw-serial, dead-reviews, no-args | clean, blockers, `empty`, throw-serial, `dead-finders`, dead-reviews, no-args |
 | array named `findings/issues/defects/problems/claims` (the whole name) | empty in passing modes — a defect list (`claims`: one placeholder) | a mixed pair in every mode but `empty` — the deliverable; `empty` fails a run that emptied none; a string field's `examples` and a scalar array's item type are honoured, in every type |
 | pass-shaped boolean (`verified`, `complete`, …) | true everywhere but `acceptfail` | true in the passing modes (`clean`, `empty`, every dead mode), false elsewhere — so `blockers` is "every verifier refuted" |
@@ -662,6 +662,7 @@ back to build in silence outside a workspace:
 | `dead-finders` kills | — | find/hunt/scan/audit/lens/inspect/analyze; killing nobody FAILS |
 | `dead-writer` (audit only) | — | labels whose ROLE (first segment) is write/writer/synth/compose; killing nobody FAILS; `answered: true` over a dead writer FAILS; a writer spawned before any `verified: true` FAILS in every mode |
 | `dead-repro` (hunt only) | — | repro/reproduce/reproducer labels only, the readers live; a hunt reproducer without `isolation: 'worktree'` is refused in every mode |
+| agents spawned | over 1000 (the Workflow cap) FAILS, in every mode of every type | same |
 | `wfcheck --owns-diff` | an audit, exit 0 | a BAR: unchanged tree and unmoved HEAD, exit 1 otherwise; the base must be a SHA; a hunt's REGISTERED worktrees under `.claude/worktrees/` are listed with their cleanup (`git worktree remove` + `git branch -D`), not counted |
 
 The narrowing a review run's modes inject is SAID, not failed: `empty` spawns no
@@ -678,7 +679,9 @@ before the type: under the build reading a hunt script ran 53 agents in `clean`
 against 732 in `blockers`, every verify and merge label "required on a FAILURE
 branch", and still printed `7/7 modes completed`. An enum none of whose members
 reads as pass or fail — a finding's `category` — now has its own note; it was
-reported as an unrecognised BOOLEAN that "was FALSE in this mode". An audit's answer is checked after the run by `wf check cite -at <COMMIT>
+reported as an unrecognised BOOLEAN that "was FALSE in this mode". A hunt's rounds are walked in a dry run by the modes themselves — `clean`
+stops at the round limit, `empty` runs dry — and `--mode clean --args
+'{"maxAgents":12}'` walks the ceiling, `--budget` the token stop. An audit's answer is checked after the run by `wf check cite -at <COMMIT>
 -require-anchor` over the saved `citable` — the skeleton prints claims in exactly
 the form it reads. The manual's half is `wf docs types`.
 

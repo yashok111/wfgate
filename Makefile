@@ -118,11 +118,12 @@ check-tools: build
 		&& ./wfcheck -root . .check-skel/hunt.mjs >/dev/null \
 		&& ./wfdry --type hunt .check-skel/hunt.mjs --quiet >/dev/null \
 		&& ./wfdry --type hunt .check-skel/hunt.mjs --quiet --args '{"maxRepro":1}' >/dev/null \
+		&& ./wfdry --type hunt .check-skel/hunt.mjs --quiet --mode clean --args '{"maxAgents":12}' >/dev/null \
 		|| { rm -rf .check-skel; echo "wf new-script -type hunt skeleton: the emitted hunt harness fails its own tools"; exit 1; }
 	@out=$$(./wfdry --type hunt .check-skel/hunt.mjs --mode clean 2>/dev/null | grep 'agents:'); rm -rf .check-skel; \
-		echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'verify:read:' \
-			&& echo "wf new-script -type hunt skeleton: wfcheck clean, wfdry all modes, clean walks BOTH reproduction and reading" \
-			|| { echo "wf new-script -type hunt skeleton: clean did not walk both verify paths — a mixed-severity finder pair must send its blocker to a reproducer and its minor to a reader"; exit 1; }
+		echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'verify:read:' && echo "$$out" | grep -q 'critic:r1' && echo "$$out" | grep -q 'find:r2:' \
+			&& echo "wf new-script -type hunt skeleton: wfcheck clean, wfdry all modes and under a low agent ceiling, clean walks BOTH reproduction and reading and a second round" \
+			|| { echo "wf new-script -type hunt skeleton: clean did not walk both verify paths and a second round — a mixed-severity finder pair must send its blocker to a reproducer and its minor to a reader, and a productive round must hand its cells and the critic's areas to the next"; exit 1; }
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -type audit -target . -o .check-skel/audit.mjs >/dev/null \
 		&& ./wfcheck -root . .check-skel/audit.mjs >/dev/null \
 		&& ./wfdry --type audit .check-skel/audit.mjs --quiet >/dev/null \

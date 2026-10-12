@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 34 — what each change answered and the command
+maintenance record, waves 2 to 35 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -161,7 +161,9 @@ Re-count them against `ls internal/` before quoting the number.
   blockers and majors are REPRODUCED by a worktree-isolated agent writing a
   failing test, the rest re-judged by reading; "not reproduced" is listed
   apart from "refuted". `--owns-diff` lets a hunt leave its worktrees under
-  `.claude/worktrees/` and lists them — wave 33.
+  `.claude/worktrees/` and lists them — wave 33. It runs in ROUNDS: productive
+  cells and a completeness critic's areas go again, bounded by `MAX_ROUNDS`, an
+  agent ceiling and the token budget, and the report names the stop — wave 35.
 - `templates/audit.mjs` — a QUESTION split into parts; finders return
   claims of both polarities citing `path:line#anchor`; a checker reads each
   citation; one writer composes the answer from verified claims only. The
@@ -341,7 +343,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 34 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 35 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -386,6 +388,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 32 | The owner's ask: the plugin assumed every run writes code | Run types — `wf init -type review`; the review skeleton; `wfdry` modes, fixture polarity and `dead-reviews` per type; `--owns-diff` as a bar for a read-only run; `run-types.md` |
 | 33 | The second run type | `hunt`: a subsystem at one commit, serious findings reproduced in worktrees, not-reproduced kept apart from refuted, the worktree carve-out in `--owns-diff` |
 | 34 | The third run type | `audit`: a question in parts, claims of both polarities citing `path:line#anchor`, a citation checker, one writer from verified claims, `answered` apart from `complete`, `dead-writer`, `check cite` as the mechanical acceptance |
+| 35 | The multi-round hunt queued after wave 33 | Rounds until dry: productive cells re-run with their own findings, a completeness critic's extra cells, four stops each named (`stoppedBy`), an agent ceiling under the Workflow cap; `wfdry` refuses a mode over that cap |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own

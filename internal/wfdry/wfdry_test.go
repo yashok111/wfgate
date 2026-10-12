@@ -1636,3 +1636,20 @@ return { done: true }`, "clean")
 		t.Fatalf("a boolean keeps the boolean note and only it: %v", b.Notes)
 	}
 }
+
+// A loop bounded in iterations but not in agents reaches the runtime's cap;
+// a dry run finishes it in milliseconds, so the count is the only signal.
+func TestAgentCapIsAViolation(t *testing.T) {
+	loop := func(n int) string {
+		return preamble + fmt.Sprintf(`phase('P')
+let k = 0
+for (let i = 0; i < %d; i++) { if (await spawn('x', { model: 'sonnet', effort: 'low', label: 'w:' + i, schema: S, phase: 'P' })) k++ }
+return { done: true, k }`, n)
+	}
+	wantViolation(t, run1(t, loop(1001), "clean"), "spawned 1001 agents, over the 1000")
+	for _, v := range run1(t, loop(1000), "clean").Violations {
+		if strings.Contains(v, "capped at") {
+			t.Fatalf("1000 agents is AT the cap, not over it: %s", v)
+		}
+	}
+}
