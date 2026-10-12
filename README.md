@@ -230,9 +230,11 @@ Finds `path.ext:LINE`, `path.ext:A-B` and `path.ext:LINE#anchor` in the
 artifacts and verifies them against the target repository: the path resolves to
 exactly one tracked file, the range is well-formed and inside the file, and the
 `#anchor` occurs within the cited lines as a whole identifier or a part of one
-(split at `_`, a camelCase hump, an acronym's end, letters against digits) —
-`#RETENTION` passes on `MOCKER_CHECKPOINT_RETENTION`, `#Update` fails on
-`UpdatedAt` and is named a fragment. An anchor miss prints the nearest line
+(split at `_`, a camelCase hump, an acronym's end — a plural `IDs` included —
+letters against digits), except a part that begins an identifier and stops at a
+hump, which names a different symbol — `#RETENTION` passes on
+`MOCKER_CHECKPOINT_RETENTION`, `#Update` fails on `UpdatedAt` and on
+`UpdateAll`, and the message names the word it landed in as the patch. An anchor miss prints the nearest line
 carrying the token — a ready patch, not a reason to search. A range with a dash
 and no end line (`store.go:3-#Save`) is a "malformed range" error, not an
 unanchored citation.

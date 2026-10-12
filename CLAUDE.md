@@ -280,10 +280,14 @@ as if it had.
 **An anchor names an identifier or a PART of one, never a fragment of a
 word.** A substring match passed `#e` on any line with a word in it. A
 whole-identifier match was the obvious fix and was MEASURED before it shipped:
-over 235 frozen rounds it failed 25 of 1397 passing anchors, 23 of them
+over 235 frozen rounds it failed 25 of 1397 passing anchors, 22 of them
 correct citations of a part (`#RETENTION` on `MOCKER_CHECKPOINT_RETENTION`) —
-the 161-groups-of-176 lesson again. Splitting at `_`, camelCase humps, acronym
-ends and letter-digit boundaries fails 2, both genuine fragments.
+23 false errors among 82, in 10 of 28 gates. Splitting at `_`, camelCase
+humps, acronym ends and letter-digit boundaries failed 2 genuine fragments and
+passed a citation the gate had filed as wrong — `#useGetOperation` on
+`useGetOperationOverride` — so a part that BEGINS an identifier and stops at a
+hump is refused as well: 6 of 1397, each with the whole identifier as its
+patch.
 
 **An anchor is ASCII only, and that is policy, not a limitation.** Gate
 artifacts are English by workflow rule (decided 2026-08-21 after the P2d live

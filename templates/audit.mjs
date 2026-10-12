@@ -146,8 +146,9 @@ const WRITER_SCHEMA = {
 // The shape every citation must have before anything trusts it — the grammar
 // `wf check cite` reads. A free-text `line` such as "L7" made a citation
 // INVISIBLE to that check, and an anchor with a space was cut at the space and
-// then matched (the review round's probes); an anchor of one letter matches
-// almost any line.
+// then matched (the review round's probes); an anchor of one letter pins
+// almost nothing — it matched almost any line before `check cite` read
+// identifier parts.
 const FILE_RE = /^[A-Za-z0-9_][^\s#:]*\.[A-Za-z0-9]+$/
 const ANCHOR_RE = /^[A-Za-z_][A-Za-z0-9_]+$/
 function wellFormed(c) {

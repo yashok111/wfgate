@@ -182,7 +182,7 @@ func TestAuditCitationsAreCheckable(t *testing.T) {
 		t.Fatalf("an audit workspace must get the audit skeleton")
 	}
 	// The exact line shape the skeleton's report prints for a verified claim.
-	write(t, filepath.Join(tmp, "answer.md"), "# Audit\n\n## Verified claims\n\n- C001 [holds] Save returns no error — pkg/store.go:3-4#Save\n- C002 [violated] wrong anchor — pkg/store.go:4#Save\n- C003 [holds] broken range — pkg/store.go:3-#Save\n")
+	write(t, filepath.Join(tmp, "answer.md"), "# Audit\n\n## Verified claims\n\n- C001 [holds] Save returns no error — pkg/store.go:3-4#Save\n- C002 [violated] wrong anchor — pkg/store.go:4#Save\n- C003 [holds] broken range — pkg/store.go:3-#Save\n- C004 [holds] broken range, no anchor — pkg/store.go:3-\n")
 	_, err = runWF(t, a, "add", filepath.Join(tmp, "answer.md"))
 	noErr(t, err, "add")
 	out, _ = runWF(t, a, "check", "cite", "-require-anchor")
@@ -192,6 +192,8 @@ func TestAuditCitationsAreCheckable(t *testing.T) {
 	if strings.Contains(out, "citation without #anchor  [pkg/store.go:3-#Save]") {
 		t.Fatalf("a bad range must not be reported as unanchored:\n%s", out)
 	}
+	// One written with no `#` at all is unanchored too, and counted so.
+	mustContain(t, out, "citation without #anchor  [pkg/store.go:3-]")
 	if strings.Contains(out, "store.go:3-4") {
 		t.Fatalf("a correct citation from the report's line shape must pass `check cite`:\n%s", out)
 	}

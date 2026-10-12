@@ -158,7 +158,7 @@ func TestAuditPolarityUnsettledAndCitable(t *testing.T) {
 
 // A claim whose citation fields fail the shape check is MALFORMED: never
 // verified, listed apart. Walked by giving the anchor one-letter examples — a
-// one-letter anchor matches almost any line, so the shape check refuses it.
+// one-letter anchor pins almost nothing, so the shape check refuses it.
 func TestAuditMalformedCitationsAreDropped(t *testing.T) {
 	body := mutate(t, auditSkeleton(t), "examples: ['Save', 'Load']", "examples: ['S', 'L']")
 	r := byMode(runTyped(t, body, ws.TypeAudit, "clean"), "clean")

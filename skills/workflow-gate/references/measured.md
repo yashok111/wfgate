@@ -802,13 +802,22 @@ confirmed finding or died — a rule this count did not measure. A sample of one
 
 ## M-48 — which anchors a stricter match would fail
 
-Measured 2026-10-12 over every gate workspace on disk: each frozen round's artifacts, read at the
-round's freeze commit, verified against the target revision its `freeze.json` names — 235 rounds
-read, 31 skipped for a ref the target no longer resolves, 1458 distinct anchored citations. The plain
-substring match passed 1397 of them. A WHOLE-identifier match (no letter, digit or `_` on either side)
-failed 25 of those 1397, and 23 named a part of a longer identifier on purpose — `#RETENTION` on
+Measured 2026-10-12 over every unpruned gate workspace on disk: each frozen round's artifacts, read at
+the round's freeze commit, verified against the target revision its `freeze.json` names — 235 rounds
+read, 31 skipped for a ref the target no longer resolves, 1458 anchored citations distinct per target
+revision (one citation text frozen against three revisions counts three times). The plain substring
+match passed 1397 of them. A WHOLE-identifier match (no letter, digit or `_` on either side) failed 25
+of those, in 10 of the 28 workspaces with rounds — 82 anchor errors where there had been 57 — and 22
+of the 25 cited a part of a longer identifier on purpose: `#RETENTION` on
 `MOCKER_CHECKPOINT_RETENTION`, `#unknownSpec` on `TestHandler_resourceSuggestions_unknownSpec`,
-`#NeverTouchesLayer` on `autoCheckpointExcludedNeverTouchesLayer`. Matching at identifier PARTS
-(`_`, camelCase humps, an acronym's end, letters against digits) fails 2: `#id` on a comment's
-"identifies" and `#Update` on `current.UpdatedAt`, both a fragment of a word. No citation in the corpus
-had a range with a dash and no end line.
+`#NeverTouchesLayer` on `autoCheckpointExcludedNeverTouchesLayer`. Matching at identifier PARTS (`_`,
+camelCase humps, an acronym's end, letters against digits) failed 2, both a fragment of a word — `#id`
+on a comment's "identifies", which that gate had already filed itself, and `#Update` on
+`current.UpdatedAt` — and PASSED one the gate had filed as wrong (mocker-a3-cas round 4, finding 23):
+`#useGetOperation` on a line holding only `useGetOperationOverride`, a camelCase PREFIX naming a
+different symbol. Refusing a part that begins an identifier and stops at a hump adds that one and
+three loose anchors (`#fence` on `fenceTx`, `#Err` on `ErrWorkspaceNotFound`, `#skipReason` on a
+longer name): 6 of 1397, in 4 workspaces, each with the whole identifier as its patch. Every camelCase
+SUFFIX in the corpus was deliberate. No citation had a range with a dash and no end line, in the
+frozen rounds or anywhere in the workspaces' history. The pruned `mocker-a-mcp` keeps no per-round
+bytes; its final artifacts have no fragment.

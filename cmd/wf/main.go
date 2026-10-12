@@ -1925,7 +1925,14 @@ func cmdFreeze(args []string) error {
 		// naming a path that matches two files, or carrying an anchor the
 		// grammar refuses, resolves to nothing a reviewer can follow either.
 		// Each finding prints its own class on the line below.
-		fmt.Printf("  note: %d citation(s) do NOT resolve against %s — reviewers of this freeze will read them as written:\n", len(citeFindings), fm.TargetRef)
+		// Counted by CITATION: one citation can carry two findings (a broken
+		// range over a path that resolves nowhere), and the line says
+		// "citation(s)".
+		bad := map[string]bool{}
+		for _, f := range citeFindings {
+			bad[fmt.Sprintf("%s:%d:%s", f.Artifact, f.AtLine, f.Raw)] = true
+		}
+		fmt.Printf("  note: %d citation(s) do NOT resolve against %s (%d finding(s)) — reviewers of this freeze will read them as written:\n", len(bad), fm.TargetRef, len(citeFindings))
 		for i, f := range citeFindings {
 			if i == 10 {
 				fmt.Printf("    ... and %d more — `wf check cite` prints them all\n", len(citeFindings)-10)
@@ -2836,10 +2843,11 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string
 	var missing []check.Citation
 	if requireAnchor {
 		for _, c := range cits {
-			// A non-ASCII anchor or a broken range already carries its own
-			// error; flagging it as "without #anchor" too would state a
-			// falsehood about a citation whose author did write one.
-			if c.Anchor == "" && c.BadAnchor == "" && c.BadRange == "" {
+			// A non-ASCII anchor, or a broken range that carries a `#`,
+			// already has its own error; flagging it as "without #anchor" too
+			// would state a falsehood about a citation whose author did write
+			// one. A broken range with no `#` IS unanchored as well.
+			if c.Anchor == "" && c.BadAnchor == "" && !strings.Contains(c.BadRange, "#") {
 				missing = append(missing, c)
 			}
 		}

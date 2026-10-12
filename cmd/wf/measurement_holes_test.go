@@ -787,3 +787,17 @@ func TestPinAgeNamesAWorkspaceWithNoPinAtAll(t *testing.T) {
 	// It is the OTHER note's negative: an absent pin has no sections to predate.
 	mustNotContain(t, out, "the pin predates:")
 }
+
+// The note counts CITATIONS, and says how many findings they carry: a broken
+// range over a path that resolves nowhere is one citation and two findings,
+// and the count read 2 under a line saying "citation(s)".
+func TestFreezeCountsCitationsNotFindings(t *testing.T) {
+	wsDir := newGate(t)
+	src := filepath.Join(t.TempDir(), "extra.md")
+	write(t, src, "# Extra\n\nSee gone.go:3-#Save for the rest.\n")
+	_, err := runWF(t, wsDir, "add", src)
+	noErr(t, err, "add")
+	out, err := runWF(t, wsDir, "freeze")
+	noErr(t, err, "freeze")
+	mustContain(t, out, "1 citation(s) do NOT resolve", "(2 finding(s))", "malformed range")
+}

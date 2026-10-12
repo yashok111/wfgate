@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"git.sumka.site/yakov/wfgate/internal/gitx"
 )
@@ -63,7 +64,7 @@ type Citation struct {
 	Path      string
 	Start     int
 	End       int    // == Start for a single-line citation
-	Anchor    string // optional `#symbol`: the token that must appear in range
+	Anchor    string // optional `#symbol`: the identifier, or a part of one, that must stand in range (AnchorIn)
 	BadAnchor string // a trailing #token the anchor grammar did not accept
 	BadRange  string // a range written with a dash and no end line, as found
 }
@@ -111,18 +112,19 @@ func ScanCitations(root string, files []string) ([]Citation, error) {
 					Artifact: rel, AtLine: n, Raw: get(0),
 					Path: get(1), Start: start, End: end, Anchor: get(5),
 				}
-				// A `#` right after the match is an anchor the grammar did not
-				// accept — Cyrillic, spaces. The artifacts are English-only by
-				// rule, so this is a VIOLATION to report, never a citation to
-				// silently count as unanchored: on the first live run 15 such
-				// anchors read as "17 unverified" and hid that only two real
-				// unanchored citations existed — and one of the invisible
-				// anchors was factually wrong.
-				// A dash right after the line number is a range whose end was
-				// never written: `store.go:3-#Save` matched as line 3 with no
-				// anchor and was reported as "citation without #anchor" when the
-				// author had written one. It is the RANGE that is broken.
-				if e := ix[1]; get(4) == "" && get(5) == "" && e < len(line) && line[e] == '-' {
+				// The anchor class takes `.` and `-`, so a citation ending a
+				// sentence carried its full stop into the anchor and failed on
+				// a line holding the identifier.
+				if a := strings.TrimRight(c.Anchor, ".-"); a != c.Anchor {
+					c.Raw = strings.TrimSuffix(c.Raw, c.Anchor[len(a):])
+					c.Anchor = a
+				}
+				// A dash right after the line or range is a range never
+				// finished: `store.go:3-#Save` matched as line 3 with no anchor
+				// and was reported as "citation without #anchor" when the
+				// author had written one, and `3-5-#c` the same way. It is the
+				// RANGE that is broken.
+				if e := ix[1]; get(5) == "" && e < len(line) && line[e] == '-' {
 					tok := line[e:]
 					if i := strings.IndexAny(tok, " \t"); i >= 0 {
 						tok = tok[:i]
@@ -131,6 +133,13 @@ func ScanCitations(root string, files []string) ([]Citation, error) {
 					c.BadRange = c.Raw + tok
 					c.Raw += tok
 				}
+				// A `#` right after the match is an anchor the grammar did not
+				// accept — Cyrillic, spaces. The artifacts are English-only by
+				// rule, so this is a VIOLATION to report, never a citation to
+				// silently count as unanchored: on the first live run 15 such
+				// anchors read as "17 unverified" and hid that only two real
+				// unanchored citations existed — and one of the invisible
+				// anchors was factually wrong.
 				if c.Anchor == "" {
 					if e := ix[1]; e < len(line) && line[e] == '#' {
 						tok := line[e+1:]
@@ -212,7 +221,8 @@ func (ix *Index) resolve(p string) (string, []string) {
 
 // VerifyCitations checks each citation against the target repository: the file
 // resolves to exactly one tracked file, the range is well formed and inside the
-// file, and an `#anchor`, when present, appears within the cited range.
+// file, and an `#anchor`, when present, stands within the cited range as an
+// identifier or a part of one (AnchorIn).
 //
 // It cannot check that the cited lines say what the surrounding sentence claims.
 // That is the reviewer's job, and `wf check cite --show` exists to make it cheap
@@ -292,11 +302,11 @@ func VerifyCitationsWith(read func(string) ([]byte, error), ix *Index, cits []Ci
 		if text := strings.Join(lines[c.Start-1:c.End], "\n"); c.Anchor != "" && !AnchorIn(text, c.Anchor) {
 			at := nearest(lines, c.Anchor, c.Start)
 			msg := fmt.Sprintf("anchor %q not in %s:%d-%d", c.Anchor, path, c.Start, c.End)
-			// Present as a FRAGMENT of a word only: say so, because "not in"
-			// over a line that visibly contains the letters reads as a bug in
-			// the check.
-			if strings.Contains(text, c.Anchor) {
-				msg = fmt.Sprintf("anchor %q is only a fragment of a word in %s:%d-%d, not a whole identifier or a camelCase or snake_case part of one", c.Anchor, path, c.Start, c.End)
+			// Present only INSIDE a longer word: say which, because "not in"
+			// over a line that visibly holds the letters reads as a bug in the
+			// check, and the word is the patch when the claim cites it.
+			if w := enclosing(text, c.Anchor); w != "" {
+				msg = fmt.Sprintf("anchor %q stands only inside `%s` in %s:%d-%d — neither a whole identifier nor a part after `_`, a camelCase hump, an acronym or a digit (and a part that begins an identifier and stops at a hump names a different one); anchor with `%s` if that is what the claim cites", c.Anchor, w, path, c.Start, c.End, w)
 			}
 			if at > 0 {
 				msg += fmt.Sprintf("; nearest occurrence is line %d", at)
@@ -348,50 +358,27 @@ func ExtensionlessRefs(root string, files []string, ix *Index) ([]Citation, erro
 
 // AnchorIn reports whether tok occurs in text as a whole identifier or as one
 // or more of its PARTS — split at `_`, at a camelCase hump, at an acronym's
-// end and between letters and digits. A plain substring match passed `#e` on
-// `return nil` and `#Update` on `current.UpdatedAt` (the audit wave's
-// adversarial vector). A whole-identifier match was measured first and
-// refused: over every frozen round on disk, 235 rounds and 1397 distinct
-// anchors the substring match passed, it failed 25 — and 23 of them named a
-// part (`#RETENTION` on `MOCKER_CHECKPOINT_RETENTION`,
-// `#unknownSpec` on `TestHandler_resourceSuggestions_unknownSpec`). The part
-// rule fails 2, both a word fragment: `#id` on "identifies", `#Update` on
-// `UpdatedAt`. An end of tok that is not a letter or digit is a boundary by
-// itself.
+// end (a plural `s` after one included: `IDs`, `URLs`) and between letters and
+// digits — except a part that BEGINS an identifier and stops at a camelCase
+// hump or an acronym's end: `#Update` on `UpdateAll` names a different symbol.
+//
+// A plain substring match passed `#e` on `return nil` and `#Update` on
+// `current.UpdatedAt` (the audit wave's adversarial vector). A
+// whole-identifier match was measured first and refused: over every unpruned
+// frozen round on disk (235 rounds, 1397 anchors distinct per target revision
+// that the substring match passed) it failed 25, 22 of them correct citations
+// of a part (`#RETENTION` on `MOCKER_CHECKPOINT_RETENTION`). The part rule
+// alone failed 2, both word fragments, and passed one citation the gate had
+// itself filed as wrong — `#useGetOperation` on a line holding only
+// `useGetOperationOverride` — which is what the prefix exception refuses, with
+// three loose anchors beside it (`#fence` on `fenceTx`) [M-48]. Suffixes stay
+// parts: every camelCase suffix in that corpus was deliberate.
+//
+// The neighbours are read as RUNES: a byte test took a UTF-8 continuation byte
+// for a boundary, so `#na` passed inside "naïve". A residue the rule accepts by
+// definition: a one-letter anchor split off by a digit (`#e` in `1e9`).
 func AnchorIn(text, tok string) bool {
 	if tok == "" {
-		return false
-	}
-	alnum := func(b byte) bool { return isLower(b) || isUpper(b) || isDigit(b) }
-	startOK := func(s int) bool {
-		if s == 0 || !alnum(text[s-1]) || !alnum(tok[0]) {
-			return true
-		}
-		p, a := text[s-1], tok[0]
-		switch {
-		case isUpper(a) && (isLower(p) || isDigit(p)):
-			return true // fooBar: Bar
-		case isUpper(a) && isUpper(p) && len(tok) > 1 && isLower(tok[1]):
-			return true // HTTPServer: Server
-		case isDigit(a) != isDigit(p):
-			return true // p1b: 1b
-		}
-		return false
-	}
-	endOK := func(e int) bool {
-		l := tok[len(tok)-1]
-		if e == len(text) || !alnum(text[e]) || !alnum(l) {
-			return true
-		}
-		n := text[e]
-		switch {
-		case isUpper(n) && (isLower(l) || isDigit(l)):
-			return true // fooBar: foo
-		case isUpper(l) && isUpper(n) && e+1 < len(text) && isLower(text[e+1]):
-			return true // HTTPServer: HTTP
-		case isDigit(l) != isDigit(n):
-			return true // answers409: answers
-		}
 		return false
 	}
 	for i := 0; i <= len(text)-len(tok); {
@@ -399,8 +386,8 @@ func AnchorIn(text, tok string) bool {
 		if j < 0 {
 			return false
 		}
-		s, e := i+j, i+j+len(tok)
-		if startOK(s) && endOK(e) {
+		s := i + j
+		if partAt(text, tok, s) {
 			return true
 		}
 		i = s + 1
@@ -408,9 +395,73 @@ func AnchorIn(text, tok string) bool {
 	return false
 }
 
-func isLower(b byte) bool { return b >= 'a' && b <= 'z' }
-func isUpper(b byte) bool { return b >= 'A' && b <= 'Z' }
-func isDigit(b byte) bool { return b >= '0' && b <= '9' }
+// partAt reports whether the occurrence of tok at byte s of text is a whole
+// identifier or a part of one, by AnchorIn's rule. tok is ASCII by the anchor
+// grammar; its neighbours in text may be anything.
+func partAt(text, tok string, s int) bool {
+	e := s + len(tok)
+	p, _ := utf8.DecodeLastRuneInString(text[:s])
+	n, nsz := utf8.DecodeRuneInString(text[e:])
+	nn, _ := utf8.DecodeRuneInString(text[e+nsz:])
+	a, l := rune(tok[0]), rune(tok[len(tok)-1])
+	word := func(r rune) bool { return r != utf8.RuneError && (unicode.IsLetter(r) || unicode.IsDigit(r)) }
+	up, lo, dig := unicode.IsUpper, unicode.IsLower, unicode.IsDigit
+	// An acronym's plural: `IDs`, `URLs` — the `s` closes the acronym.
+	pluralAfter := func(last, next, after rune) bool { return up(last) && next == 's' && (!word(after) || up(after)) }
+
+	wholeStart := !word(p) || !word(a)
+	// `Ds` in `IDs` is the acronym's last letter and its plural, not a part.
+	pluralTail := len(tok) == 2 && tok[1] == 's' && (!word(n) || up(n))
+	start := wholeStart ||
+		(up(a) && (lo(p) || dig(p))) || // fooBar: Bar
+		(up(a) && up(p) && len(tok) > 1 && lo(rune(tok[1])) && !pluralTail) || // HTTPServer: Server, but not IDs: Ds
+		dig(a) != dig(p) // p1b: 1b
+	if !start {
+		return false
+	}
+	if !word(n) || !word(l) {
+		return true
+	}
+	camelEnd := (up(n) && (lo(l) || dig(l))) || // fooBar: foo
+		(up(l) && up(n) && word(nn) && lo(nn)) || // HTTPServer: HTTP
+		pluralAfter(l, n, nn) // userIDs: ID
+	if camelEnd {
+		// A part that begins an identifier and stops at a hump is a prefix
+		// of a longer name, and in this corpus that longer name was a
+		// different symbol.
+		return !wholeStart
+	}
+	return dig(l) != dig(n) // answers409: answers
+}
+
+// enclosing returns the word around the first occurrence of tok in text, when
+// that word is longer than tok — what a fragment anchor actually landed in.
+func enclosing(text, tok string) string {
+	i := strings.Index(text, tok)
+	if i < 0 {
+		return ""
+	}
+	in := func(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
+	s, e := i, i+len(tok)
+	for s > 0 {
+		r, sz := utf8.DecodeLastRuneInString(text[:s])
+		if !in(r) {
+			break
+		}
+		s -= sz
+	}
+	for e < len(text) {
+		r, sz := utf8.DecodeRuneInString(text[e:])
+		if !in(r) {
+			break
+		}
+		e += sz
+	}
+	if w := text[s:e]; w != tok {
+		return w
+	}
+	return ""
+}
 
 // nearest returns the line number of the occurrence of tok closest to want, or
 // 0. An off-by-a-few citation is the common case, and naming the correct line

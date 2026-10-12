@@ -1109,15 +1109,30 @@ func TestAnchorInParts(t *testing.T) {
 		{"MOCKER_CHECKPOINT_RETENTION=20", "RETENTION", true},
 		{"func TestHandler_resourceSuggestions_unknownSpec(t *testing.T) {", "unknownSpec", true},
 		{"httpx.ErrDetails(w, http.StatusConflict)", "Conflict", true},
-		{"if _, ferr := fenceTx(ctx)", "fence", true},
+		{"if _, ferr := fenceTx(ctx)", "fence", false},
+		{"const override = useGetOperationOverride(id)", "useGetOperation", false},
 		{"type HTTPServer struct", "Server", true},
-		{"type HTTPServer struct", "HTTP", true},
+		{"type HTTPServer struct", "HTTP", false},
+		{"an HTTP server", "HTTP", true},
+		{"parseHTTPServer()", "HTTP", true},
+		{"getUserNameByID()", "User", true},
+		{"func Save(userIDs []int)", "ID", true},
+		{"func parseURLs()", "URL", true},
+		{"userIDs := nil", "Ds", false},
+		{"type APIs struct", "API", false},
+		{"Sauvé", "Sauv", false},
+		{"naïve := 1", "na", false},
+		{"имяFooя", "Foo", false},
+		{"the “Save” step", "Save", true},
+		{"step —Save", "Save", true},
 		{"TestScenarios_createWhileActiveAnswers409", "createWhileActiveAnswers", true},
 		{"golden_p1b_test.go", "p1b", true},
 		{"TestScenarios_createWhileActiveAnswers409", "409", true},
-		{"ws.FindAll(x)", ".Find", true},
+		{"ws.Find(x)", ".Find", true},
+		{"ws.FindAll(x)", ".Find", false},
 		{"a.Find.x", "Find.", true},
-		{"ws.FindAll(x)", "ws.Find", true},
+		{"ws.FindAll(x)", "ws.Find", false},
+		{"ws.Find(x)", "ws.Find", true},
 		{"make check-docs", "check-docs", true},
 		{"anything", "", false},
 	} {
@@ -1127,8 +1142,9 @@ func TestAnchorInParts(t *testing.T) {
 	}
 }
 
-// A fragment-only anchor is reported AS a fragment, and the nearest
-// occurrence it names is a real one, not the next fragment.
+// A fragment-only anchor is reported with the word it landed in, and the
+// nearest occurrence it names is one the rule accepts — `func Update`, not the
+// `UpdateAll` prefix one line closer on the tie.
 func TestAnchorFragmentIsNamed(t *testing.T) {
 	target := mkrepo(t, map[string]string{"a.go": "package a\n\nfunc UpdateAll() {}\nvar UpdatedAt int\nfunc Update() {}\n"})
 	ix, err := NewIndex(target)
@@ -1139,19 +1155,19 @@ func TestAnchorFragmentIsNamed(t *testing.T) {
 	if err != nil || len(f) != 1 {
 		t.Fatalf("a fragment anchor must be a finding: %v %v", f, err)
 	}
-	if !strings.Contains(f[0].Msg, "only a fragment of a word") || !strings.Contains(f[0].Msg, "nearest occurrence is line 3") {
-		t.Fatalf("the finding must name the fragment and the nearest real occurrence (line 3, UpdateAll's part): %q", f[0].Msg)
+	if !strings.Contains(f[0].Msg, "stands only inside `UpdatedAt`") || !strings.Contains(f[0].Msg, "nearest occurrence is line 5") {
+		t.Fatalf("the finding must name the word the anchor landed in and the nearest WHOLE occurrence — line 5, not UpdateAll's prefix on line 3: %q", f[0].Msg)
 	}
 }
 
 // `path:3-#Save` is a broken RANGE, not an unanchored citation.
 func TestCitations_dashWithoutEndIsABadRange(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "x.md"), []byte("see pkg/store.go:3-#Save and pkg/store.go:3-4#Save\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "x.md"), []byte("see pkg/store.go:3-#Save and pkg/store.go:3-4#Save\nand pkg/store.go:3-4-#Save, ending at pkg/store.go:3#Save.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cits, err := ScanCitations(root, []string{"x.md"})
-	if err != nil || len(cits) != 2 {
+	if err != nil || len(cits) != 4 {
 		t.Fatalf("want two citations: %+v %v", cits, err)
 	}
 	if cits[0].BadRange != "pkg/store.go:3-#Save" || cits[0].Anchor != "" || cits[0].BadAnchor != "" {
@@ -1159,6 +1175,14 @@ func TestCitations_dashWithoutEndIsABadRange(t *testing.T) {
 	}
 	if cits[1].BadRange != "" || cits[1].Anchor != "Save" || cits[1].End != 4 {
 		t.Fatalf("a whole range must parse as before: %+v", cits[1])
+	}
+	// A dash after a COMPLETE range is as unfinished; a sentence's full stop is
+	// not part of the anchor.
+	if cits[2].BadRange != "pkg/store.go:3-4-#Save" {
+		t.Fatalf("a dash after A-B must land in BadRange: %+v", cits[2])
+	}
+	if cits[3].Anchor != "Save" || cits[3].Raw != "pkg/store.go:3#Save" {
+		t.Fatalf("a trailing full stop must not ride into the anchor: %+v", cits[3])
 	}
 	target := mkrepo(t, map[string]string{"pkg/store.go": "package pkg\n\nfunc Save() {}\nvar x int\n"})
 	ix, _ := NewIndex(target)

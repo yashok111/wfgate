@@ -219,7 +219,7 @@ defects. What changes against a review:
   citation arrives as FIELDS — a path with an extension, an integer line and last line, an
   identifier of two or more characters — and the harness checks their shape before anything trusts
   them: a free-text line such as `L7` made a citation invisible to `check cite`, an anchor with a
-  space was cut at the space and then matched, and a one-letter anchor matches almost any line. A
+  space was cut at the space and then matched, and a one-letter anchor pins almost nothing. A
   claim that fails is MALFORMED, listed, never verified; a file with no extension is malformed too,
   because `check cite` does not verify one. "The code
   does what the spec asks" is as much an answer as "it does not"; an audit that returns only

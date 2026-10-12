@@ -404,8 +404,10 @@ citation which resolves, sits inside the file, and still points at the wrong lin
 line that does contain the token, which turns a finding into a patch instead of a search. The token
 must stand as a whole identifier or a PART of one — split at `_`, at a camelCase hump, at an
 acronym's end and between letters and digits — never as a fragment of a word: a plain substring
-passed `#e` on any line with a word in it and `#Update` on `UpdatedAt`. Anchor with the identifier the
-claim is about, or with the part of it that names the thing (`#RETENTION` on
+passed `#e` on any line with a word in it and `#Update` on `UpdatedAt`. A part that BEGINS an
+identifier and stops at a hump is refused too: `#useGetOperation` on `useGetOperationOverride` names a
+different symbol, and a gate filed exactly that citation as wrong. Anchor with the identifier the claim
+is about, or with the part of it that names the thing (`#RETENTION` on
 `MOCKER_CHECKPOINT_RETENTION`) [M-48].
 
 **An anchor is an ASCII token, by RULE, not by limitation** — the artifacts are English-only, and the
