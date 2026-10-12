@@ -144,7 +144,7 @@ check-tools: build
 			rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: EXIT 0 over a reproduction worktree — only a hunt may leave one"; exit 1; fi; \
 		./wfcheck -type hunt --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs > $$d/h.out \
 			|| { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: a reproduction worktree under .claude/worktrees/ FAILED the bar — it is the run's scratch"; exit 1; }; \
-		grep -q 'git worktree remove --force .claude/worktrees/agent-1 && git branch -D w1' $$d/h.out || { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: passed without naming the worktree it let through and its branch"; exit 1; }; \
+		grep -qF "git worktree remove --force '.claude/worktrees/agent-1' && git branch -D 'w1'" $$d/h.out || { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: passed without naming the worktree it let through and its branch"; exit 1; }; \
 		echo n > $$d/t/.claude/worktrees/loose.txt; \
 		if ./wfcheck -type hunt --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
 			rm -rf $$d; echo "wfcheck --owns-diff -type hunt: EXIT 0 over a plain file under .claude/worktrees/ — only a REGISTERED worktree is scratch"; exit 1; fi; \

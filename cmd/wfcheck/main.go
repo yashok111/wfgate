@@ -245,9 +245,13 @@ func printUnchanged(path, root, base, typ string) (bool, error) {
 		// is named, because removing the worktree leaves its branch behind.
 		fmt.Printf("reproduction worktree(s) registered under %s (%d) — the run's scratch, not counted; once the report is read:\n", ws.ScratchPrefix, len(scratch))
 		for _, w := range scratch {
-			cmd := "git worktree remove --force " + w.Path
+			// Both halves are SHELL-QUOTED: the line is printed to be pasted,
+			// and a worktree path is any string while a branch name may carry
+			// `;`, `$(…)` or `|` — a crafted name would run as a command in the
+			// operator's shell (the commit's security review).
+			cmd := "git worktree remove --force " + shellQuote(w.Path)
 			if w.Branch != "" {
-				cmd += " && git branch -D " + w.Branch
+				cmd += " && git branch -D " + shellQuote(w.Branch)
 			}
 			fmt.Println("  " + cmd)
 		}
@@ -266,6 +270,12 @@ func printUnchanged(path, root, base, typ string) (bool, error) {
 	// probed in the review round, all three exit 0.
 	fmt.Println("not checked: gitignored paths, other refs (branches, tags, stash), and `.git` itself (hooks, config, info/exclude, index flags); anything already uncommitted when the run started is counted as the run's — start from a clean tree")
 	return clean, nil
+}
+
+// shellQuote wraps s in single quotes for a POSIX shell, closing and reopening
+// around each embedded quote, so nothing inside is expanded or executed.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func isSymlink(p string) bool {
