@@ -33,6 +33,17 @@ var version = "devel"
 // distinctLabels counts the labels behind `r.Calls`, whose entries are
 // "label [model/effort]" or "label [model/effort/isolation]" — the same label spawned twice is one label, because
 // the question is how much of the script's briefing the mode reached.
+// modeLines prints one line per run type, from the list each type actually runs
+// — a single "read-only" line from review's list left out hunt's and audit's
+// extra modes.
+func modeLines() string {
+	var b strings.Builder
+	for _, t := range ws.Types {
+		fmt.Fprintf(&b, "modes (%s): %s\n", t, strings.Join(wfdry.ModesFor(t), ", "))
+	}
+	return b.String()
+}
+
 func distinctLabels(calls []string) int {
 	seen := map[string]bool{}
 	for _, c := range calls {
@@ -56,9 +67,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, `wfdry — dynamic dry run over a Workflow orchestration script
 
 usage: wfdry <script.mjs> [--type T] [--mode M] [--dead a,b] [--budget N] [--args JSON] [--quiet] [--prompt-diff a,b] [--fixture a,b]
-modes (build): %s
-modes (read-only types): %s
-`, strings.Join(wfdry.Modes, ", "), strings.Join(wfdry.ModesFor(ws.TypeReview), ", "))
+%s`, modeLines())
 	}
 	pos, perr := cli.ParseMixed(flag.CommandLine, os.Args[1:])
 	if perr != nil {

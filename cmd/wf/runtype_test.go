@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	wfgate "git.sumka.site/yakov/wfgate"
+	"git.sumka.site/yakov/wfgate/internal/wfdry"
 	"git.sumka.site/yakov/wfgate/internal/ws"
 )
 
@@ -188,5 +189,41 @@ func TestAuditCitationsAreCheckable(t *testing.T) {
 	mustContain(t, out, "store.go:4")
 	if strings.Contains(out, "store.go:3-4") {
 		t.Fatalf("a correct citation from the report's line shape must pass `check cite`:\n%s", out)
+	}
+}
+
+// The real round trip: the `citable` the emitted audit skeleton returns in a
+// dry run's `clean` mode, saved as the answer, passes `wf check cite
+// -require-anchor` against a target whose cited lines carry the anchors — five
+// citations: the answer's one sentence and the four verified claims.
+func TestAuditCitableFromTheSkeletonPassesCheckCite(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	write(t, filepath.Join(target, "pkg", "store.go"), "func Save() {}\n")
+	write(t, filepath.Join(target, "pkg", "load.go"), "package pkg\nfunc Load() {}\n")
+	gitIn(t, target, "init", "-q", "-b", "main")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "initial")
+	a := filepath.Join(tmp, "a")
+	_, err := runWF(t, tmp, "init", "a", "-target", target, "-dir", a, "-type", "audit")
+	noErr(t, err, "init")
+	skel, _ := wfgate.Templates.ReadFile("templates/audit.mjs")
+	sp := filepath.Join(tmp, "s.mjs")
+	write(t, sp, string(skel))
+	rs, err := wfdry.Run(sp, []string{"clean"}, wfdry.Options{Type: ws.TypeAudit})
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("dry run: %v", err)
+	}
+	citable, _ := rs[0].Return.(map[string]any)["citable"].(string)
+	if !strings.Contains(citable, "#Save") {
+		t.Fatalf("no verified claim in citable:\n%s", citable)
+	}
+	write(t, filepath.Join(tmp, "answer.md"), citable)
+	_, err = runWF(t, a, "add", filepath.Join(tmp, "answer.md"))
+	noErr(t, err, "add")
+	out, err := runWF(t, a, "check", "cite", "-require-anchor")
+	if err != nil || !strings.Contains(out, " 0 finding(s)") || !strings.Contains(out, "5 citation(s), 5 anchored") {
+		t.Fatalf("the skeleton's own citable must pass check cite:\n%s\n%v", out, err)
 	}
 }

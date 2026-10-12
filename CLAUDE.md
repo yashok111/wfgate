@@ -665,10 +665,11 @@ or contradicted). What an agent needs without opening it:
 
 - **Seventeen gates have run entirely through `wf`**, the newest A18
   (`~/projects/gates/mocker-a18-functions`, `docs/feedbacks/FEEDBACK-a18.md`),
-  and **TWENTY-TWO gate workspaces are on disk** — `~/gates/{p2d,p2e,p2f}` and
-  nineteen under `~/projects/gates/`, of which `mocker-a-mcp` is pruned to its
-  record and a6, p6a, p6b, p6c, p6d and p7 have no bullet in `GATES.md` yet.
-  nova ran on another machine and has no workspace here. Re-count with
+  and **THIRTY-ONE gate workspaces are on disk** (re-counted 2026-10-12 —
+  twenty-three under `~/projects/gates/`, the rest under `~/gates/`), of which
+  `mocker-a-mcp` is pruned to its record and several, the photowatch read-only
+  gates and `nova-epm-mocker-import` among them, have no bullet in `GATES.md`
+  yet. Re-count with
   `ls -d ~/projects/gates/*/ ~/gates/*/`; the count has been inherited wrong
   four times, and was inherited wrong again between A4 and A18 — the line said
   nineteen while the directory held twenty-two.

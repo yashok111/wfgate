@@ -175,7 +175,7 @@ func cmdNewScript(args []string) error {
 		if runType == ws.TypeAudit {
 			// The answer's citations are the audit's claims; the one check that
 			// reads them mechanically is `check cite`, and it reads artifacts.
-			fmt.Printf("  and the answer: save the run's `report` as artifacts/answer.md, `wf add` it, then `wf check cite -at <that SHA> -require-anchor`\n")
+			fmt.Printf("  and the answer: save the run's `citable` as artifacts/answer.md, `wf add` it, then `wf check cite -at <that SHA> -require-anchor`\n")
 		}
 	} else {
 		fmt.Printf("    wfdry %s\n", dst)

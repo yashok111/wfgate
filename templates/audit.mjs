@@ -14,7 +14,7 @@ export const meta = {
 // document whose every claim cites `path:line#anchor`, the anchor an
 // identifier on the cited line. Emitted by `wf new-script` in a workspace
 // opened with `wf init -type audit`. The tree comes out of the run unchanged;
-// the answer comes back in the return value. After the run: save `report` into
+// the answer comes back in the return value. After the run: save `citable` into
 // the workspace (`artifacts/answer.md`, then `wf add`) and run
 // `wf check cite -at <COMMIT> -require-anchor` — every citation resolves and
 // its anchor is on the cited lines, or it is named — and
@@ -96,13 +96,14 @@ const CLAIMS_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['statement', 'kind', 'file', 'line', 'anchor', 'evidence'],
+        required: ['statement', 'kind', 'file', 'line', 'lastLine', 'anchor', 'evidence'],
         properties: {
           statement: { type: 'string', description: 'one sentence, true or false of the code, that answers part of your sub-question' },
           kind: { type: 'string', enum: ['holds', 'violated', 'partial'], description: 'holds: the code does what the question asks of it; violated: it does not; partial: only in some cases, named in the statement' },
-          file: { type: 'string', description: 'repo-relative path of the cited lines' },
-          line: { type: 'string', description: 'LINE or A-B at the commit' },
-          anchor: { type: 'string', description: 'an ASCII identifier that occurs on the cited lines' },
+          file: { type: 'string', examples: ['pkg/store.go', 'pkg/load.go'], description: 'repo-relative path of the cited lines, with its extension, no leading ./ or /' },
+          line: { type: 'integer', minimum: 1, description: 'first cited line at the commit' },
+          lastLine: { type: 'integer', minimum: 0, description: 'last cited line, or 0 for a single line' },
+          anchor: { type: 'string', examples: ['Save', 'Load'], description: 'an identifier of two or more letters, digits or underscores that occurs on the cited lines' },
           evidence: { type: 'string', description: 'the cited code, quoted, and why it supports the statement' },
         },
       },
@@ -123,15 +124,41 @@ const VERDICT_SCHEMA = {
 const WRITER_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['answer', 'openQuestions'],
+  required: ['sentences', 'openQuestions'],
   properties: {
-    answer: { type: 'string', description: 'the answer to the question, in prose, every sentence that states a fact about the code citing one of the claims given, by its citation' },
+    sentences: {
+      type: 'array',
+      description: 'the answer, one sentence per item, in reading order',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['text', 'uses'],
+        properties: {
+          text: { type: 'string', description: 'one sentence of the answer, with NO citation in it — the harness appends them' },
+          uses: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'the numbers of the claims this sentence rests on; at least one' },
+        },
+      },
+    },
     openQuestions: { type: 'array', items: { type: 'string' }, description: 'the parts of the question the verified claims do NOT settle; an empty list only if they settle all of it' },
   },
 }
 
+// The shape every citation must have before anything trusts it — the grammar
+// `wf check cite` reads. A free-text `line` such as "L7" made a citation
+// INVISIBLE to that check, and an anchor with a space was cut at the space and
+// then matched (the review round's probes); an anchor of one letter matches
+// almost any line.
+const FILE_RE = /^[A-Za-z0-9_][^\s#:]*\.[A-Za-z0-9]+$/
+const ANCHOR_RE = /^[A-Za-z_][A-Za-z0-9_]+$/
+function wellFormed(c) {
+  return typeof c.file === 'string' && FILE_RE.test(c.file) &&
+    Number.isInteger(c.line) && c.line >= 1 &&
+    Number.isInteger(c.lastLine) && (c.lastLine === 0 || c.lastLine >= c.line) &&
+    typeof c.anchor === 'string' && ANCHOR_RE.test(c.anchor)
+}
+
 function cite(c) {
-  return c.file + ':' + c.line + '#' + c.anchor
+  return c.file + ':' + c.line + (c.lastLine > c.line ? '-' + c.lastLine : '') + '#' + c.anchor
 }
 
 function finderPrompt(part, unit) {
@@ -152,8 +179,9 @@ function verifierPrompt(c) {
 
 function writerPrompt(list) {
   return 'You write the answer of an audit of ' + REPO + ' at commit ' + COMMIT + '. The question: ' + QUESTION + '\n\n' +
-    'Use ONLY the verified claims below. Every sentence that states a fact about the code cites a claim by its citation, exactly as given; add no fact the claims do not carry. Where the claims do not settle a part of the question, say so in the answer and list it in openQuestions.\n\n' +
-    list.map((c) => '- [' + c.kind + '] ' + c.statement + ' (' + cite(c) + ')').join('\n') + '\n\n' +
+    'Use ONLY the numbered verified claims below. Write the answer as sentences; give each sentence the numbers of the claims it rests on, at least one, and add no fact those claims do not carry. Put no citation in the text — the harness appends each sentence\'s citations from the numbers. Where the claims do not settle a part of the question, list it in openQuestions.\n\n' +
+    'THE PARTS OF THE QUESTION:\n' + PARTS.map((p) => '- ' + p.id + ': ' + p.ask).join('\n') + '\n\n' +
+    'VERIFIED CLAIMS:\n' + list.map((c, i) => '[' + (i + 1) + '] (' + c.lens + ', ' + c.kind + ') ' + c.statement).join('\n') + '\n\n' +
     READ_ONLY +
     '\nReturn through the StructuredOutput schema.'
 }
@@ -183,6 +211,7 @@ const found = []
 const seen = new Set()
 let nextId = 1
 let malformed = 0
+const malformedList = []
 cells.forEach((c) => {
   const r = reports.get('find:' + c.lens.id + ':' + c.unit.id)
   const cell = c.lens.id + ' x ' + c.unit.id
@@ -193,13 +222,15 @@ cells.forEach((c) => {
   let kept = 0
   if (!Array.isArray(r.claims)) malformed++
   ;(Array.isArray(r.claims) ? r.claims : []).forEach((f) => {
-    if (!f || typeof f.file !== 'string') {
+    if (!f || !wellFormed(f)) {
       malformed++
+      malformedList.push(c.lens.id + ': ' + String(f && f.statement || '?').slice(0, 120) + ' (cited ' + String(f && f.file) + ' ' + String(f && f.line) + ' #' + String(f && f.anchor) + ')')
       return
     }
-    // One part may cite a location once; two parts citing one line make two
-    // claims about different questions.
-    const key = f.file + ':' + f.line + ':' + c.lens.id
+    // Two claims at one location are one only when they are the same claim:
+    // a `holds` and a `violated` on one line, or two parts asking of it, are
+    // different answers.
+    const key = f.file + ':' + f.line + ':' + f.anchor + ':' + f.kind + ':' + c.lens.id
     if (seen.has(key)) return
     seen.add(key)
     found.push(Object.assign({}, f, { id: 'C' + String(nextId++).padStart(3, '0'), lens: c.lens.id }))
@@ -236,18 +267,34 @@ const unverified = results.filter((r) => r.status === 'unverified')
 // unanswered rather than inventing an answer.
 // ---------------------------------------------------------------------------
 
-let answer = ''
+// The writer names claims by NUMBER and the harness appends their citations,
+// so no citation in the answer can be one a checker did not read: a writer
+// that wrote citation strings itself could cite a real line nobody checked.
+// A sentence resting on no valid number is marked UNCITED, and an answer
+// with one is not `answered`.
+let sentences = []
+let uncited = 0
 let openQuestions = []
 let writerDied = false
+let writerEmpty = false
 if (verified.length) {
   phase('Write')
   const w = await spawn(writerPrompt(verified), { label: 'write:answer', phase: 'Write', model: 'sonnet', effort: 'high', schema: WRITER_SCHEMA })
   if (!w) writerDied = true
   else {
-    answer = String(w.answer || '')
+    sentences = (Array.isArray(w.sentences) ? w.sentences : []).filter((s) => s && typeof s.text === 'string' && s.text.trim()).map((s) => {
+      const uses = (Array.isArray(s.uses) ? s.uses : []).filter((n) => Number.isInteger(n) && n >= 1 && n <= verified.length)
+      if (!uses.length) uncited++
+      return { text: s.text.trim(), cites: uses.map((n) => cite(verified[n - 1])) }
+    })
+    writerEmpty = sentences.length === 0
     openQuestions = Array.isArray(w.openQuestions) ? w.openQuestions.filter((q) => typeof q === 'string' && q) : []
   }
 }
+// A part with no verified claim is unsettled whatever the writer says: the
+// harness lists it, rather than trusting the writer to notice.
+const unsettled = PARTS.filter((p) => !verified.some((c) => c.lens === p.id)).map((p) => p.id + ': ' + p.ask)
+const answer = sentences.map((s) => s.text + (s.cites.length ? ' (' + s.cites.join(', ') + ')' : ' [UNCITED]')).join(' ')
 
 // ---------------------------------------------------------------------------
 // The report. Its population comes FIRST; then the answer; then every verified
@@ -257,34 +304,44 @@ if (verified.length) {
 
 const deadCells = coverage.filter((c) => c.dead).map((c) => c.cell)
 const gapCells = coverage.filter((c) => c.gaps && c.gaps.length).map((c) => c.cell + ' (' + c.gaps.join(', ') + ')')
-const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.length === 0 && !writerDied
+const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.length === 0 && !writerDied && !writerEmpty
+const answered = sentences.length > 0 && uncited === 0
 const out = []
 out.push('# Audit: ' + QUESTION)
 out.push('')
 out.push(REPO + ' at ' + COMMIT + ': ' + (cells.length - deadCells.length) + ' of ' + cells.length + ' finder cell(s) reported' + (deadCells.length ? ' — NOT COVERED: ' + deadCells.join(', ') : '') + '.')
 if (gapCells.length) out.push('Files a finder did not read: ' + gapCells.join('; ') + '.')
-out.push(found.length + ' claim(s) after dedup: ' + verified.length + ' verified, ' + unsupported.length + ' unsupported by their citation, ' + unverified.length + ' unverified' + (malformed ? ', ' + malformed + ' malformed report(s) dropped' : '') + '.')
-if (!complete) out.push('INCOMPLETE: ' + [deadCells.length ? deadCells.length + ' dead cell(s)' : '', gapCells.length ? gapCells.length + ' cell(s) with unread files' : '', unverified.length ? unverified.length + ' unverified claim(s)' : '', writerDied ? 'the writer died, so there is no composed answer' : ''].filter(Boolean).join(', ') + ' — what follows is not a complete answer.')
+out.push(found.length + ' claim(s) after dedup: ' + verified.length + ' verified, ' + unsupported.length + ' unsupported by their citation, ' + unverified.length + ' unverified' + (malformed ? ', ' + malformed + ' malformed claim(s) or report(s) dropped' : '') + '.')
+if (!complete) out.push('INCOMPLETE: ' + [deadCells.length ? deadCells.length + ' dead cell(s)' : '', gapCells.length ? gapCells.length + ' cell(s) with unread files' : '', unverified.length ? unverified.length + ' unverified claim(s)' : '', writerDied ? 'the writer died, so there is no composed answer' : '', writerEmpty ? 'the writer returned no sentence' : ''].filter(Boolean).join(', ') + ' — what follows is not a complete answer.')
 out.push('')
 out.push('## Answer')
 out.push('')
 if (answer) out.push(answer)
-else out.push(verified.length ? 'No composed answer — the writer returned nothing; the verified claims below stand on their own.' : 'The question went UNANSWERED: no claim survived its citation check.')
-if (openQuestions.length) {
+else if (verified.length) out.push('No composed answer — the writer returned nothing; the verified claims below stand on their own.')
+else out.push('The question went UNANSWERED: ' + (found.length ? 'no claim survived its citation check.' : 'no claim was found.'))
+if (uncited) out.push('', uncited + ' sentence(s) above rest on no verified claim and are marked [UNCITED] — the answer is not established by them.')
+const notSettled = unsettled.concat(openQuestions.filter((q) => !unsettled.includes(q)))
+if (notSettled.length) {
   out.push('')
   out.push('Not settled by the verified claims:')
-  openQuestions.forEach((q) => out.push('- ' + q))
+  notSettled.forEach((q) => out.push('- ' + q))
 }
 out.push('')
 out.push('## Verified claims')
 out.push('')
 verified.forEach((c) => out.push('- ' + c.id + ' [' + c.kind + '] ' + c.statement + ' — ' + cite(c)))
-if (unsupported.length || unverified.length) {
+// Everything below the verified claims is agent free text, and it is kept out
+// of `citable`: `wf check cite` reads every citation-shaped token, and a
+// checker's reason quoting "main.go:1-7" failed the check over text that is not
+// a claim.
+const citable = out.slice()
+if (unsupported.length || unverified.length || malformedList.length) {
   out.push('')
   out.push('## Not in the answer')
   out.push('')
   unsupported.forEach((c) => out.push('- UNSUPPORTED ' + c.id + ' ' + c.statement + ' (cited ' + c.file + ' line ' + c.line + ') — ' + c.reason))
   unverified.forEach((c) => out.push('- UNVERIFIED ' + c.id + ' ' + c.statement + ' (cited ' + c.file + ' line ' + c.line + ')'))
+  malformedList.forEach((m) => out.push('- MALFORMED CITATION ' + m))
 }
 out.push('')
 coverage.forEach((c) => out.push('coverage ' + c.cell + ': ' + (c.dead ? 'DEAD' : c.count + ' kept — ' + c.read)))
@@ -293,14 +350,19 @@ log(spawned.length - dead.length + '/' + spawned.length + ' finder(s) came back'
 if (dead.length) log('DEAD: ' + dead.join(', '))
 
 return {
-  // complete is the audit's coverage and its answer's existence, not its
-  // outcome: "the code violates the spec" over every cell IS complete.
+  // complete is the audit's coverage, and that its writer neither died nor
+  // came back empty — not its outcome: "the code violates the spec" over every
+  // cell IS complete.
   complete,
   // answered is apart from complete on purpose: an audit whose finders read
   // everything and found no claim covered its ground and still answered
   // nothing — for an audit that is no "clean" result, and the report says so.
-  answered: verified.length > 0 && !writerDied,
+  answered,
   report: out.join('\n'),
+  // citable is the answer and its verified claims alone — what to save as
+  // artifacts/answer.md for `wf check cite -require-anchor`.
+  citable: citable.join('\n'),
+  unsettled,
   verified: verified.map((c) => ({ id: c.id, kind: c.kind, statement: c.statement, cite: cite(c) })),
   unsupported: unsupported.length,
   unverified: unverified.map((c) => c.id),

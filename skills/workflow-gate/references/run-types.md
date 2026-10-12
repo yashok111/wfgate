@@ -190,31 +190,46 @@ defects. What changes against a review:
   finder can answer from the code alone; a part nobody asked is a part the answer is silent on.
   Finders run per part and unit, as a review's run per lens and unit.
 - **A finder returns CLAIMS, true or false of the code alike** — `holds`, `violated`, `partial` —
-  each citing `path.ext:LINE#anchor`, the anchor an ASCII identifier ON the cited lines. "The code
+  each citing `path.ext:LINE#anchor`, the anchor an ASCII identifier ON the cited lines. The
+  citation arrives as FIELDS — a path with an extension, an integer line and last line, an
+  identifier of two or more characters — and the harness checks their shape before anything trusts
+  them: a free-text line such as `L7` made a citation invisible to `check cite`, an anchor with a
+  space was cut at the space and then matched, and a one-letter anchor matches almost any line. A
+  claim that fails is MALFORMED, listed, never verified; a file with no extension is malformed too,
+  because `check cite` does not verify one. "The code
   does what the spec asks" is as much an answer as "it does not"; an audit that returns only
   violations is a review that forgot its question. The array is `claims`, the deliverable's name.
 - **Every claim's citation is read by a checker that did not write it**, and a claim the cited lines
   do not support as written is UNSUPPORTED: dropped from the answer, listed apart, never handed to the
   writer.
-- **One WRITER composes the answer from the verified claims only**, every factual sentence citing one
-  of them, and lists the parts the claims do not settle. With no verified claim nothing is written,
-  and the report says the question went UNANSWERED rather than inventing an answer. `dead-writer` is
+- **One WRITER composes the answer from the verified claims only.** It returns sentences, each naming
+  the NUMBERS of the claims it rests on, and the harness appends their citations — so no citation in
+  the answer is one a checker did not read. A sentence resting on no valid number is printed
+  [UNCITED] and the answer is then not `answered`. A part of the question with no verified claim is
+  listed as unsettled by the harness, whatever the writer says. With no verified claim nothing is
+  written, and the report says UNANSWERED — and whether no claim was found or none survived.
+  `wfdry` refuses an audit whose writer runs before any agent returned `verified: true`. `dead-writer` is
   the audit's extra mode: the writer dies, the claims stand, and a run calling itself complete without
   its answer is refused; a writer the runner cannot identify by a write/writer/synth/compose label is
   a violation, because the missing-answer path then runs in no mode.
-- **`complete` is coverage, `answered` is apart.** An audit whose finders read everything and verified
+- **`complete` is coverage and a writer that neither died nor came back empty; `answered` is
+  apart.** An audit whose finders read everything and verified
   nothing covered its ground and answered nothing — for a review "found nothing" is a result, for an
   audit it is not, and the return says it in its own field.
-- **The citations are checked mechanically after the run.** Save the returned `report` as
-  `artifacts/answer.md` in the workspace, `wf add` it, and run `wf check cite -at <COMMIT>
-  -require-anchor`: every citation resolves and its anchor is on the cited lines, or the check names
-  the nearest line carrying it. That is the one part of an audit's acceptance a tool can observe; the
-  checker inside the run is the judgement half, `check cite` the mechanical one.
+- **The citations are checked mechanically after the run.** Save the returned `citable` — the answer
+  and its verified claims, without the checkers' and finders' free text, which can quote
+  citation-shaped prose — as `artifacts/answer.md` in the workspace, `wf add` it, and run `wf check
+  cite -at <COMMIT> -require-anchor`: every citation resolves and its anchor is on the cited lines, or
+  the check names the nearest line carrying it. It checks FORM and ANCHOR, not meaning: whether the
+  lines support the statement is the in-run checker's judgement, a model's verdict like any other.
+  And an unanswered audit has no citations, so "`check cite` clean" says nothing there — the
+  acceptance is `answered: true` AND a citation count above zero AND the check clean.
 
 Vector 3 of an audit's gate is COVERAGE & PRECISION as for a review, with the question in place of the
 diff: do the parts together make up the question, can each be answered from code in the units, does
-the finder's prompt ask for claims of BOTH polarities, does the writer's prompt forbid facts the
-claims do not carry, and is the citation form the one `check cite` reads.
+the finder's prompt ask for claims of BOTH polarities (and the `kind` enum keep a member of each),
+does the writer's prompt forbid facts the claims do not carry, does the "Verified claims" section come
+from the verified list alone — no runner sees any of those four in a dry run.
 
 ## The decision document of a review
 
@@ -228,4 +243,5 @@ is the subsystem and its units, the failure classes, how a reproduction is run h
 touch, and the cap; its acceptance adds that every REPRODUCED finding carries a command that fails at
 `COMMIT` when re-run. An audit's first frontier is the question itself, its parts, the units that
 can answer them, and who reads the answer; its acceptance is `wf check cite -at <COMMIT>
--require-anchor` clean over the saved answer, every part either answered or listed as unsettled.
+-require-anchor` clean over the saved `citable` with at least one citation counted, `answered: true`,
+and every part either answered or listed as unsettled.

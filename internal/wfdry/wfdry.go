@@ -172,7 +172,9 @@ type Result struct {
 	Prompts   []check.NamedText
 	defaulted map[string]int // report fields the fixture contract did not recognise
 	family    map[string]int // spawns per label family, read-only runs only
-	badRefs   map[string]int // `$ref`s the fixture could not expand, with the reason
+
+	verifiedSeen bool           // a stub has handed back `verified: true` in this mode
+	badRefs      map[string]int // `$ref`s the fixture could not expand, with the reason
 
 	// What this mode actually handed each agent back, by label and in spawn
 	// order. The runner synthesises it and then reports only the CONSEQUENCE —
@@ -771,7 +773,18 @@ func runMode(src, mode string, o Options) Result {
 			top = r.family[fam] % 2
 			r.family[fam]++
 		}
+		// An audit's writer may only run on VERIFIED claims. Read off what the
+		// stubs handed back: a writer spawned when no earlier agent's report
+		// carried `verified: true` composed an answer from nothing a checker
+		// accepted (the review round's probe: every claim marked verified
+		// whatever the checker said, and blockers still spawned the writer).
+		if normType(o.Type) == ws.TypeAudit && writerish(label) && !r.verifiedSeen {
+			r.Violations = append(r.Violations, mode+": the writer `"+label+"` ran though no agent before it returned `verified: true` — an audit's answer is composed from verified claims only")
+		}
 		fixture := synth(opts.Get("schema"), mode, label, ro, top, 0, r.defaulted, r.badRefs)
+		if m, ok := fixture.(map[string]any); ok && m["verified"] == true {
+			r.verifiedSeen = true
+		}
 		// One entry per DISTINCT fixture, not per label. A label spawned in a
 		// loop usually synthesises the same shape and a list with a hundred
 		// copies of it in is a list nobody reads — but a label whose schema is
@@ -941,8 +954,26 @@ func runMode(src, mode string, o Options) Result {
 		// back 7/7 at exit 0 with the loop passing over an empty set. The
 		// runner has recorded unreadable SCHEMA booleans since the sixth wave;
 		// the return value got nothing.
-		if len(verdictKeys(r.Return)) == 0 {
-			r.Notes = append(r.Notes, "this mode killed "+plural(len(r.Killed), "agent")+" and the run's verdict carries no boolean field this check can read — whether the deaths reached the verdict is UNMEASURED, not clean")
+		//
+		// READABLE is the condition, not "a boolean exists": a verdict renamed
+		// `covered` beside `answered` carried two booleans and neither word, and
+		// the guard passed over it without saying anything.
+		readable := 0
+		for _, k := range verdictKeys(r.Return) {
+			if passBools.MatchString(k) || failVerdicts.MatchString(k) {
+				readable++
+			}
+		}
+		if readable == 0 {
+			r.Notes = append(r.Notes, "this mode killed "+plural(len(r.Killed), "agent")+" and the run's verdict carries no boolean field this check can read ("+passBoolVocabulary()+") — whether the deaths reached the verdict is UNMEASURED, not clean")
+		}
+		// An audit whose writer died has no answer, whatever else its verdict
+		// says: `answered: true` there is a lie that a `complete: false` beside
+		// it used to excuse.
+		if normType(o.Type) == ws.TypeAudit && mode == deadWriterMode {
+			if m, _ := r.Return.(map[string]any); m != nil && m["answered"] == true {
+				r.Violations = append(r.Violations, deadWriterMode+": the run returned `answered: true` while its writer returned NOTHING ("+strings.Join(r.Killed, ", ")+")")
+			}
 		}
 		// The verdict is read AS A WHOLE, and that is a correction: firing on
 		// each success-looking field alone rejected `{done: true, green: false}`
@@ -1268,12 +1299,14 @@ func criticish(label string) bool {
 	return false
 }
 
+// writerish reads the label's ROLE — its first segment — and nothing after it:
+// a unit named `compose` or a part named `write-path` made every finder of it
+// writer-shaped, and `dead-writer` killed those finders instead of the writer
+// (the audit wave's review round).
 func writerish(label string) bool {
-	for _, seg := range labelSegments(label) {
-		switch seg {
-		case "write", "writer", "synth", "synthesis", "synthesize", "compose", "composer":
-			return true
-		}
+	switch firstSegment(label) {
+	case "write", "writer", "synth", "synthesis", "synthesize", "compose", "composer":
+		return true
 	}
 	return false
 }
@@ -1422,11 +1455,11 @@ var failBools = regexp.MustCompile(`(?i)fail|broken|vacuous|missing|stale|dead|u
 var enumPassWords = []string{
 	"pass", "ok", "green", "clean", "success", "succeed", "met", "none", "note",
 	"minor", "advisory", "info", "yes", "true", "fixed", "done", "complete",
-	"ready", "up", "healthy", "closed", "resolved",
+	"ready", "up", "healthy", "closed", "resolved", "hold",
 }
 var enumFailWords = []string{
 	"blocker", "block", "blocked", "fail", "failure", "error", "reject", "refuse",
-	"refused", "violation", "unfixed", "notrun", "red", "major", "partial",
+	"refused", "violation", "violated", "unfixed", "notrun", "red", "major", "partial",
 	"broken", "missing", "stale", "dead", "defect", "skip", "vacuous",
 	"degraded", "down", "no", "false", "open",
 }
@@ -1797,10 +1830,23 @@ func itemsOf(name string, v map[string]any, mode, label string, ro bool, depth i
 	items, _ := v["items"].(map[string]any)
 	out := make([]any, 0, n)
 	for i := 0; i < n; i++ {
-		if t, _ := items["type"].(string); t == "object" {
+		// A SCALAR item is synthesised by its own type: an array of integers
+		// came back as placeholder strings, so a script reading item numbers —
+		// an audit's writer naming the claims a sentence rests on — rejected
+		// every one and its happy path ran in no mode.
+		switch t, _ := items["type"].(string); t {
+		case "object":
 			out = append(out, synthMap(items, mode, label, ro, depth+1, i, rec))
-		} else {
-			out = append(out, fmt.Sprintf("<%s from %s>", or(name, "item"), label))
+		case "integer", "number", "boolean", "array":
+			out = append(out, value(or(name, "item"), items, mode, label, ro, depth+1, i, rec))
+		default:
+			if _, hasEnum := items["enum"]; hasEnum {
+				out = append(out, value(or(name, "item"), items, mode, label, ro, depth+1, i, rec))
+			} else if _, hasEx := items["examples"]; hasEx {
+				out = append(out, value(or(name, "item"), items, mode, label, ro, depth+1, i, rec))
+			} else {
+				out = append(out, fmt.Sprintf("<%s from %s>", or(name, "item"), label))
+			}
 		}
 	}
 	return out
@@ -1938,6 +1984,16 @@ func value(name string, v map[string]any, mode, label string, ro bool, depth, id
 		}
 		return false
 	default:
+		// A declared `examples` list is the author saying what a valid value
+		// LOOKS like, and a script that validates a field's shape — an audit
+		// checking that a citation's path and anchor are well-formed before
+		// trusting them — rejected every placeholder, so its happy path ran in
+		// no mode. `examples` is a keyword the launch accepts.
+		if ex, ok := v["examples"].([]any); ok && len(ex) > 0 {
+			if s, ok := ex[idx%len(ex)].(string); ok {
+				return s
+			}
+		}
 		if idx > 0 {
 			return fmt.Sprintf("<%s from %s #%d>", name, label, idx+1)
 		}
