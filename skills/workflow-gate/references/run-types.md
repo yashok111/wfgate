@@ -7,20 +7,22 @@ acceptance step, and a review's is finders, verifiers and a report. The type is 
 `wf init -type`, banked in `gate.json`, and read from there by every command whose rules depend on
 it. Read this file when the run you are gating changes nothing in its target.
 
-The closed list is `build` (the default, and every workspace opened before the field existed) and
-`review`. `wf init` refuses a type outside it, naming the list.
+The closed list is `build` (the default, and every workspace opened before the field existed),
+`review` (a diff, read) and `hunt` (a subsystem, searched, its serious findings reproduced). `wf
+init` refuses a type outside it, naming the list. A hunt is a read-only type in every row below
+unless its own section says otherwise.
 
 ## What the type changes, and where
 
-| | build | review |
+| | build | review (and hunt) |
 |---|---|---|
-| `wf new-script` emits | producers → per-section gate → acceptance (`templates/script.mjs`) | find → verify → merge → report (`templates/review.mjs`) |
+| `wf new-script` emits | producers → per-section gate → acceptance (`templates/script.mjs`) | find → verify → merge → report (`templates/review.mjs`; a hunt gets `templates/hunt.mjs`) |
 | `wfdry` modes | clean, blockers, acceptfail, unfixed, throw-serial, dead-reviews, no-args | clean, blockers, **empty**, throw-serial, **dead-finders**, dead-reviews, no-args |
 | a finding array in `clean` | EMPTY — it is a defect list | POPULATED with a mixed pair — it is the deliverable |
 | a pass-shaped boolean (`verified`, `complete`) | true everywhere but `acceptfail` | true in the passing modes, false elsewhere |
 | `dead-reviews` kills | review / fix / closeout / verify / accept labels | those, plus critic / skeptic — the finders LIVE |
 | `dead-finders` kills | — | find / hunt / scan / audit / lens / inspect / analyze labels — the verifiers live, and a mode that kills nobody FAILS |
-| `wfcheck --owns-diff` | an audit of the ownership map; exits 0 | a BAR: the tree must be unchanged and HEAD unmoved; exits 1 otherwise; the base must be a SHA |
+| `wfcheck --owns-diff` | an audit of the ownership map; exits 0 | a BAR: the tree must be unchanged and HEAD unmoved; exits 1 otherwise; the base must be a SHA; a hunt's reproduction worktrees under `.claude/worktrees/` are listed, not counted |
 | the gate's third vector | CRITERION | COVERAGE & PRECISION (below) |
 
 `wfdry`, `wfcheck --owns-diff` and `wf new-script` read the type from the workspace that holds the
@@ -120,6 +122,39 @@ vector 1's main finding, because N finders each reading the whole diff is the de
 - **The report** — ranked by the verifier's severity, every confirmed finding cites `file:line` at
   the reviewed revision, and the population line comes first.
 
+## A hunt: a subsystem, and reproduction
+
+A hunt is a review whose input is a SUBSYSTEM at one commit rather than a diff, and whose serious
+findings are proven by running something. What changes against the review rules above:
+
+- **Units cover the subsystem BY PATH, and together they are all of it.** A review's one unit over
+  the whole diff covers by construction; a subsystem does not fit one finder, so the units are the
+  coverage claim, and a file in no unit is a file nobody searched. Lenses are FAILURE CLASSES (data
+  loss, money, concurrency, error handling, security), disjoint as a review's are.
+- **Blockers and majors are REPRODUCED; the rest are read.** A reproducer runs in a throwaway worktree
+  (`isolation: 'worktree'`), checks out `COMMIT` and confirms it — a worktree can arrive at another
+  commit — writes the smallest failing test or command, runs it and reports the command and its
+  output. It calls git by absolute path (`authoring.md`, the worktree rule), never commits, never
+  writes outside its worktree. Minor and note findings get a reading skeptic, as in a review.
+- **Not reproduced is not refuted.** A reproducer may lack the state, the data or the timing; its
+  finding is listed apart as NOT REPRODUCED, with the reason, and neither confirmed nor dropped.
+  Where nothing can be reproduced at all — a defect that needs production data, an external service
+  — a vote of reading skeptics on the serious findings is the substitute; the skeleton does not carry
+  one, and adding it is a decision for the document.
+- **Reproductions are the costliest agents of the run** — one build per worktree — so they are
+  capped (`MAX_REPRO`), worst first, and the report names how many serious findings were read
+  instead. Hand every reproducer the ONE focused command that runs a test here (`REPRO_HOW`): several
+  whole-repo test runs at once is what an OOM killer resolves.
+- **The tree is unchanged except for the worktrees.** Claude Code creates them inside the target,
+  under `.claude/worktrees/`, and keeps every one whose agent wrote a file — which is every
+  reproduction. `wfcheck --owns-diff <COMMIT> <script>` lists them apart and fails on any other path;
+  remove them with `git worktree remove --force` once the report is read.
+
+Vector 3 of a hunt's gate is COVERAGE & PRECISION as for a review, plus REPRODUCTION: can a
+reproducer actually run something here (is `REPRO_HOW` a command that works in a fresh worktree, and
+does the subsystem build there), is the cap set against the expected finding count, and does the
+report keep "not reproduced" apart from "refuted"?
+
 ## The decision document of a review
 
 The interview (`interview.md`) maps the same tree; its first frontier for a review is usually the
@@ -127,4 +162,7 @@ diff (base and head refs), the lenses, the units, who consumes the report and wh
 finding, and how deep verification goes (one skeptic each, or a vote on the top severities). The
 acceptance section states OBSERVATIONS (`gate-checks.md` section D), and a review's are few: the
 tree is unchanged (`wfcheck --owns-diff` exits 0), the report's population line names every cell,
-every confirmed finding cites a location that exists at the reviewed revision.
+every confirmed finding cites a location that exists at the reviewed revision. A hunt's first frontier
+is the subsystem and its units, the failure classes, how a reproduction is run here and what it may
+touch, and the cap; its acceptance adds that every REPRODUCED finding carries a command that fails at
+`COMMIT` when re-run.

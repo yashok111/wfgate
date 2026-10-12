@@ -31,7 +31,7 @@ import (
 var version = "devel"
 
 // distinctLabels counts the labels behind `r.Calls`, whose entries are
-// "label [model/effort]" — the same label spawned twice is one label, because
+// "label [model/effort]" or "label [model/effort/isolation]" — the same label spawned twice is one label, because
 // the question is how much of the script's briefing the mode reached.
 func distinctLabels(calls []string) int {
 	seen := map[string]bool{}

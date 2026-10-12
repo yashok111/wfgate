@@ -127,3 +127,19 @@ func TestNewScriptReadsTheDestinationsType(t *testing.T) {
 		t.Fatalf("-o into a review workspace must emit the review skeleton")
 	}
 }
+
+func TestNewScriptHunt(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+	target := mkTarget(t, tmp)
+	h := filepath.Join(tmp, "h")
+	_, err := runWF(t, tmp, "init", "h", "-target", target, "-dir", h, "-type", "hunt")
+	noErr(t, err, "init -type hunt")
+	out, err := runWF(t, h, "new-script", "search")
+	noErr(t, err, "new-script")
+	mustContain(t, out, "type hunt — from", "wfdry --type hunt")
+	b, _ := os.ReadFile(filepath.Join(h, "artifacts", "search.mjs"))
+	if !strings.Contains(string(b), "isolation: 'worktree'") {
+		t.Fatalf("a hunt workspace must get the hunt skeleton")
+	}
+}

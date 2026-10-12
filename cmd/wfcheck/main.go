@@ -204,15 +204,37 @@ func printUnchanged(path, root, base, typ string) (bool, error) {
 		clean = false
 		fmt.Printf("HEAD MOVED: HEAD is no longer %s — a read-only run moved HEAD, or the base is not the commit the run started from\n", rep.Base)
 	}
-	if rep.Changed > 0 {
+	// A hunt reproduces in worktrees Claude Code creates INSIDE the target,
+	// under ws.ScratchPrefix, and keeps whenever the reproducer wrote a test —
+	// which is every reproduction. They are the run's scratch, not a write
+	// into the target: listed, never failed. Any other path still fails.
+	var scratch, changed []string
+	for _, p := range rep.Paths {
+		if ws.AllowsScratch(typ) && strings.HasPrefix(p, ws.ScratchPrefix) {
+			scratch = append(scratch, p)
+		} else {
+			changed = append(changed, p)
+		}
+	}
+	if len(changed) > 0 {
 		clean = false
-		fmt.Printf("CHANGED %d file(s) — a read-only run wrote into its target:\n", rep.Changed)
-		for _, p := range rep.Paths {
+		fmt.Printf("CHANGED %d file(s) — a read-only run wrote into its target:\n", len(changed))
+		for _, p := range changed {
+			fmt.Println("  " + p)
+		}
+	}
+	if len(scratch) > 0 {
+		fmt.Printf("reproduction worktree(s) left under %s (%d) — the run's scratch, not counted; remove each with `git worktree remove --force <path>` once the report is read:\n", ws.ScratchPrefix, len(scratch))
+		for _, p := range scratch {
 			fmt.Println("  " + p)
 		}
 	}
 	if clean {
-		fmt.Println("unchanged: HEAD is the base and the working tree matches it, untracked files included")
+		if len(scratch) > 0 {
+			fmt.Println("unchanged outside the reproduction worktrees: HEAD is the base and the working tree matches it, untracked files included")
+		} else {
+			fmt.Println("unchanged: HEAD is the base and the working tree matches it, untracked files included")
+		}
 	}
 	// What the bar does not see, said on every run rather than discovered:
 	// probed in the review round, all three exit 0.

@@ -638,7 +638,16 @@ func runMode(src, mode string, o Options) Result {
 			label = fmt.Sprintf("agent@%d", r.Spawned)
 		}
 		model, effort := get("model"), get("effort")
-		r.Calls = append(r.Calls, fmt.Sprintf("%s [%s/%s]", label, or(model, "NO MODEL"), or(effort, "NO EFFORT")))
+		// The isolation rides beside the tier, because it is the one option
+		// that decides WHERE an agent may write: a hunt's reproducer without
+		// `isolation: 'worktree'` writes its failing test into the target, and
+		// the agent list was the only place a dry run could have shown it — the
+		// wave's mutation of exactly that line survived every bar.
+		iso := ""
+		if i := get("isolation"); i != "" {
+			iso = "/" + i
+		}
+		r.Calls = append(r.Calls, fmt.Sprintf("%s [%s/%s%s]", label, or(model, "NO MODEL"), or(effort, "NO EFFORT"), iso))
 		if p := call.Argument(0); !goja.IsUndefined(p) && !goja.IsNull(p) {
 			if t := p.ExportType(); t != nil && t.Kind() == reflect.String {
 				r.Prompts = append(r.Prompts, check.NamedText{Name: label, Text: p.String()})

@@ -36,6 +36,7 @@ import (
 var templateFor = map[string]string{
 	ws.TypeBuild:  "templates/script.mjs",
 	ws.TypeReview: "templates/review.mjs",
+	ws.TypeHunt:   "templates/hunt.mjs",
 }
 
 func cmdNewScript(args []string) error {

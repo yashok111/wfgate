@@ -114,6 +114,14 @@ check-tools: build
 	@./wfdry --type review .check-skel/review.mjs --mode clean 2>/dev/null | grep -q 'phases: Find | Verify | Merge' \
 		&& { rm -rf .check-skel; echo "wf new-script -type review skeleton: clean walks find → verify → merge"; } \
 		|| { rm -rf .check-skel; echo "wf new-script -type review skeleton: clean stopped short of Verify/Merge — the finders came back empty on the happy path, which is the build reading of a findings array"; exit 1; }
+	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -type hunt -target . -o .check-skel/hunt.mjs >/dev/null \
+		&& ./wfcheck -root . .check-skel/hunt.mjs >/dev/null \
+		&& ./wfdry --type hunt .check-skel/hunt.mjs --quiet >/dev/null \
+		|| { rm -rf .check-skel; echo "wf new-script -type hunt skeleton: the emitted hunt harness fails its own tools"; exit 1; }
+	@out=$$(./wfdry --type hunt .check-skel/hunt.mjs --mode clean 2>/dev/null | grep 'agents:'); rm -rf .check-skel; \
+		echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'verify:read:' \
+			&& echo "wf new-script -type hunt skeleton: wfcheck clean, wfdry all modes, clean walks BOTH reproduction and reading" \
+			|| { echo "wf new-script -type hunt skeleton: clean did not walk both verify paths — a mixed-severity finder pair must send its blocker to a reproducer and its minor to a reader"; exit 1; }
 	@d=$$(mktemp -d) && mkdir -p $$d/t && git -C $$d/t init -q && echo a > $$d/t/a && git -C $$d/t add a \
 		&& git -C $$d/t -c user.email=x@x -c user.name=x commit -qm i \
 		&& ./wf init t -target $$d/t -dir $$d/ws -type review >/dev/null && (cd $$d/ws && $(CURDIR)/wf new-script s >/dev/null); \
@@ -130,7 +138,13 @@ check-tools: build
 		echo b >> $$d/t/a; \
 		if ./wfcheck --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
 			rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: EXIT 0 over a read-only run that wrote into its target"; exit 1; fi; \
-		rm -rf $$d; echo "review workspace: wfdry and wfcheck --owns-diff read the type from gate.json; a changed tree fails the read-only bar"
+		git -C $$d/t checkout -q -- a; git -C $$d/t worktree add -q $$d/t/.claude/worktrees/agent-1 -b w1 && echo x > $$d/t/.claude/worktrees/agent-1/x; \
+		if ./wfcheck --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
+			rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: EXIT 0 over a reproduction worktree — only a hunt may leave one"; exit 1; fi; \
+		./wfcheck -type hunt --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs > $$d/h.out \
+			|| { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: a reproduction worktree under .claude/worktrees/ FAILED the bar — it is the run's scratch"; exit 1; }; \
+		grep -q 'agent-1' $$d/h.out || { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: passed without naming the worktree it let through"; exit 1; }; \
+		rm -rf $$d; echo "review workspace: wfdry and wfcheck --owns-diff read the type from gate.json; a changed tree fails the read-only bar; a hunt may leave a named reproduction worktree, a review may not"
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null; \
 		c=$$(./wfdry .check-skel/skeleton.mjs --mode blockers 2>/dev/null | awk '/"carried": \[/{f=1} f{print} f&&/^   \],?$$/{exit}'); \
 		rm -rf .check-skel; \

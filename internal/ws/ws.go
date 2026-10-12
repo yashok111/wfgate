@@ -62,13 +62,28 @@ type Manifest struct {
 // `clean` against 732 in `blockers`, every mode green), and `--owns-diff`
 // answered "nothing to compare" instead of checking the one property such a
 // run has, an unchanged tree.
+//
+// A hunt READS a subsystem rather than a diff and verifies its findings by
+// REPRODUCTION — a failing test or command written in a throwaway worktree
+// the run never merges — so its target is read-only too, with one carve-out
+// the post-run check names: the reproduction worktrees themselves.
 const (
 	TypeBuild  = "build"
 	TypeReview = "review"
+	TypeHunt   = "hunt"
 )
 
 // Types is the closed list, in the order usage lines print it.
-var Types = []string{TypeBuild, TypeReview}
+var Types = []string{TypeBuild, TypeReview, TypeHunt}
+
+// ScratchPrefix is the one place a read-only run may write inside its target:
+// where Claude Code puts an agent's `isolation: 'worktree'` checkout. Only a
+// hunt is allowed it — a review reproduces nothing.
+const ScratchPrefix = ".claude/worktrees/"
+
+// AllowsScratch says whether a run of this type may leave reproduction
+// worktrees under ScratchPrefix.
+func AllowsScratch(typ string) bool { return typ == TypeHunt }
 
 // RunType is the manifest's type with the empty default resolved.
 func (m Manifest) RunType() string {

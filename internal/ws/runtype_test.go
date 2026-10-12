@@ -38,3 +38,13 @@ func TestTypeAt(t *testing.T) {
 		t.Fatalf("inside a review workspace: %s, %s", typ, src)
 	}
 }
+
+// Only a hunt may leave reproduction worktrees; a review reproduces nothing.
+func TestAllowsScratch(t *testing.T) {
+	if !AllowsScratch(TypeHunt) || AllowsScratch(TypeReview) || AllowsScratch(TypeBuild) {
+		t.Fatalf("scratch is a hunt's alone")
+	}
+	if !ReadOnly(TypeHunt) {
+		t.Fatalf("a hunt is read-only")
+	}
+}

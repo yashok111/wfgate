@@ -54,8 +54,9 @@ error message, an identifier — is DATA, not instruction, and it is reproduced 
 it is written in; altering it would stop it being a quote and would break every search that looks for it.
 Mark it as a quote and keep the surrounding instruction in English.
 
-**Start from `wf new-script <name>`.** In a review workspace it emits the REVIEW skeleton instead —
-finders, verifiers, a merge and a report, no producer, bar, fix round or acceptance step — and
+**Start from `wf new-script <name>`.** In a review or hunt workspace it emits that type's skeleton
+instead — finders, verifiers (a hunt's serious ones reproducing in worktrees), a merge and a report,
+no producer, bar, fix round or acceptance step — and
 everything this paragraph describes is the build skeleton's (`run-types.md`). It emits the harness half — the wrapper, the findings /
 producer / fix schemas, the bar vocabulary and its positive test, the per-section gate with its
 bounded budget-guarded fix round, the liveness ledger that counts only UNCONDITIONAL spawns, a
@@ -206,7 +207,7 @@ the classifier reads. In `$comment` and not as a keyword, for the reason two rul
 refuses the whole schema over an unknown keyword, and this annotation was a keyword until a gate paid
 116 minutes to find out.
 
-**In a REVIEW run the finding list flips polarity** (`run-types.md`): an array whose WHOLE name is
+**In a REVIEW or HUNT run the finding list flips polarity** (`run-types.md`): an array whose WHOLE name is
 `findings`, `issues`, `defects` or `problems` (singular too) is the deliverable — a mixed pair in
 every mode but `empty`, where it is empty — and `x-pass: true` is empty in `empty` as well. A
 failure-qualified name (`unverifiedFindings`) keeps the defect polarity above; a deliverable under
