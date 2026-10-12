@@ -761,3 +761,20 @@ rewritten them to `rtk git …`. `/usr/bin/git log -1 --oneline` and `/usr/bin/g
 so did `git rev-parse` and `make`, which rtk does not rewrite. `rtk rewrite '<cmd>'` shows what the hook
 does to a given spelling. The guard is Claude Code's (the August notes: "isolation now applies to file
 edits and Bash in every session"), the wrapper is the operator's, and a script sees neither.
+
+## M-46 — a review's happy path ran in no passing mode
+
+Measured 2026-10-12 on the two read-only gates on disk, both run before the run type existed:
+`~/projects/gates/photowatch-bughunt` (find → verify → critic → merge, no producer) and
+`photowatch-perf-review` (a report-only run). Dry-run under the build reading, the hunt script printed
+`clean: OK — 53 agents, 5 phases` against `blockers: OK — 732 agents, 12 phases` and `7/7 modes
+completed`; its schema section labelled every `verify:*`, `critic:r2/r3` and `merge` call "required on a
+FAILURE branch (no clean mode composed this label)", because the passing fixture emptied the finders'
+`findings` and nothing downstream of an empty list spawned. `dead-reviews` killed nobody — `find:*`
+matched no review segment — and said so in a WARN. `wfcheck --owns-diff` answered "NOT A COMPARISON: the
+script declares no ownership" and stopped, so the hunt's decision document built the unchanged-tree
+check by hand (a stamp file, `find -newer`, `git status`), and its section 11 recorded deleting the build
+skeleton's producers, bars, fix round and acceptance step. After the type: the same script run as a
+review reaches all 12 phases in `clean` at 494 agents; on the emitted review skeleton `blockers`
+confirmed both findings until pass-shaped booleans followed the fixture (a review has no `acceptfail`,
+the one mode in which the build rule made them false).

@@ -25,7 +25,10 @@ can drift apart from itself, and nothing here compares the copies.
 
 ## -1. Open a gate workspace, and change artifacts through `wf apply`
 
--1. **Open a gate workspace: `wf init <name> -target <repo>`.** Every artifact of the gate — the
+-1. **Open a gate workspace: `wf init <name> -target <repo> [-type review]`.** The type says what
+   the gated run does to its target — `build` writes it (the default), `review` only reads it — and
+   is chosen here, once, because the skeleton, the dry run and the post-run diff check all read it
+   from `gate.json` (`run-types.md`). Every artifact of the gate — the
    decision document, the context document the prompts read, the script, each round's findings — lives
    under its `artifacts/` and `rounds/`, and the workspace is its own git repository. It is NOT inside
    the repository under review: the run's own agents diff that tree against its HEAD, and the rule that
@@ -553,7 +556,9 @@ this asks the two questions a self-report cannot — a file the run wrote that n
 path a section owns that nobody wrote. On the run it was built for it found four unowned files beyond
 the ones the harness had named, and nothing in the other direction [M-34].
 It exits zero whatever it finds: every row is a question for a human, and a bar that failed a run on an
-incidental edit would be answered by switching it off.
+incidental edit would be answered by switching it off. In a READ-ONLY workspace (`wf init -type
+review`) the same command is a bar instead: the tree must be unchanged, untracked files included, and
+HEAD must still be the base — it exits 1 otherwise, and names the files (`run-types.md`).
 
 **Steps 4, 5 and the three checks in 7 are a list of QUESTIONS, not a dependency chain.** Every one
 of them READS the snapshot step 2 committed and none of them writes: `dup`, `stale`, `schema`,

@@ -339,10 +339,11 @@ instruction nothing downstream questions), **SEAMS** (every contract spanning tw
 ownership, lookup keys, enumerations, report fields — the defect class that compiles, passes every test
 and does nothing), and **CRITERION** (can the phase criterion be reached by the harness the acceptance
 agent is given, and observed rather than asserted). Vector 1's cost/read-amplification duty stays, but its
-mechanical half now belongs to `wfcheck`.
+mechanical half now belongs to `wfcheck`. A REVIEW run has no acceptance agent, and its third vector
+is COVERAGE & PRECISION instead — `run-types.md`, "Gating a review script".
 
 ## Rules
 
 - Collect findings, then ACT: a blocker from ANY reviewer means fix the script source and re-run the gate as a delta round (whatever vectors you ran — a fix in one can break another) before the `Workflow` call; advisory findings — MAJOR, MINOR or NOTE on the closed scale — are recorded and surfaced.
 - **Proportionality.** The full 3-reviewer gate is required only when the script can actually blow up: a data-driven fan-out over a dynamic N, a `while` / `budget` loop, multiple opus agents (or an opus agent inside a loop/fan-out), or parallel file mutation. For a small script with none of those (e.g. a fixed 2-3 agent `pipeline()`/`parallel()`, all sonnet/haiku, no loops, no file writes), a single reviewer — or the authoring agent's own careful re-read — suffices.
-- Skip the gate entirely only for a trivial throwaway script (a single `agent()` call, or a pure read-only locate/extract that mutates nothing) — `log()` or state that it was skipped and why.
+- Skip the gate entirely only for a trivial throwaway script (a single `agent()` call, or a pure read-only locate/extract that mutates nothing) — `log()` or state that it was skipped and why. A read-only FAN-OUT is not that: a review that spends a fleet and returns a report nobody can trust has failed as surely as a build that broke its tree, and it is gated in full with a review workspace (`run-types.md`).

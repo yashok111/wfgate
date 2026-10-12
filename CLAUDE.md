@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 31 — what each change answered and the command
+maintenance record, waves 2 to 32 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -86,8 +86,8 @@ judgement.
 
 ## Architecture
 
-Fifteen units, each one decision — nine Go packages under `internal/`, plus
-the TWO emitted templates, the dispatcher, the hooks, the skill and the agent.
+Sixteen units, each one decision — nine Go packages under `internal/`, plus
+the THREE emitted templates, the dispatcher, the hooks, the skill and the agent.
 Re-count them against `ls internal/` before quoting the number.
 
 - `internal/gitx` — the only place that runs `git`. Git is not an integration
@@ -149,6 +149,14 @@ Re-count them against `ls internal/` before quoting the number.
   drafts were already `wfcheck`-clean and cost a round each. `make check-tools`
   runs both tools over the emitted skeleton on every build, so the template
   cannot drift from the rules it instantiates.
+- `templates/review.mjs` — the same, for a READ-ONLY run (`wf init -type
+  review`): finders per lens and unit, a verifier per finding, a merge, a report
+  whose population line comes first. A second template rather than a mode of
+  the first because the two share almost no lines: the two read-only gates on
+  record each began by deleting the build skeleton's producers, bars, fix round
+  and acceptance step by hand. The run type lives in `gate.json` (`ws.Types`, a
+  closed list) and is read by `wf new-script`, `wfdry` and `wfcheck
+  --owns-diff`, each announcing where it read it — wave 32 in `WAVES.md`.
 - `cmd/wf` — the subcommand dispatcher, and `close.go`: the gate's own record
   and the pruning that record makes safe. ONE dispatch — the test harness used
   to keep a hand-copied switch, which went stale the first time a command was
@@ -176,10 +184,11 @@ Re-count them against `ls internal/` before quoting the number.
 - `scripts/` — no longer code: the two PreToolUse hooks and `install.sh`.
 - `skills/workflow-gate/` — the operating manual as a Claude Code skill: a thin
   SKILL.md front door and the gated spec split byte-exact into `references/`
-  (TEN of them: authoring, model-routing, interview, pre-flight-gate,
-  gate-harness, round-discipline, section-gate, cost-discipline, gate-checks and
-  measured — re-count them against `ls skills/workflow-gate/references/`, which
-  is also what `make check-docs` stages). The split
+  (ELEVEN of them: authoring, model-routing, run-types, interview,
+  pre-flight-gate, gate-harness, round-discipline, section-gate,
+  cost-discipline, gate-checks and measured — re-count them against
+  `ls skills/workflow-gate/references/`, which is also what `make check-docs`
+  stages). The split
   preserved the gated text verbatim — cutting at headings is packaging, not
   rewriting, so no re-gate was owed. `embed.go` at
   the module root embeds the references into the binary; `wf docs guide`
@@ -322,7 +331,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 31 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 32 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -364,6 +373,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 29 | Claude Code 2.1.289, read against the plugin | A folder-marketplace plugin is read IN PLACE, not from the cache; `wf docs` compared a copy no session loaded; install.sh no longer reinstalls over in-place drift; `plugin validate` on a folder had skipped the plugin, `make check-plugin` never affected |
 | 30 | Claude Code 2.1.290 to 2.1.294, read against the plugin | The `Agent` tool's `effort` made "gate reviewers carry no effort knob" stale; reviewers pinned at `xhigh`, the level they had inherited; the "Large workflow" warning knobs; Haiku 5.5 left to a measurement |
 | 31 | The owner's question after wave 30: which roles go to haiku | The haiku test in `model-routing.md` (output checked downstream, a named slice, a local answer); code producers and gate reviewers stay sonnet; vector 2 files a haiku role that fails it |
+| 32 | The owner's ask: the plugin assumed every run writes code | Run types — `wf init -type review`; the review skeleton; `wfdry` modes, fixture polarity and `dead-reviews` per type; `--owns-diff` as a bar for a read-only run; `run-types.md` |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own

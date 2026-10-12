@@ -106,6 +106,26 @@ check-tools: build
 		&& ./wfdry .check-skel/skeleton.mjs --quiet >/dev/null \
 		&& rm -rf .check-skel \
 		&& echo "wf new-script skeleton: wfcheck clean and wfdry all modes"
+	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -type review -target . -o .check-skel/review.mjs >/dev/null \
+		&& ./wfcheck -root . .check-skel/review.mjs >/dev/null \
+		&& ./wfdry --type review .check-skel/review.mjs --quiet >/dev/null \
+		&& echo "wf new-script -type review skeleton: wfcheck clean and wfdry all review modes" \
+		|| { rm -rf .check-skel; echo "wf new-script -type review skeleton: the emitted review harness fails its own tools"; exit 1; }
+	@./wfdry --type review .check-skel/review.mjs --mode clean 2>/dev/null | grep -q 'phases: Find | Verify | Merge' \
+		&& { rm -rf .check-skel; echo "wf new-script -type review skeleton: clean walks find → verify → merge"; } \
+		|| { rm -rf .check-skel; echo "wf new-script -type review skeleton: clean stopped short of Verify/Merge — the finders came back empty on the happy path, which is the build reading of a findings array"; exit 1; }
+	@d=$$(mktemp -d) && mkdir -p $$d/t && git -C $$d/t init -q && echo a > $$d/t/a && git -C $$d/t add a \
+		&& git -C $$d/t -c user.email=x@x -c user.name=x commit -qm i \
+		&& ./wf init t -target $$d/t -dir $$d/ws -type review >/dev/null && (cd $$d/ws && $(CURDIR)/wf new-script s >/dev/null); \
+		out=$$(./wfdry $$d/ws/artifacts/s.mjs --quiet 2>&1); \
+		echo "$$out" | grep -q '^type review — from gate.json' && echo "$$out" | grep -q '=== empty:' \
+			|| { rm -rf $$d; echo "wfdry in a review workspace: the type was not read from gate.json, or not announced — a review dry-run under the build rules walks its happy path in no passing mode"; exit 1; }; \
+		./wfcheck --owns-diff HEAD -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null \
+			|| { rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: exit non-zero over an UNCHANGED tree"; exit 1; }; \
+		echo b >> $$d/t/a; \
+		if ./wfcheck --owns-diff HEAD -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
+			rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: EXIT 0 over a read-only run that wrote into its target"; exit 1; fi; \
+		rm -rf $$d; echo "review workspace: wfdry and wfcheck --owns-diff read the type from gate.json; a changed tree fails the read-only bar"
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null; \
 		c=$$(./wfdry .check-skel/skeleton.mjs --mode blockers 2>/dev/null | awk '/"carried": \[/{f=1} f{print} f&&/^   \],?$$/{exit}'); \
 		rm -rf .check-skel; \
@@ -198,7 +218,7 @@ check-tools: build
 
 # The repository's own manual is a gate corpus like any other, and the two
 # checks that read prose had never been run over it. Measured 2026-08-27 over
-# the shipped set (README + SKILL + the references, six then and ten now): `wf check rules`
+# the shipped set (README + SKILL + the references, six then and eleven now): `wf check rules`
 # reported 2 conflict(s) — [R2] and [R3] marked on POINTERS inside one README
 # command cell, which is the class the ninth wave banked a rule against,
 # standing in the manual that ships the check. The rules half is a BAR because
@@ -219,7 +239,7 @@ check-tools: build
 # the second half, because a corpus can narrow without losing a whole file.
 check-docs: build
 	@src="README.md skills/workflow-gate/SKILL.md $$(ls skills/workflow-gate/references/*.md)"; \
-	want=12; floor=9; \
+	want=13; floor=9; \
 	d=$$(mktemp -d); \
 	( cd $$d && $(CURDIR)/wf init docs -target $(CURDIR) >/dev/null ) || { echo "check-docs: could not build the scratch workspace"; rm -rf $$d; exit 1; }; \
 	cp $$src $$d/docs/artifacts/ || { echo "check-docs: could not stage the manual"; rm -rf $$d; exit 1; }; \

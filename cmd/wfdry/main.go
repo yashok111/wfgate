@@ -25,6 +25,7 @@ import (
 	"git.sumka.site/yakov/wfgate/internal/check"
 	"git.sumka.site/yakov/wfgate/internal/cli"
 	"git.sumka.site/yakov/wfgate/internal/wfdry"
+	"git.sumka.site/yakov/wfgate/internal/ws"
 )
 
 var version = "devel"
@@ -49,13 +50,15 @@ func main() {
 	quiet := flag.Bool("quiet", false, "verdicts only")
 	promptDiff := flag.String("prompt-diff", "", "two agent labels, `a,b`: print the sentences one prompt carries and the other does not")
 	fixture := flag.String("fixture", "", "comma-separated agent labels: print the report the stub returned to each, per mode")
+	typ := flag.String("type", "", "the gate's run type ("+strings.Join(ws.Types, "|")+"); default: the type of the workspace holding the script, else build")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `wfdry — dynamic dry run over a Workflow orchestration script
 
-usage: wfdry <script.mjs> [--mode M] [--dead a,b] [--budget N] [--args JSON] [--quiet] [--prompt-diff a,b] [--fixture a,b]
-modes: %s
-`, strings.Join(wfdry.Modes, ", "))
+usage: wfdry <script.mjs> [--type T] [--mode M] [--dead a,b] [--budget N] [--args JSON] [--quiet] [--prompt-diff a,b] [--fixture a,b]
+modes (build): %s
+modes (read-only types): %s
+`, strings.Join(wfdry.Modes, ", "), strings.Join(wfdry.ModesFor(ws.TypeReview), ", "))
 	}
 	pos, perr := cli.ParseMixed(flag.CommandLine, os.Args[1:])
 	if perr != nil {
@@ -71,11 +74,30 @@ modes: %s
 	}
 	path := pos[0]
 
-	modes := wfdry.Modes
+	// The type decides the mode list and which way a findings array points, so
+	// a type this run INFERRED is announced with the flag that overrides it —
+	// a review script dry-run under the build rules walks its happy path in no
+	// passing mode, and nothing else in the output would say why. Silent only
+	// when there was nothing to infer from: no workspace, the historical
+	// default.
+	runType := *typ
+	if runType == "" {
+		t, src := ws.TypeAt(path)
+		runType = t
+		if strings.HasPrefix(src, "gate.json") {
+			fmt.Printf("type %s — from %s; --type overrides\n", t, src)
+		}
+	}
+	if err := ws.ValidType(runType); err != nil {
+		fmt.Fprintln(os.Stderr, "wfdry:", err)
+		os.Exit(2)
+	}
+
+	modes := wfdry.ModesFor(runType)
 	if *mode != "" {
 		modes = []string{*mode}
 	}
-	o := wfdry.Options{Args: *args}
+	o := wfdry.Options{Args: *args, Type: runType}
 	if *deadCSV != "" {
 		o.Dead = strings.Split(*deadCSV, ",")
 	}

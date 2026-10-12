@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	wfgate "git.sumka.site/yakov/wfgate"
+	"git.sumka.site/yakov/wfgate/internal/ws"
 )
 
 // cmdNewScript emits the harness half of an orchestration script.
@@ -29,16 +30,25 @@ import (
 // unconditional spawns, the read-only final phase, the budget-guarded fix
 // round, the positive bar question — each of which is a defect this project
 // paid for once.
+// templateFor maps a run type to its embedded skeleton. A type with no entry
+// is a type the closed list in internal/ws grew without a skeleton, which the
+// test over every ws.Types member refuses.
+var templateFor = map[string]string{
+	ws.TypeBuild:  "templates/script.mjs",
+	ws.TypeReview: "templates/review.mjs",
+}
+
 func cmdNewScript(args []string) error {
 	fs := flag.NewFlagSet("new-script", flag.ExitOnError)
 	target := fs.String("target", "", "the repository the script will run in (default: the workspace's target, else the working directory)")
 	out := fs.String("o", "", "write here (default: <name>.mjs beside you)")
+	typ := fs.String("type", "", "the run type whose skeleton to emit ("+strings.Join(ws.Types, "|")+"; default: the workspace's type, else build)")
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: wf new-script <name> [-target REPO] [-o FILE]")
+		return fmt.Errorf("usage: wf new-script <name> [-target REPO] [-o FILE] [-type %s]", strings.Join(ws.Types, "|"))
 	}
 	name := pos[0]
 	if strings.ContainsAny(name, `/\`+"\x00") || name == "." || name == ".." {
@@ -77,7 +87,23 @@ func cmdNewScript(args []string) error {
 		return fmt.Errorf("%s exists — name another file with -o; a skeleton must never land on an authored script", dst)
 	}
 
-	b, err := wfgate.Templates.ReadFile("templates/script.mjs")
+	// One skeleton per run type: a review's harness has no producer, bar, fix
+	// round or acceptance step, and two real read-only gates each began by
+	// deleting those from the build skeleton by hand and writing down the
+	// deviation. A type taken from the workspace is announced with the flag
+	// that overrides it, because the two skeletons share almost no lines.
+	runType := *typ
+	if runType == "" {
+		runType = ws.TypeBuild
+		if w, err := open(); err == nil {
+			runType = w.M.RunType()
+			fmt.Printf("type %s — from %s; -type overrides\n", runType, filepath.Join(w.Root, ws.ManifestName))
+		}
+	}
+	if err := ws.ValidType(runType); err != nil {
+		return err
+	}
+	b, err := wfgate.Templates.ReadFile(templateFor[runType])
 	if err != nil {
 		return err
 	}
@@ -120,7 +146,12 @@ func cmdNewScript(args []string) error {
 	fmt.Printf("  the harness is complete and passes both tools as it stands; the sections are yours\n")
 	fmt.Printf("  read `wf docs authoring` before the first edit, then:\n")
 	fmt.Printf("    wfcheck -root %s %s\n", repo, dst)
-	fmt.Printf("    wfdry %s\n", dst)
+	if ws.ReadOnly(runType) {
+		fmt.Printf("    wfdry --type %s %s\n", runType, dst)
+		fmt.Printf("  after the run, from the workspace: wfcheck --owns-diff <the commit the run started from> %s — a read-only run must leave the tree unchanged\n", dst)
+	} else {
+		fmt.Printf("    wfdry %s\n", dst)
+	}
 	// A file under `artifacts/` is not yet an artifact: it is untracked, and
 	// `wf verify` says so. `wf add` adopts a draft already in place, which is
 	// the whole reason the skeleton may be written there at all.

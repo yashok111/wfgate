@@ -33,6 +33,14 @@ type Manifest struct {
 	Created string `json:"created"` // RFC3339
 	Round   int    `json:"round"`   // the round currently open; 0 before the first
 
+	// Type is what the gated run DOES to its target, set once by `wf init
+	// -type` and read by every command whose rules depend on it — the emitted
+	// script, the dry run's fixture polarity, the post-run diff check. Empty
+	// means build: every workspace opened before the field existed was a
+	// build gate, so the old manifests read correctly without a migration.
+	// RunType is the accessor; nothing reads the field raw.
+	Type string `json:"type,omitempty"`
+
 	// ClosedEarly records a gate closed AGAINST the stop rule — its last
 	// reviewer round produced a BLOCKER and the target's owner chose to build
 	// anyway. It is the one fact about a gate's end that git cannot derive:
@@ -42,6 +50,61 @@ type Manifest struct {
 	// record said nothing, so a reader of the corpus could not tell the two
 	// apart without re-reading round 4's ledger by hand.
 	ClosedEarly *EarlyClose `json:"closedEarly,omitempty"`
+}
+
+// The run types. A build run WRITES its target — producers own files, bars
+// are run, a fix round may follow; a review run READS a diff and returns
+// findings, and its target must come out of the run byte-identical. The
+// toolchain was build-shaped until the type existed, and it cost the read-only
+// gates on record in two silent ways: the dry run's passing fixture handed
+// every finder an EMPTY findings array, so a find → verify → merge script's
+// happy path ran in no passing mode at all (one real hunt: 53 agents in
+// `clean` against 732 in `blockers`, every mode green), and `--owns-diff`
+// answered "nothing to compare" instead of checking the one property such a
+// run has, an unchanged tree.
+const (
+	TypeBuild  = "build"
+	TypeReview = "review"
+)
+
+// Types is the closed list, in the order usage lines print it.
+var Types = []string{TypeBuild, TypeReview}
+
+// RunType is the manifest's type with the empty default resolved.
+func (m Manifest) RunType() string {
+	if m.Type == "" {
+		return TypeBuild
+	}
+	return m.Type
+}
+
+// ReadOnly says whether a run of this type may change its target. Every type
+// but build is read-only; a type that writes would be a second build.
+func ReadOnly(typ string) bool { return typ != TypeBuild }
+
+// ValidType refuses a type outside the closed list, naming the list — a
+// misspelt type silently defaulting to build would gate a review run with the
+// build rules, which is the failure the field exists to end.
+func ValidType(typ string) error {
+	for _, t := range Types {
+		if typ == t {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown run type %q — one of: %s", typ, strings.Join(Types, ", "))
+}
+
+// TypeAt resolves the run type for a file the two script-gate tools were
+// handed: the type of the workspace that holds it, found by walking up the way
+// Find does, or build when the file lies in no workspace. The second value
+// says WHERE the answer came from, because the tools print it — an inferred
+// setting is announced with the flag that overrides it.
+func TypeAt(path string) (typ, source string) {
+	w, err := Find(filepath.Dir(path))
+	if err != nil {
+		return TypeBuild, "default — no gate.json above the script"
+	}
+	return w.M.RunType(), "gate.json at " + w.Root
 }
 
 // EarlyClose is the owner's call, banked: which round it overrode, how many
@@ -99,7 +162,13 @@ func open(root string) (*Workspace, error) {
 // one commit. The initial commit matters — every later command compares against
 // a parent, and a workspace whose first state was never committed has no
 // baseline to diff a first round against.
-func Create(root, name, target string, now time.Time) (*Workspace, error) {
+func Create(root, name, target, typ string, now time.Time) (*Workspace, error) {
+	if err := ValidType(typ); err != nil {
+		return nil, err
+	}
+	if typ == TypeBuild {
+		typ = "" // the default is not written, so a build manifest reads as it always has
+	}
 	if _, err := os.Stat(filepath.Join(root, ManifestName)); err == nil {
 		return nil, fmt.Errorf("%s already holds a workspace", root)
 	}
@@ -119,7 +188,7 @@ func Create(root, name, target string, now time.Time) (*Workspace, error) {
 	}
 	w := &Workspace{
 		Root: root,
-		M:    Manifest{Name: name, Target: abs, Created: now.UTC().Format(time.RFC3339), Round: 0},
+		M:    Manifest{Name: name, Target: abs, Created: now.UTC().Format(time.RFC3339), Round: 0, Type: typ},
 		Git:  gitx.Repo{Dir: root},
 	}
 	if err := w.Save(); err != nil {

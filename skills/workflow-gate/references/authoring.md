@@ -54,7 +54,9 @@ error message, an identifier — is DATA, not instruction, and it is reproduced 
 it is written in; altering it would stop it being a quote and would break every search that looks for it.
 Mark it as a quote and keep the surrounding instruction in English.
 
-**Start from `wf new-script <name>`.** It emits the harness half — the wrapper, the findings /
+**Start from `wf new-script <name>`.** In a review workspace it emits the REVIEW skeleton instead —
+finders, verifiers, a merge and a report, no producer, bar, fix round or acceptance step — and
+everything this paragraph describes is the build skeleton's (`run-types.md`). It emits the harness half — the wrapper, the findings /
 producer / fix schemas, the bar vocabulary and its positive test, the per-section gate with its
 bounded budget-guarded fix round, the liveness ledger that counts only UNCONDITIONAL spawns, a
 read-only final phase and a tally whose `green` is a conjunction of separately reported terms —

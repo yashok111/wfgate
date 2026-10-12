@@ -26,7 +26,9 @@ FIRST.
    full, and then WAIT. Two questions never share a round if one depends on the other; a
    question hanging on an answer still open belongs to the next round. Answers push the frontier
    outward and the next round is recomputed, never pre-written. This is not a `Workflow` and it
-   spawns no fan-out; it is the operator's own session asking and the operator answering.
+   spawns no fan-out; it is the operator's own session asking and the operator answering. A REVIEW gate's tree
+   starts from different questions — the diff, the lenses, the report's consumer — and
+   `run-types.md` names its first frontier.
 
    **A round is asked through the `AskUserQuestion` tool, never as a list in a message.** Each
    question is one entry, its candidate answers are the options, the recommended one goes FIRST and

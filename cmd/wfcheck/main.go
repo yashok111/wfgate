@@ -17,9 +17,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"git.sumka.site/yakov/wfgate/internal/cli"
 	"git.sumka.site/yakov/wfgate/internal/wfcheck"
+	"git.sumka.site/yakov/wfgate/internal/ws"
 )
 
 // version is stamped by the build. A run against a stale installed binary looks
@@ -31,7 +33,8 @@ func main() {
 	// Empty, not "." — inside a gate workspace the right answer is the
 	// workspace's target, and the working directory is the wrong tree.
 	root := flag.String("root", "", "repository the script will run in (default: the gate workspace's target, else the working directory)")
-	ownsDiff := flag.String("owns-diff", "", "AFTER a run: compare the script's ownership map against <ref>..WORKING TREE of -root, both directions")
+	ownsDiff := flag.String("owns-diff", "", "AFTER a run: compare the script's ownership map against <ref>..WORKING TREE of -root, both directions; for a read-only run type, assert the range is EMPTY")
+	typ := flag.String("type", "", "the gate's run type for --owns-diff ("+strings.Join(ws.Types, "|")+"); default: the type of the workspace holding the script, else build")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `wfcheck — static check over a Workflow orchestration script
@@ -40,7 +43,7 @@ usage:
   wfcheck [-root <dir>] <script.mjs>      (-root defaults to the gate
                                            workspace's target when run inside one)
   wfcheck --freeze <script.mjs>
-  wfcheck [-root <dir>] --owns-diff <ref> <script.mjs>
+  wfcheck [-root <dir>] [-type T] --owns-diff <ref> <script.mjs>
 `)
 	}
 	pos, perr := cli.ParseMixed(flag.CommandLine, os.Args[1:])
@@ -68,6 +71,29 @@ usage:
 	}
 
 	if *ownsDiff != "" {
+		runType := *typ
+		if runType == "" {
+			t, src := ws.TypeAt(path)
+			runType = t
+			if strings.HasPrefix(src, "gate.json") {
+				fmt.Printf("type %s — from %s; -type overrides\n", t, src)
+			}
+		}
+		if err := ws.ValidType(runType); err != nil {
+			fmt.Fprintln(os.Stderr, "wfcheck:", err)
+			os.Exit(2)
+		}
+		if ws.ReadOnly(runType) {
+			clean, err := printUnchanged(path, *root, *ownsDiff, runType)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "wfcheck:", err)
+				os.Exit(1)
+			}
+			if !clean {
+				os.Exit(1)
+			}
+			return
+		}
 		if err := printOwnsDiff(path, *root, *ownsDiff); err != nil {
 			fmt.Fprintln(os.Stderr, "wfcheck:", err)
 			os.Exit(1)
@@ -142,6 +168,41 @@ func printOwnsDiff(path, root, base string) error {
 	// tree, and nothing records what was dirty at the base.
 	fmt.Println("\nnote: the range is base..WORKING TREE, so anything already uncommitted when the run started is counted as the run's")
 	return nil
+}
+
+// printUnchanged is --owns-diff for a read-only run, and unlike the build
+// audit it is a BAR: such a run has exactly one property the tree can show — it
+// is unchanged — so a changed file is not a question for a human, it is the
+// run having broken the promise its type makes. Before the type existed the
+// audit answered "NOT A COMPARISON: the script declares no ownership" for every
+// read-only script and stopped there, so the one check the run needed was hand
+// built (a stamp file, `find -newer`, `git status`) on the gate that had one.
+func printUnchanged(path, root, base, typ string) (bool, error) {
+	rep, err := wfcheck.OwnsDiff(path, root, base)
+	if err != nil {
+		return false, err
+	}
+	fmt.Printf("=== %s run: %s..%s must be unchanged ===\n", typ, rep.Base, rep.Head)
+	if rep.RootNote != "" {
+		fmt.Printf("%s (override with -root)\n", rep.RootNote)
+	}
+	clean := true
+	if rep.HeadMoved {
+		clean = false
+		fmt.Printf("HEAD MOVED: HEAD is no longer %s — a read-only run moved a ref, or the base is not the commit the run started from\n", rep.Base)
+	}
+	if rep.Changed > 0 {
+		clean = false
+		fmt.Printf("CHANGED %d file(s) — a read-only run wrote into its target:\n", rep.Changed)
+		for _, p := range rep.Unowned {
+			fmt.Println("  " + p)
+		}
+	}
+	if clean {
+		fmt.Println("unchanged: HEAD is the base and the working tree matches it, untracked files included")
+	}
+	fmt.Println("note: the range is base..WORKING TREE, so anything already uncommitted when the run started is counted as the run's")
+	return clean, nil
 }
 
 // freezeScript copies the script under .wf/gate/ named by its own hash, so the

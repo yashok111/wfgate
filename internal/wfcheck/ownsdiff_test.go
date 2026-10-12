@@ -126,6 +126,11 @@ func TestOwnsDiffBothDirections(t *testing.T) {
 	if len(rep.Untouched) != 1 {
 		t.Errorf("untouched = %v, want exactly the one above", rep.Untouched)
 	}
+	// Uncommitted work leaves HEAD where it was; a read-only run's bar reads
+	// this field and must not fail a tree whose only change is in the index.
+	if rep.HeadMoved {
+		t.Errorf("HEAD did not move, the run left its work uncommitted — HeadMoved must be false")
+	}
 	if rep.Gates != 1 || rep.OwnedFiles != 3 {
 		t.Errorf("population misread: %d gate(s), %d owned file(s)", rep.Gates, rep.OwnedFiles)
 	}
@@ -156,6 +161,9 @@ func TestOwnsDiffSeesCommittedWork(t *testing.T) {
 	}
 	if !hasPath(rep.Unowned, "internal/domain/main_test.go") {
 		t.Errorf("a committed new file no section owns is not reported: %v", rep.Unowned)
+	}
+	if !rep.HeadMoved {
+		t.Errorf("the run committed, so HEAD is no longer the base — HeadMoved must say so")
 	}
 }
 

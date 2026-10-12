@@ -498,15 +498,15 @@ func TestPickEnum_recordsAVocabularyItCannotRead(t *testing.T) {
 // And the choice must reach the synthesised object, not merely exist.
 func TestValue_honoursADeclaredEnum(t *testing.T) {
 	schema := map[string]any{"type": "string", "enum": []any{"blocker", "major", "minor", "note"}}
-	if got := value("severity", schema, "blockers", "review:gate1", 0, 0, nil); got != "blocker" {
+	if got := value("severity", schema, "blockers", "review:gate1", false, 0, 0, nil); got != "blocker" {
 		t.Fatalf("a failing mode synthesised %q, so no `severity === 'blocker'` branch is reachable", got)
 	}
-	if got := value("severity", schema, "clean", "review:gate1", 0, 0, nil); got != "minor" {
+	if got := value("severity", schema, "clean", "review:gate1", false, 0, 0, nil); got != "minor" {
 		t.Fatalf("the clean mode synthesised %q, which walks the failure path of every gate", got)
 	}
 	// A string with no enum keeps the old, deliberately unmatchable placeholder.
 	plain := map[string]any{"type": "string"}
-	if got, _ := value("summary", plain, "clean", "review:gate1", 0, 0, nil).(string); got == "" || got[0] != '<' {
+	if got, _ := value("summary", plain, "clean", "review:gate1", false, 0, 0, nil).(string); got == "" || got[0] != '<' {
 		t.Fatalf("a plain string stopped being the recorded placeholder: %q", got)
 	}
 }
@@ -733,7 +733,7 @@ func TestCollapseAgainstTheHappyPath(t *testing.T) {
 		{Mode: "no-args", Spawned: 1},
 		{Mode: "dead-reviews", Spawned: 0},
 	}
-	noteCollapse(rs)
+	noteCollapse(rs, false)
 
 	if len(rs[0].Violations) != 0 {
 		t.Fatalf("the baseline cannot collapse against itself: %v", rs[0].Violations)
@@ -780,7 +780,7 @@ func TestCollapseBaselineIsTheHappyPathNotTheWidest(t *testing.T) {
 		{Mode: "clean", Spawned: 6},
 		{Mode: "unfixed", Spawned: 4},
 	}
-	noteCollapse(rs)
+	noteCollapse(rs, false)
 	// 4 against a `clean` of 6 is above half and silent; against a widest of 10
 	// it would have fired.
 	if len(rs[2].Violations) != 0 {
@@ -798,7 +798,7 @@ func TestCollapseNamesTheBaselineItActuallyUsed(t *testing.T) {
 	// Phases on both, so only the absent-baseline note is under test here: a
 	// phaseless baseline raises a second, different absence.
 	rs := []Result{{Mode: "unfixed", Spawned: 2, Phases: []string{"P"}}, {Mode: "blockers", Spawned: 8, Phases: []string{"P"}}}
-	noteCollapse(rs)
+	noteCollapse(rs, false)
 	if len(rs[0].Violations) != 1 || !strings.Contains(rs[0].Violations[0], "in `blockers`") {
 		t.Fatalf("want the stand-in baseline named: %v", rs[0].Violations)
 	}
@@ -817,7 +817,7 @@ func TestCollapseSaysItComparedAgainstNothing(t *testing.T) {
 	// One phase, as the motivating report had: without it the separate
 	// empty-baseline note fires too, which is a different absence.
 	rs := []Result{{Mode: "blockers", Spawned: 1, Phases: []string{"P"}}}
-	noteCollapse(rs)
+	noteCollapse(rs, false)
 	if len(rs[0].Violations) != 0 {
 		t.Fatalf("one mode cannot collapse against itself: %v", rs[0].Violations)
 	}
@@ -838,7 +838,7 @@ func TestTheStandInBaselineCarriesThePhaseSet(t *testing.T) {
 		{Mode: "blockers", Spawned: 4, Phases: []string{"A", "B"}},
 		{Mode: "unfixed", Spawned: 4, Phases: []string{"A"}},
 	}
-	noteCollapse(rs)
+	noteCollapse(rs, false)
 	got := strings.Join(rs[1].Violations, " ")
 	if !strings.Contains(got, "never reached") || !strings.Contains(got, "`B`") {
 		t.Fatalf("with no `clean` mode the widest one stands in for the PHASE set too: %v", rs[1].Violations)
@@ -852,7 +852,7 @@ func TestTheStandInBaselineCarriesThePhaseSet(t *testing.T) {
 // empty set — the population-of-zero class, in the check added to close one.
 func TestAPhaselessBaselineIsNotAPass(t *testing.T) {
 	rs := []Result{{Mode: "clean", Spawned: 2}, {Mode: "blockers", Spawned: 2}}
-	noteCollapse(rs)
+	noteCollapse(rs, false)
 	for _, r := range rs {
 		if !strings.Contains(strings.Join(r.Notes, " "), "reached NO phase") {
 			t.Fatalf("%s: an empty baseline must say so: %v", r.Mode, r.Notes)
@@ -866,7 +866,7 @@ func TestAPhaselessBaselineIsNotAPass(t *testing.T) {
 // that used to state it survived every mutation.
 func TestCollapseIsSilentWhenNothingSpawnedAnywhere(t *testing.T) {
 	rs := []Result{{Mode: "clean"}, {Mode: "blockers"}}
-	noteCollapse(rs)
+	noteCollapse(rs, false)
 	for _, r := range rs {
 		if len(r.Violations) != 0 {
 			t.Fatalf("%s: %v", r.Mode, r.Violations)

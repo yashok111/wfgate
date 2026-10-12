@@ -176,12 +176,18 @@ func cmdInit(args []string) error {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	target := fs.String("target", "", "path of the git repository under review (required)")
 	dir := fs.String("dir", "", "workspace directory (default ./<name>)")
+	typ := fs.String("type", ws.TypeBuild, "what the gated run does to its target: "+strings.Join(ws.Types, "|"))
 	pos, err := parseMixed(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 || *target == "" {
-		return fmt.Errorf("usage: wf init <name> -target <repo> [-dir <path>]")
+		return fmt.Errorf("usage: wf init <name> -target <repo> [-dir <path>] [-type %s]", strings.Join(ws.Types, "|"))
+	}
+	// Refused before anything is written: a bad type must not leave a
+	// half-made directory behind for the retry to trip over.
+	if err := ws.ValidType(*typ); err != nil {
+		return err
 	}
 	name := pos[0]
 	root := *dir
@@ -205,12 +211,12 @@ func cmdInit(args []string) error {
 			return err
 		}
 	}
-	w, err := ws.Create(root, name, *target, time.Now())
+	w, err := ws.Create(root, name, *target, *typ, time.Now())
 	if err != nil {
 		return err
 	}
 	head, _ := w.Git.Head()
-	fmt.Printf("workspace %s\n  root   %s\n  target %s\n  head   %s\n", name, w.Root, w.M.Target, short(head))
+	fmt.Printf("workspace %s\n  root   %s\n  target %s\n  type   %s\n  head   %s\n", name, w.Root, w.M.Target, w.M.RunType(), short(head))
 	fmt.Printf("  gate-checks.md written — hand it to every reviewer\n")
 	fmt.Printf("\nput the gate's artifacts under %s/ and run `wf apply`.\n", filepath.Join(root, "artifacts"))
 	return nil
@@ -222,8 +228,8 @@ func cmdStatus(args []string) error {
 		return err
 	}
 	head, _ := w.Git.Head()
-	fmt.Printf("workspace %s\n  root   %s\n  target %s\n  round  %d\n  head   %s\n  tool   %s\n",
-		w.M.Name, w.Root, w.M.Target, w.M.Round, short(head), toolID())
+	fmt.Printf("workspace %s\n  root   %s\n  target %s\n  type   %s\n  round  %d\n  head   %s\n  tool   %s\n",
+		w.M.Name, w.Root, w.M.Target, w.M.RunType(), w.M.Round, short(head), toolID())
 	arts, err := w.ArtifactList()
 	if err != nil {
 		return err
@@ -4614,6 +4620,7 @@ var docNames = map[string]string{
 	"authoring":    "authoring.md",
 	"routing":      "model-routing.md",
 	"interview":    "interview.md",
+	"types":        "run-types.md",
 	"preflight":    "pre-flight-gate.md",
 	"harness":      "gate-harness.md",
 	"rounds":       "round-discipline.md",
@@ -4633,7 +4640,7 @@ var docNames = map[string]string{
 // 1108-line file with no headings until 2026-08-30; splitting it changed which
 // text an activity loads and not which text exists, so the guide is the same
 // manual it was.
-var guideOrder = []string{"authoring", "routing", "interview", "preflight", "harness", "rounds", "section-gate", "cost"}
+var guideOrder = []string{"authoring", "routing", "types", "interview", "preflight", "harness", "rounds", "section-gate", "cost"}
 
 // manualDrift compares the references EMBEDDED in this binary with the copy a
 // session actually loads and returns the files that differ, plus the folder

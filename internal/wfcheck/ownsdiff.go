@@ -38,8 +38,12 @@ type OwnsDiffReport struct {
 	// could not read the section that does", and printing the first while
 	// meaning the second is this project's most repeated defect: an absent
 	// measurement in the register of a measured one.
-	Partial   bool
-	Unowned   []string // the run wrote it, no section declared it
+	Partial bool
+	Unowned []string // the run wrote it, no section declared it
+	// HeadMoved says HEAD is no longer the base. A build commits, so for it this
+	// is the expected state and nothing reads it; a read-only run must not move
+	// a ref, and a commit followed by its revert leaves a diff of nothing.
+	HeadMoved bool
 	Untouched []string // a section declared it, the run never wrote it
 }
 
@@ -113,6 +117,11 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 		return rep, fmt.Errorf("base %q does not resolve in %s — pass the commit the run STARTED from (the producers' \"HEAD before this run\"): %w", base, root, err)
 	}
 	rep.Base, rep.Head = baseSha, "worktree"
+	if full, err := repo.Run("rev-parse", base+"^{commit}"); err == nil {
+		if head, err := repo.Run("rev-parse", "HEAD"); err == nil {
+			rep.HeadMoved = strings.TrimSpace(head) != strings.TrimSpace(full)
+		}
+	}
 
 	// The WORKING TREE, not HEAD, and `--no-optional-locks` on every call.
 	//
