@@ -158,3 +158,35 @@ func TestDocsIndexListsEveryName(t *testing.T) {
 		}
 	}
 }
+
+// The audit skeleton's citation form is the one `wf check cite` reads: a
+// verified-claims line from its report, saved into the workspace, resolves and
+// its anchor is found — and an anchor NOT on the cited line is named.
+func TestAuditCitationsAreCheckable(t *testing.T) {
+	setGitEnv(t)
+	tmp := t.TempDir()
+	target := filepath.Join(tmp, "target")
+	write(t, filepath.Join(target, "pkg", "store.go"), "package pkg\n\nfunc Save() error {\n\treturn nil\n}\n")
+	gitIn(t, target, "init", "-q", "-b", "main")
+	gitIn(t, target, "add", "-A")
+	gitIn(t, target, "commit", "-q", "-m", "initial")
+	a := filepath.Join(tmp, "a")
+	_, err := runWF(t, tmp, "init", "a", "-target", target, "-dir", a, "-type", "audit")
+	noErr(t, err, "init -type audit")
+	out, err := runWF(t, a, "new-script", "ask")
+	noErr(t, err, "new-script")
+	mustContain(t, out, "type audit — from", "wf check cite -at")
+	b, _ := os.ReadFile(filepath.Join(a, "artifacts", "ask.mjs"))
+	if !strings.Contains(string(b), "path.ext:LINE#anchor") {
+		t.Fatalf("an audit workspace must get the audit skeleton")
+	}
+	// The exact line shape the skeleton's report prints for a verified claim.
+	write(t, filepath.Join(tmp, "answer.md"), "# Audit\n\n## Verified claims\n\n- C001 [holds] Save returns no error — pkg/store.go:3-4#Save\n- C002 [violated] wrong anchor — pkg/store.go:4#Save\n")
+	_, err = runWF(t, a, "add", filepath.Join(tmp, "answer.md"))
+	noErr(t, err, "add")
+	out, _ = runWF(t, a, "check", "cite", "-require-anchor")
+	mustContain(t, out, "store.go:4")
+	if strings.Contains(out, "store.go:3-4") {
+		t.Fatalf("a correct citation from the report's line shape must pass `check cite`:\n%s", out)
+	}
+}

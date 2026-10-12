@@ -25,8 +25,8 @@ can drift apart from itself, and nothing here compares the copies.
 
 ## -1. Open a gate workspace, and change artifacts through `wf apply`
 
--1. **Open a gate workspace: `wf init <name> -target <repo> [-type review|hunt]`.** The type says what
-   the gated run does to its target — `build` writes it (the default), `review` and `hunt` only read it — and
+-1. **Open a gate workspace: `wf init <name> -target <repo> [-type review|hunt|audit]`.** The type says what
+   the gated run does to its target — `build` writes it (the default), `review`, `hunt` and `audit` only read it — and
    is chosen here, once, because the skeleton, the dry run and the post-run diff check all read it
    from `gate.json` (`run-types.md`). Every artifact of the gate — the
    decision document, the context document the prompts read, the script, each round's findings — lives
@@ -557,7 +557,7 @@ path a section owns that nobody wrote. On the run it was built for it found four
 the ones the harness had named, and nothing in the other direction [M-34].
 It exits zero whatever it finds: every row is a question for a human, and a bar that failed a run on an
 incidental edit would be answered by switching it off. In a READ-ONLY workspace (`wf init -type
-review` or `hunt`) the same command is a bar instead: the tree must be unchanged, untracked files included, and
+review`, `hunt` or `audit`) the same command is a bar instead: the tree must be unchanged, untracked files included, and
 HEAD must still be the base — it exits 1 otherwise, and names the files. The base must be a SHA
 recorded before the run, never a ref, and the run starts from a clean tree: the bar does not see
 gitignored paths or other refs, and cannot tell the run's writes from dirt already there

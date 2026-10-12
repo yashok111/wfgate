@@ -123,6 +123,13 @@ check-tools: build
 		echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'verify:read:' \
 			&& echo "wf new-script -type hunt skeleton: wfcheck clean, wfdry all modes, clean walks BOTH reproduction and reading" \
 			|| { echo "wf new-script -type hunt skeleton: clean did not walk both verify paths — a mixed-severity finder pair must send its blocker to a reproducer and its minor to a reader"; exit 1; }
+	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -type audit -target . -o .check-skel/audit.mjs >/dev/null \
+		&& ./wfcheck -root . .check-skel/audit.mjs >/dev/null \
+		&& ./wfdry --type audit .check-skel/audit.mjs --quiet >/dev/null \
+		|| { rm -rf .check-skel; echo "wf new-script -type audit skeleton: the emitted audit harness fails its own tools"; exit 1; }
+	@./wfdry --type audit .check-skel/audit.mjs --mode clean 2>/dev/null | grep -q 'phases: Find | Verify | Write' \
+		&& { rm -rf .check-skel; echo "wf new-script -type audit skeleton: wfcheck clean, wfdry all modes, clean walks find → verify → write"; } \
+		|| { rm -rf .check-skel; echo "wf new-script -type audit skeleton: clean did not reach the writer — the claims came back empty on the happy path"; exit 1; }
 	@d=$$(mktemp -d) && mkdir -p $$d/t && git -C $$d/t init -q && echo a > $$d/t/a && git -C $$d/t add a \
 		&& git -C $$d/t -c user.email=x@x -c user.name=x commit -qm i \
 		&& ./wf init t -target $$d/t -dir $$d/ws -type review >/dev/null && (cd $$d/ws && $(CURDIR)/wf new-script s >/dev/null); \

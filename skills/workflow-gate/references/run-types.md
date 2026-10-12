@@ -8,16 +8,16 @@ acceptance step, and a review's is finders, verifiers and a report. The type is 
 it. Read this file when the run you are gating changes nothing in its target.
 
 The closed list is `build` (the default, and every workspace opened before the field existed),
-`review` (a diff, read) and `hunt` (a subsystem, searched, its serious findings reproduced). `wf
-init` refuses a type outside it, naming the list. A hunt is a read-only type in every row below
-unless its own section says otherwise.
+`review` (a diff, read), `hunt` (a subsystem, searched, its serious findings reproduced) and `audit`
+(a question, answered with cited claims). `wf init` refuses a type outside it, naming the list. A
+hunt and an audit are read-only types in every row below unless their own sections say otherwise.
 
 ## What the type changes, and where
 
-| | build | review (and hunt) |
+| | build | review (and hunt, audit) |
 |---|---|---|
-| `wf new-script` emits | producers → per-section gate → acceptance (`templates/script.mjs`) | find → verify → merge → report (`templates/review.mjs`; a hunt gets `templates/hunt.mjs`) |
-| `wfdry` modes | clean, blockers, acceptfail, unfixed, throw-serial, dead-reviews, no-args | clean, blockers, **empty**, throw-serial, **dead-finders**, dead-reviews, no-args — a hunt adds **dead-repro** |
+| `wf new-script` emits | producers → per-section gate → acceptance (`templates/script.mjs`) | find → verify → merge → report (`templates/review.mjs`; a hunt gets `templates/hunt.mjs`, an audit `templates/audit.mjs` — find → verify → WRITE) |
+| `wfdry` modes | clean, blockers, acceptfail, unfixed, throw-serial, dead-reviews, no-args | clean, blockers, **empty**, throw-serial, **dead-finders**, dead-reviews, no-args — a hunt adds **dead-repro**, an audit **dead-writer** |
 | a finding array in `clean` | EMPTY — it is a defect list | POPULATED with a mixed pair — it is the deliverable |
 | a pass-shaped boolean (`verified`, `complete`) | true everywhere but `acceptfail` | true in the passing modes, false elsewhere |
 | `dead-reviews` kills | review / fix / closeout / verify / accept labels | those, plus critic / skeptic — the finders LIVE |
@@ -89,7 +89,7 @@ it carries, and what each piece answers:
   `.filter(Boolean)` shifts positions when a thunk throws; matching by position would credit one
   finder's report to another's cell.
 - **Name the deliverable array with the finding vocabulary** — the WHOLE name `findings`, `issues`,
-  `defects` or `problems` — that is how `wfdry` knows which arrays a review returns; under any other
+  `defects`, `problems` or (an audit's) `claims` — that is how `wfdry` knows which arrays a review returns; under any other
   name declare `"$comment": "x-pass: true"`, and `empty` fails a run in which it emptied nothing. An
   array that is a finding list in name and a defect list in meaning — a critic grading the report, or
   a gate-style reviewer schema carried over from a build — declares `"$comment": "x-pass: false"`
@@ -180,6 +180,42 @@ the reproducer's prompt carries `REPRO_RULES` (the `COMMIT` checkout and its con
 emitted one — re-emit with `wf new-script` and diff, because a status mapping or a `complete` edited
 there passes every dry-run mode.
 
+## An audit: a question, and an answer that cites
+
+An audit answers a QUESTION about its target at one commit — does the code do what the spec says, do
+the docs match the code, does a property hold — and its deliverable is a DOCUMENT, not a list of
+defects. What changes against a review:
+
+- **The question is split into PARTS, and the parts are the question.** A part is a sub-question one
+  finder can answer from the code alone; a part nobody asked is a part the answer is silent on.
+  Finders run per part and unit, as a review's run per lens and unit.
+- **A finder returns CLAIMS, true or false of the code alike** — `holds`, `violated`, `partial` —
+  each citing `path.ext:LINE#anchor`, the anchor an ASCII identifier ON the cited lines. "The code
+  does what the spec asks" is as much an answer as "it does not"; an audit that returns only
+  violations is a review that forgot its question. The array is `claims`, the deliverable's name.
+- **Every claim's citation is read by a checker that did not write it**, and a claim the cited lines
+  do not support as written is UNSUPPORTED: dropped from the answer, listed apart, never handed to the
+  writer.
+- **One WRITER composes the answer from the verified claims only**, every factual sentence citing one
+  of them, and lists the parts the claims do not settle. With no verified claim nothing is written,
+  and the report says the question went UNANSWERED rather than inventing an answer. `dead-writer` is
+  the audit's extra mode: the writer dies, the claims stand, and a run calling itself complete without
+  its answer is refused; a writer the runner cannot identify by a write/writer/synth/compose label is
+  a violation, because the missing-answer path then runs in no mode.
+- **`complete` is coverage, `answered` is apart.** An audit whose finders read everything and verified
+  nothing covered its ground and answered nothing — for a review "found nothing" is a result, for an
+  audit it is not, and the return says it in its own field.
+- **The citations are checked mechanically after the run.** Save the returned `report` as
+  `artifacts/answer.md` in the workspace, `wf add` it, and run `wf check cite -at <COMMIT>
+  -require-anchor`: every citation resolves and its anchor is on the cited lines, or the check names
+  the nearest line carrying it. That is the one part of an audit's acceptance a tool can observe; the
+  checker inside the run is the judgement half, `check cite` the mechanical one.
+
+Vector 3 of an audit's gate is COVERAGE & PRECISION as for a review, with the question in place of the
+diff: do the parts together make up the question, can each be answered from code in the units, does
+the finder's prompt ask for claims of BOTH polarities, does the writer's prompt forbid facts the
+claims do not carry, and is the citation form the one `check cite` reads.
+
 ## The decision document of a review
 
 The interview (`interview.md`) maps the same tree; its first frontier for a review is usually the
@@ -190,4 +226,6 @@ tree is unchanged (`wfcheck --owns-diff` exits 0), the report's population line 
 every confirmed finding cites a location that exists at the reviewed revision. A hunt's first frontier
 is the subsystem and its units, the failure classes, how a reproduction is run here and what it may
 touch, and the cap; its acceptance adds that every REPRODUCED finding carries a command that fails at
-`COMMIT` when re-run.
+`COMMIT` when re-run. An audit's first frontier is the question itself, its parts, the units that
+can answer them, and who reads the answer; its acceptance is `wf check cite -at <COMMIT>
+-require-anchor` clean over the saved answer, every part either answered or listed as unsettled.

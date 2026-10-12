@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 33 — what each change answered and the command
+maintenance record, waves 2 to 34 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -86,8 +86,8 @@ judgement.
 
 ## Architecture
 
-Seventeen units, each one decision — nine Go packages under `internal/`, plus
-the FOUR emitted templates, the dispatcher, the hooks, the skill and the agent.
+Eighteen units, each one decision — nine Go packages under `internal/`, plus
+the FIVE emitted templates, the dispatcher, the hooks, the skill and the agent.
 Re-count them against `ls internal/` before quoting the number.
 
 - `internal/gitx` — the only place that runs `git`. Git is not an integration
@@ -162,6 +162,11 @@ Re-count them against `ls internal/` before quoting the number.
   failing test, the rest re-judged by reading; "not reproduced" is listed
   apart from "refuted". `--owns-diff` lets a hunt leave its worktrees under
   `.claude/worktrees/` and lists them — wave 33.
+- `templates/audit.mjs` — a QUESTION split into parts; finders return
+  claims of both polarities citing `path:line#anchor`; a checker reads each
+  citation; one writer composes the answer from verified claims only. The
+  citation form is the one `wf check cite -require-anchor` reads, which is the
+  audit's mechanical acceptance once the report is saved — wave 34.
 - `cmd/wf` — the subcommand dispatcher, and `close.go`: the gate's own record
   and the pruning that record makes safe. ONE dispatch — the test harness used
   to keep a hand-copied switch, which went stale the first time a command was
@@ -336,7 +341,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 33 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 34 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -380,6 +385,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 31 | The owner's question after wave 30: which roles go to haiku | The haiku test in `model-routing.md` (output checked downstream, a named slice, a local answer); code producers and gate reviewers stay sonnet; vector 2 files a haiku role that fails it |
 | 32 | The owner's ask: the plugin assumed every run writes code | Run types — `wf init -type review`; the review skeleton; `wfdry` modes, fixture polarity and `dead-reviews` per type; `--owns-diff` as a bar for a read-only run; `run-types.md` |
 | 33 | The second run type | `hunt`: a subsystem at one commit, serious findings reproduced in worktrees, not-reproduced kept apart from refuted, the worktree carve-out in `--owns-diff` |
+| 34 | The third run type | `audit`: a question in parts, claims of both polarities citing `path:line#anchor`, a citation checker, one writer from verified claims, `answered` apart from `complete`, `dead-writer`, `check cite` as the mechanical acceptance |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own

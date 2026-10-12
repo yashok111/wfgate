@@ -71,10 +71,15 @@ const (
 	TypeBuild  = "build"
 	TypeReview = "review"
 	TypeHunt   = "hunt"
+	// An audit answers a QUESTION about its target — spec against code, docs
+	// against code, a security question — with a document whose every claim
+	// cites `path:line#anchor`, so `wf check cite -require-anchor` can check
+	// the citations mechanically once the document is in the workspace.
+	TypeAudit = "audit"
 )
 
 // Types is the closed list, in the order usage lines print it.
-var Types = []string{TypeBuild, TypeReview, TypeHunt}
+var Types = []string{TypeBuild, TypeReview, TypeHunt, TypeAudit}
 
 // ScratchPrefix is the one place a read-only run may write inside its target:
 // where Claude Code puts an agent's `isolation: 'worktree'` checkout. Only a

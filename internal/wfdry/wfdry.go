@@ -74,6 +74,12 @@ const deadFindersMode = "dead-finders"
 // finders out).
 const deadReproMode = "dead-repro"
 
+// deadWriterMode is an audit's extra dead mode: only the WRITER dies — the agent
+// composing the answer from the verified claims. Its death leaves claims and
+// no document, and no other mode kills it: its label is no reviewer's and no
+// finder's.
+const deadWriterMode = "dead-writer"
+
 // ModesFor is the mode list a run of this type enters. A read-only run has no
 // acceptance step and no fix agent, so `acceptfail` and `unfixed` would walk
 // vocabulary its script does not carry, and it gains `empty`. A type the
@@ -84,6 +90,9 @@ func ModesFor(typ string) []string {
 	}
 	if normType(typ) == ws.TypeHunt {
 		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", deadReproMode, "no-args"}
+	}
+	if normType(typ) == ws.TypeAudit {
+		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", deadWriterMode, "no-args"}
 	}
 	return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", "no-args"}
 }
@@ -110,7 +119,7 @@ func normType(typ string) string {
 // and a verdict that reads as failure there is a script treating "no findings"
 // as "did not run".
 func passFixture(mode string) bool {
-	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode || mode == deadReproMode
+	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode || mode == deadReproMode || mode == deadWriterMode
 }
 
 // Options configure one run.
@@ -469,7 +478,7 @@ func noteCollapse(rs []Result, ro bool) {
 			if ro && r.Mode == "blockers" {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. In a read-only run this is the mode in which every verifier refuted, so a step that consumes CONFIRMED findings has nothing to consume; it does mean those phases ran in the happy path alone and no failure mode covers them",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
-			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode || r.Mode == deadReproMode {
+			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode || r.Mode == deadReproMode || r.Mode == deadWriterMode {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. This mode's shortfall can be the runner's own injection (a script that HALTS when a reviewer dies is doing what it is told), which is why it is not a failure; it can equally be an abort guard that ends the run wider than it meant to, and then every section behind those phases, and every gate over them, is covered by no failure mode",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
 			} else {
@@ -748,7 +757,7 @@ func runMode(src, mode string, o Options) Result {
 		if normType(o.Type) == ws.TypeHunt && reproish(label) && get("isolation") != "worktree" {
 			bad(label, "a hunt's reproducer has no `isolation: 'worktree'` — it would write its failing test into the target; add the option to this call")
 		}
-		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadReproMode && reproish(label)) {
+		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadReproMode && reproish(label)) || (mode == deadWriterMode && writerish(label)) {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())
 		}
@@ -925,7 +934,7 @@ func runMode(src, mode string, o Options) Result {
 	// from the verdict this constrains: a producer-only script has no reviewer
 	// label, kills nobody, and is correct to come back green — the note below
 	// already says that run proved nothing.
-	if (mode == "dead-reviews" || mode == deadFindersMode || mode == deadReproMode) && r.ReturnOK && len(r.Killed) > 0 {
+	if (mode == "dead-reviews" || mode == deadFindersMode || mode == deadReproMode || mode == deadWriterMode) && r.ReturnOK && len(r.Killed) > 0 {
 		// A verdict this guard cannot READ is not a verdict it checked. Three
 		// one-line variants of the banked fixture — the verdict nested in an
 		// object, under an unrecognised key, or as the string 'yes' — all came
@@ -985,6 +994,11 @@ func runMode(src, mode string, o Options) Result {
 	if mode == deadReproMode && r.Spawned > 0 && len(r.Killed) == 0 {
 		r.Notes = append(r.Notes, deadReproMode+": no label matched a repro/reproduce/reproducer segment — this mode killed nobody; correct for a hunt that verifies by vote, and otherwise the dead-reproduction path ran in no mode")
 	}
+	// An audit's answer is its deliverable, so a writer the runner cannot
+	// identify is a violation: the missing-document path then ran in no mode.
+	if mode == deadWriterMode && r.Spawned > 0 && len(r.Killed) == 0 {
+		r.Violations = append(r.Violations, deadWriterMode+": no label matched a write/writer/synth/synthesis/compose segment — this mode killed nobody, so the run's answer-missing path ran in no mode. Label the writer `write:answer`, or name it with --dead")
+	}
 	if mode == deadFindersMode && r.Spawned > 0 && len(r.Killed) == 0 {
 		r.Violations = append(r.Violations, deadFindersMode+": no label matched a "+strings.Join(sortedKeys(findSegments), "/")+" segment — this mode killed nobody, so a dead finder's accounting ran in no mode. Label the finders `find:<lens>:<unit>`, or name them with --dead")
 	}
@@ -993,7 +1007,7 @@ func runMode(src, mode string, o Options) Result {
 	// the clean path under another name — measured, a finder array renamed
 	// `results` gave `empty` the same agents and phases as `clean`, in silence.
 	if ro && mode == emptyMode && r.Spawned > 0 && len(prefixed(r.defaulted, deliverableKey)) == 0 {
-		r.Violations = append(r.Violations, emptyMode+": no finding-shaped array was synthesised, so this mode emptied nothing and walked the clean path — name the finders' array one of findings/issues/defects/problems, or declare `\"$comment\": \"x-pass: true\"` on it")
+		r.Violations = append(r.Violations, emptyMode+": no finding-shaped array was synthesised, so this mode emptied nothing and walked the clean path — name the finders' array one of findings/issues/defects/problems/claims, or declare `\"$comment\": \"x-pass: true\"` on it")
 	}
 	// A label the operator NAMED that never spawned. `--dead reviwer` is a
 	// clean run of every guard over the empty set, reported as OK: the same
@@ -1248,6 +1262,16 @@ func criticish(label string) bool {
 	for _, seg := range labelSegments(label) {
 		switch seg {
 		case "critic", "critics", "skeptic", "skeptics":
+			return true
+		}
+	}
+	return false
+}
+
+func writerish(label string) bool {
+	for _, seg := range labelSegments(label) {
+		switch seg {
+		case "write", "writer", "synth", "synthesis", "synthesize", "compose", "composer":
 			return true
 		}
 	}
@@ -1540,7 +1564,10 @@ var severityName = regexp.MustCompile(`(?i)severity|level|priority`)
 // ANCHORED, the whole name: a substring rule matched `unverifiedFindings` and
 // `openIssues` — failure-qualified lists — and gave them deliverable polarity.
 // A deliverable under another name declares `"$comment": "x-pass: true"`.
-var deliverableRe = regexp.MustCompile(`^(findings?|issues?|defects?|problems?)$`)
+//
+// `claims` is an audit's deliverable: a claim is what an audit returns, true
+// or false of the code alike.
+var deliverableRe = regexp.MustCompile(`^(findings?|issues?|defects?|problems?|claims?)$`)
 
 var failArrayRe = regexp.MustCompile(`(?i)blocker|major|failure|unfixed|open|concern|dead|unverified|violation|gap|risk|defect|error|issue|problem|finding`)
 

@@ -48,3 +48,9 @@ func TestAllowsScratch(t *testing.T) {
 		t.Fatalf("a hunt is read-only")
 	}
 }
+
+func TestAuditIsReadOnlyWithoutScratch(t *testing.T) {
+	if err := ValidType(TypeAudit); err != nil || !ReadOnly(TypeAudit) || AllowsScratch(TypeAudit) {
+		t.Fatalf("an audit is a read-only type with no scratch carve-out")
+	}
+}

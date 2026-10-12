@@ -38,6 +38,7 @@ var templateFor = map[string]string{
 	ws.TypeBuild:  "templates/script.mjs",
 	ws.TypeReview: "templates/review.mjs",
 	ws.TypeHunt:   "templates/hunt.mjs",
+	ws.TypeAudit:  "templates/audit.mjs",
 }
 
 func cmdNewScript(args []string) error {
@@ -171,6 +172,11 @@ func cmdNewScript(args []string) error {
 			fmt.Printf("    wfdry --type %s --args '{\"maxRepro\":1}' %s — walks the reproduction cap, which the default never reaches\n", runType, dst)
 		}
 		fmt.Printf("  after the run: wfcheck -type %s --owns-diff <the SHA the run started from> %s — %s\n", runType, dst, after)
+		if runType == ws.TypeAudit {
+			// The answer's citations are the audit's claims; the one check that
+			// reads them mechanically is `check cite`, and it reads artifacts.
+			fmt.Printf("  and the answer: save the run's `report` as artifacts/answer.md, `wf add` it, then `wf check cite -at <that SHA> -require-anchor`\n")
+		}
 	} else {
 		fmt.Printf("    wfdry %s\n", dst)
 	}
