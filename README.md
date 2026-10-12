@@ -229,15 +229,21 @@ means JSON).
 Finds `path.ext:LINE`, `path.ext:A-B` and `path.ext:LINE#anchor` in the
 artifacts and verifies them against the target repository: the path resolves to
 exactly one tracked file, the range is well-formed and inside the file, and the
-`#anchor` occurs within the cited lines. An anchor miss prints the nearest line
-carrying the token — a ready patch, not a reason to search.
+`#anchor` occurs within the cited lines as a whole identifier or a part of one
+(split at `_`, a camelCase hump, an acronym's end, letters against digits) —
+`#RETENTION` passes on `MOCKER_CHECKPOINT_RETENTION`, `#Update` fails on
+`UpdatedAt` and is named a fragment. An anchor miss prints the nearest line
+carrying the token — a ready patch, not a reason to search. A range with a dash
+and no end line (`store.go:3-#Save`) is a "malformed range" error, not an
+unanchored citation.
 
 The anchor is an ASCII token by policy (gate artifacts are English); a
 non-ASCII anchor is an error, never a silent "unanchored". The count of
 citations without an anchor is printed on every run, and citation-like
 references to extensionless tracked files (`Makefile:90`) are listed as NOT
 verified. `-show` prints the cited lines; `-require-anchor` fails on a citation
-written without an anchor.
+written without an anchor, and the header counts those misses among its
+findings and on their own (`N without the required #anchor`).
 
 **`-at frozen` verifies against the bytes reviewers were handed** — the target
 revision the newest freeze manifest names — and `-at <rev>` takes any revision;

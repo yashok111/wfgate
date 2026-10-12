@@ -228,7 +228,7 @@ becomes a wrong instruction that no downstream step questions.
       reaches — it is the half this bullet is about.** Run the mechanical checks first to clear the
       noise, then READ. `wf check cite` verifies that a path resolves to exactly one tracked file,
       that the cited range exists and, where the citation carries an `#anchor`, that the token is
-      present — and it publishes the count it did NOT verify, because a citation without an anchor
+      present as an identifier or a part of one — and it publishes the count it did NOT verify, because a citation without an anchor
       passes resolution and range forever while pointing at the wrong line. `wf check drift` is what
       an unanchored citation gets once the TARGET moves, classifying each as EDITED, SHIFTED, GONE or
       UNRESOLVED. The citation grammar, the ASCII-anchor rule and the extensionless-path trap are

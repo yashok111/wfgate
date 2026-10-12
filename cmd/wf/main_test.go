@@ -320,7 +320,9 @@ func TestPrescribedSequence(t *testing.T) {
 	out, err = runWF(t, wsDir, "check", "cite", "-show", "-require-anchor")
 	wantFindings(t, err, "check cite -require-anchor")
 	mustContain(t, out, "citation without #anchor", "[src/main.go:2]",
-		"src/main.go:3| func NeedleFn() {}")
+		"src/main.go:3| func NeedleFn() {}",
+		// The miss is counted in the header it stands under, not after it.
+		"1 finding(s), against the working tree, 1 without the required #anchor")
 
 	// The target moves. Every line number the frozen artifacts cite is now a
 	// claim about a revision that is gone: a line inserted on top shifts both

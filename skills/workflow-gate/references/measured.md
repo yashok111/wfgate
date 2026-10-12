@@ -799,3 +799,16 @@ count cannot separate: that hunt changed its lens every round, while the emitted
 lens in round 1, so part of the later rounds' yield is what a one-pass hunt of this shape already
 collects; and it re-ran every unit each round, where the skeleton re-runs only the cells that added a
 confirmed finding or died — a rule this count did not measure. A sample of one.
+
+## M-48 — which anchors a stricter match would fail
+
+Measured 2026-10-12 over every gate workspace on disk: each frozen round's artifacts, read at the
+round's freeze commit, verified against the target revision its `freeze.json` names — 235 rounds
+read, 31 skipped for a ref the target no longer resolves, 1458 distinct anchored citations. The plain
+substring match passed 1397 of them. A WHOLE-identifier match (no letter, digit or `_` on either side)
+failed 25 of those 1397, and 23 named a part of a longer identifier on purpose — `#RETENTION` on
+`MOCKER_CHECKPOINT_RETENTION`, `#unknownSpec` on `TestHandler_resourceSuggestions_unknownSpec`,
+`#NeverTouchesLayer` on `autoCheckpointExcludedNeverTouchesLayer`. Matching at identifier PARTS
+(`_`, camelCase humps, an acronym's end, letters against digits) fails 2: `#id` on a comment's
+"identifies" and `#Update` on `current.UpdatedAt`, both a fragment of a word. No citation in the corpus
+had a range with a dash and no end line.

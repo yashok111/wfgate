@@ -2830,12 +2830,29 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string
 			badAnchors++
 		}
 	}
+	// The required-anchor misses are findings, and they are counted BEFORE the
+	// header: printed after it, they stood under "0 finding(s)" with the exit
+	// at 1 (the audit wave's adversarial vector).
+	var missing []check.Citation
+	if requireAnchor {
+		for _, c := range cits {
+			// A non-ASCII anchor or a broken range already carries its own
+			// error; flagging it as "without #anchor" too would state a
+			// falsehood about a citation whose author did write one.
+			if c.Anchor == "" && c.BadAnchor == "" && c.BadRange == "" {
+				missing = append(missing, c)
+			}
+		}
+	}
 	where := "the working tree"
 	if ref != "" {
 		where = "target " + shortRef(ref)
 	}
 	hdr := fmt.Sprintf("## cite — %d citation(s), %d anchored (%d unverified beyond range), %d finding(s), against %s",
-		len(cits), anchored, len(cits)-anchored, len(findings), where)
+		len(cits), anchored, len(cits)-anchored, len(findings)+len(missing), where)
+	if requireAnchor {
+		hdr += fmt.Sprintf(", %d without the required #anchor", len(missing))
+	}
 	if badAnchors > 0 {
 		hdr += fmt.Sprintf(", %d anchor(s) not ASCII", badAnchors)
 	}
@@ -2863,16 +2880,9 @@ func runCite(w *ws.Workspace, arts []string, show, requireAnchor bool, at string
 	for _, f := range findings {
 		fmt.Println("  " + f.String())
 	}
-	if requireAnchor {
-		for _, c := range cits {
-			// A non-ASCII anchor already carries its own error above; flagging
-			// it as "without #anchor" too would state a falsehood about a
-			// citation whose author did write one.
-			if c.Anchor == "" && c.BadAnchor == "" {
-				fmt.Printf("  %s:%d: error: citation without #anchor  [%s]\n", c.Artifact, c.AtLine, c.Raw)
-				findings = append(findings, check.Finding{Citation: c})
-			}
-		}
+	for _, c := range missing {
+		fmt.Printf("  %s:%d: error: citation without #anchor  [%s]\n", c.Artifact, c.AtLine, c.Raw)
+		findings = append(findings, check.Finding{Citation: c})
 	}
 	if show {
 		for _, c := range cits {

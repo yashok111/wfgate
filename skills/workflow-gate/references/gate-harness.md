@@ -401,7 +401,12 @@ found it. Every recognised form is checked for RESOLUTION
 (the path must resolve to exactly one tracked file) and for RANGE (the cited lines must exist); the
 `#anchor` form is additionally checked for CONTENT, and that third check is the only one that catches a
 citation which resolves, sits inside the file, and still points at the wrong line — naming the nearest
-line that does contain the token, which turns a finding into a patch instead of a search.
+line that does contain the token, which turns a finding into a patch instead of a search. The token
+must stand as a whole identifier or a PART of one — split at `_`, at a camelCase hump, at an
+acronym's end and between letters and digits — never as a fragment of a word: a plain substring
+passed `#e` on any line with a word in it and `#Update` on `UpdatedAt`. Anchor with the identifier the
+claim is about, or with the part of it that names the thing (`#RETENTION` on
+`MOCKER_CHECKPOINT_RETENTION`) [M-48].
 
 **An anchor is an ASCII token, by RULE, not by limitation** — the artifacts are English-only, and the
 check enforces the boundary: a `#anchor` its grammar does not accept (Cyrillic, spaces) is reported as

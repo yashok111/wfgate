@@ -1091,3 +1091,84 @@ func TestCollectStatements_escapedBackslashIsNotAContinuation(t *testing.T) {
 		t.Fatalf("an escaped backslash keeps the line break, got %d: %+v", len(sts), sts)
 	}
 }
+
+// An anchor matches a whole identifier or a camelCase / snake_case / digit
+// PART of one, never a fragment of a word. The refused cases are the probe's
+// and the two the corpus measurement found; the accepted ones are the shapes
+// the 23 part-citations in it took.
+func TestAnchorInParts(t *testing.T) {
+	for _, c := range []struct {
+		text, tok string
+		want      bool
+	}{
+		{"\treturn nil", "e", false},
+		{"current.UpdatedAt = time.Now()", "Update", false},
+		{"// the one field that identifies them", "id", false},
+		{"x.update(y)", "date", false},
+		{"func Save() error {", "Save", true},
+		{"MOCKER_CHECKPOINT_RETENTION=20", "RETENTION", true},
+		{"func TestHandler_resourceSuggestions_unknownSpec(t *testing.T) {", "unknownSpec", true},
+		{"httpx.ErrDetails(w, http.StatusConflict)", "Conflict", true},
+		{"if _, ferr := fenceTx(ctx)", "fence", true},
+		{"type HTTPServer struct", "Server", true},
+		{"type HTTPServer struct", "HTTP", true},
+		{"TestScenarios_createWhileActiveAnswers409", "createWhileActiveAnswers", true},
+		{"golden_p1b_test.go", "p1b", true},
+		{"TestScenarios_createWhileActiveAnswers409", "409", true},
+		{"ws.FindAll(x)", ".Find", true},
+		{"a.Find.x", "Find.", true},
+		{"ws.FindAll(x)", "ws.Find", true},
+		{"make check-docs", "check-docs", true},
+		{"anything", "", false},
+	} {
+		if got := AnchorIn(c.text, c.tok); got != c.want {
+			t.Errorf("AnchorIn(%q, %q) = %v, want %v", c.text, c.tok, got, c.want)
+		}
+	}
+}
+
+// A fragment-only anchor is reported AS a fragment, and the nearest
+// occurrence it names is a real one, not the next fragment.
+func TestAnchorFragmentIsNamed(t *testing.T) {
+	target := mkrepo(t, map[string]string{"a.go": "package a\n\nfunc UpdateAll() {}\nvar UpdatedAt int\nfunc Update() {}\n"})
+	ix, err := NewIndex(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := VerifyCitations(target, ix, []Citation{{Artifact: "x.md", AtLine: 1, Raw: "a.go:4#Update", Path: "a.go", Start: 4, End: 4, Anchor: "Update"}})
+	if err != nil || len(f) != 1 {
+		t.Fatalf("a fragment anchor must be a finding: %v %v", f, err)
+	}
+	if !strings.Contains(f[0].Msg, "only a fragment of a word") || !strings.Contains(f[0].Msg, "nearest occurrence is line 3") {
+		t.Fatalf("the finding must name the fragment and the nearest real occurrence (line 3, UpdateAll's part): %q", f[0].Msg)
+	}
+}
+
+// `path:3-#Save` is a broken RANGE, not an unanchored citation.
+func TestCitations_dashWithoutEndIsABadRange(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "x.md"), []byte("see pkg/store.go:3-#Save and pkg/store.go:3-4#Save\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cits, err := ScanCitations(root, []string{"x.md"})
+	if err != nil || len(cits) != 2 {
+		t.Fatalf("want two citations: %+v %v", cits, err)
+	}
+	if cits[0].BadRange != "pkg/store.go:3-#Save" || cits[0].Anchor != "" || cits[0].BadAnchor != "" {
+		t.Fatalf("a dash with no end line must land in BadRange: %+v", cits[0])
+	}
+	if cits[1].BadRange != "" || cits[1].Anchor != "Save" || cits[1].End != 4 {
+		t.Fatalf("a whole range must parse as before: %+v", cits[1])
+	}
+	target := mkrepo(t, map[string]string{"pkg/store.go": "package pkg\n\nfunc Save() {}\nvar x int\n"})
+	ix, _ := NewIndex(target)
+	f, _ := VerifyCitations(target, ix, cits[:1])
+	if len(f) != 1 || !strings.Contains(f[0].Msg, "malformed range") || !strings.Contains(f[0].Msg, "pkg/store.go:3-N") {
+		t.Fatalf("a bad range must be named with its patch: %v", f)
+	}
+	// The broken range does not hide what else is wrong with the citation.
+	f, _ = VerifyCitations(target, ix, []Citation{{Artifact: "x.md", AtLine: 1, Raw: "gone.go:3-#Save", Path: "gone.go", Start: 3, End: 3, BadRange: "gone.go:3-#Save"}})
+	if len(f) != 2 {
+		t.Fatalf("a bad range over a path that resolves nowhere is two findings: %v", f)
+	}
+}

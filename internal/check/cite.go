@@ -65,6 +65,7 @@ type Citation struct {
 	End       int    // == Start for a single-line citation
 	Anchor    string // optional `#symbol`: the token that must appear in range
 	BadAnchor string // a trailing #token the anchor grammar did not accept
+	BadRange  string // a range written with a dash and no end line, as found
 }
 
 // Finding is a citation the check rejects.
@@ -117,6 +118,19 @@ func ScanCitations(root string, files []string) ([]Citation, error) {
 				// anchors read as "17 unverified" and hid that only two real
 				// unanchored citations existed — and one of the invisible
 				// anchors was factually wrong.
+				// A dash right after the line number is a range whose end was
+				// never written: `store.go:3-#Save` matched as line 3 with no
+				// anchor and was reported as "citation without #anchor" when the
+				// author had written one. It is the RANGE that is broken.
+				if e := ix[1]; get(4) == "" && get(5) == "" && e < len(line) && line[e] == '-' {
+					tok := line[e:]
+					if i := strings.IndexAny(tok, " \t"); i >= 0 {
+						tok = tok[:i]
+					}
+					tok = strings.TrimRight(tok, "`).,;|\"'")
+					c.BadRange = c.Raw + tok
+					c.Raw += tok
+				}
 				if c.Anchor == "" {
 					if e := ix[1]; e < len(line) && line[e] == '#' {
 						tok := line[e+1:]
@@ -233,6 +247,9 @@ func VerifyCitationsWith(read func(string) ([]byte, error), ix *Index, cits []Ci
 		if c.BadAnchor != "" {
 			add(c, "error", fmt.Sprintf("anchor %q is not an ASCII token; the artifacts are English-only — anchor with a token from the cited line, or cite the range without one", c.BadAnchor))
 		}
+		if c.BadRange != "" {
+			add(c, "error", fmt.Sprintf("malformed range %q — a dash with no end line; write `%s:%d-N` with the last line, or drop the dash", c.BadRange, c.Path, c.Start))
+		}
 		path, amb := ix.resolve(c.Path)
 		if path == "" {
 			if len(amb) > 1 {
@@ -272,9 +289,15 @@ func VerifyCitationsWith(read func(string) ([]byte, error), ix *Index, cits []Ci
 			add(c, "error", fmt.Sprintf("%s has %d lines, citation covers %d-%d", path, len(lines), c.Start, c.End))
 			continue
 		}
-		if c.Anchor != "" && !strings.Contains(strings.Join(lines[c.Start-1:c.End], "\n"), c.Anchor) {
+		if text := strings.Join(lines[c.Start-1:c.End], "\n"); c.Anchor != "" && !AnchorIn(text, c.Anchor) {
 			at := nearest(lines, c.Anchor, c.Start)
 			msg := fmt.Sprintf("anchor %q not in %s:%d-%d", c.Anchor, path, c.Start, c.End)
+			// Present as a FRAGMENT of a word only: say so, because "not in"
+			// over a line that visibly contains the letters reads as a bug in
+			// the check.
+			if strings.Contains(text, c.Anchor) {
+				msg = fmt.Sprintf("anchor %q is only a fragment of a word in %s:%d-%d, not a whole identifier or a camelCase or snake_case part of one", c.Anchor, path, c.Start, c.End)
+			}
 			if at > 0 {
 				msg += fmt.Sprintf("; nearest occurrence is line %d", at)
 			}
@@ -323,13 +346,79 @@ func ExtensionlessRefs(root string, files []string, ix *Index) ([]Citation, erro
 	return out, nil
 }
 
+// AnchorIn reports whether tok occurs in text as a whole identifier or as one
+// or more of its PARTS — split at `_`, at a camelCase hump, at an acronym's
+// end and between letters and digits. A plain substring match passed `#e` on
+// `return nil` and `#Update` on `current.UpdatedAt` (the audit wave's
+// adversarial vector). A whole-identifier match was measured first and
+// refused: over every frozen round on disk, 235 rounds and 1397 distinct
+// anchors the substring match passed, it failed 25 — and 23 of them named a
+// part (`#RETENTION` on `MOCKER_CHECKPOINT_RETENTION`,
+// `#unknownSpec` on `TestHandler_resourceSuggestions_unknownSpec`). The part
+// rule fails 2, both a word fragment: `#id` on "identifies", `#Update` on
+// `UpdatedAt`. An end of tok that is not a letter or digit is a boundary by
+// itself.
+func AnchorIn(text, tok string) bool {
+	if tok == "" {
+		return false
+	}
+	alnum := func(b byte) bool { return isLower(b) || isUpper(b) || isDigit(b) }
+	startOK := func(s int) bool {
+		if s == 0 || !alnum(text[s-1]) || !alnum(tok[0]) {
+			return true
+		}
+		p, a := text[s-1], tok[0]
+		switch {
+		case isUpper(a) && (isLower(p) || isDigit(p)):
+			return true // fooBar: Bar
+		case isUpper(a) && isUpper(p) && len(tok) > 1 && isLower(tok[1]):
+			return true // HTTPServer: Server
+		case isDigit(a) != isDigit(p):
+			return true // p1b: 1b
+		}
+		return false
+	}
+	endOK := func(e int) bool {
+		l := tok[len(tok)-1]
+		if e == len(text) || !alnum(text[e]) || !alnum(l) {
+			return true
+		}
+		n := text[e]
+		switch {
+		case isUpper(n) && (isLower(l) || isDigit(l)):
+			return true // fooBar: foo
+		case isUpper(l) && isUpper(n) && e+1 < len(text) && isLower(text[e+1]):
+			return true // HTTPServer: HTTP
+		case isDigit(l) != isDigit(n):
+			return true // answers409: answers
+		}
+		return false
+	}
+	for i := 0; i <= len(text)-len(tok); {
+		j := strings.Index(text[i:], tok)
+		if j < 0 {
+			return false
+		}
+		s, e := i+j, i+j+len(tok)
+		if startOK(s) && endOK(e) {
+			return true
+		}
+		i = s + 1
+	}
+	return false
+}
+
+func isLower(b byte) bool { return b >= 'a' && b <= 'z' }
+func isUpper(b byte) bool { return b >= 'A' && b <= 'Z' }
+func isDigit(b byte) bool { return b >= '0' && b <= '9' }
+
 // nearest returns the line number of the occurrence of tok closest to want, or
 // 0. An off-by-a-few citation is the common case, and naming the correct line
 // turns the finding into a patch instead of a search.
 func nearest(lines []string, tok string, want int) int {
 	best, bestD := 0, 1<<30
 	for i, l := range lines {
-		if !strings.Contains(l, tok) {
+		if !AnchorIn(l, tok) {
 			continue
 		}
 		d := i + 1 - want

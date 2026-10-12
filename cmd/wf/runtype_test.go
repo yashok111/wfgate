@@ -182,11 +182,16 @@ func TestAuditCitationsAreCheckable(t *testing.T) {
 		t.Fatalf("an audit workspace must get the audit skeleton")
 	}
 	// The exact line shape the skeleton's report prints for a verified claim.
-	write(t, filepath.Join(tmp, "answer.md"), "# Audit\n\n## Verified claims\n\n- C001 [holds] Save returns no error — pkg/store.go:3-4#Save\n- C002 [violated] wrong anchor — pkg/store.go:4#Save\n")
+	write(t, filepath.Join(tmp, "answer.md"), "# Audit\n\n## Verified claims\n\n- C001 [holds] Save returns no error — pkg/store.go:3-4#Save\n- C002 [violated] wrong anchor — pkg/store.go:4#Save\n- C003 [holds] broken range — pkg/store.go:3-#Save\n")
 	_, err = runWF(t, a, "add", filepath.Join(tmp, "answer.md"))
 	noErr(t, err, "add")
 	out, _ = runWF(t, a, "check", "cite", "-require-anchor")
-	mustContain(t, out, "store.go:4")
+	mustContain(t, out, "store.go:4", "malformed range \"pkg/store.go:3-#Save\"")
+	// A broken range is its own error, never also "without #anchor": the
+	// author wrote one.
+	if strings.Contains(out, "citation without #anchor  [pkg/store.go:3-#Save]") {
+		t.Fatalf("a bad range must not be reported as unanchored:\n%s", out)
+	}
 	if strings.Contains(out, "store.go:3-4") {
 		t.Fatalf("a correct citation from the report's line shape must pass `check cite`:\n%s", out)
 	}
