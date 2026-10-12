@@ -601,7 +601,7 @@ are `arm: with-only` (a plugin scored for loading itself is the "absent
 measurement in the register of a measured one" class), and why a NEGATIVE delta
 on `no-false-fire` is that case's finding rather than its failure.
 
-`make check-docs` stages README, SKILL.md and the ten references into a scratch
+`make check-docs` stages README, SKILL.md and the eleven references into a scratch
 workspace and runs the two checks that read prose over them. It exists because
 the checks that gate other people's artifacts had never been run over this
 repository's own, and on their first run they were RED: `wf check rules`

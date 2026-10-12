@@ -139,7 +139,22 @@ func TestNewScriptHunt(t *testing.T) {
 	noErr(t, err, "new-script")
 	mustContain(t, out, "type hunt — from", "wfdry --type hunt")
 	b, _ := os.ReadFile(filepath.Join(h, "artifacts", "search.mjs"))
-	if !strings.Contains(string(b), "isolation: 'worktree'") {
+	if !strings.Contains(string(b), "REPRO_SCHEMA") {
 		t.Fatalf("a hunt workspace must get the hunt skeleton")
+	}
+	if strings.Contains(string(b), "'GIT_PATH'") || !strings.Contains(string(b), "git'") {
+		t.Fatalf("the git path must be substituted at emit time")
+	}
+	mustContain(t, out, "wfcheck -type hunt --owns-diff", `--args '{"maxRepro":1}'`)
+}
+
+// The `wf docs` index names every reference `wf docs <name>` serves: `types`
+// shipped servable and unlisted, so nobody reading the index could find it.
+func TestDocsIndexListsEveryName(t *testing.T) {
+	out, _ := runWF(t, t.TempDir(), "docs")
+	for name := range docNames {
+		if !strings.Contains(out, "\n  "+name+" ") {
+			t.Errorf("wf docs index omits %q", name)
+		}
 	}
 }

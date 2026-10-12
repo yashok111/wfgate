@@ -567,3 +567,38 @@ func TestOwnsDiffDotfilesAreOwned(t *testing.T) {
 		t.Errorf("the declared dotfile reads as never written: %v", rep.Untouched)
 	}
 }
+
+// The hunt carve-out reads the REGISTERED worktrees, their branches, which
+// status entries were untracked, and whether HEAD is detached.
+func TestOwnsDiffWorktreesAndDetached(t *testing.T) {
+	dir, base := mkRunRepo(t)
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	run("worktree", "add", "-q", ".claude/worktrees/agent-1", "-b", "worktree-agent-1")
+	script := mkOwnsScript(t, "internal/router/router.go")
+	rep, err := OwnsDiff(script, dir, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Worktrees) != 1 || rep.Worktrees[0].Path != ".claude/worktrees/agent-1" || rep.Worktrees[0].Branch != "worktree-agent-1" {
+		t.Fatalf("worktrees = %+v", rep.Worktrees)
+	}
+	if !rep.Untracked[".claude/worktrees/agent-1/"] {
+		t.Errorf("the worktree's status entry must be marked untracked: %v", rep.Untracked)
+	}
+	if rep.Untracked["internal/router/router.go"] {
+		t.Errorf("an edited tracked file is not untracked")
+	}
+	if rep.Detached {
+		t.Errorf("HEAD is on a branch")
+	}
+	run("checkout", "-q", "--detach")
+	if rep, _ = OwnsDiff(script, dir, base); !rep.Detached {
+		t.Errorf("a detached HEAD must be reported")
+	}
+}

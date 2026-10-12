@@ -17,12 +17,12 @@ unless its own section says otherwise.
 | | build | review (and hunt) |
 |---|---|---|
 | `wf new-script` emits | producers → per-section gate → acceptance (`templates/script.mjs`) | find → verify → merge → report (`templates/review.mjs`; a hunt gets `templates/hunt.mjs`) |
-| `wfdry` modes | clean, blockers, acceptfail, unfixed, throw-serial, dead-reviews, no-args | clean, blockers, **empty**, throw-serial, **dead-finders**, dead-reviews, no-args |
+| `wfdry` modes | clean, blockers, acceptfail, unfixed, throw-serial, dead-reviews, no-args | clean, blockers, **empty**, throw-serial, **dead-finders**, dead-reviews, no-args — a hunt adds **dead-repro** |
 | a finding array in `clean` | EMPTY — it is a defect list | POPULATED with a mixed pair — it is the deliverable |
 | a pass-shaped boolean (`verified`, `complete`) | true everywhere but `acceptfail` | true in the passing modes, false elsewhere |
 | `dead-reviews` kills | review / fix / closeout / verify / accept labels | those, plus critic / skeptic — the finders LIVE |
 | `dead-finders` kills | — | find / hunt / scan / audit / lens / inspect / analyze labels — the verifiers live, and a mode that kills nobody FAILS |
-| `wfcheck --owns-diff` | an audit of the ownership map; exits 0 | a BAR: the tree must be unchanged and HEAD unmoved; exits 1 otherwise; the base must be a SHA; a hunt's reproduction worktrees under `.claude/worktrees/` are listed, not counted |
+| `wfcheck --owns-diff` | an audit of the ownership map; exits 0 | a BAR: the tree must be unchanged and HEAD unmoved; exits 1 otherwise; the base must be a SHA; a hunt's REGISTERED reproduction worktrees under `.claude/worktrees/` are listed with their cleanup, not counted |
 | the gate's third vector | CRITERION | COVERAGE & PRECISION (below) |
 
 `wfdry`, `wfcheck --owns-diff` and `wf new-script` read the type from the workspace that holds the
@@ -132,28 +132,53 @@ findings are proven by running something. What changes against the review rules 
   coverage claim, and a file in no unit is a file nobody searched. Lenses are FAILURE CLASSES (data
   loss, money, concurrency, error handling, security), disjoint as a review's are.
 - **Blockers and majors are REPRODUCED; the rest are read.** A reproducer runs in a throwaway worktree
-  (`isolation: 'worktree'`), checks out `COMMIT` and confirms it — a worktree can arrive at another
-  commit — writes the smallest failing test or command, runs it and reports the command and its
-  output. It calls git by absolute path (`authoring.md`, the worktree rule), never commits, never
-  writes outside its worktree. Minor and note findings get a reading skeptic, as in a review.
+  (`isolation: 'worktree'` — `wfdry` refuses a hunt agent labelled `repro…` without it, in every
+  mode), checks out `COMMIT` and confirms it — a worktree can arrive at another commit — writes the
+  smallest failing test or command, runs it and reports the command, its output and what `git
+  rev-parse HEAD` printed. A "reproduced" with no command, or with the commit unconfirmed, is listed
+  as NOT reproduced, saying which was missing; the confirmation is the reproducer's own report, not an
+  observation the harness can make. It calls git by absolute path (`authoring.md`, the worktree rule
+  — `wf new-script` writes the path git resolves to on the emitting box), never commits, never writes
+  outside its worktree. Minor and note findings get a reading skeptic, as in a review.
 - **Not reproduced is not refuted.** A reproducer may lack the state, the data or the timing; its
   finding is listed apart as NOT REPRODUCED, with the reason, and neither confirmed nor dropped.
   Where nothing can be reproduced at all — a defect that needs production data, an external service
   — a vote of reading skeptics on the serious findings is the substitute; the skeleton does not carry
   one, and adding it is a decision for the document.
 - **Reproductions are the costliest agents of the run** — one build per worktree — so they are
-  capped (`MAX_REPRO`), worst first, and the report names how many serious findings were read
-  instead. Hand every reproducer the ONE focused command that runs a test here (`REPRO_HOW`): several
+  capped (`MAX_REPRO`), worst first, and the report NAMES the serious findings that were read instead,
+  keeping one a reader refuted apart from the ordinary refuted. The dry run's two serious findings
+  never reach the default cap, so run it once more with `wfdry --args '{"maxRepro":1}'`, which the
+  skeleton reads. Hand every reproducer the ONE focused command that runs a test here (`REPRO_HOW`): several
   whole-repo test runs at once is what an OOM killer resolves.
-- **The tree is unchanged except for the worktrees.** Claude Code creates them inside the target,
-  under `.claude/worktrees/`, and keeps every one whose agent wrote a file — which is every
-  reproduction. `wfcheck --owns-diff <COMMIT> <script>` lists them apart and fails on any other path;
-  remove them with `git worktree remove --force` once the report is read.
+- **The tree is unchanged except for the worktrees.** Measured for an Agent-tool subagent spawned by
+  a headless session [M-45]: its worktree lands under `.claude/worktrees/` of the repository the
+  LAUNCHING session runs in — so launch the hunt from the target's root — and Claude Code's own
+  description says it keeps a worktree whose agent changed something, which is every reproduction
+  that wrote a test. A Workflow `agent()` was not measured separately. `wfcheck -type hunt --owns-diff
+  <COMMIT> <script>` exempts exactly the REGISTERED linked worktrees there (`git worktree list`, so a
+  gitignored `.claude/` does not hide one), untracked and not symlinks; a tracked file under the
+  prefix, a loose file, or a symlink out of it counts as a write. It prints each worktree's cleanup,
+  `git worktree remove --force <path> && git branch -D <branch>`, because the branch outlives the
+  worktree.
+- **What the bar cannot see** — and a reproducer holding the absolute path of `REPO` is the agent
+  most able to reach it: gitignored paths, other refs, `.git` itself (hooks, config, `info/exclude`,
+  index flags), and a HEAD detached at the base, which it reports as a note. The rule that a
+  reproducer writes only inside its worktree is held by `isolation` and the prompt; the bar catches
+  what lands in tracked or untracked files.
+- **`dead-repro`** is the hunt's extra mode: only the reproducers die, the readers live, so a script
+  that drops a dead reproduction from its results — masked in `dead-reviews` by the readers' deaths —
+  is refused. It killing nobody is a note, not a failure: a hunt that verifies by vote has no
+  reproducer.
 
 Vector 3 of a hunt's gate is COVERAGE & PRECISION as for a review, plus REPRODUCTION: can a
 reproducer actually run something here (is `REPRO_HOW` a command that works in a fresh worktree, and
-does the subsystem build there), is the cap set against the expected finding count, and does the
-report keep "not reproduced" apart from "refuted"?
+does the subsystem build there), is the cap set against the expected finding count, does the report
+keep "not reproduced" apart from "refuted" — and three things no runner can judge, read line by line:
+the reproducer's prompt carries `REPRO_RULES` (the `COMMIT` checkout and its confirmation), never
+`READ_ONLY`; the readers carry no `isolation`; and the harness below the skeleton's marker line is the
+emitted one — re-emit with `wf new-script` and diff, because a status mapping or a `complete` edited
+there passes every dry-run mode.
 
 ## The decision document of a review
 

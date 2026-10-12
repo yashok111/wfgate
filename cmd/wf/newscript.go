@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -126,6 +127,17 @@ func cmdNewScript(args []string) error {
 	}
 	body := strings.ReplaceAll(string(b), "'SCRIPT_NAME'", quote(name))
 	body = strings.ReplaceAll(body, "'TARGET_REPO'", quote(repo))
+	// The hunt skeleton's reproducers call git by absolute path (the worktree
+	// rule), and the path is this box's, not a constant a template can know.
+	if strings.Contains(body, "'GIT_PATH'") {
+		gitPath := "TODO: the absolute path of git on the box that runs this"
+		if p, err := exec.LookPath("git"); err == nil {
+			if abs, err := filepath.Abs(p); err == nil {
+				gitPath = abs
+			}
+		}
+		body = strings.ReplaceAll(body, "'GIT_PATH'", quote(gitPath))
+	}
 	if d := filepath.Dir(dst); d != "." {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return err
@@ -153,7 +165,12 @@ func cmdNewScript(args []string) error {
 	fmt.Printf("    wfcheck -root %s %s\n", repo, dst)
 	if ws.ReadOnly(runType) {
 		fmt.Printf("    wfdry --type %s %s\n", runType, dst)
-		fmt.Printf("  after the run, from the workspace: wfcheck --owns-diff <the commit the run started from> %s — a read-only run must leave the tree unchanged\n", dst)
+		after := "a read-only run must leave the tree unchanged"
+		if ws.AllowsScratch(runType) {
+			after += ", its registered reproduction worktrees under " + ws.ScratchPrefix + " excepted"
+			fmt.Printf("    wfdry --type %s --args '{\"maxRepro\":1}' %s — walks the reproduction cap, which the default never reaches\n", runType, dst)
+		}
+		fmt.Printf("  after the run: wfcheck -type %s --owns-diff <the SHA the run started from> %s — %s\n", runType, dst, after)
 	} else {
 		fmt.Printf("    wfdry %s\n", dst)
 	}

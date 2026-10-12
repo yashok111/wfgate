@@ -25,7 +25,7 @@ can drift apart from itself, and nothing here compares the copies.
 
 ## -1. Open a gate workspace, and change artifacts through `wf apply`
 
--1. **Open a gate workspace: `wf init <name> -target <repo> [-type review]`.** The type says what
+-1. **Open a gate workspace: `wf init <name> -target <repo> [-type review|hunt]`.** The type says what
    the gated run does to its target — `build` writes it (the default), `review` and `hunt` only read it — and
    is chosen here, once, because the skeleton, the dry run and the post-run diff check all read it
    from `gate.json` (`run-types.md`). Every artifact of the gate — the

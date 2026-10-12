@@ -49,13 +49,16 @@ const REPRO_HOW = 'TODO: how one focused test or command is run in this repo, e.
 // Reproductions are builds, one per worktree: the costliest agents of the run.
 // Only blockers and majors are reproduced, worst first, up to this cap; the
 // rest — and anything over the cap — are re-judged by reading, and the report
-// says which were capped.
-const MAX_REPRO = 8
+// names which were capped. `args.maxRepro` overrides it, so a dry run can walk
+// the cap: `wfdry --args '{"maxRepro":1}'` — with the default the fixture's two
+// serious findings never reach it.
+const MAX_REPRO = (typeof args === 'object' && args && Number.isInteger(args.maxRepro)) ? args.maxRepro : 8
 
 // A worktree-isolated agent calls git by its ABSOLUTE PATH: a PreToolUse hook
 // that rewrites `git …` into a wrapper is refused inside a worktree
-// (`wf docs authoring`, the worktree rule). Check the path on the box.
-const GIT = '/usr/bin/git'
+// (`wf docs authoring`, the worktree rule). `wf new-script` writes the path
+// git resolves to on the box it runs on.
+const GIT = 'GIT_PATH'
 
 // ---------------------------------------------------------------------------
 // Harness. Everything below this line is the same in every hunt script; the
@@ -127,9 +130,11 @@ const FINDINGS_SCHEMA = {
 const REPRO_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['verified', 'severity', 'command', 'output', 'reason'],
+  required: ['verified', 'onCommit', 'head', 'severity', 'command', 'output', 'reason'],
   properties: {
     verified: { type: 'boolean', description: 'true only if you REPRODUCED it: a command that fails at the commit for the stated reason' },
+    onCommit: { type: 'boolean', $comment: 'x-pass: true', description: 'true only if git rev-parse HEAD in your worktree printed the commit you were given, before you ran anything' },
+    head: { type: 'string', description: 'what git rev-parse HEAD printed in your worktree' },
     severity: { type: 'string', enum: ['blocker', 'major', 'minor', 'note'], description: 'your own rating, whatever the finder said' },
     command: { type: 'string', description: 'the exact command you ran, with the test or script it runs' },
     output: { type: 'string', description: 'the last lines of its output that show the failure, or show it passing' },
@@ -270,14 +275,14 @@ log(found.length + ' finding(s) after dedup from ' + cells.length + ' finder cel
 // ---------------------------------------------------------------------------
 
 const results = []
-let capped = 0
+const capped = []
 if (found.length) {
   phase('Verify')
   const ordered = found.slice().sort((a, b) => rank(a.severity) - rank(b.severity))
   const plan = ordered.map((f) => {
     const serious = rank(f.severity) <= 1
     if (serious && ordered.filter((g, i) => i < ordered.indexOf(f) && rank(g.severity) <= 1).length >= MAX_REPRO) {
-      capped++
+      capped.push(f.id)
       return { f, repro: false }
     }
     return { f, repro: serious }
@@ -299,8 +304,17 @@ if (found.length) {
     const sev = LEVELS.includes(v.severity) ? v.severity : f.severity
     // Not reproduced is NOT refuted: the reproducer may have lacked the state,
     // the data or the timing, and the finding stands as unproven, listed apart.
-    const status = x.repro ? (v.verified ? 'reproduced' : 'not-reproduced') : (v.verified ? 'confirmed' : 'refuted')
-    results.push(Object.assign({}, f, { status, finalSeverity: sev, reason: String(v.reason || ''), command: x.repro ? String(v.command || '') : '', output: x.repro ? String(v.output || '') : '' }))
+    // A reproduction counts only with a command that can be re-run AND a
+    // worktree the reproducer confirmed was at COMMIT; a "yes" without either
+    // is a claim, listed as not reproduced with what was missing.
+    const command = x.repro ? String(v.command || '').trim() : ''
+    let reason = String(v.reason || '')
+    let status = x.repro ? (v.verified ? 'reproduced' : 'not-reproduced') : (v.verified ? 'confirmed' : 'refuted')
+    if (status === 'reproduced' && (!command || v.onCommit !== true)) {
+      status = 'not-reproduced'
+      reason = (!command ? 'no command reported' : 'the worktree was not confirmed at ' + COMMIT + ' (head: ' + String(v.head || '?') + ')') + '. ' + reason
+    }
+    results.push(Object.assign({}, f, { status, finalSeverity: sev, reason, command, head: x.repro ? String(v.head || '') : '', output: x.repro ? String(v.output || '') : '', capped: capped.includes(f.id) }))
   })
 }
 const confirmed = results.filter((r) => r.status === 'reproduced' || r.status === 'confirmed').sort((a, b) => rank(a.finalSeverity) - rank(b.finalSeverity))
@@ -340,13 +354,14 @@ const complete = deadCells.length === 0 && gapCells.length === 0 && unverified.l
 const out = []
 out.push('Bug hunt over ' + REPO + ' at ' + COMMIT + ': ' + (cells.length - deadCells.length) + ' of ' + cells.length + ' finder cell(s) reported' + (deadCells.length ? ' — NOT COVERED: ' + deadCells.join(', ') : '') + '.')
 if (gapCells.length) out.push('Files a finder did not read: ' + gapCells.join('; ') + '.')
-out.push(found.length + ' finding(s) after dedup: ' + results.filter((r) => r.status === 'reproduced').length + ' reproduced, ' + results.filter((r) => r.status === 'confirmed').length + ' confirmed by reading, ' + notReproduced.length + ' not reproduced, ' + refuted.length + ' refuted, ' + unverified.length + ' unverified' + (capped ? ', ' + capped + ' serious finding(s) read rather than reproduced (MAX_REPRO)' : '') + (malformed ? ', ' + malformed + ' malformed report(s) dropped' : '') + '.')
+out.push(found.length + ' finding(s) after dedup: ' + results.filter((r) => r.status === 'reproduced').length + ' reproduced, ' + results.filter((r) => r.status === 'confirmed').length + ' confirmed by reading, ' + notReproduced.length + ' not reproduced, ' + refuted.length + ' refuted, ' + unverified.length + ' unverified' + (capped.length ? ', ' + capped.length + ' serious finding(s) read rather than reproduced (MAX_REPRO: ' + capped.join(', ') + ')' : '') + (malformed ? ', ' + malformed + ' malformed report(s) dropped' : '') + '.')
 if (!complete) out.push('INCOMPLETE: ' + [deadCells.length ? deadCells.length + ' dead cell(s)' : '', gapCells.length ? gapCells.length + ' cell(s) with unread files' : '', unverified.length ? unverified.length + ' unverified finding(s)' : ''].filter(Boolean).join(', ') + ' — what follows is not a clean hunt of the whole subsystem.')
 if (!confirmed.length) out.push(found.length ? 'No finding was reproduced or confirmed.' : 'Nothing was found over the cells listed below.')
 out.push('')
-confirmed.forEach((f) => out.push('- [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  trigger: ' + f.failure + '\n  fix: ' + f.fix + (f.status === 'reproduced' ? '\n  reproduced: `' + f.command + '`\n  ' + f.output : '\n  confirmed by reading: ' + f.reason)))
+confirmed.forEach((f) => out.push('- [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  trigger: ' + f.failure + '\n  fix: ' + f.fix + (f.status === 'reproduced' ? '\n  reproduced at ' + f.head + ': `' + f.command + '`\n    ' + f.output.split('\n').join('\n    ') : '\n  confirmed by reading' + (f.capped ? ' (over MAX_REPRO, not reproduced)' : '') + ': ' + f.reason)))
 groups.forEach((g) => out.push('- shared root cause (' + g.ids.join(', ') + '): ' + g.title))
 if (mergeDied) out.push('- the merge agent died: findings sharing a root cause are listed separately')
+refuted.filter((f) => f.capped).forEach((f) => out.push('- REFUTED BY READING, over MAX_REPRO and never reproduced [' + f.severity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  why: ' + f.reason))
 notReproduced.forEach((f) => out.push('- NOT REPRODUCED [' + f.finalSeverity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  why: ' + f.reason))
 unverified.forEach((f) => out.push('- UNVERIFIED [' + f.severity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary))
 out.push('')
@@ -362,7 +377,7 @@ return {
   // it is reported apart, as unproven.
   complete,
   report: out.join('\n'),
-  confirmed: confirmed.map((f) => ({ id: f.id, severity: f.finalSeverity, file: f.file, line: f.line, summary: f.summary, reproduced: f.status === 'reproduced' })),
+  confirmed: confirmed.map((f) => ({ id: f.id, severity: f.finalSeverity, file: f.file, line: f.line, summary: f.summary, reproduced: f.status === 'reproduced', command: f.command })),
   notReproduced: notReproduced.map((f) => f.id),
   refuted: refuted.length,
   unverified: unverified.map((f) => f.id),

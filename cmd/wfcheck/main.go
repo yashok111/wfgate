@@ -204,16 +204,32 @@ func printUnchanged(path, root, base, typ string) (bool, error) {
 		clean = false
 		fmt.Printf("HEAD MOVED: HEAD is no longer %s — a read-only run moved HEAD, or the base is not the commit the run started from\n", rep.Base)
 	}
-	// A hunt reproduces in worktrees Claude Code creates INSIDE the target,
-	// under ws.ScratchPrefix, and keeps whenever the reproducer wrote a test —
-	// which is every reproduction. They are the run's scratch, not a write
-	// into the target: listed, never failed. Any other path still fails.
-	var scratch, changed []string
+	// A hunt reproduces in agent worktrees under ws.ScratchPrefix. Exempt is
+	// exactly a REGISTERED linked worktree's root, reported untracked, and not
+	// a symlink: the first version exempted every path under the prefix, and
+	// the review round passed a tracked file edited there, a symlink out of
+	// it, and a plain file a reader wrote, each listed as a "worktree" with
+	// cleanup advice git then refused. Anything else under the prefix counts.
+	registered := map[string]wfcheck.Worktree{}
+	if ws.AllowsScratch(typ) {
+		for _, w := range rep.Worktrees {
+			if strings.HasPrefix(w.Path+"/", ws.ScratchPrefix) {
+				registered[w.Path] = w
+			}
+		}
+	}
+	var changed []string
 	for _, p := range rep.Paths {
-		if ws.AllowsScratch(typ) && strings.HasPrefix(p, ws.ScratchPrefix) {
-			scratch = append(scratch, p)
-		} else {
-			changed = append(changed, p)
+		root := strings.TrimSuffix(p, "/")
+		if _, ok := registered[root]; ok && rep.Untracked[p] && !isSymlink(filepath.Join(rep.Top, root)) {
+			continue
+		}
+		changed = append(changed, p)
+	}
+	var scratch []wfcheck.Worktree
+	for _, w := range rep.Worktrees {
+		if _, ok := registered[w.Path]; ok {
+			scratch = append(scratch, w)
 		}
 	}
 	if len(changed) > 0 {
@@ -224,10 +240,20 @@ func printUnchanged(path, root, base, typ string) (bool, error) {
 		}
 	}
 	if len(scratch) > 0 {
-		fmt.Printf("reproduction worktree(s) left under %s (%d) — the run's scratch, not counted; remove each with `git worktree remove --force <path>` once the report is read:\n", ws.ScratchPrefix, len(scratch))
-		for _, p := range scratch {
-			fmt.Println("  " + p)
+		// Listed from `git worktree list`, so a worktree under a gitignored
+		// `.claude/` is listed too — status never showed it. Each one's branch
+		// is named, because removing the worktree leaves its branch behind.
+		fmt.Printf("reproduction worktree(s) registered under %s (%d) — the run's scratch, not counted; once the report is read:\n", ws.ScratchPrefix, len(scratch))
+		for _, w := range scratch {
+			cmd := "git worktree remove --force " + w.Path
+			if w.Branch != "" {
+				cmd += " && git branch -D " + w.Branch
+			}
+			fmt.Println("  " + cmd)
 		}
+	}
+	if rep.Detached {
+		fmt.Println("note: HEAD is detached — if the run started on a branch, the run detached it, and HEAD at the base cannot show that")
 	}
 	if clean {
 		if len(scratch) > 0 {
@@ -238,8 +264,13 @@ func printUnchanged(path, root, base, typ string) (bool, error) {
 	}
 	// What the bar does not see, said on every run rather than discovered:
 	// probed in the review round, all three exit 0.
-	fmt.Println("not checked: gitignored paths and other refs (branches, tags, stash); and anything already uncommitted when the run started is counted as the run's — start from a clean tree")
+	fmt.Println("not checked: gitignored paths, other refs (branches, tags, stash), and `.git` itself (hooks, config, info/exclude, index flags); anything already uncommitted when the run started is counted as the run's — start from a clean tree")
 	return clean, nil
+}
+
+func isSymlink(p string) bool {
+	fi, err := os.Lstat(p)
+	return err == nil && fi.Mode()&os.ModeSymlink != 0
 }
 
 var shaLike = regexp.MustCompile(`^[0-9a-f]{7,64}$`)

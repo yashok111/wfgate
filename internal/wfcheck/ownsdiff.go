@@ -2,6 +2,7 @@ package wfcheck
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -41,11 +42,32 @@ type OwnsDiffReport struct {
 	Partial bool
 	Unowned []string // the run wrote it, no section declared it
 	Paths   []string // every path the run changed, owned or not
+	// Untracked is the subset of Paths that `git status` reported as `??`.
+	// A hunt's reproduction worktree is untracked by construction; a tracked
+	// path under the scratch prefix is a write into the target like any other.
+	Untracked map[string]bool
+	// Top is the repository's top level, the base every path above is
+	// relative to.
+	Top string
+	// Worktrees are the LINKED worktrees git has registered, the main one
+	// excluded, with paths relative to Top. Read from `git worktree list`, not
+	// from status, so a worktree under a gitignored directory is still listed.
+	Worktrees []Worktree
+	// Detached says HEAD names no branch. A read-only run that detached the
+	// branch it started on leaves HEAD at the base, which the comparison
+	// above cannot see.
+	Detached bool
 	// HeadMoved says HEAD is no longer the base. A build commits, so for it this
 	// is the expected state and nothing reads it; a read-only run must not move
 	// a ref, and a commit followed by its revert leaves a diff of nothing.
 	HeadMoved bool
 	Untouched []string // a section declared it, the run never wrote it
+}
+
+// Worktree is one linked worktree: where it is, and the branch it holds ("" when
+// detached) — the second half of cleaning it up.
+type Worktree struct {
+	Path, Branch string
 }
 
 // OwnsDiff compares the ownership map a script DECLARES against the files a run
@@ -193,6 +215,10 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 		}
 		if entry[0] == '?' && entry[1] == '?' {
 			add(entry[3:])
+			if rep.Untracked == nil {
+				rep.Untracked = map[string]bool{}
+			}
+			rep.Untracked[strings.TrimSpace(entry[3:])] = true
 		}
 	}
 	for p := range files {
@@ -205,10 +231,48 @@ func OwnsDiff(scriptPath, root, base string) (OwnsDiffReport, error) {
 			rep.Untouched = append(rep.Untouched, d)
 		}
 	}
+	if top, err := repo.Run("rev-parse", "--show-toplevel"); err == nil {
+		rep.Top = strings.TrimSpace(top)
+	}
+	if _, err := repo.Run("symbolic-ref", "-q", "HEAD"); err != nil {
+		rep.Detached = true
+	}
+	if list, err := repo.Run("worktree", "list", "--porcelain"); err == nil && rep.Top != "" {
+		rep.Worktrees = linkedWorktrees(list, rep.Top)
+	}
 	sort.Strings(rep.Unowned)
 	sort.Strings(rep.Paths)
 	sort.Strings(rep.Untouched)
 	return rep, nil
+}
+
+// linkedWorktrees parses `git worktree list --porcelain`: blank-line separated
+// records, `worktree <abs>` first, then `branch refs/heads/<b>` or `detached`.
+// The main worktree is the one at top and is not returned.
+func linkedWorktrees(list, top string) []Worktree {
+	var out []Worktree
+	for _, rec := range strings.Split(strings.TrimSpace(list), "\n\n") {
+		var w Worktree
+		abs := ""
+		for _, line := range strings.Split(rec, "\n") {
+			switch {
+			case strings.HasPrefix(line, "worktree "):
+				abs = strings.TrimPrefix(line, "worktree ")
+			case strings.HasPrefix(line, "branch "):
+				w.Branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
+			}
+		}
+		if abs == "" || filepath.Clean(abs) == filepath.Clean(top) {
+			continue
+		}
+		rel, err := filepath.Rel(top, abs)
+		if err != nil {
+			continue
+		}
+		w.Path = filepath.ToSlash(rel)
+		out = append(out, w)
+	}
+	return out
 }
 
 // owns is the match: an exact path, or any file under a declared directory.

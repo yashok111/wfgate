@@ -4862,6 +4862,7 @@ func cmdDocs(args []string) error {
   guide         the manual in reading order — every name below but checks and measured
   authoring     language rule, companions, the spawn wrapper name
   routing       model and effort routing: explicit per-agent tiers
+  types         run types: build, review, hunt — what each changes, and a read-only run's rules
   interview     step -2: grilling the decisions out before the workspace exists
   preflight     the pre-flight script-review gate itself: wfcheck, wfdry, the vectors
   harness       the operator's half: workspace, round, apply, freeze, verify, checks, close

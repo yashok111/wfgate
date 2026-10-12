@@ -67,6 +67,13 @@ const emptyMode = "empty"
 // `dead-reviews` kills the verifiers and critics and leaves the finders alive.
 const deadFindersMode = "dead-finders"
 
+// deadReproMode is a hunt's third dead mode: only the REPRODUCERS die. In
+// `dead-reviews` the readers die beside them, and their deaths alone made
+// `complete` false — which hid a script that drops a dead reproduction from
+// its results (the hunt wave's review round, the same masking that split the
+// finders out).
+const deadReproMode = "dead-repro"
+
 // ModesFor is the mode list a run of this type enters. A read-only run has no
 // acceptance step and no fix agent, so `acceptfail` and `unfixed` would walk
 // vocabulary its script does not carry, and it gains `empty`. A type the
@@ -74,6 +81,9 @@ const deadFindersMode = "dead-finders"
 func ModesFor(typ string) []string {
 	if !ws.ReadOnly(normType(typ)) {
 		return Modes
+	}
+	if normType(typ) == ws.TypeHunt {
+		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", deadReproMode, "no-args"}
 	}
 	return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, "dead-reviews", "no-args"}
 }
@@ -100,7 +110,7 @@ func normType(typ string) string {
 // and a verdict that reads as failure there is a script treating "no findings"
 // as "did not run".
 func passFixture(mode string) bool {
-	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode
+	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode || mode == deadReproMode
 }
 
 // Options configure one run.
@@ -459,7 +469,7 @@ func noteCollapse(rs []Result, ro bool) {
 			if ro && r.Mode == "blockers" {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. In a read-only run this is the mode in which every verifier refuted, so a step that consumes CONFIRMED findings has nothing to consume; it does mean those phases ran in the happy path alone and no failure mode covers them",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
-			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode {
+			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode || r.Mode == deadReproMode {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. This mode's shortfall can be the runner's own injection (a script that HALTS when a reviewer dies is doing what it is told), which is why it is not a failure; it can equally be an abort guard that ends the run wider than it meant to, and then every section behind those phases, and every gate over them, is covered by no failure mode",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
 			} else {
@@ -730,7 +740,15 @@ func runMode(src, mode string, o Options) Result {
 		if mode == "throw-serial" && r.Spawned == 1 {
 			panic(vm.ToValue("stubbed throw at the first spawn"))
 		}
-		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) {
+		// A hunt's reproducer WRITES its failing test, so it must write into a
+		// worktree: without `isolation: 'worktree'` its first instruction runs
+		// in the target. Refused here, in every mode, because the review round
+		// removed it from a script and nothing failed — the agent list printed
+		// the absence and every bar stayed green.
+		if normType(o.Type) == ws.TypeHunt && reproish(label) && get("isolation") != "worktree" {
+			bad(label, "a hunt's reproducer has no `isolation: 'worktree'` — it would write its failing test into the target; add the option to this call")
+		}
+		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadReproMode && reproish(label)) {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())
 		}
@@ -907,7 +925,7 @@ func runMode(src, mode string, o Options) Result {
 	// from the verdict this constrains: a producer-only script has no reviewer
 	// label, kills nobody, and is correct to come back green — the note below
 	// already says that run proved nothing.
-	if (mode == "dead-reviews" || mode == deadFindersMode) && r.ReturnOK && len(r.Killed) > 0 {
+	if (mode == "dead-reviews" || mode == deadFindersMode || mode == deadReproMode) && r.ReturnOK && len(r.Killed) > 0 {
 		// A verdict this guard cannot READ is not a verdict it checked. Three
 		// one-line variants of the banked fixture — the verdict nested in an
 		// object, under an unrecognised key, or as the string 'yes' — all came
@@ -962,6 +980,11 @@ func runMode(src, mode string, o Options) Result {
 	// nobody is a VIOLATION, not the note above: the coverage accounting — a
 	// dead finder reported as a hole — then ran in no mode, and a script that
 	// drops dead finders from its verdict passed every one (probe p6).
+	// A hunt with no reproducer is legitimate — the vote substitute — so a
+	// `dead-repro` that killed nobody is said, not failed.
+	if mode == deadReproMode && r.Spawned > 0 && len(r.Killed) == 0 {
+		r.Notes = append(r.Notes, deadReproMode+": no label matched a repro/reproduce/reproducer segment — this mode killed nobody; correct for a hunt that verifies by vote, and otherwise the dead-reproduction path ran in no mode")
+	}
 	if mode == deadFindersMode && r.Spawned > 0 && len(r.Killed) == 0 {
 		r.Violations = append(r.Violations, deadFindersMode+": no label matched a "+strings.Join(sortedKeys(findSegments), "/")+" segment — this mode killed nobody, so a dead finder's accounting ran in no mode. Label the finders `find:<lens>:<unit>`, or name them with --dead")
 	}
@@ -1216,11 +1239,25 @@ func sortedKeys(m map[string]bool) []string {
 }
 
 // criticish adds the read-only types' own reviewers to `dead-reviews`: a critic
-// grading a review's coverage, a skeptic re-judging a finding.
+// grading a review's coverage, a skeptic re-judging a finding, a hunt's
+// reproducer — a `repro:F001` label was killed by no mode.
 func criticish(label string) bool {
+	if reproish(label) {
+		return true
+	}
 	for _, seg := range labelSegments(label) {
 		switch seg {
 		case "critic", "critics", "skeptic", "skeptics":
+			return true
+		}
+	}
+	return false
+}
+
+func reproish(label string) bool {
+	for _, seg := range labelSegments(label) {
+		switch seg {
+		case "repro", "repros", "reproduce", "reproducer", "reproducers", "reproduction", "reproductions":
 			return true
 		}
 	}

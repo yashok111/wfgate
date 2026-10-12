@@ -266,7 +266,7 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    SCHEMA is a claim about the LAUNCH validator, which this runner does not run** — one gate followed a
    correct WARN into a schema the launch refused outright and lost its most expensive round to it
    [M-35]; the runner refuses that keyword itself now, and the general rule is in `gate-checks.md`
-   section E. Print the phase order, the label/model/effort list and the whole return value each time. Seconds of cost; it evaluates every
+   section E. Print the phase order, the label/model/effort list (and an agent's isolation, when it has one) and the whole return value each time. Seconds of cost; it evaluates every
    template literal on every path and walks branches a parse cannot reach. **The clean path is the one
    that matters most** — reviewers read the failure branches, because that is where the risk looks like
    it lives, so the defects that survive a gate are the ones on the happy path. It is a DISTINCT dynamic

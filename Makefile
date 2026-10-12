@@ -117,6 +117,7 @@ check-tools: build
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -type hunt -target . -o .check-skel/hunt.mjs >/dev/null \
 		&& ./wfcheck -root . .check-skel/hunt.mjs >/dev/null \
 		&& ./wfdry --type hunt .check-skel/hunt.mjs --quiet >/dev/null \
+		&& ./wfdry --type hunt .check-skel/hunt.mjs --quiet --args '{"maxRepro":1}' >/dev/null \
 		|| { rm -rf .check-skel; echo "wf new-script -type hunt skeleton: the emitted hunt harness fails its own tools"; exit 1; }
 	@out=$$(./wfdry --type hunt .check-skel/hunt.mjs --mode clean 2>/dev/null | grep 'agents:'); rm -rf .check-skel; \
 		echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'verify:read:' \
@@ -143,7 +144,10 @@ check-tools: build
 			rm -rf $$d; echo "wfcheck --owns-diff in a review workspace: EXIT 0 over a reproduction worktree — only a hunt may leave one"; exit 1; fi; \
 		./wfcheck -type hunt --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs > $$d/h.out \
 			|| { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: a reproduction worktree under .claude/worktrees/ FAILED the bar — it is the run's scratch"; exit 1; }; \
-		grep -q 'agent-1' $$d/h.out || { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: passed without naming the worktree it let through"; exit 1; }; \
+		grep -q 'git worktree remove --force .claude/worktrees/agent-1 && git branch -D w1' $$d/h.out || { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: passed without naming the worktree it let through and its branch"; exit 1; }; \
+		echo n > $$d/t/.claude/worktrees/loose.txt; \
+		if ./wfcheck -type hunt --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
+			rm -rf $$d; echo "wfcheck --owns-diff -type hunt: EXIT 0 over a plain file under .claude/worktrees/ — only a REGISTERED worktree is scratch"; exit 1; fi; \
 		rm -rf $$d; echo "review workspace: wfdry and wfcheck --owns-diff read the type from gate.json; a changed tree fails the read-only bar; a hunt may leave a named reproduction worktree, a review may not"
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null; \
 		c=$$(./wfdry .check-skel/skeleton.mjs --mode blockers 2>/dev/null | awk '/"carried": \[/{f=1} f{print} f&&/^   \],?$$/{exit}'); \

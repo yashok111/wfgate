@@ -81,14 +81,60 @@ func TestHuntDeadVerifiers(t *testing.T) {
 }
 
 // The cap: serious findings past MAX_REPRO are READ, worst first, and the run
-// says how many.
+// names them. Walked through `args.maxRepro`, the way an author walks it.
 func TestHuntReproCap(t *testing.T) {
-	body := mutate(t, huntSkeleton(t), "const MAX_REPRO = 8", "const MAX_REPRO = 1")
-	r := byMode(runTyped(t, body, ws.TypeHunt, "clean"), "clean")
-	if n := strings.Count(strings.Join(r.Calls, " "), "verify:repro:"); n != 1 {
-		t.Fatalf("MAX_REPRO = 1 must spawn exactly one reproducer, got %d: %v", n, r.Calls)
+	rs, err := Run(script(t, huntSkeleton(t)), []string{"clean"}, Options{Type: ws.TypeHunt, Args: `{"maxRepro":1}`})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if c, _ := retOf(r)["capped"].(int64); c != 1 {
-		t.Fatalf("the serious finding past the cap must be counted: %+v", retOf(r))
+	r := rs[0]
+	if n := strings.Count(strings.Join(r.Calls, " "), "verify:repro:"); n != 1 {
+		t.Fatalf("maxRepro 1 must spawn exactly one reproducer, got %d: %v", n, r.Calls)
+	}
+	if c, _ := retOf(r)["capped"].([]any); len(c) != 1 {
+		t.Fatalf("the serious finding past the cap must be NAMED: %+v", retOf(r)["capped"])
+	}
+	if !strings.Contains(retOf(r)["report"].(string), "MAX_REPRO: F") {
+		t.Fatalf("the report must name the capped ids")
+	}
+}
+
+// A reproducer without `isolation: 'worktree'` is refused in a hunt, in every
+// mode: it would write its failing test into the target.
+func TestHuntReproducerMustBeIsolated(t *testing.T) {
+	body := mutate(t, huntSkeleton(t), "effort: 'medium', isolation: 'worktree', schema: REPRO_SCHEMA", "effort: 'medium', schema: REPRO_SCHEMA")
+	r := byMode(runTyped(t, body, ws.TypeHunt, "clean"), "clean")
+	wantViolation(t, r, "has no `isolation: 'worktree'`")
+	if rv := byMode(runTyped(t, body, ws.TypeReview, "clean"), "clean"); len(rv.Violations) > 0 {
+		t.Fatalf("the refusal is a hunt's alone: %v", rv.Violations)
+	}
+}
+
+// `dead-repro` kills only the reproducers, so a hunt that drops a dead
+// reproduction from its results — masked in `dead-reviews` by the readers'
+// deaths — is refused.
+func TestHuntDeadReproductionsReachTheVerdict(t *testing.T) {
+	body := mutate(t, huntSkeleton(t), "    if (!v) {\n      results.push", "    if (!v) {\n      if (x && x.repro) return\n      results.push")
+	r := byMode(runTyped(t, body, ws.TypeHunt, deadReproMode), deadReproMode)
+	wantViolation(t, r, "dead-repro: the run returned `complete: true`")
+	for _, k := range r.Killed {
+		if !strings.Contains(k, "repro") {
+			t.Fatalf("dead-repro must kill reproducers only: %v", r.Killed)
+		}
+	}
+	if !strings.Contains(strings.Join(ModesFor(ws.TypeHunt), " "), deadReproMode) || strings.Contains(strings.Join(ModesFor(ws.TypeReview), " "), deadReproMode) {
+		t.Fatalf("dead-repro is a hunt's mode alone")
+	}
+}
+
+// A reproducer labelled without a `verify` segment still dies in
+// `dead-reviews`: `repro:F001` was killed by no mode.
+func TestReproLabelDiesInDeadReviews(t *testing.T) {
+	body := preamble + `phase('P')
+const a = await spawn('one', { model: 'sonnet', effort: 'low', label: 'repro:F001', isolation: 'worktree', schema: S, phase: 'P' })
+return { done: true, dead: a ? 0 : 1 }`
+	r := byMode(runTyped(t, body, ws.TypeHunt, "dead-reviews"), "dead-reviews")
+	if len(r.Killed) != 1 {
+		t.Fatalf("a repro label must die in dead-reviews: %v", r.Killed)
 	}
 }
