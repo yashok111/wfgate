@@ -135,7 +135,7 @@ check-tools: build
 		&& ./wfcheck -root . .check-skel/security.mjs >/dev/null \
 		&& ./wfdry --type security .check-skel/security.mjs --quiet >/dev/null \
 		&& ./wfdry --type security .check-skel/security.mjs --quiet --args '{"maxRepro":1}' >/dev/null \
-		&& ./wfdry --type security .check-skel/security.mjs --quiet --mode clean --args '{"maxAgents":12}' >/dev/null \
+		&& ./wfdry --type security .check-skel/security.mjs --quiet --mode clean --args '{"maxAgents":40}' >/dev/null \
 		|| { rm -rf .check-skel; echo "wf new-script -type security skeleton: the emitted security harness fails its own tools"; exit 1; }
 	@sed "s|const SCANNERS = \[\]|const SCANNERS = ['semgrep']|; s|paths: \['TODO/'\]|paths: ['cmd/']|" .check-skel/security.mjs > .check-skel/scan.mjs \
 		&& ./wfdry --type security .check-skel/scan.mjs --quiet --args "$$(cat testdata/security-scan-args.json)" >/dev/null \
@@ -144,7 +144,7 @@ check-tools: build
 		|| { rm -rf .check-skel; echo "wf new-script -type security skeleton: a multi-hit args.scan turned the skeleton red or was not chunked — every hit id must be a required property the finder answers"; exit 1; }
 	@out=$$(./wfdry --type security .check-skel/security.mjs --mode clean 2>/dev/null | grep 'agents:'); \
 		inc=$$(./wfdry --type security .check-skel/security.mjs --mode inconclusive 2>/dev/null); rm -rf .check-skel; \
-		echo "$$out" | grep -q 'verify:read:' && echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'find:r2:variant:' && echo "$$out" | grep -q 'merge' \
+		echo "$$out" | grep -q 'verify:read:' && echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'find:r2:variant:' && echo "$$out" | grep -q 'find:r1:flow:all' && echo "$$out" | grep -q 'merge' \
 			&& echo "$$inc" | grep -q '=== inconclusive: OK' \
 			&& echo "wf new-script -type security skeleton: wfcheck clean, wfdry all modes and under a low agent ceiling, clean walks verify → PoC → a variant round → merge, and undecided verdicts reach the return" \
 			|| { echo "wf new-script -type security skeleton: clean did not walk verify, a PoC, a variant round and the merge, or inconclusive failed — a confirmed blocker must get a PoC and seed a variant finder, and a cannot-verify finding must be returned"; exit 1; }

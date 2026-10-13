@@ -171,7 +171,15 @@ func cmdNewScript(args []string) error {
 		if ws.AllowsScratch(runType) {
 			after += ", its registered reproduction worktrees under " + ws.ScratchPrefix + " excepted"
 			fmt.Printf("    wfdry --type %s --args '{\"maxRepro\":1}' %s — walks the reproduction cap, which the default never reaches\n", runType, dst)
-			fmt.Printf("    wfdry --type %s --mode clean --args '{\"maxAgents\":12}' %s — walks the ceiling stop before a round, which the default never reaches\n", runType, dst)
+			// The ceiling that stops BEFORE round 2 is sized to the emitted
+			// skeleton's round 1: a hunt's spends under twelve agents, a
+			// security run's — seven classes over two units, a flow cell,
+			// their verifiers and provers — thirty-seven.
+			ceiling := 12
+			if runType == ws.TypeSecurity {
+				ceiling = 40
+			}
+			fmt.Printf("    wfdry --type %s --mode clean --args '{\"maxAgents\":%d}' %s — walks the ceiling stop before a round, which the default never reaches; sized for the skeleton as emitted, so resize it once your classes and units change round 1\n", runType, ceiling, dst)
 		}
 		fmt.Printf("  after the run: wfcheck -type %s --owns-diff <the SHA the run started from> %s — %s\n", runType, dst, after)
 		if runType == ws.TypeSecurity {

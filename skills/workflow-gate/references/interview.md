@@ -76,7 +76,11 @@ FIRST.
    `gate-checks.md` section D before the first clause is written. An acceptance section states
    OBSERVATIONS, never test designs — the gate that broke that rule rewrote its acceptance section in
    four consecutive rounds. Grill each criterion for the wrong implementation it exists to fail; a
-   clause with no named defeat is a clause with no floor.
+   clause with no named defeat is a clause with no floor. A build that crosses a trust boundary —
+   auth, payments, secrets, user files, a model's output — owes the threats a clause each: STRIDE
+   over the boundary, then every threat that stands becomes an OBSERVATION the build must show (the
+   second login from another tenant's token is refused, the upload outside its root is not written).
+   A security requirement nobody can observe is not one, and "the code is secure" is no clause.
 
    **The output is the DOCUMENT, and a decision that survives only in the transcript did not
    survive.** Nothing downstream reads a conversation — not `wf apply`, not a reviewer, not
