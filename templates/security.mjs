@@ -11,14 +11,16 @@ export const meta = {
 }
 
 // A SECURITY run: it searches a subsystem — or, with BASE set, the changes
-// BASE..COMMIT — for vulnerabilities an attacker named by the threat model can
+// BASE...COMMIT — for vulnerabilities an attacker named by the threat model can
 // exploit. Emitted by `wf new-script` in a workspace opened with
 // `wf init -type security`. The method is the one the public security skills
 // converge on (Trail of Bits' fp-check and variant-analysis, Anthropic's
 // threat-model → vuln-scan → triage, Sentry's security-review): finders built
 // for RECALL, a verifier built to REFUTE, severity re-derived by the verifier,
-// a PoC for what is serious, and later rounds that hunt VARIANTS of what was
-// confirmed. The tree at REPO comes out of the run unchanged except for the PoC
+// and later rounds that hunt VARIANTS of what was confirmed. The PoC for what
+// is serious is this harness's choice, carried over from the hunt's
+// reproduction — Anthropic's triage forbids executing target code and leaves
+// the PoC to a human; Strix and fp-check run one. The tree at REPO comes out of the run unchanged except for the PoC
 // worktrees under `.claude/worktrees/`: after the run, `wfcheck --owns-diff
 // <COMMIT> <script>` from the workspace asserts that and lists them.
 
@@ -57,9 +59,10 @@ const UNITS = [
   { id: 'TODO-unit', paths: ['TODO/'] },
 ]
 
-// What a finder must not report and a verifier must refute on sight. These are
-// the exclusions every public triage procedure carries; add the target's own.
-const DO_NOT_REPORT = 'denial of service and resource exhaustion; missing rate limits; missing hardening with no concrete exploit; an outdated dependency with no reachable vulnerable call (the dependency scanner covers those); code that only runs in tests, examples or docs; theoretical races with no reachable window; a value the threat model says is trusted; an impact the precondition already grants (if the attacker must already be an admin to do it, it is not an admin-escalation).'
+// What a finder must not report and a verifier must refute on sight — the
+// exclusions the public triage procedures share, Anthropic's triage among
+// them; add the target's own.
+const DO_NOT_REPORT = 'volumetric denial of service (flooding, many requests) and missing rate limits — a ReDoS, an algorithmic-complexity blow-up or unbounded recursion one request triggers IS reportable; missing hardening with no concrete exploit; an outdated dependency with no reachable vulnerable call (the dependency scanner covers those); code that only runs in tests, examples or docs; theoretical races with no reachable window; a value the threat model says is trusted; an impact the precondition already grants (if the attacker must already be an admin to do it, it is not an admin-escalation).'
 
 const SEVERITY = 'blocker = exploitable by the attacker the threat model names, with the access they have, with a concrete impact on a named asset (code execution, authentication bypass, data read or written across a trust boundary, a secret exposed); major = exploitable, but needing a precondition the attacker plausibly obtains, or with a bounded impact; minor = a weakness whose exploit needs preconditions that already grant most of its impact, or a missing defence in depth; note = not a vulnerability. An open question is not a note: a finding that cannot state its source, sink and the path between them says which observation would settle it.'
 
@@ -155,15 +158,32 @@ function live(label, result) {
 const SCAN = typeof args === 'object' && args && args.scan && typeof args.scan === 'object' ? args.scan : null
 const scanTools = SCAN && Array.isArray(SCAN.tools) ? SCAN.tools.filter((t) => t && typeof t.tool === 'string') : []
 const scanGaps = []
+// A scanner listed twice is read as failed if ANY entry says so.
+const toolOf = (name) => {
+  const all = scanTools.filter((x) => x.tool === name)
+  return all.length ? Object.assign({}, all[0], { ok: all.every((x) => x.ok === true) }) : null
+}
 SCANNERS.forEach((name) => {
-  const t = scanTools.find((x) => x.tool === name)
+  const t = toolOf(name)
   if (!t) scanGaps.push(name + ': NOT SUPPLIED in args.scan')
   else if (t.ok !== true) scanGaps.push(name + ': its execution FAILED' + (t.note ? ' (' + String(t.note) + ')' : ''))
+  // A hit with no file location, or naming no file under the target, is
+  // assigned to no unit and adjudicated by nobody: a hole in the scan's
+  // coverage, named like one.
+  if (t && Number.isInteger(t.dropped) && t.dropped > 0) scanGaps.push(name + ': ' + t.dropped + ' hit(s) with no file location, never adjudicated')
+  if (t && Number.isInteger(t.unresolved) && t.unresolved > 0) scanGaps.push(name + ': ' + t.unresolved + ' hit(s) naming no file under the target — re-run it from the target\'s root')
 })
 const undeclared = scanTools.filter((t) => !SCANNERS.includes(t.tool)).map((t) => t.tool)
 const hits = (SCAN && Array.isArray(SCAN.candidates) ? SCAN.candidates : [])
   .filter((h) => h && typeof h.id === 'string' && typeof h.file === 'string' && SCANNERS.includes(h.tool))
-const inUnit = (file, unit) => unit.paths.some((p) => file === p.replace(/\/$/, '') || file.startsWith(p.endsWith('/') ? p : p + '/'))
+// `./a/`, `a/` and `a` name one directory, and `.`, `./` or '' the whole
+// repository: read literally, each left every hit outside every unit.
+const normPath = (p) => String(p).replace(/^(\.\/)+/, '').replace(/\/+$/, '').replace(/^\.$/, '')
+const inUnit = (file, unit) => unit.paths.some((p) => {
+  const f = normPath(file)
+  const u = normPath(p)
+  return u === '' || f === u || f.startsWith(u + '/')
+})
 const outOfScope = hits.filter((h) => !UNITS.some((u) => inUnit(h.file, u)))
 
 // A finder sees at most this many scanner hits: one finder handed hundreds
@@ -201,31 +221,37 @@ const FINDINGS_SCHEMA = {
 // A scanner chunk's schema names its hits by ENUM, so a finder can only
 // account for a hit it was handed: every id must come back once, as the
 // `scan` of a finding or in `dismissed` with a reason.
+// Every hit id is a REQUIRED property of `hits`, so the schema itself makes the
+// finder answer each one — an array of dismissals let a finder answer the first
+// and stop, and a dry run synthesised one entry for a chunk of many, which
+// read as unadjudicated hits on the unmodified skeleton. The leaf is a `$ref`,
+// so twenty hits cost twenty short pointers, not twenty copies.
 function scanSchema(ids) {
   const item = JSON.parse(JSON.stringify(FINDING_ITEM))
   item.required.push('scan')
   item.properties.scan = { type: 'string', enum: ['none'].concat(ids), description: 'the scanner hit this finding confirms, or none' }
+  const hits = {}
+  ids.forEach((id) => { hits[id] = { $ref: '#/$defs/hit' } })
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['coverage', 'gaps', 'findings', 'dismissed'],
+    required: ['coverage', 'gaps', 'findings', 'hits'],
+    $defs: {
+      hit: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind', 'why'],
+        properties: {
+          kind: { type: 'string', enum: ['dismissed', 'vulnerable'], description: 'vulnerable only if a finding in `findings` carries this hit as its `scan`' },
+          why: { type: 'string', description: 'one sentence: for a dismissal, the protection, the trusted source or the exclusion that rules it out, with file:line' },
+        },
+      },
+    },
     properties: {
       coverage: FINDINGS_SCHEMA.properties.coverage,
       gaps: FINDINGS_SCHEMA.properties.gaps,
       findings: { type: 'array', items: item },
-      dismissed: {
-        type: 'array',
-        description: 'every hit that is not a vulnerability under the threat model, with why',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['id', 'why'],
-          properties: {
-            id: { type: 'string', enum: ids },
-            why: { type: 'string', description: 'one sentence: the protection, the trusted source, or the exclusion that rules it out, with file:line' },
-          },
-        },
-      },
+      hits: { type: 'object', additionalProperties: false, required: ids, properties: hits, description: 'one verdict per scanner hit, by its id' },
     },
   }
 }
@@ -298,7 +324,7 @@ function finderPrompt(c, round) {
     ? '\nROUND ' + round + '. This scope and class were searched before, and these were reported — do NOT report them again; look for what they missed:\n' + c.mine.map((f) => '- ' + f.file + ':' + f.line + ' ' + f.summary).join('\n') + '\n'
     : ''
   if (c.lens.id === 'scan') {
-    return 'You are one finder of a security review over ' + REPO + ' at commit ' + COMMIT + '. A static scanner reported the hits below in your scope. Scanners over-report: ADJUDICATE each one by reading the code. A hit that is a real vulnerability under the threat model becomes a finding whose `scan` is its id; every other hit goes in `dismissed` with the reason. Every id comes back exactly once.\n\n' +
+    return 'You are one finder of a security review over ' + REPO + ' at commit ' + COMMIT + '. A static scanner reported the hits below in your scope. Scanners over-report: ADJUDICATE each one by reading the code. A hit that is a real vulnerability under the threat model becomes a finding whose `scan` is its id, and its entry in `hits` says vulnerable; every other hit is dismissed there, with the reason. Every id has its entry in `hits`.\n\n' +
       'SCOPE: ' + c.unit.paths.join(', ') + '\nHITS:\n' + c.hits.map((h) => '- ' + h.id + ' ' + h.tool + ' ' + h.rule + ' ' + h.file + ':' + h.line + ' — ' + h.message).join('\n') + '\n\n' +
       BRIEF + READ_ONLY + SECRETS + NAV +
       '\nReturn through the StructuredOutput schema. List in gaps every file a hit cites that you did not read.'
@@ -339,7 +365,7 @@ function proverPrompt(f) {
 function mergePrompt(list) {
   return 'These confirmed vulnerabilities come from independent finders of one security review. Group the ones that share ONE root cause — fixing one fixes the others — so the report names it once.\n\n' +
     list.map((f) => f.id + ' [' + f.cwe + '] ' + f.file + ':' + f.line + ' ' + f.summary).join('\n') + '\n\n' +
-    READ_ONLY + NAV +
+    READ_ONLY + SECRETS + NAV +
     '\nReturn through the StructuredOutput schema.'
 }
 
@@ -359,15 +385,21 @@ function newCell(lens, unit, round, extra) {
   cells.push(c)
   return c
 }
+// `scan` and `variant` are the harness's own cells: a lens of that name shared
+// a key with them, and its finder's death read as a report. Refused loudly.
+LENSES.forEach((l) => { if (l.id === 'scan' || l.id === 'variant') throw new Error('LENSES: the id ' + l.id + ' is the harness\'s own cell kind; name the class otherwise') })
 LENSES.forEach((lens) => UNITS.forEach((unit) => newCell(lens, unit, 1)))
 UNITS.forEach((unit) => {
   const mine = hits.filter((h) => inUnit(h.file, unit) && !UNITS.slice(0, UNITS.indexOf(unit)).some((u) => inUnit(h.file, u)))
   for (let i = 0; i < mine.length; i += SCAN_CHUNK) {
     const chunk = mine.slice(i, i + SCAN_CHUNK)
-    const c = newCell({ id: 'scan', ask: 'adjudicate scanner hits' }, { id: unit.id + (mine.length > SCAN_CHUNK ? '-' + (i / SCAN_CHUNK + 1) : ''), paths: unit.paths }, 1, { hits: chunk })
+    const c = newCell({ id: 'scan', ask: 'adjudicate scanner hits' }, { id: unit.id + (mine.length > SCAN_CHUNK ? '#' + (i / SCAN_CHUNK + 1) : ''), paths: unit.paths }, 1, { hits: chunk })
     c.key = 'scan x ' + c.unit.id
   }
 })
+// Results are matched back to cells by key, so two cells with one key share
+// one report: refused, naming the key.
+cells.forEach((c, i) => { if (cells.findIndex((d) => d.key === c.key) !== i) throw new Error('two cells share the key ' + c.key + ' — make the unit ids distinct') })
 
 // Two findings of one class in one file within this many lines are one
 // finding: the deterministic half of the dedup every triage procedure runs
@@ -387,16 +419,25 @@ let malformed = 0
 let reproUsed = 0
 let rounds = 0
 let stoppedBy = 'dry'
+// The last round confirmed something and MAX_VARIANTS 0 searched no variant of
+// it: the run did not run dry, it was told not to look.
+let variantsCut = false
 let lastRoundTokens = 0
 let active = cells.slice()
 
-function duplicateOf(f, lensId, anyLens) {
-  return kept.find((k) => k.file === f.file && Math.abs(k.line - f.line) <= WINDOW && (anyLens || k.lens === lensId))
+// A class cell's finding is a duplicate of one of its own class. A scanner or
+// variant cell has no class of its own, so its finding is compared by CWE: one
+// a class cell already filed is not a new claim, and a different weakness a
+// few lines away is — Anthropic's triage keeps "different categories in the
+// same file region" distinct.
+const cweOf = (x) => String(x.cwe || '').trim().toUpperCase()
+function duplicateOf(f, lensId, byCwe) {
+  return kept.find((k) => k.file === f.file && Math.abs(k.line - f.line) <= WINDOW && (byCwe ? cweOf(k) === cweOf(f) : k.lens === lensId))
 }
 
 for (let round = 1; round <= MAX_ROUNDS; round++) {
   if (!active.length) {
-    stoppedBy = 'dry'
+    stoppedBy = variantsCut ? 'noVariants' : 'dry'
     break
   }
   // A round starts only if all of its finders and their retries fit; its
@@ -445,27 +486,25 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
     // Every scanner hit the cell was handed is accounted for once — as the
     // `scan` of a finding or as a dismissal — or it is listed unadjudicated,
     // and the run is incomplete: a hit nobody judged is a scan nobody read.
+    // A finding carrying the hit answers it, whatever its entry says; a
+    // dismissal answers it; "vulnerable" with no finding filed answers nothing.
     if (c.hits) {
-      const told = new Set()
-      list.forEach((f) => { if (f && f.scan && f.scan !== 'none') told.add(f.scan) })
-      ;(Array.isArray(r.dismissed) ? r.dismissed : []).forEach((d) => {
-        if (d && c.hits.some((h) => h.id === d.id) && !told.has(d.id)) {
-          told.add(d.id)
-          dismissed.push({ hit: c.hits.find((h) => h.id === d.id), why: String(d.why || '') })
-        }
+      const verdicts = r.hits && typeof r.hits === 'object' ? r.hits : {}
+      c.hits.forEach((h) => {
+        const v = verdicts[h.id]
+        if (list.some((f) => f && f.scan === h.id)) return
+        if (v && v.kind === 'dismissed') dismissed.push({ hit: h, why: String(v.why || '') })
+        else unadjudicated.push(Object.assign({}, h, { why: v ? 'judged vulnerable, no finding filed' : 'no verdict' }))
       })
-      c.hits.filter((h) => !told.has(h.id)).forEach((h) => unadjudicated.push(h))
     }
     list.forEach((f) => {
       if (!f || typeof f.file !== 'string' || !Number.isInteger(f.line)) {
         malformed++
         return
       }
-      // A scanner or variant cell has no class of its own, so a finding near
-      // one ANY class already filed is not a new claim from it.
       const dup = duplicateOf(f, c.lens.id, c.lens.id === 'scan' || c.lens.id === 'variant')
       if (dup) {
-        dupes.push(f.file + ':' + f.line + ' (' + c.key + ') = ' + dup.id)
+        dupes.push(f.file + ':' + f.line + (f.scan && f.scan !== 'none' ? ' [hit ' + f.scan + ']' : '') + ' (' + c.key + ') = ' + dup.id)
         return
       }
       const k = Object.assign({}, f, { id: 'F' + String(nextId++).padStart(3, '0'), lens: c.lens.id, cell: c.key, round })
@@ -497,7 +536,8 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
     break
   }
   const next = active.filter((c) => c.diedLast)
-  if (newlyConfirmed.length > MAX_VARIANTS) truncations.push('round ' + round + ' confirmed ' + newlyConfirmed.length + ' finding(s); only the first ' + MAX_VARIANTS + ' had their variants searched')
+  variantsCut = newlyConfirmed.length > 0 && MAX_VARIANTS === 0
+  if (newlyConfirmed.length > MAX_VARIANTS && MAX_VARIANTS > 0) truncations.push('round ' + round + ' confirmed ' + newlyConfirmed.length + ' finding(s); only the first ' + MAX_VARIANTS + ' had their variants searched')
   newlyConfirmed.slice(0, MAX_VARIANTS).forEach((f) => {
     const c = newCell({ id: 'variant', ask: 'variants of ' + f.id }, { id: f.id, paths: [] }, round + 1, { seed: finding(f) + 'Verifier\'s trace: ' + f.trace + '\n\n' })
     c.key = 'variant x ' + f.id
@@ -561,9 +601,12 @@ async function verifyRound(fresh) {
         return
       }
       const command = String(v.command || '').trim()
+      const head = String(v.head || '').trim()
       // An exploit counts only with a command that can be re-run AND a
-      // worktree the prover confirmed was at COMMIT.
-      if (v.verified && command && v.onCommit === true) {
+      // worktree the prover confirmed was at COMMIT — a confirmation its own
+      // `head` contradicts is no confirmation.
+      const headDiffers = /^[0-9a-f]{7,40}$/.test(head) && !(head.startsWith(COMMIT) || COMMIT.startsWith(head))
+      if (v.verified && command && v.onCommit === true && !headDiffers) {
         x.status = 'exploited'
         Object.assign(x, { command, head: String(v.head || ''), output: String(v.output || '') })
       } else {
@@ -607,6 +650,7 @@ if (confirmed.length > 1) {
 
 const STOPS = {
   dry: 'running dry — no finding was newly confirmed, so no variant was left to search, and no cell died',
+  noVariants: 'MAX_VARIANTS 0 — findings were confirmed and no variant of them was searched',
   maxRounds: 'the round limit MAX_ROUNDS ' + MAX_ROUNDS,
   agents: 'the agent ceiling MAX_AGENTS ' + MAX_AGENTS,
   tokens: 'the token budget',
@@ -619,8 +663,8 @@ const declared = cells.filter((c) => c.from === 1).length
 const out = []
 out.push('Security review of ' + REPO + ' at ' + COMMIT + (BASE ? ', the changes since ' + BASE : '') + ': ' + cells.filter((c) => c.from === 1 && c.reported).length + ' of ' + declared + ' round-1 cell(s) reported' + (deadCells.length ? ' — NOT COVERED: ' + deadCells.join(', ') : '') + '.')
 out.push('Scanners: ' + (SCANNERS.length ? SCANNERS.map((n) => {
-  const t = scanTools.find((x) => x.tool === n)
-  return n + ' ' + (!t ? 'NOT SUPPLIED' : t.ok !== true ? 'FAILED' : (Number.isInteger(t.results) ? t.results : '?') + ' hit(s)')
+  const t = toolOf(n)
+  return n + ' ' + (!t ? 'NOT SUPPLIED' : t.ok !== true ? 'FAILED' : (Number.isInteger(t.results) ? t.results : '?') + ' hit(s)' + (t.invoked === false ? ' (its log records no invocation, so that it ran to the end is not recorded)' : ''))
 }).join(', ') : 'none declared — no deterministic scan backs this run') + (outOfScope.length ? '; ' + outOfScope.length + ' hit(s) outside every unit, not read' : '') + (undeclared.length ? '; supplied but not declared, ignored: ' + undeclared.join(', ') : '') + '.')
 out.push(rounds + ' round(s); stopped by ' + STOPS[stoppedBy] + '.' + roundStats.map((s) => ' Round ' + s.round + ': ' + s.finders + ' finder(s), ' + s.fresh + ' new, ' + s.confirmed + ' confirmed.').join(''))
 if (gapCells.length) out.push('Files a finder did not read: ' + gapCells.join('; ') + '.')
@@ -648,7 +692,7 @@ groups.forEach((g) => out.push('- shared root cause (' + g.ids.join(', ') + '): 
 if (mergeDied) out.push('- ' + mergeDied + ': findings sharing a root cause are listed separately')
 inconclusive.forEach((f) => out.push('- CANNOT VERIFY — needs a human [' + f.finalSeverity + '] ' + f.id + ' ' + f.cwe + ' ' + f.file + ':' + f.line + ' — ' + f.summary + '\n  why: ' + f.reason))
 unverified.forEach((f) => out.push('- UNVERIFIED [' + f.severity + '] ' + f.id + ' ' + f.file + ':' + f.line + ' — ' + f.summary + ' (' + f.reason + ')'))
-unadjudicated.forEach((h) => out.push('- UNADJUDICATED scanner hit ' + h.id + ' ' + h.tool + ' ' + h.rule + ' ' + h.file + ':' + h.line))
+unadjudicated.forEach((h) => out.push('- UNADJUDICATED scanner hit ' + h.id + ' ' + h.tool + ' ' + h.rule + ' ' + h.file + ':' + h.line + ' (' + h.why + ')'))
 if (dismissed.length) out.push('- ' + dismissed.length + ' scanner hit(s) dismissed by a finder: ' + dismissed.map((d) => d.hit.id + ' ' + d.hit.file + ':' + d.hit.line + ' (' + d.why + ')').join('; '))
 out.push('')
 cells.filter((c) => c.runs > 0).forEach((c) => out.push('coverage ' + c.key + ' (from round ' + c.from + ', ' + c.runs + ' run(s)): ' + (c.reported ? c.count + ' kept — ' + c.reads.join('; ') : 'DEAD')))

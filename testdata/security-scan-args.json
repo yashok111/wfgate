@@ -1,0 +1,219 @@
+{
+ "scan": {
+  "tools": [
+   {
+    "tool": "semgrep",
+    "file": "semgrep.sarif",
+    "ok": true,
+    "invoked": true,
+    "results": 25,
+    "errors": 0,
+    "warnings": 0,
+    "dropped": 0,
+    "unresolved": 0
+   }
+  ],
+  "candidates": [
+   {
+    "id": "semgrep-1",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f1.go",
+    "line": 1,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-2",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f2.go",
+    "line": 2,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-3",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f3.go",
+    "line": 3,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-4",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f4.go",
+    "line": 4,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-5",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f5.go",
+    "line": 5,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-6",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f6.go",
+    "line": 6,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-7",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f7.go",
+    "line": 7,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-8",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f8.go",
+    "line": 8,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-9",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f9.go",
+    "line": 9,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-10",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f10.go",
+    "line": 10,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-11",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f11.go",
+    "line": 11,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-12",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f12.go",
+    "line": 12,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-13",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f13.go",
+    "line": 13,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-14",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f14.go",
+    "line": 14,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-15",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f15.go",
+    "line": 15,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-16",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f16.go",
+    "line": 16,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-17",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f17.go",
+    "line": 17,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-18",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f18.go",
+    "line": 18,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-19",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f19.go",
+    "line": 19,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-20",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f20.go",
+    "line": 20,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-21",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f21.go",
+    "line": 21,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-22",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f22.go",
+    "line": 22,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-23",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f23.go",
+    "line": 23,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-24",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f24.go",
+    "line": 24,
+    "message": "m"
+   },
+   {
+    "id": "semgrep-25",
+    "tool": "semgrep",
+    "rule": "go.rule",
+    "file": "cmd/wf/f25.go",
+    "line": 25,
+    "message": "m"
+   }
+  ]
+ }
+}

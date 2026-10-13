@@ -120,6 +120,32 @@ func ModesFor(typ string) []string {
 	return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, deadCellMode, "dead-reviews", "no-args"}
 }
 
+// argsScanHole says whether a security run's args.scan declares a hole: a
+// scanner whose execution failed, or hits with no location or no file.
+func argsScanHole(js, mode string) bool {
+	if mode == "no-args" {
+		return false
+	}
+	var m struct {
+		Scan struct {
+			Tools []struct {
+				OK         *bool `json:"ok"`
+				Dropped    int   `json:"dropped"`
+				Unresolved int   `json:"unresolved"`
+			} `json:"tools"`
+		} `json:"scan"`
+	}
+	if json.Unmarshal([]byte(js), &m) != nil {
+		return false
+	}
+	for _, t := range m.Scan.Tools {
+		if t.OK == nil || !*t.OK || t.Dropped > 0 || t.Unresolved > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // argsInt reads one integer field of the JSON handed to the script as `args`.
 func argsInt(js, key string) (int, bool) {
 	var m map[string]any
@@ -794,7 +820,9 @@ func runMode(src, mode string, o Options) Result {
 		// Refused here, in every mode, because the review round removed it from
 		// a script and nothing failed — the agent list printed the absence and
 		// every bar stayed green.
-		if ws.AllowsScratch(normType(o.Type)) && reproish(label) && get("isolation") != "worktree" {
+		// The PHASE counts too: a prover spawned in a phase titled Prove, PoC or
+		// Reproduce writes whatever its label says.
+		if ws.AllowsScratch(normType(o.Type)) && (reproish(label) || reproPhase.MatchString(get("phase"))) && get("isolation") != "worktree" {
 			bad(label, "a "+normType(o.Type)+" run's reproducer has no `isolation: 'worktree'` — it would write its failing test into the target; add the option to this call")
 		}
 		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadCellMode && r.oneCell(label)) || (mode == deadReproMode && reproish(label)) || (mode == deadWriterMode && writerish(label)) {
@@ -981,12 +1009,21 @@ func runMode(src, mode string, o Options) Result {
 	// `empty` nothing was found and nothing failed, and every pass word holds.
 	// `inconclusive` reads like `clean`: every agent came back, and a verdict
 	// about the code honestly reads false over findings nobody could decide.
+	// A security run's args can DECLARE a hole — a scanner that failed, hits
+	// with no location or no file — and a script naming it incomplete is then
+	// correct: the review round's probe was a correct skeleton refused for it
+	// while the script with the guard deleted passed. Said, not failed.
+	scanHole := normType(o.Type) == ws.TypeSecurity && argsScanHole(o.Args, mode)
 	if (mode == "clean" || mode == emptyMode || mode == inconclusiveMode) && r.ReturnOK && len(r.Killed) == 0 {
 		for _, k := range verdictKeys(r.Return) {
 			if ro && (mode == "clean" || mode == inconclusiveMode) && !coverageWord.MatchString(k) {
 				continue
 			}
 			b, _ := r.Return.(map[string]any)[k].(bool)
+			if scanHole && coverageWord.MatchString(k) && !b {
+				r.Notes = append(r.Notes, mode+": `"+k+": false`, and the args.scan this run was given names a failed scanner or hits no unit can own — expected if the script declares that scanner; drop it from SCANNERS or re-run it before the launch")
+				continue
+			}
 			switch {
 			case passBools.MatchString(k) && !b:
 				r.Violations = append(r.Violations, mode+": the run returned `"+k+": false` on the path where nothing failed — no fixture in this mode can produce that verdict, so the script derives it from something it should not."+fixtureAdvice+roAdvice(ro))
@@ -1107,9 +1144,11 @@ func runMode(src, mode string, o Options) Result {
 	// decide, dropped where a human never sees it.
 	if mode == inconclusiveMode && r.Spawned > 0 {
 		if len(prefixed(r.defaulted, inconclusiveKey)) == 0 {
-			r.Violations = append(r.Violations, inconclusiveMode+": no enum offered a member reading as undecided ("+strings.Join(enumInconclusiveWords, "/")+"), so no verifier could say it cannot decide and this mode walked the clean path — give the verifier's verdict a third member such as `cannot-verify`")
-		} else if r.ReturnOK && !holdsUndecided(r.Return) {
-			r.Violations = append(r.Violations, inconclusiveMode+": every verifier returned an undecided verdict ("+strings.Join(prefixed(r.defaulted, inconclusiveKey), ", ")+") and the return carries no non-empty array named for them ("+undecidedArrayRe.String()+") — those findings vanished from the report's consumer; return them, e.g. as `inconclusive`")
+			r.Violations = append(r.Violations, inconclusiveMode+": no VERIFIER enum (a verify/review label, not a reproducer's) has a member in the undecided vocabulary ("+strings.Join(enumInconclusiveWords, "/")+"), so no verifier could say it cannot decide and this mode walked the clean path — give the verifier's verdict a third member such as `cannot-verify`, spelled with one of those words")
+		} else if r.ReturnOK {
+			for _, v := range undecidedViolations(r.Return) {
+				r.Violations = append(r.Violations, inconclusiveMode+": every verifier returned an undecided verdict ("+strings.Join(prefixed(r.defaulted, inconclusiveKey), ", ")+") and "+v)
+			}
 		}
 	}
 	if ro && mode == emptyMode && r.Spawned > 0 && len(prefixed(r.defaulted, deliverableKey)) == 0 {
@@ -1417,7 +1456,11 @@ func (r *Result) oneCell(label string) bool {
 func reproish(label string) bool {
 	for _, seg := range labelSegments(label) {
 		switch seg {
-		case "repro", "repros", "reproduce", "reproducer", "reproducers", "reproduction", "reproductions":
+		// A security run's PoC agent is a prover: `verify:prove:F001` without
+		// isolation passed every mode while `verify:repro:F001` was refused
+		// (the wave-37 review round). `exploit` is NOT here — it is a word a
+		// finder's class may carry.
+		case "repro", "repros", "reproduce", "reproducer", "reproducers", "reproduction", "reproductions", "prove", "prover", "provers", "poc", "pocs":
 			return true
 		}
 	}
@@ -1663,11 +1706,13 @@ func enumReads(member string, words []string) bool {
 // recorded its unrecognised names since the sixth wave, and an enum this runner
 // cannot read is the same claim: the mode that was supposed to walk a branch may
 // not have walked it.
-func pickEnum(name string, members []string, mode string, idx int, rec map[string]int) string {
-	// `inconclusive` hands every enum that HAS an undecided member that member,
-	// item 1 included: the mode asks one question, what the script does when
-	// nobody could decide, and a mixed pair would answer a different one.
-	if mode == inconclusiveMode {
+func pickEnum(name string, members []string, mode string, idx int, rec map[string]int, undecidedOK bool) string {
+	// `inconclusive` hands every VERIFIER enum that has an undecided member that
+	// member, item 1 included: the mode asks one question, what the script does
+	// when nobody could decide, and a mixed pair would answer a different one.
+	// A verifier's only: an undecided member in a prover's `outcome` passed the
+	// mode for a script whose verifier had two verdicts (the review round).
+	if mode == inconclusiveMode && undecidedOK {
 		for _, m := range members {
 			if enumReads(m, enumInconclusiveWords) {
 				if rec != nil {
@@ -1770,29 +1815,66 @@ const boolPolarityKey = "bool by name: "
 // about a categorical label no branch depended on.
 const enumFallbackKey = "enum by first member: "
 
+// reproPhase is a phase title whose agents write their proof.
+var reproPhase = regexp.MustCompile(`(?i)^\s*(prove|proof|poc|reproduc)`)
+
 // inconclusiveKey records an enum member `inconclusive` picked as undecided.
 // Not a note: the mode reads it to know whether it walked anything.
 const inconclusiveKey = "undecided: "
 
 // enumInconclusiveWords is the third vocabulary, read in `inconclusive` alone:
 // a member that is neither a pass nor a failure but "nobody could tell".
-var enumInconclusiveWords = []string{"cannot", "inconclusive", "undecided", "undetermined", "unknown", "unverifiable", "unclear"}
+var enumInconclusiveWords = []string{"cannot", "inconclusive", "undecided", "undecidable", "undetermined", "indeterminate", "unknown", "unverifiable", "unclear", "uncertain", "unsure"}
 
 // undecidedArrayRe names the return's array for undecided findings. The return
 // is read, not the schema: what the mode checks is that they reached the
 // consumer.
 var undecidedArrayRe = regexp.MustCompile(`(?i)inconclusive|undecided|undetermined|cannot.?verif|unverifiable`)
 
-// holdsUndecided says whether the run's return carries, at its top level, a
-// non-empty array whose name is undecidedArrayRe's.
-func holdsUndecided(ret any) bool {
+// confirmedArrayRe names a return array of CONFIRMED findings, which must be
+// empty when no verifier confirmed anything: counting undecided findings as
+// confirmed passed every mode (the review round).
+var confirmedArrayRe = regexp.MustCompile(`(?i)^(confirmed|exploited|reproduced)`)
+
+// undecidedViolations reads a return in which every verifier was undecided:
+// the undecided findings reach a non-empty array named for them, no
+// confirmed-named array holds anything, and every undecided id a string
+// `report` could print is printed in it — a return carrying them that the
+// human-facing report drops is a count where a list was owed.
+func undecidedViolations(ret any) []string {
 	m, _ := ret.(map[string]any)
+	var out []string
+	var undecided []any
 	for k, v := range m {
-		if a, ok := v.([]any); ok && len(a) > 0 && undecidedArrayRe.MatchString(k) {
-			return true
+		a, ok := v.([]any)
+		if !ok || len(a) == 0 {
+			continue
+		}
+		if undecidedArrayRe.MatchString(k) {
+			undecided = append(undecided, a...)
+		}
+		if confirmedArrayRe.MatchString(k) {
+			out = append(out, fmt.Sprintf("the return's `%s` holds %d item(s) — an undecided finding is never confirmed", k, len(a)))
 		}
 	}
-	return false
+	if len(undecided) == 0 {
+		return append(out, "the return carries no non-empty array named for them ("+undecidedArrayRe.String()+") — those findings vanished from the report's consumer; return them, e.g. as `inconclusive`")
+	}
+	if report, ok := m["report"].(string); ok {
+		var missing []string
+		for _, it := range undecided {
+			if o, ok := it.(map[string]any); ok {
+				if id, ok := o["id"].(string); ok && id != "" && !strings.Contains(report, id) {
+					missing = append(missing, id)
+				}
+			}
+		}
+		if len(missing) > 0 {
+			out = append(out, "the `report` never names "+strings.Join(missing, ", ")+" — the human the undecided findings are listed for reads the report")
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // deliverableKey records a pass-shaped array — a review's deliverable — that a
@@ -2040,7 +2122,7 @@ func value(name string, v map[string]any, mode, label string, ro bool, depth, id
 			if depth == 0 && !severityName.MatchString(name) {
 				idx = 0
 			}
-			return pickEnum(name, members, mode, idx, rec)
+			return pickEnum(name, members, mode, idx, rec, reviewish(label) && !reproish(label))
 		}
 	}
 	switch t {

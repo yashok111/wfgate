@@ -179,6 +179,7 @@ func cmdNewScript(args []string) error {
 			// and the report is shared, so it is checked for the secrets its
 			// findings are about.
 			fmt.Printf("  before the dry run: the scanners the decision document names write SARIF into artifacts/scan/, then `wf scan` folds them into artifacts/scan/args.json — dry-run and launch with those args: wfdry --type %s --args \"$(cat artifacts/scan/args.json)\" %s\n", runType, dst)
+			fmt.Printf("  before the launch, `betterleaks dir artifacts/scan/args.json --redact` must find nothing — a scanner's message can carry the text it matched\n")
 			fmt.Printf("  and the report: save it as artifacts/report.md, then `betterleaks dir artifacts/report.md --redact` must find nothing — a finding names the kind and place of a secret, never its value\n")
 		}
 		if runType == ws.TypeAudit {

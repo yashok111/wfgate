@@ -137,6 +137,11 @@ check-tools: build
 		&& ./wfdry --type security .check-skel/security.mjs --quiet --args '{"maxRepro":1}' >/dev/null \
 		&& ./wfdry --type security .check-skel/security.mjs --quiet --mode clean --args '{"maxAgents":12}' >/dev/null \
 		|| { rm -rf .check-skel; echo "wf new-script -type security skeleton: the emitted security harness fails its own tools"; exit 1; }
+	@sed "s|const SCANNERS = \[\]|const SCANNERS = ['semgrep']|; s|paths: \['TODO/'\]|paths: ['cmd/']|" .check-skel/security.mjs > .check-skel/scan.mjs \
+		&& ./wfdry --type security .check-skel/scan.mjs --quiet --args "$$(cat testdata/security-scan-args.json)" >/dev/null \
+		&& ./wfdry --type security .check-skel/scan.mjs --mode clean --args "$$(cat testdata/security-scan-args.json)" 2>/dev/null | grep -q 'find:r1:scan:TODO-unit#2' \
+		&& echo "wf new-script -type security skeleton: all modes clean over a real-shaped args.scan of 25 hits in one unit — two scan cells, every hit answered" \
+		|| { rm -rf .check-skel; echo "wf new-script -type security skeleton: a multi-hit args.scan turned the skeleton red or was not chunked — every hit id must be a required property the finder answers"; exit 1; }
 	@out=$$(./wfdry --type security .check-skel/security.mjs --mode clean 2>/dev/null | grep 'agents:'); \
 		inc=$$(./wfdry --type security .check-skel/security.mjs --mode inconclusive 2>/dev/null); rm -rf .check-skel; \
 		echo "$$out" | grep -q 'verify:read:' && echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'find:r2:variant:' && echo "$$out" | grep -q 'merge' \

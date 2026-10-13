@@ -464,10 +464,10 @@ func TestPickEnum_choosesByMeaningNotPosition(t *testing.T) {
 		{"plain", []string{"yes", "no"}, "yes", "no"},
 	}
 	for _, c := range cases {
-		if got := pickEnum("f", c.members, "clean", 0, nil); got != c.clean {
+		if got := pickEnum("f", c.members, "clean", 0, nil, false); got != c.clean {
 			t.Errorf("%s clean: pickEnum(%v) = %q, want %q", c.name, c.members, got, c.clean)
 		}
-		if got := pickEnum("f", c.members, "blockers", 0, nil); got != c.failing {
+		if got := pickEnum("f", c.members, "blockers", 0, nil, false); got != c.failing {
 			t.Errorf("%s failing: pickEnum(%v) = %q, want %q", c.name, c.members, got, c.failing)
 		}
 	}
@@ -481,7 +481,7 @@ func TestPickEnum_choosesByMeaningNotPosition(t *testing.T) {
 // wave; this is the same claim one type over.
 func TestPickEnum_recordsAVocabularyItCannotRead(t *testing.T) {
 	rec := map[string]int{}
-	got := pickEnum("stage", []string{"alpha", "beta"}, "clean", 0, rec)
+	got := pickEnum("stage", []string{"alpha", "beta"}, "clean", 0, rec, false)
 	if got != "alpha" {
 		t.Fatalf("the fallback is not the first member: %q", got)
 	}
@@ -490,7 +490,7 @@ func TestPickEnum_recordsAVocabularyItCannotRead(t *testing.T) {
 	}
 	// A vocabulary it CAN read records nothing.
 	clean := map[string]int{}
-	if pickEnum("severity", []string{"blocker", "minor"}, "clean", 0, clean); len(clean) != 0 {
+	if pickEnum("severity", []string{"blocker", "minor"}, "clean", 0, clean, false); len(clean) != 0 {
 		t.Fatalf("a readable enum was recorded as unreadable: %v", clean)
 	}
 }

@@ -16,7 +16,7 @@ read-only types in every row below unless their own sections say otherwise.
 
 ## What the type changes, and where
 
-| | build | review (and hunt, audit) |
+| | build | review (and hunt, audit, security) |
 |---|---|---|
 | `wf new-script` emits | producers → per-section gate → acceptance (`templates/script.mjs`) | find → verify → merge → report (`templates/review.mjs`; a hunt gets `templates/hunt.mjs`, an audit `templates/audit.mjs` — find → verify → WRITE — a security run `templates/security.mjs` — find → verify → PROVE → variants → merge) |
 | `wfdry` modes | clean, blockers, acceptfail, unfixed, throw-serial, dead-reviews, no-args | clean, blockers, **empty**, throw-serial, **dead-finders**, **dead-cell**, dead-reviews, no-args — a hunt adds **dead-repro**, an audit **dead-writer**, a security run **inconclusive** and **dead-repro** |
@@ -266,8 +266,9 @@ and a finding is a path from a source the attacker controls to a sink that hurts
 method is the one the public security skills converge on — Trail of Bits' fp-check and
 variant-analysis, Anthropic's threat-model → vuln-scan → triage, Sentry's security-review — and
 every rule below answers a failure those procedures name: models over-report and over-rate, a
-scanner's silence reads as a clean result, and a confirmed bug usually has siblings. What changes
-against a hunt:
+scanner's silence reads as a clean result, and a confirmed bug usually has siblings. The PoC is this
+harness's own choice, carried over from the hunt: Anthropic's triage forbids executing target code
+and leaves the PoC to a human. What changes against a hunt:
 
 - **The threat model is in the DECISION DOCUMENT, and the gate reviews it.** Assets, the attacker,
   what the attacker can NOT do (the operator's environment, CLI flags and config are trusted unless
@@ -275,50 +276,71 @@ against a hunt:
   by it — the classes, the units, what a verifier may call attacker-controlled — so a model built
   at run time would scope the whole fleet with nothing reviewed. The script carries it as one short
   `THREAT_MODEL` string, handed to every finder, verifier and prover, beside `DO_NOT_REPORT` (the
-  exclusions every triage procedure carries: denial of service, missing rate limits, code only
-  tests run, an impact the precondition already grants, a value the model trusts).
-- **Lenses are vulnerability CLASSES** named with their CWE family; units carry `paths`, repo-relative
-  prefixes, which is also how a scanner hit is assigned to a unit.
-- **Scanners run BEFORE the launch, by the operator, and their output is CANDIDATES.** The decision
-  document names the scanners; each writes SARIF into the workspace's `artifacts/scan/` (`wf scan`
-  with no log prints the three commands); `wf scan` folds the logs into `artifacts/scan/args.json`
-  — per scanner whether its execution succeeded, its hit count, its error notifications, and each
-  hit's rule, file, line and a one-line message, never the `snippet` a secrets scanner fills with
-  the secret. An ERROR-level notification fails the scanner whatever its success flag says: a
-  scanner that could not load its rules reports success and no result [M-49]. The measurement is a command and not an agent because the property every
-  scanner-driving skill insists on is that a script measures and a model judges. The run reads it
-  as `args.scan`: a scanner in `SCANNERS` that is missing from it, or whose execution failed, is
-  NAMED on the report's second line and makes the run incomplete — an absent scan never prints as a
-  clean one; a scanner supplied but not declared is named and ignored. Every hit in a unit goes to
-  a `scan` finder cell, at most `SCAN_CHUNK` per finder, whose schema names the hits by ENUM: each
-  comes back once, as the `scan` of a finding or in `dismissed` with its reason, and a hit nobody
-  accounted for is listed UNADJUDICATED and makes the run incomplete. Dismissals are listed in the
-  report, unverified, as a finder's judgement. `wf add` the logs and the args file, so the freeze
-  pins the scan the run was given; dry-run with `--args "$(cat artifacts/scan/args.json)"`.
+  exclusions the public triage procedures share: volumetric denial of service and missing rate
+  limits — a ReDoS or an algorithmic blow-up one request triggers stays in — code only tests run, an
+  impact the precondition already grants, a value the model trusts).
+- **Lenses are vulnerability CLASSES** named with their CWE family; `scan` and `variant` are the
+  harness's own cell kinds and are refused as lens ids. Units carry `paths`, repo-relative prefixes
+  (`./a/`, `a/` and `a` are one directory, `.` or `''` the whole repository), which is also how a
+  scanner hit is assigned to a unit; two cells sharing a key are refused, because results are
+  matched to cells by key.
+- **Scanners run BEFORE the launch, by the operator, from the target's root, and their output is
+  CANDIDATES.** The decision document names the scanners; each writes SARIF into the workspace's
+  `artifacts/scan/` (`wf scan` with no log prints the commands, each removing the old log first —
+  betterleaks and trivy leave it in place when they fail, and a log older than the target's HEAD
+  commit is refused); `wf scan` folds the logs into `artifacts/scan/args.json` — per scanner whether
+  its execution succeeded, whether its log records an invocation at all, its hit, error and warning
+  counts, the hits with no location and those naming no file under the target; per hit its rule,
+  file, line and a one-line message, never the `snippet` a secrets scanner fills with the secret
+  and never the text after a `Match:` marker. An ERROR-level notification, in either notification
+  array, fails the scanner whatever its success flag says: a scanner that could not load its rules
+  reports success and no result [M-49]. The measurement is a command and not an agent because the
+  property every scanner-driving skill insists on is that a script measures and a model judges. The
+  run reads it as `args.scan`: a scanner in `SCANNERS` missing from it or failed, or with hits no
+  unit can own (no location, no file under the target), is NAMED on the report's second line and
+  makes the run incomplete — an absent scan never prints as a clean one; a log recording no
+  invocation is printed as such; a scanner supplied but not declared is named and ignored. Every hit
+  in a unit goes to a `scan` finder cell, at most `SCAN_CHUNK` per finder, whose schema makes each
+  hit id a REQUIRED property of `hits`: the finder answers every one — dismissed with its reason, or
+  vulnerable with a finding carrying the hit as its `scan` — and a hit judged vulnerable with no
+  finding filed is listed UNADJUDICATED and makes the run incomplete. Dismissals are listed in the
+  report, unverified, as a finder's judgement. A message is copied as the scanner wrote it, and a
+  semgrep rule may interpolate the matched text into it: before the launch, `betterleaks dir
+  artifacts/scan/args.json --redact` must find nothing. Pin the scan with `wf add -as scan/<file>
+  artifacts/scan/<file>` for each log and the args file (`wf scan` prints the lines: a bare `wf add`
+  stores a file under its basename), and dry-run with `--args "$(cat artifacts/scan/args.json)"` —
+  given args naming a failed scanner, the dry run notes the expected `complete: false` rather than
+  refusing it.
 - **Finders are built for RECALL, the verifier to REFUTE.** A finder reports anything with a plausible
   exploit path, but names its source, its sink and the path. Two findings of one class in one file
-  within `WINDOW` lines are one finding — the deterministic half of the dedup, run before a verifier
-  is paid; the merge is the semantic half. The verifier starts from "the finding is wrong", traces
-  BACKWARDS to the first call site, decides whether the threat model's attacker controls the value,
-  checks every protection on every path, applies `DO_NOT_REPORT`, and re-rates severity from the
-  attacker's preconditions and access. A `true-positive` with an empty trace is the sink alone,
-  which is what a scanner already said: the harness lists it as undecided.
+  within `WINDOW` lines are one finding, and a scanner or variant cell's finding is a duplicate of one
+  with the same CWE there — the deterministic half of the dedup, run before a verifier is paid; the
+  merge is the semantic half. The verifier starts from "the finding is wrong", traces BACKWARDS to
+  the first call site, decides whether the threat model's attacker controls the value, checks every
+  protection on every path, applies `DO_NOT_REPORT`, and re-rates severity from the attacker's
+  preconditions and access. A `true-positive` with an empty trace is the sink alone, which is what a
+  scanner already said: the harness lists it as undecided.
 - **The verdict has THREE states**, `true-positive`, `false-positive`, `cannot-verify`. The third is
   for a decision that turns on code outside the repository or on deployment; such findings are
   listed apart for a human — never confirmed, never dropped — and do not make the run incomplete.
-  `wfdry`'s **inconclusive** mode hands every verifier its enum's undecided member: a verdict enum
-  with no such member is refused (the third verdict then runs in no mode), and so is a return that
-  carries no non-empty array named for those findings (`inconclusive`, `undecided`, ...).
-- **Confirmed blockers and majors get a PoC**, worst first, up to `MAX_REPRO`: a prover in a worktree,
-  under the hunt's reproduction rules plus three of its own — loopback only, no real credentials, no
-  third-party service. A PoC that works, with a command and a confirmed commit, makes the finding
-  EXPLOITED; one that does not leaves it confirmed by reading, with why. A dead prover leaves the
-  run incomplete — the proof it owed was not attempted — which `dead-repro` checks. Provers are
-  labelled `verify:repro:…`, so the hunt's isolation refusal holds for them.
+  `wfdry`'s **inconclusive** mode hands every VERIFIER enum (a verify label, not a reproducer's) its
+  undecided member — cannot, inconclusive, undecided, undetermined, unknown, uncertain, ... — and
+  refuses a verifier with no such member, a return with no non-empty array named for those findings
+  (`inconclusive`, `undecided`, ...), a confirmed-named array that holds anything, and a `report`
+  that does not name each of them.
+- **Confirmed blockers and majors get a PoC**, worst first within a round, up to `MAX_REPRO` over the
+  run: a prover in a worktree, under the hunt's reproduction rules plus three of its own — loopback
+  only, no real credentials, no third-party service. A PoC that works, with a command, a confirmed
+  commit and a `head` that does not name another one, makes the finding EXPLOITED; one that does not
+  leaves it confirmed by reading, with why. A dead prover leaves the run incomplete — the proof it
+  owed was not attempted — which `dead-repro` checks. A prover is known by a repro/prove/poc label
+  segment or by a phase titled Prove, PoC or Reproduce, and either without `isolation: 'worktree'`
+  is refused.
 - **Later rounds search VARIANTS, not new ground.** Each finding first confirmed in a round seeds one
   variant finder in the next, worst first, up to `MAX_VARIANTS`: exact pattern first, confirmed to
   match the seed, then generalised one element at a time until most matches are noise. A cell that
-  died runs again. The rounds stop when nothing new was confirmed and nothing died (`dry`), at
+  died runs again. The rounds stop when nothing new was confirmed and nothing died (`dry`), when
+  findings were confirmed with `MAX_VARIANTS` 0 (`noVariants` — not dry: nobody looked), at
   `MAX_ROUNDS` — saying how many confirmed findings never had their variants searched — or at the
   agent or token ceiling, as a hunt's do.
 - **The report is shared, so it is checked for secrets.** Every prompt forbids copying a secret's
@@ -345,7 +367,8 @@ touch, and the cap; its acceptance adds that every REPRODUCED finding carries a 
 units and their entry points, the scanners and their rulesets, whether it is differential (`BASE`),
 and what a PoC may touch; its acceptance adds that every scanner `SCANNERS` names ran (the report's
 second line), every EXPLOITED finding carries a command that shows the exploit at `COMMIT` when
-re-run, and `betterleaks` over the saved report finds nothing. An audit's first frontier is the question itself, its parts, the units that
+re-run, and `betterleaks` over the args file before the launch and over the saved report after it
+finds nothing. An audit's first frontier is the question itself, its parts, the units that
 can answer them, and who reads the answer; its acceptance is `wf check cite -at <COMMIT>
 -require-anchor` clean over the saved `citable` with at least one citation counted, `answered: true`,
 and every part either answered or listed as unsettled.
