@@ -54,3 +54,11 @@ func TestAuditIsReadOnlyWithoutScratch(t *testing.T) {
 		t.Fatalf("an audit is a read-only type with no scratch carve-out")
 	}
 }
+
+// A security run proves its serious findings in PoC worktrees, so it carries
+// the hunt's scratch carve-out; it is read-only everywhere else.
+func TestSecurityIsReadOnlyWithScratch(t *testing.T) {
+	if err := ValidType(TypeSecurity); err != nil || !ReadOnly(TypeSecurity) || !AllowsScratch(TypeSecurity) {
+		t.Fatalf("a security run is a read-only type with the worktree carve-out")
+	}
+}

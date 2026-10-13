@@ -61,6 +61,7 @@ const usage = `wf — gate harness
   wf stats [-time]                per-round findings, closures and batches, from the ledger and git
   wf new-script <name>            emit the orchestration-script harness: wrapper, schemas, gate, ledger
   wf new-lens <name>              emit the fixed half of a reviewer brief: reading list, scale, contract
+  wf scan [file.sarif...] [-o F]  fold a security run's scanner logs (artifacts/scan/*.sarif) into its args.scan: per scanner ok/failed and its hits as candidates
   wf close [-archive DIR]         bank the gate's own record — history, stats, findings, a feedback scaffold
   wf prune [-yes]                 delete artifacts/, rounds/ and .git once the record is banked; not reversible
   wf docs [name]                  print the embedded operating manual (guide, checks, routing, ...)
@@ -120,6 +121,8 @@ func run(args []string) error {
 		return cmdNewScript(args[1:])
 	case "new-lens":
 		return cmdNewLens(args[1:])
+	case "scan":
+		return cmdScan(args[1:])
 	case "close":
 		return cmdClose(args[1:])
 	case "prune":
@@ -4880,7 +4883,7 @@ func cmdDocs(args []string) error {
   guide         the manual in reading order — every name below but checks and measured
   authoring     language rule, companions, the spawn wrapper name
   routing       model and effort routing: explicit per-agent tiers
-  types         run types: build, review, hunt, audit — what each changes, and a read-only run's rules
+  types         run types: build, review, hunt, audit, security — what each changes, and a read-only run's rules
   interview     step -2: grilling the decisions out before the workspace exists
   preflight     the pre-flight script-review gate itself: wfcheck, wfdry, the vectors
   harness       the operator's half: workspace, round, apply, freeze, verify, checks, close

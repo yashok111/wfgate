@@ -87,6 +87,15 @@ const deadWriterMode = "dead-writer"
 // multi-round hunt's review round, probe A8).
 const deadCellMode = "dead-cell"
 
+// inconclusiveMode is a security run's extra mode: every verifier returns its
+// THIRD verdict — the member of its enum that reads as undecided
+// (`cannot-verify`). Under the two-valued fixture that member was never
+// picked: `clean` confirms and `blockers` refutes, so the branch that lists an
+// undecided finding apart for a human ran in no mode, and a script dropping
+// those findings from its return passed every one. Nothing failed in it, so
+// it is a passing mode.
+const inconclusiveMode = "inconclusive"
+
 // workflowAgentCap is the number of agents one Workflow run may spawn; the
 // manual's orchestration vector and `wfcheck`'s loop guard name the same cap.
 const workflowAgentCap = 1000
@@ -104,6 +113,9 @@ func ModesFor(typ string) []string {
 	}
 	if normType(typ) == ws.TypeAudit {
 		return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, deadCellMode, "dead-reviews", deadWriterMode, "no-args"}
+	}
+	if normType(typ) == ws.TypeSecurity {
+		return []string{"clean", "blockers", emptyMode, inconclusiveMode, "throw-serial", deadFindersMode, deadCellMode, "dead-reviews", deadReproMode, "no-args"}
 	}
 	return []string{"clean", "blockers", emptyMode, "throw-serial", deadFindersMode, deadCellMode, "dead-reviews", "no-args"}
 }
@@ -143,7 +155,7 @@ func normType(typ string) string {
 // and a verdict that reads as failure there is a script treating "no findings"
 // as "did not run".
 func passFixture(mode string) bool {
-	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode || mode == deadCellMode || mode == deadReproMode || mode == deadWriterMode
+	return mode == "clean" || mode == "dead-reviews" || mode == emptyMode || mode == deadFindersMode || mode == deadCellMode || mode == deadReproMode || mode == deadWriterMode || mode == inconclusiveMode
 }
 
 // Options configure one run.
@@ -502,8 +514,8 @@ func noteCollapse(rs []Result, ro bool) {
 			// skeleton, `Merge` is the one phase `blockers` cannot reach, by
 			// construction. The shortfall is said, not failed, and it is said
 			// as what it is: that step ran in the happy path alone.
-			if ro && r.Mode == "blockers" {
-				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. In a read-only run this is the mode in which every verifier refuted, so a step that consumes CONFIRMED findings has nothing to consume; it does mean those phases ran in the happy path alone and no failure mode covers them",
+			if ro && (r.Mode == "blockers" || r.Mode == inconclusiveMode) {
+				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. In a read-only run this is a mode in which no verifier confirmed anything, so a step that consumes CONFIRMED findings has nothing to consume; it does mean those phases ran in the happy path alone and no failure mode covers them",
 					r.Mode, plural(len(missing), "phase"), strings.Join(missing, "`, `"), baseMode))
 			} else if r.Mode == "dead-reviews" || r.Mode == deadFindersMode || r.Mode == deadCellMode || r.Mode == deadReproMode || r.Mode == deadWriterMode {
 				r.Notes = append(r.Notes, fmt.Sprintf("%s: never reached %s — the phase(s) `%s` ran in `%s` and not here. This mode's shortfall can be the runner's own injection (a script that HALTS when a reviewer dies is doing what it is told), which is why it is not a failure; it can equally be an abort guard that ends the run wider than it meant to, and then every section behind those phases, and every gate over them, is covered by no failure mode",
@@ -776,13 +788,14 @@ func runMode(src, mode string, o Options) Result {
 		if mode == "throw-serial" && r.Spawned == 1 {
 			panic(vm.ToValue("stubbed throw at the first spawn"))
 		}
-		// A hunt's reproducer WRITES its failing test, so it must write into a
-		// worktree: without `isolation: 'worktree'` its first instruction runs
-		// in the target. Refused here, in every mode, because the review round
-		// removed it from a script and nothing failed — the agent list printed
-		// the absence and every bar stayed green.
-		if normType(o.Type) == ws.TypeHunt && reproish(label) && get("isolation") != "worktree" {
-			bad(label, "a hunt's reproducer has no `isolation: 'worktree'` — it would write its failing test into the target; add the option to this call")
+		// A reproducer — a hunt's, or a security run's prover — WRITES its
+		// failing test or PoC, so it must write into a worktree: without
+		// `isolation: 'worktree'` its first instruction runs in the target.
+		// Refused here, in every mode, because the review round removed it from
+		// a script and nothing failed — the agent list printed the absence and
+		// every bar stayed green.
+		if ws.AllowsScratch(normType(o.Type)) && reproish(label) && get("isolation") != "worktree" {
+			bad(label, "a "+normType(o.Type)+" run's reproducer has no `isolation: 'worktree'` — it would write its failing test into the target; add the option to this call")
 		}
 		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadCellMode && r.oneCell(label)) || (mode == deadReproMode && reproish(label)) || (mode == deadWriterMode && writerish(label)) {
 			r.kill(label)
@@ -966,9 +979,11 @@ func runMode(src, mode string, o Options) Result {
 	// IS "found defects", so a verdict about the code under review — `clean`,
 	// `passed`, `ok` — honestly reads false (probe p8b was a false red). In
 	// `empty` nothing was found and nothing failed, and every pass word holds.
-	if (mode == "clean" || mode == emptyMode) && r.ReturnOK && len(r.Killed) == 0 {
+	// `inconclusive` reads like `clean`: every agent came back, and a verdict
+	// about the code honestly reads false over findings nobody could decide.
+	if (mode == "clean" || mode == emptyMode || mode == inconclusiveMode) && r.ReturnOK && len(r.Killed) == 0 {
 		for _, k := range verdictKeys(r.Return) {
-			if ro && mode == "clean" && !coverageWord.MatchString(k) {
+			if ro && (mode == "clean" || mode == inconclusiveMode) && !coverageWord.MatchString(k) {
 				continue
 			}
 			b, _ := r.Return.(map[string]any)[k].(bool)
@@ -1085,6 +1100,18 @@ func runMode(src, mode string, o Options) Result {
 	// carry no array it can read as a deliverable, it emptied nothing and walked
 	// the clean path under another name — measured, a finder array renamed
 	// `results` gave `empty` the same agents and phases as `clean`, in silence.
+	// `inconclusive` walked nothing if no enum offered an undecided member, and
+	// it caught nothing if the undecided findings left no trace in the return:
+	// the first is the verdict a security run's verifier must be able to give,
+	// the second is the defect the mode exists for — a finding nobody could
+	// decide, dropped where a human never sees it.
+	if mode == inconclusiveMode && r.Spawned > 0 {
+		if len(prefixed(r.defaulted, inconclusiveKey)) == 0 {
+			r.Violations = append(r.Violations, inconclusiveMode+": no enum offered a member reading as undecided ("+strings.Join(enumInconclusiveWords, "/")+"), so no verifier could say it cannot decide and this mode walked the clean path — give the verifier's verdict a third member such as `cannot-verify`")
+		} else if r.ReturnOK && !holdsUndecided(r.Return) {
+			r.Violations = append(r.Violations, inconclusiveMode+": every verifier returned an undecided verdict ("+strings.Join(prefixed(r.defaulted, inconclusiveKey), ", ")+") and the return carries no non-empty array named for them ("+undecidedArrayRe.String()+") — those findings vanished from the report's consumer; return them, e.g. as `inconclusive`")
+		}
+	}
 	if ro && mode == emptyMode && r.Spawned > 0 && len(prefixed(r.defaulted, deliverableKey)) == 0 {
 		r.Violations = append(r.Violations, emptyMode+": no finding-shaped array was synthesised, so this mode emptied nothing and walked the clean path — name the finders' array one of findings/issues/defects/problems/claims, or declare `\"$comment\": \"x-pass: true\"` on it")
 	}
@@ -1637,6 +1664,19 @@ func enumReads(member string, words []string) bool {
 // cannot read is the same claim: the mode that was supposed to walk a branch may
 // not have walked it.
 func pickEnum(name string, members []string, mode string, idx int, rec map[string]int) string {
+	// `inconclusive` hands every enum that HAS an undecided member that member,
+	// item 1 included: the mode asks one question, what the script does when
+	// nobody could decide, and a mixed pair would answer a different one.
+	if mode == inconclusiveMode {
+		for _, m := range members {
+			if enumReads(m, enumInconclusiveWords) {
+				if rec != nil {
+					rec[inconclusiveKey+name+"="+m]++
+				}
+				return m
+			}
+		}
+	}
 	words := enumFailWords
 	if passFixture(mode) {
 		words = enumPassWords
@@ -1730,6 +1770,31 @@ const boolPolarityKey = "bool by name: "
 // about a categorical label no branch depended on.
 const enumFallbackKey = "enum by first member: "
 
+// inconclusiveKey records an enum member `inconclusive` picked as undecided.
+// Not a note: the mode reads it to know whether it walked anything.
+const inconclusiveKey = "undecided: "
+
+// enumInconclusiveWords is the third vocabulary, read in `inconclusive` alone:
+// a member that is neither a pass nor a failure but "nobody could tell".
+var enumInconclusiveWords = []string{"cannot", "inconclusive", "undecided", "undetermined", "unknown", "unverifiable", "unclear"}
+
+// undecidedArrayRe names the return's array for undecided findings. The return
+// is read, not the schema: what the mode checks is that they reached the
+// consumer.
+var undecidedArrayRe = regexp.MustCompile(`(?i)inconclusive|undecided|undetermined|cannot.?verif|unverifiable`)
+
+// holdsUndecided says whether the run's return carries, at its top level, a
+// non-empty array whose name is undecidedArrayRe's.
+func holdsUndecided(ret any) bool {
+	m, _ := ret.(map[string]any)
+	for k, v := range m {
+		if a, ok := v.([]any); ok && len(a) > 0 && undecidedArrayRe.MatchString(k) {
+			return true
+		}
+	}
+	return false
+}
+
 // deliverableKey records a pass-shaped array — a review's deliverable — that a
 // fixture synthesised. It is not a note: `empty` reads it to know whether it
 // emptied anything at all.
@@ -1743,7 +1808,7 @@ func prefixed(rec map[string]int, prefix string) []string {
 		switch {
 		case prefix != "" && strings.HasPrefix(n, prefix):
 			out = append(out, strings.TrimPrefix(n, prefix))
-		case prefix == "" && !strings.HasPrefix(n, arrayPolarityKey) && !strings.HasPrefix(n, boolPolarityKey) && !strings.HasPrefix(n, enumFallbackKey) && !strings.HasPrefix(n, deliverableKey):
+		case prefix == "" && !strings.HasPrefix(n, arrayPolarityKey) && !strings.HasPrefix(n, boolPolarityKey) && !strings.HasPrefix(n, enumFallbackKey) && !strings.HasPrefix(n, deliverableKey) && !strings.HasPrefix(n, inconclusiveKey):
 			out = append(out, n)
 		}
 	}

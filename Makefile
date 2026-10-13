@@ -131,6 +131,18 @@ check-tools: build
 	@./wfdry --type audit .check-skel/audit.mjs --mode clean 2>/dev/null | grep -q 'phases: Find | Verify | Write' \
 		&& { rm -rf .check-skel; echo "wf new-script -type audit skeleton: wfcheck clean, wfdry all modes, clean walks find → verify → write"; } \
 		|| { rm -rf .check-skel; echo "wf new-script -type audit skeleton: clean did not reach the writer — the claims came back empty on the happy path"; exit 1; }
+	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -type security -target . -o .check-skel/security.mjs >/dev/null \
+		&& ./wfcheck -root . .check-skel/security.mjs >/dev/null \
+		&& ./wfdry --type security .check-skel/security.mjs --quiet >/dev/null \
+		&& ./wfdry --type security .check-skel/security.mjs --quiet --args '{"maxRepro":1}' >/dev/null \
+		&& ./wfdry --type security .check-skel/security.mjs --quiet --mode clean --args '{"maxAgents":12}' >/dev/null \
+		|| { rm -rf .check-skel; echo "wf new-script -type security skeleton: the emitted security harness fails its own tools"; exit 1; }
+	@out=$$(./wfdry --type security .check-skel/security.mjs --mode clean 2>/dev/null | grep 'agents:'); \
+		inc=$$(./wfdry --type security .check-skel/security.mjs --mode inconclusive 2>/dev/null); rm -rf .check-skel; \
+		echo "$$out" | grep -q 'verify:read:' && echo "$$out" | grep -q 'verify:repro:' && echo "$$out" | grep -q 'find:r2:variant:' && echo "$$out" | grep -q 'merge' \
+			&& echo "$$inc" | grep -q '=== inconclusive: OK' \
+			&& echo "wf new-script -type security skeleton: wfcheck clean, wfdry all modes and under a low agent ceiling, clean walks verify → PoC → a variant round → merge, and undecided verdicts reach the return" \
+			|| { echo "wf new-script -type security skeleton: clean did not walk verify, a PoC, a variant round and the merge, or inconclusive failed — a confirmed blocker must get a PoC and seed a variant finder, and a cannot-verify finding must be returned"; exit 1; }
 	@d=$$(mktemp -d) && mkdir -p $$d/t && git -C $$d/t init -q && echo a > $$d/t/a && git -C $$d/t add a \
 		&& git -C $$d/t -c user.email=x@x -c user.name=x commit -qm i \
 		&& ./wf init t -target $$d/t -dir $$d/ws -type review >/dev/null && (cd $$d/ws && $(CURDIR)/wf new-script s >/dev/null); \
@@ -153,10 +165,12 @@ check-tools: build
 		./wfcheck -type hunt --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs > $$d/h.out \
 			|| { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: a reproduction worktree under .claude/worktrees/ FAILED the bar — it is the run's scratch"; exit 1; }; \
 		grep -qF "git worktree remove --force '.claude/worktrees/agent-1' && git branch -D 'w1'" $$d/h.out || { rm -rf $$d; echo "wfcheck --owns-diff -type hunt: passed without naming the worktree it let through and its branch"; exit 1; }; \
+		./wfcheck -type security --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null \
+			|| { rm -rf $$d; echo "wfcheck --owns-diff -type security: a PoC worktree under .claude/worktrees/ FAILED the bar — it is the run's scratch, as a hunt's is"; exit 1; }; \
 		echo n > $$d/t/.claude/worktrees/loose.txt; \
 		if ./wfcheck -type hunt --owns-diff $$b -root $$d/t $$d/ws/artifacts/s.mjs >/dev/null; then \
 			rm -rf $$d; echo "wfcheck --owns-diff -type hunt: EXIT 0 over a plain file under .claude/worktrees/ — only a REGISTERED worktree is scratch"; exit 1; fi; \
-		rm -rf $$d; echo "review workspace: wfdry and wfcheck --owns-diff read the type from gate.json; a changed tree fails the read-only bar; a hunt may leave a named reproduction worktree, a review may not"
+		rm -rf $$d; echo "review workspace: wfdry and wfcheck --owns-diff read the type from gate.json; a changed tree fails the read-only bar; a hunt or a security run may leave a named reproduction worktree, a review may not"
 	@rm -rf .check-skel && mkdir -p .check-skel && ./wf new-script skeleton -target . -o .check-skel/skeleton.mjs >/dev/null; \
 		c=$$(./wfdry .check-skel/skeleton.mjs --mode blockers 2>/dev/null | awk '/"carried": \[/{f=1} f{print} f&&/^   \],?$$/{exit}'); \
 		rm -rf .check-skel; \

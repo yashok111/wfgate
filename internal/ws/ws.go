@@ -76,19 +76,28 @@ const (
 	// cites `path:line#anchor`, so `wf check cite -require-anchor` can check
 	// the citations mechanically once the document is in the workspace.
 	TypeAudit = "audit"
+	// A security run searches a subsystem — or, given a base, a diff — for
+	// VULNERABILITIES under a threat model the decision document states. It
+	// is a hunt whose verifier defaults to refuting, whose verdict has a third
+	// state (cannot verify), whose serious findings are proven by a PoC in a
+	// reproduction worktree, and whose later rounds search for VARIANTS of what
+	// was confirmed. Deterministic scanners run before it, and their output is
+	// a set of candidates every one of which is adjudicated.
+	TypeSecurity = "security"
 )
 
 // Types is the closed list, in the order usage lines print it.
-var Types = []string{TypeBuild, TypeReview, TypeHunt, TypeAudit}
+var Types = []string{TypeBuild, TypeReview, TypeHunt, TypeAudit, TypeSecurity}
 
 // ScratchPrefix is the one place a read-only run may write inside its target:
 // where Claude Code puts an agent's `isolation: 'worktree'` checkout. Only a
-// hunt is allowed it — a review reproduces nothing.
+// hunt and a security run are allowed it — they reproduce; a review and an
+// audit reproduce nothing.
 const ScratchPrefix = ".claude/worktrees/"
 
 // AllowsScratch says whether a run of this type may leave reproduction
 // worktrees under ScratchPrefix.
-func AllowsScratch(typ string) bool { return typ == TypeHunt }
+func AllowsScratch(typ string) bool { return typ == TypeHunt || typ == TypeSecurity }
 
 // RunType is the manifest's type with the empty default resolved.
 func (m Manifest) RunType() string {

@@ -35,10 +35,11 @@ import (
 // is a type the closed list in internal/ws grew without a skeleton, which the
 // test over every ws.Types member refuses.
 var templateFor = map[string]string{
-	ws.TypeBuild:  "templates/script.mjs",
-	ws.TypeReview: "templates/review.mjs",
-	ws.TypeHunt:   "templates/hunt.mjs",
-	ws.TypeAudit:  "templates/audit.mjs",
+	ws.TypeBuild:    "templates/script.mjs",
+	ws.TypeReview:   "templates/review.mjs",
+	ws.TypeHunt:     "templates/hunt.mjs",
+	ws.TypeAudit:    "templates/audit.mjs",
+	ws.TypeSecurity: "templates/security.mjs",
 }
 
 func cmdNewScript(args []string) error {
@@ -173,6 +174,13 @@ func cmdNewScript(args []string) error {
 			fmt.Printf("    wfdry --type %s --mode clean --args '{\"maxAgents\":12}' %s — walks the ceiling stop before a round, which the default never reaches\n", runType, dst)
 		}
 		fmt.Printf("  after the run: wfcheck -type %s --owns-diff <the SHA the run started from> %s — %s\n", runType, dst, after)
+		if runType == ws.TypeSecurity {
+			// The scan is a measurement the run is handed, never one it makes;
+			// and the report is shared, so it is checked for the secrets its
+			// findings are about.
+			fmt.Printf("  before the dry run: the scanners the decision document names write SARIF into artifacts/scan/, then `wf scan` folds them into artifacts/scan/args.json — dry-run and launch with those args: wfdry --type %s --args \"$(cat artifacts/scan/args.json)\" %s\n", runType, dst)
+			fmt.Printf("  and the report: save it as artifacts/report.md, then `betterleaks dir artifacts/report.md --redact` must find nothing — a finding names the kind and place of a secret, never its value\n")
+		}
 		if runType == ws.TypeAudit {
 			// The answer's citations are the audit's claims; the one check that
 			// reads them mechanically is `check cite`, and it reads artifacts.

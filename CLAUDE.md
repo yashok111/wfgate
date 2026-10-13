@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 36 — what each change answered and the command
+maintenance record, waves 2 to 37 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -86,8 +86,8 @@ judgement.
 
 ## Architecture
 
-Eighteen units, each one decision — nine Go packages under `internal/`, plus
-the FIVE emitted templates, the dispatcher, the hooks, the skill and the agent.
+Nineteen units, each one decision — nine Go packages under `internal/`, plus
+the SIX emitted templates, the dispatcher, the hooks, the skill and the agent.
 Re-count them against `ls internal/` before quoting the number.
 
 - `internal/gitx` — the only place that runs `git`. Git is not an integration
@@ -169,6 +169,13 @@ Re-count them against `ls internal/` before quoting the number.
   citation; one writer composes the answer from verified claims only. The
   citation form is the one `wf check cite -require-anchor` reads, which is the
   audit's mechanical acceptance once the report is saved — wave 34.
+- `templates/security.mjs` — a subsystem, or with `BASE` a diff, searched for
+  vulnerabilities under the threat model the decision document states: finders
+  per CWE class and per chunk of scanner hits (`args.scan`, folded from SARIF
+  by `wf scan`, `cmd/wf/scan.go`, every hit adjudicated by enum), a verifier
+  that defaults to REFUTING with a three-state verdict, a PoC worktree for
+  confirmed blockers and majors, VARIANT rounds seeded by what was confirmed.
+  `wfdry --mode inconclusive` walks the third verdict — wave 37.
 - `cmd/wf` — the subcommand dispatcher, and `close.go`: the gate's own record
   and the pruning that record makes safe. ONE dispatch — the test harness used
   to keep a hand-copied switch, which went stale the first time a command was
@@ -355,7 +362,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 36 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 37 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -402,6 +409,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 34 | The third run type | `audit`: a question in parts, claims of both polarities citing `path:line#anchor`, a citation checker, one writer from verified claims, `answered` apart from `complete`, `dead-writer`, `check cite` as the mechanical acceptance |
 | 35 | The multi-round hunt queued after wave 33 | Rounds until dry: productive cells re-run with their own findings, a completeness critic's extra cells, four stops each named (`stoppedBy`), an agent ceiling under the Workflow cap; `wfdry` refuses a mode over that cap, and its review round added `dead-cell` (one finder cell dead in every round) |
 | 36 | `check cite` precision, queued by wave 34's adversarial vector | An anchor matches a whole identifier or a PART of one, never a word fragment (measured over 235 frozen rounds first); `-require-anchor` misses counted in the header; `path:3-#x` a malformed range |
+| 37 | The owner's fifth type, distilled from 21 security skills on skills.sh | `security`: the threat model gated in the document, scanners run before the launch and folded by `wf scan` (an error notification FAILS a scanner — M-49), every hit adjudicated, a refuting verifier with a third verdict and `wfdry --mode inconclusive`, PoC worktrees, variant rounds, `betterleaks` over the saved report |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own

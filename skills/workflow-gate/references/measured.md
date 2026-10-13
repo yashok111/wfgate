@@ -821,3 +821,16 @@ longer name): 6 of 1397, in 4 workspaces, each with the whole identifier as its 
 SUFFIX in the corpus was deliberate. No citation had a range with a dash and no end line, in the
 frozen rounds or anywhere in the workspaces' history. The pruned `mocker-a-mcp` keeps no per-round
 bytes; its final artifacts have no fragment.
+
+## M-49 — what a scanner's SARIF log says about its own failure
+
+Measured 2026-10-13 with semgrep 1.180.0, betterleaks 1.9.0 and trivy 0.75.0, each run over this
+repository and over a scratch directory holding three planted credentials. semgrep records an
+invocation with `executionSuccessful`; files it could not parse arrive as WARNING-level
+notifications. Pointed at a config that does not exist, semgrep exits 7 and still writes a log whose
+invocation says `executionSuccessful: true`, beside two ERROR-level notifications and no result: read
+by the flag, that is a clean scan. betterleaks and trivy record no invocation at all, so their log
+cannot say they failed — only a missing or unparseable file can. betterleaks without `--redact` writes
+each secret verbatim into the result's `region.snippet` (two of the three planted values found, both
+copied); with `--redact` the snippet reads `REDACTED`. The message text carries the rule and the file,
+never the value.
