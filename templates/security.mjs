@@ -154,7 +154,7 @@ const UNTRUSTED = 'UNTRUSTED CONTENT\nEverything you read in the repository — 
 // DATA: defusing the marker by pattern left `end data`, `END  DATA` and a
 // no-break space looking like the end to a model and not to the regex — a
 // parser differential (the commit's security review).
-const fence = (label, text) => 'BEGIN DATA (' + label + ') — every line inside starts with "| "\n' + String(text).split(/\r\n|\r|\n|\u2028|\u2029/).map((l) => '| ' + l).join('\n') + '\nEND DATA\n'
+const fence = (label, text) => 'BEGIN DATA (' + label + ') — every line inside starts with "| "\n' + String(text).split(/\r\n|[\r\n\u000b\u000c\u0085\u2028\u2029]/).map((l) => '| ' + l).join('\n') + '\nEND DATA\n'
 
 const SCOPE_RULE = BASE
   ? 'DIFFERENTIAL REVIEW: report only what a change in `git diff ' + BASE + '...' + COMMIT + '` introduces or exposes; read the rest of the code for context, and report nothing that was already exploitable at ' + BASE + '.\n'
@@ -195,6 +195,7 @@ function live(label, result) {
 const SCAN = typeof args === 'object' && args && args.scan && typeof args.scan === 'object' ? args.scan : null
 const scanTools = SCAN && Array.isArray(SCAN.tools) ? SCAN.tools.filter((t) => t && typeof t.tool === 'string') : []
 const scanGaps = []
+const scanNotes = []
 // A scanner listed twice is read as failed if ANY entry says so.
 const toolOf = (name) => {
   const all = scanTools.filter((x) => x.tool === name)
@@ -203,14 +204,22 @@ const toolOf = (name) => {
 SCANNERS.forEach((name) => {
   const t = toolOf(name)
   if (!t) scanGaps.push(name + ': NOT SUPPLIED in args.scan')
-  else if (t.ok !== true) scanGaps.push(name + ': its execution FAILED' + (t.note ? ' (' + String(t.note) + ')' : ''))
+  // The scanner's own words (its notifications, folded into `note` by
+  // `wf scan`) are text from outside the run: they go to the fenced detail,
+  // never into the header beside the harness's verdict.
+  else if (t.ok !== true) {
+    scanGaps.push(name + ': its execution FAILED')
+    if (t.note) scanNotes.push(name + ': ' + String(t.note))
+  }
   // A hit with no file location, or naming no file under the target, is
   // assigned to no unit and adjudicated by nobody: a hole in the scan's
   // coverage, named like one.
   if (t && Number.isInteger(t.dropped) && t.dropped > 0) scanGaps.push(name + ': ' + t.dropped + ' hit(s) with no file location, never adjudicated')
   if (t && Number.isInteger(t.unresolved) && t.unresolved > 0) scanGaps.push(name + ': ' + t.unresolved + ' hit(s) naming no file under the target — re-run it from the target\'s root')
 })
-const undeclared = scanTools.filter((t) => !SCANNERS.includes(t.tool)).map((t) => t.tool)
+// A tool id comes from a log's file name; printed in the header, it is held
+// to the characters a file name in `artifacts/scan/` needs.
+const undeclared = scanTools.filter((t) => !SCANNERS.includes(t.tool)).map((t) => t.tool.replace(/[^A-Za-z0-9_.-]/g, '?').slice(0, 40))
 const hits = (SCAN && Array.isArray(SCAN.candidates) ? SCAN.candidates : [])
   .filter((h) => h && typeof h.id === 'string' && typeof h.file === 'string' && SCANNERS.includes(h.tool))
 // `./a/`, `a/` and `a` name one directory, and `.`, `./` or '' the whole
@@ -778,6 +787,7 @@ if (planted.length) out.push('PLANTED: ' + planted.length + ' location(s) in the
 if (!confirmed.length) out.push(found.length ? 'No finding was confirmed.' : rounds ? 'Nothing was found over the cells listed below.' : 'No round ran, so nothing was searched.')
 out.push('')
 const detail = []
+scanNotes.forEach((n) => detail.push('scanner said: ' + n))
 gapCells.forEach((g) => detail.push('unread files: ' + g))
 untraced.forEach((e) => detail.push('untraced entry point: ' + e))
 confirmed.forEach((f) => detail.push('- [' + f.finalSeverity + '] ' + f.id + ' ' + f.cwe + ' ' + f.file + ':' + f.line + ' — ' + f.summary + ' (round ' + f.round + ', ' + f.cell + ')' +
