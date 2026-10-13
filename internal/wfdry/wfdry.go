@@ -978,6 +978,26 @@ func runMode(src, mode string, o Options) Result {
 	if k, ok := argsInt(o.Args, "maxAgents"); ok && mode != "no-args" && r.Spawned > k {
 		r.Violations = append(r.Violations, fmt.Sprintf("%s: this mode spawned %d agents against the `maxAgents` %d the run was given — the script's ceiling does not hold", mode, r.Spawned, k))
 	}
+	// A ceiling walk is aimed at a stop the script names (`stoppedBy`). One
+	// that never reached the ceiling walked nothing, and printed OK: the
+	// review round's probe — one lens left, `maxAgents` 40 — ended at the
+	// round limit and nothing said so. One that hit it DURING a round leaves
+	// findings unverified, which a skeleton reports as incomplete; the clean
+	// verdict guard below then reads that as the script's fault, and the
+	// number the author needs is the one this note prints.
+	ceilingHit := false
+	if k, ok := argsInt(o.Args, "maxAgents"); ok && mode == "clean" && r.ReturnOK {
+		if m, _ := r.Return.(map[string]any); m != nil {
+			if sb, ok := m["stoppedBy"].(string); ok {
+				if sb != "agents" {
+					r.Notes = append(r.Notes, fmt.Sprintf("clean: the run was given `maxAgents` %d and stopped by `%s` after %d agent(s) — the ceiling was never reached, so this walk exercised nothing; lower it below that count", k, sb, r.Spawned))
+				} else if m["complete"] == false {
+					ceilingHit = true
+					r.Notes = append(r.Notes, fmt.Sprintf("clean: `maxAgents` %d stopped the run DURING a round after %d agent(s) — what it left unverified is an expected hole, not the script's fault; to walk the stop BEFORE a round, give a ceiling between the agents one round spends and that plus the next round's finders and retries", k, r.Spawned))
+				}
+			}
+		}
+	}
 	// The `clean` mode IS the run everyone wants: every producer alive, every
 	// gate clean, acceptance green. A verdict field that comes back false there
 	// is the script contradicting the only fixture it cannot argue with, and
@@ -1020,6 +1040,9 @@ func runMode(src, mode string, o Options) Result {
 				continue
 			}
 			b, _ := r.Return.(map[string]any)[k].(bool)
+			if ceilingHit && coverageWord.MatchString(k) && !b {
+				continue
+			}
 			if scanHole && coverageWord.MatchString(k) && !b {
 				r.Notes = append(r.Notes, mode+": `"+k+": false`, and the args.scan this run was given names a failed scanner or hits no unit can own — expected if the script declares that scanner; drop it from SCANNERS or re-run it before the launch")
 				continue

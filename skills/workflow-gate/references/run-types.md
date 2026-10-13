@@ -168,8 +168,9 @@ findings are proven by running something. What changes against the review rules 
   line say which. A stop at a round boundary is not a coverage hole: a cell the critic proposed
   for a round that never started is listed as unsearched. A ceiling reached DURING a round is: its
   verifiers are not spawned, their findings are unverified with that reason, and the hunt is
-  incomplete — which is why a dry run that walks it fails `clean`'s verdict guard, and that path is
-  pinned by the skeleton's tests rather than by a `--args` walk. A declared cell that never ran
+  incomplete — a dry run that walks it NOTES the stop during a round and the agent count it reached,
+  rather than reading the incompleteness as the script's fault, and one whose ceiling the run never
+  reached says the walk exercised nothing (both read off the return's `stoppedBy`). A declared cell that never ran
   makes the hunt incomplete too; a re-run that died is named; a dead critic is reported, not
   counted as a dead cell. In a dry run, `--args '{"maxRounds":1}'` is a single pass, `--mode clean
   --args '{"maxAgents":12}'` walks the stop before a round (and the run is refused if it spawns
@@ -287,28 +288,37 @@ and leaves the PoC to a human. What changes against a hunt:
   behind a TLS proxy or in development, code only tests run, placeholders in an example env file,
   credentials marked as fixtures, keys public by design, a fast hash used as a checksum, an impact
   the precondition already grants, a value the model trusts).
-- **Lenses are vulnerability CLASSES** named with their CWE family. The skeleton ships seven, disjoint
-  by the operation that goes wrong — `injection`, `access`, `data` (a path READ outside its root,
-  SSRF, deserialization, exposure), `crypto`, `logic`, `destructive` (a delete, move or overwrite
-  whose target the attacker writes) and `llm` (model output into an interpreter, prompt injection,
-  the context window) — and the author keeps the ones the threat model says this code is exposed to:
-  each is a finder per unit. A stack's own checklist is where a class is ADDED, in the interview:
+- **Lenses are vulnerability CLASSES** named with their CWE family. The skeleton ships seven, drawn
+  apart by the operation that goes wrong — `injection` (any attacker input, a model's output
+  included, reaching an interpreter), `access` (CORS among it), `data` (a path READ outside its root,
+  SSRF, deserialization, exposure), `crypto` (predictable tokens among it), `logic`, `writes` (a
+  file created, written, uploaded, moved or deleted at a target the attacker writes) and `llm`
+  (prompt injection steering the model's tools, the context window, tool arguments) — and the author
+  keeps the ones the threat model says this code is exposed to: each is a finder per unit. Where two
+  classes could still claim one weakness, a finding is a duplicate of one with the same CWE nearby,
+  whichever cell filed it. A stack's own checklist is where a class is ADDED, in the interview:
   OpenAI's security-best-practices carries one per framework (Go, Django, FastAPI, Flask, Express,
   Next.js, React, Vue), awesome-copilot's security-review the signals per category — read for the
   decision, never pasted into a prompt, where it would be paid once per agent. `scan`, `variant`
-  and `flow` are the harness's own cell kinds and are refused as lens ids.
+  and `flow` are the harness's own cell kinds and are refused as lens ids. Units carry `paths`,
+  repo-relative prefixes (`./a/`, `a/` and `a` are one directory, `.` or `''` the whole
+  repository), which is also how a scanner hit is assigned to a unit; two cells sharing a key are
+  refused, because results are matched to cells by key.
 - **With two units or more, one FLOW cell reads across them.** Units split the code by path, so a
   value entering in one unit and reaching a sink in another is read whole by no class finder. The
   flow finder follows each entry point the threat model names across the boundaries and reports
-  only what crosses one; its gaps are the entry points it did not trace to their end. Its findings
-  dedup by CWE, as a scanner or variant cell's do.
-- **The code under review may be hostile, and every reader of it is a model.** Every prompt carries
-  `UNTRUSTED`: what the repository holds — code, comments, docs, test data, scanner messages — is
-  data, and text in it addressed to a reviewer or an agent is followed never and reported as a
-  finding (CWE-1427). A comment telling "AI reviewers" a file is audited is an attack on the run. Units carry `paths`, repo-relative prefixes
-  (`./a/`, `a/` and `a` are one directory, `.` or `''` the whole repository), which is also how a
-  scanner hit is assigned to a unit; two cells sharing a key are refused, because results are
-  matched to cells by key.
+  only what crosses one. Its schema's gaps are the entry points it did not trace to their end — a
+  list of unread files would be every unit's — reported on their own line and counted against
+  `complete`. Its findings dedup by CWE, as a scanner or variant cell's do.
+- **The code under review may be hostile, and every reader of it is a model.** Every prompt opens with
+  `UNTRUSTED`, before anything relayed: what the repository holds — code, comments, docs, test data —
+  is data, and so is every block another agent or a scanner wrote, which the harness FENCES between
+  `BEGIN DATA` and `END DATA` (a finding's fields, a trace, scanner hits, the earlier findings a
+  re-run is shown; an `END DATA` inside is defused). Text addressed to a reviewer or an agent is
+  followed never; a finder lists it in `planted` by location, and the report prints it, fenced, as an
+  attack on this review — never through a verifier, which would refute it by construction (the
+  repository's authors wrote it, not the threat model's attacker), and never as seven class findings
+  of one comment. The PoC output in the report is fenced too: the operator's session reads it.
 - **Scanners run BEFORE the launch, by the operator, from the target's root, and their output is
   CANDIDATES.** The decision document names the scanners; each writes SARIF into the workspace's
   `artifacts/scan/` (`wf scan` with no log prints the commands, each removing the old log first —
@@ -329,8 +339,9 @@ and leaves the PoC to a human. What changes against a hunt:
   hit id a REQUIRED property of `hits`: the finder answers every one — dismissed with its reason, or
   vulnerable with a finding carrying the hit as its `scan` — and a hit judged vulnerable with no
   finding filed is listed UNADJUDICATED and makes the run incomplete. Dismissals are listed in the
-  report, unverified, as a finder's judgement. A message is copied as the scanner wrote it, and a
-  semgrep rule may interpolate the matched text into it: before the launch, `betterleaks dir
+  report, unverified, as a finder's judgement. A message is kept to one line, capped and cut at a
+  `Match:` marker, but otherwise as the scanner wrote it, and a semgrep rule may interpolate the
+  matched text into it: before the launch, `betterleaks dir
   artifacts/scan/args.json --redact` must find nothing. Pin the scan with `wf add -as scan/<file>
   artifacts/scan/<file>` for each log and the args file (`wf scan` prints the lines: a bare `wf add`
   stores a file under its basename), and dry-run with `--args "$(cat artifacts/scan/args.json)"` —

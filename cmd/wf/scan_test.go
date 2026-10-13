@@ -165,7 +165,7 @@ func TestNewScriptSecurity(t *testing.T) {
 	g, _ := scanWorkspace(t)
 	out, err := runWF(t, g, "new-script", "sec")
 	noErr(t, err, "new-script")
-	mustContain(t, out, "wf scan", "betterleaks dir artifacts/report.md", "--owns-diff", "maxRepro")
+	mustContain(t, out, "wf scan", "betterleaks dir artifacts/report.md", "--owns-diff", "maxRepro", `{"maxAgents":40}`)
 	b, err := os.ReadFile(filepath.Join(g, "artifacts", "sec.mjs"))
 	if err != nil {
 		t.Fatal(err)
