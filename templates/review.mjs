@@ -58,6 +58,14 @@ const NAV = 'NAVIGATION\n' +
 const READ_ONLY = 'READ-ONLY\n' +
   'You change nothing: no Edit, no Write, no command that writes a file, no git command that moves HEAD, the index or a ref. The repository is ' + REPO + '.\n'
 
+// The reading cells are narrowed AT SPAWN: the harness removes the tools named
+// here from the agent's tool list before it starts — measured 2026-10-20, no
+// denied call, the agent carries on and returns through its schema. READ_ONLY
+// asks; this removes. Bash stays: NAV allows read-only git. `wfcheck --owns-diff`
+// after the run is still the bar — an option the harness renames is a key
+// ignored in silence, and only the tree says whether the property held.
+const NO_WRITE = ['Write', 'Edit', 'NotebookEdit']
+
 // spawn is the one wrapper every agent() call goes through. An unhandled throw
 // at a serial step aborts the whole run, so a failed agent becomes null here
 // and the caller decides what a null means.
@@ -183,9 +191,9 @@ LENSES.forEach((lens) => UNITS.forEach((unit) => cells.push({ lens, unit })))
 // onto another's cell — a cell with no report is a dead cell either way.
 const reports = new Map((await parallel(cells.map((c) => async () => {
   const label = 'find:' + c.lens.id + ':' + c.unit.id
-  const first = await spawn(finderPrompt(c.lens, c.unit), { label, phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
+  const first = await spawn(finderPrompt(c.lens, c.unit), { label, phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: FINDINGS_SCHEMA })
   if (first) return { key: label, r: live(label, first) }
-  const retry = await spawn(finderPrompt(c.lens, c.unit), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
+  const retry = await spawn(finderPrompt(c.lens, c.unit), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: FINDINGS_SCHEMA })
   return { key: label, r: live(label + ':retry', retry) }
 }))).filter(Boolean).map((x) => [x.key, x.r]))
 
@@ -230,7 +238,7 @@ log(found.length + ' finding(s) after dedup from ' + cells.length + ' finder cel
 const results = []
 if (found.length) {
   phase('Verify')
-  const verdicts = new Map((await parallel(found.map((f) => async () => ({ id: f.id, v: await spawn(verifierPrompt(f), { label: 'verify:' + f.id, phase: 'Verify', model: 'sonnet', effort: 'medium', schema: VERDICT_SCHEMA }) })))).filter(Boolean).map((x) => [x.id, x.v]))
+  const verdicts = new Map((await parallel(found.map((f) => async () => ({ id: f.id, v: await spawn(verifierPrompt(f), { label: 'verify:' + f.id, phase: 'Verify', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: VERDICT_SCHEMA }) })))).filter(Boolean).map((x) => [x.id, x.v]))
   found.forEach((f) => {
     const v = verdicts.get(f.id)
     if (!v) results.push(Object.assign({}, f, { status: 'unverified', finalSeverity: f.severity, reason: 'the verifier returned nothing' }))
@@ -250,7 +258,7 @@ let groups = []
 let mergeDied = false
 if (confirmed.length > 1) {
   phase('Merge')
-  const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', schema: MERGE_SCHEMA })
+  const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: MERGE_SCHEMA })
   if (!m) mergeDied = true
   else {
     // A group may only name findings the merger was handed: an id it invented

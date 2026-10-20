@@ -825,6 +825,24 @@ func runMode(src, mode string, o Options) Result {
 		if ws.AllowsScratch(normType(o.Type)) && (reproish(label) || reproPhase.MatchString(get("phase"))) && get("isolation") != "worktree" {
 			bad(label, "a "+normType(o.Type)+" run's reproducer has no `isolation: 'worktree'` — it would write its failing test into the target; add the option to this call")
 		}
+		// A reading cell of a read-only run is narrowed AT SPAWN: the harness
+		// removes the tools `disallowedTools` names from the agent's list before
+		// it starts (measured 2026-10-20 — no denied call, the agent returns
+		// through its schema). The prompt's READ_ONLY block asks, the option
+		// removes, `--owns-diff` after the run observes. Refused in every mode
+		// of a read-only type for a call without `isolation: 'worktree'` — a
+		// reproducer writes its test in its worktree by design — because the
+		// option removed from one call of the skeleton changes nothing a bar
+		// reads. The SHAPE is checked in every type: the harness refuses a
+		// value that is not an array of non-empty strings, and the spawn
+		// wrapper turns that refusal into a dead agent paid for in a live run.
+		narrowed, shape := disallowed(opts.Get("disallowedTools"))
+		if shape != "" {
+			bad(label, "`disallowedTools` "+shape+" — the harness refuses the spawn over it; an array of non-empty tool names, the skeleton's `NO_WRITE`")
+		}
+		if ro && get("isolation") != "worktree" && (!narrowed["Write"] || !narrowed["Edit"]) {
+			bad(label, "a "+normType(o.Type)+" run's reader has no `disallowedTools` naming Write and Edit — the harness drops them from the tool list at spawn, READ_ONLY only asks; add `disallowedTools: NO_WRITE` to this call")
+		}
 		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadCellMode && r.oneCell(label)) || (mode == deadReproMode && reproish(label)) || (mode == deadWriterMode && writerish(label)) {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())
@@ -1474,6 +1492,29 @@ func (r *Result) oneCell(label string) bool {
 		r.firstCell = id
 	}
 	return id == r.firstCell
+}
+
+// disallowed reads an agent call's `disallowedTools` the way the harness
+// does: absent is fine, anything but an array of non-empty strings is a shape
+// the harness refuses the spawn over. The set is what the read-only check
+// consults.
+func disallowed(v goja.Value) (set map[string]bool, shape string) {
+	set = map[string]bool{}
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return set, ""
+	}
+	items, ok := v.Export().([]any)
+	if !ok {
+		return set, fmt.Sprintf("is %v, not an array", v.ExportType())
+	}
+	for i, it := range items {
+		s, ok := it.(string)
+		if !ok || s == "" {
+			return set, fmt.Sprintf("item %d is %v, not a non-empty string", i, it)
+		}
+		set[s] = true
+	}
+	return set, ""
 }
 
 func reproish(label string) bool {

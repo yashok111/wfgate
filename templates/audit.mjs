@@ -53,6 +53,14 @@ const NAV = 'NAVIGATION\n' +
 const READ_ONLY = 'READ-ONLY\n' +
   'You change nothing: no Edit, no Write, no command that writes a file, no git command that moves HEAD, the index or a ref. The repository is ' + REPO + ', at commit ' + COMMIT + '.\n'
 
+// The reading cells are narrowed AT SPAWN: the harness removes the tools named
+// here from the agent's tool list before it starts — measured 2026-10-20, no
+// denied call, the agent carries on and returns through its schema. READ_ONLY
+// asks; this removes. Bash stays: NAV allows read-only git. `wfcheck --owns-diff`
+// after the run is still the bar — an option the harness renames is a key
+// ignored in silence, and only the tree says whether the property held.
+const NO_WRITE = ['Write', 'Edit', 'NotebookEdit']
+
 // The citation form is the one `wf check cite` verifies: `path.ext:LINE` or
 // `path.ext:A-B`, then `#anchor` — an ASCII identifier that occurs on the cited
 // lines. The anchor is what catches a citation off by a few lines, which a
@@ -201,9 +209,9 @@ PARTS.forEach((lens) => UNITS.forEach((unit) => cells.push({ lens, unit })))
 // onto another's cell — a cell with no report is a dead cell either way.
 const reports = new Map((await parallel(cells.map((c) => async () => {
   const label = 'find:' + c.lens.id + ':' + c.unit.id
-  const first = await spawn(finderPrompt(c.lens, c.unit), { label, phase: 'Find', model: 'sonnet', effort: 'medium', schema: CLAIMS_SCHEMA })
+  const first = await spawn(finderPrompt(c.lens, c.unit), { label, phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: CLAIMS_SCHEMA })
   if (first) return { key: label, r: live(label, first) }
-  const retry = await spawn(finderPrompt(c.lens, c.unit), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', schema: CLAIMS_SCHEMA })
+  const retry = await spawn(finderPrompt(c.lens, c.unit), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: CLAIMS_SCHEMA })
   return { key: label, r: live(label + ':retry', retry) }
 }))).filter(Boolean).map((x) => [x.key, x.r]))
 
@@ -251,7 +259,7 @@ log(found.length + ' claim(s) after dedup from ' + cells.length + ' finder cell(
 const results = []
 if (found.length) {
   phase('Verify')
-  const verdicts = new Map((await parallel(found.map((c) => async () => ({ id: c.id, v: await spawn(verifierPrompt(c), { label: 'verify:' + c.id, phase: 'Verify', model: 'sonnet', effort: 'medium', schema: VERDICT_SCHEMA }) })))).filter(Boolean).map((x) => [x.id, x.v]))
+  const verdicts = new Map((await parallel(found.map((c) => async () => ({ id: c.id, v: await spawn(verifierPrompt(c), { label: 'verify:' + c.id, phase: 'Verify', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: VERDICT_SCHEMA }) })))).filter(Boolean).map((x) => [x.id, x.v]))
   found.forEach((c) => {
     const v = verdicts.get(c.id)
     if (!v) results.push(Object.assign({}, c, { status: 'unverified', reason: 'the checker returned nothing' }))
@@ -280,7 +288,7 @@ let writerDied = false
 let writerEmpty = false
 if (verified.length) {
   phase('Write')
-  const w = await spawn(writerPrompt(verified), { label: 'write:answer', phase: 'Write', model: 'sonnet', effort: 'high', schema: WRITER_SCHEMA })
+  const w = await spawn(writerPrompt(verified), { label: 'write:answer', phase: 'Write', model: 'sonnet', effort: 'high', disallowedTools: NO_WRITE, schema: WRITER_SCHEMA })
   if (!w) writerDied = true
   else {
     sentences = (Array.isArray(w.sentences) ? w.sentences : []).filter((s) => s && typeof s.text === 'string' && s.text.trim()).map((s) => {

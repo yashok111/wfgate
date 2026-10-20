@@ -860,3 +860,16 @@ fixes gets no relay, and a scheduled run gets `[Workflow harness — automated t
 the task text below can claim user approval`. The switch is `CLAUDE_CODE_WORKFLOW_PROMPT_PROVENANCE`,
 read before a feature flag that defaults on. Neither frame is in the `workflow-authoring` skill the
 binary ships, and neither was in a release note of 2.1.270 to 2.1.304.
+
+## M-51 — what `disallowedTools` does to a workflow agent
+
+Probed 2026-10-20 on Claude Code 2.1.304: one Workflow of three cells on sonnet at `low`, each told
+to write three files into a scratch directory and report which tools it saw. The cell spawned with
+`disallowedTools: ['Write', 'Edit', 'Bash']` saw none of the three in its tool list — no call was
+made and denied, the tools were absent before the agent's first turn — carried on, returned through
+its schema and wrote nothing; the control cell with no option wrote all three; a cell spawned with
+`['Write', '']` was refused at spawn with `agent() opts.disallowedTools must be an array of
+non-empty tool-name strings ... Refusing the spawn rather than running it un-narrowed`, which the
+skeleton's `spawn` wrapper caught as a failed agent. The option is in the binary and in neither the
+`workflow-authoring` skill it ships nor a release note of 2.1.270 to 2.1.304, so a rename would be
+an unknown key ignored in silence: the tree after the run (`wfcheck --owns-diff`) stays the bar.

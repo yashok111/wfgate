@@ -24,6 +24,7 @@ read-only types in every row below unless their own sections say otherwise.
 | a pass-shaped boolean (`verified`, `complete`) | true everywhere but `acceptfail` | true in the passing modes, false elsewhere |
 | `dead-reviews` kills | review / fix / closeout / verify / accept labels | those, plus critic / skeptic — the finders LIVE |
 | `dead-finders` kills | — | find / hunt / scan / audit / lens / inspect / analyze labels — the verifiers live, and a mode that kills nobody FAILS |
+| `disallowedTools` on a call | not asked | every call without `isolation: 'worktree'` names `Write` and `Edit` in it (the skeleton's `NO_WRITE`), refused in every mode otherwise; a value that is not an array of non-empty strings is refused in every type, the build included |
 | `wfcheck --owns-diff` | an audit of the ownership map; exits 0 | a BAR: the tree must be unchanged and HEAD unmoved; exits 1 otherwise; the base must be a SHA; a hunt's or a security run's REGISTERED reproduction worktrees under `.claude/worktrees/` are listed with their cleanup, not counted |
 | the gate's third vector | CRITERION | COVERAGE & PRECISION (below) |
 
@@ -59,8 +60,15 @@ in a review, holds only a COVERAGE word (`complete`, `done`, `finished`) — the
 Start from `wf new-script` inside the workspace; the skeleton passes both tools as it stands. What
 it carries, and what each piece answers:
 
-- **Read-only is held by the prompts, and checked by the tree.** Every prompt carries the
-  `READ_ONLY` block; nothing else holds the property while the run is live. Start the run from a
+- **Read-only is asked by the prompts, removed at spawn, and checked by the tree.** Every prompt
+  carries the `READ_ONLY` block, and every reading cell carries `disallowedTools: NO_WRITE` — the
+  harness takes `Write`, `Edit` and `NotebookEdit` out of the agent's tool list before it starts, so
+  there is no denied call and no dead agent, only a tool the agent does not have [M-51]. `wfdry`
+  refuses a reading cell of a read-only type without it; a cell with `isolation: 'worktree'` is
+  exempt, because a reproducer writes its test there by design. `Bash` stays: `NAV` allows read-only
+  git, and a finder with no shell cannot follow a blame. The option is belt, not bar — an option the
+  harness renames is a key ignored in silence, and only the tree says whether the property held.
+  Start the run from a
   CLEAN tree and record its SHA; after the run, `wfcheck --owns-diff <that SHA> <script>` from the
   workspace is the observation that it held — a changed file, an untracked file the run created, or a
   moved HEAD fails it. A ref is refused as the base: it resolves at check time, and a run that
@@ -204,7 +212,7 @@ reproducer actually run something here (is `REPRO_HOW` a command that works in a
 does the subsystem build there), is the cap set against the expected finding count, does the report
 keep "not reproduced" apart from "refuted" — and three things no runner can judge, read line by line:
 the reproducer's prompt carries `REPRO_RULES` (the `COMMIT` checkout and its confirmation), never
-`READ_ONLY`; the readers carry no `isolation`; and the harness below the skeleton's marker line is the
+`READ_ONLY` and no `disallowedTools`; the readers carry no `isolation`; and the harness below the skeleton's marker line is the
 emitted one — re-emit with `wf new-script` and diff, because a status mapping or a `complete` edited
 there passes every dry-run mode.
 

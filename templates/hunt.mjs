@@ -92,6 +92,16 @@ const NAV = 'NAVIGATION\n' +
 const READ_ONLY = 'READ-ONLY\n' +
   'You change nothing: no Edit, no Write, no command that writes a file, no git command that moves HEAD, the index or a ref. The repository is ' + REPO + ', at commit ' + COMMIT + '.\n'
 
+// The reading cells are narrowed AT SPAWN: the harness removes the tools named
+// here from the agent's tool list before it starts — measured 2026-10-20, no
+// denied call, the agent carries on and returns through its schema. READ_ONLY
+// asks; this removes. Bash stays: NAV allows read-only git. `wfcheck --owns-diff`
+// after the run is still the bar — an option the harness renames is a key
+// ignored in silence, and only the tree says whether the property held.
+// The reproducers are NOT narrowed: they write a test in their own worktree by
+// design, which is what `isolation: 'worktree'` is for.
+const NO_WRITE = ['Write', 'Edit', 'NotebookEdit']
+
 const REPRO_RULES = 'REPRODUCTION RULES\n' +
   'You run in an isolated git worktree, never in ' + REPO + '. First: `' + GIT + ' checkout --detach ' + COMMIT + '` and confirm `' + GIT + ' rev-parse HEAD` prints ' + COMMIT + ' — a worktree can arrive at another commit, and a reproduction against the wrong one proves nothing. Call git ONLY as ' + GIT + '. You may write a test or a script inside the worktree; never commit, never push, never write outside the worktree.\n' +
   'Run it with: ' + REPRO_HOW + '\n'
@@ -341,7 +351,7 @@ async function verifyRound(fresh) {
     repro: p.repro,
     v: p.repro
       ? await spawn(reproPrompt(p.f), { label: 'verify:repro:' + p.f.id, phase: 'Verify', model: 'sonnet', effort: 'medium', isolation: 'worktree', schema: REPRO_SCHEMA })
-      : await spawn(readerPrompt(p.f), { label: 'verify:read:' + p.f.id, phase: 'Verify', model: 'sonnet', effort: 'medium', schema: VERDICT_SCHEMA }),
+      : await spawn(readerPrompt(p.f), { label: 'verify:read:' + p.f.id, phase: 'Verify', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: VERDICT_SCHEMA }),
   })))).filter(Boolean).map((x) => [x.id, x]))
   const out = []
   fresh.forEach((f) => {
@@ -404,9 +414,9 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   // report onto another's cell — a cell with no report is a dead cell either way.
   const reports = new Map((await parallel(active.map((c) => async () => {
     const label = 'find:r' + round + ':' + c.lens.id + ':' + c.unit.id
-    const first = await spawn(finderPrompt(c, round), { label, phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
+    const first = await spawn(finderPrompt(c, round), { label, phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: FINDINGS_SCHEMA })
     if (first) return { key: c.key, r: live(label, first) }
-    const retry = await spawn(finderPrompt(c, round), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', schema: FINDINGS_SCHEMA })
+    const retry = await spawn(finderPrompt(c, round), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: FINDINGS_SCHEMA })
     return { key: c.key, r: live(label + ':retry', retry) }
   }))).filter(Boolean).map((x) => [x.key, x.r]))
 
@@ -489,7 +499,7 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   // costs the next round its extra cells, not a declared cell, so it is
   // reported apart and does not make the hunt incomplete.
   phase('Critic')
-  const crit = await spawn(criticPrompt(round), { label: 'critic:r' + round, phase: 'Critic', model: 'sonnet', effort: 'high', schema: CRITIC_SCHEMA })
+  const crit = await spawn(criticPrompt(round), { label: 'critic:r' + round, phase: 'Critic', model: 'sonnet', effort: 'high', disallowedTools: NO_WRITE, schema: CRITIC_SCHEMA })
   criticDied = !crit
   if (!crit) deadCritics.push(round)
   // An area with no scope or no ask would spawn a finder told to search
@@ -522,7 +532,7 @@ let groups = []
 let mergeDied = false
 if (confirmed.length > 1) {
   phase('Merge')
-  const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', schema: MERGE_SCHEMA })
+  const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: MERGE_SCHEMA })
   if (!m) mergeDied = overCeiling.includes('merge') ? 'the merge was not spawned (MAX_AGENTS reached)' : 'the merge agent died'
   else {
     // A group may only name findings the merger was handed: an id it invented

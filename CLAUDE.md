@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 39 — what each change answered and the command
+maintenance record, waves 2 to 40 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -151,7 +151,9 @@ Re-count them against `ls internal/` before quoting the number.
   cannot drift from the rules it instantiates.
 - `templates/review.mjs` — the same, for a READ-ONLY run (`wf init -type
   review`): finders per lens and unit, a verifier per finding, a merge, a report
-  whose population line comes first. A second template rather than a mode of
+  whose population line comes first; every reading cell of it, and of the three
+  read-only templates below, is narrowed at spawn with `disallowedTools` (wave
+  40). A second template rather than a mode of
   the first because the two share almost no lines: the two read-only gates on
   record each began by deleting the build skeleton's producers, bars, fix round
   and acceptance step by hand. The run type lives in `gate.json` (`ws.Types`, a
@@ -364,7 +366,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 39 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 40 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -413,6 +415,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 36 | `check cite` precision, queued by wave 34's adversarial vector | An anchor matches a whole identifier or a PART of one, never a word fragment (measured over 235 frozen rounds first); `-require-anchor` misses counted in the header; `path:3-#x` a malformed range |
 | 37 | The owner's fifth type, distilled from 21 security skills on skills.sh | `security`: the threat model gated in the document, scanners run before the launch and folded by `wf scan` (an error notification FAILS a scanner — M-49), every hit adjudicated, a refuting verifier with a third verdict and `wfdry --mode inconclusive`, PoC worktrees, variant rounds, `betterleaks` over the saved report |
 | 38 | Five more security skills, read on the owner's ask | Seven default classes (destructive paths and LLM features among them), a cross-unit flow cell, trust follows who WROTE a value, `UNTRUSTED` first in every prompt with relayed text fenced and planted instructions listed apart, infrastructure controls as `cannot-verify`, STRIDE per boundary and build threats as acceptance observations |
+| 40 | The option wave 39 queued, probed | Every reading cell of the four read-only skeletons narrowed at spawn with `disallowedTools`, the reproducers exempt; `wfdry` refuses a reader without it and a value the harness would refuse; the tree bar stays the bar |
 | 39 | Claude Code 2.1.295 to 2.1.304, read against the plugin | `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` overriding every `agent()` model, and `wfcheck` reporting it; the harness frames every workflow agent's task as no-authority and relays the LAUNCH turn above it; `onFailure: "block"` on the Workflow hook; `disallowedTools` queued |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three

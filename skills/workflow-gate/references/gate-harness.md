@@ -567,7 +567,7 @@ path a section owns that nobody wrote. On the run it was built for it found four
 the ones the harness had named, and nothing in the other direction [M-34].
 It exits zero whatever it finds: every row is a question for a human, and a bar that failed a run on an
 incidental edit would be answered by switching it off. In a READ-ONLY workspace (`wf init -type
-review`, `hunt` or `audit`) the same command is a bar instead: the tree must be unchanged, untracked files included, and
+review`, `hunt`, `audit` or `security`) the same command is a bar instead — and stays the bar with every reading cell narrowed at spawn (`run-types.md`): the tree must be unchanged, untracked files included, and
 HEAD must still be the base — it exits 1 otherwise, and names the files. The base must be a SHA
 recorded before the run, never a ref, and the run starts from a clean tree: the bar does not see
 gitignored paths or other refs, and cannot tell the run's writes from dirt already there

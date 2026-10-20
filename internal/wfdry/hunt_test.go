@@ -105,8 +105,12 @@ func TestHuntReproducerMustBeIsolated(t *testing.T) {
 	body := mutate(t, huntSkeleton(t), "effort: 'medium', isolation: 'worktree', schema: REPRO_SCHEMA", "effort: 'medium', schema: REPRO_SCHEMA")
 	r := byMode(runTyped(t, body, ws.TypeHunt, "clean"), "clean")
 	wantViolation(t, r, "has no `isolation: 'worktree'`")
-	if rv := byMode(runTyped(t, body, ws.TypeReview, "clean"), "clean"); len(rv.Violations) > 0 {
-		t.Fatalf("the refusal is a hunt's alone: %v", rv.Violations)
+	// Typed as a review the same cell is refused for another reason — a reader
+	// without `disallowedTools` — so the assertion is about THIS refusal.
+	for _, v := range byMode(runTyped(t, body, ws.TypeReview, "clean"), "clean").Violations {
+		if strings.Contains(v, "isolation") {
+			t.Fatalf("the refusal is a hunt's alone: %v", v)
+		}
 	}
 }
 

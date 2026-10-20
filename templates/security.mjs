@@ -134,6 +134,16 @@ const NAV = 'NAVIGATION\n' +
 const READ_ONLY = 'READ-ONLY\n' +
   'You change nothing: no Edit, no Write, no command that writes a file, no git command that moves HEAD, the index or a ref. The repository is ' + REPO + ', at commit ' + COMMIT + '.\n'
 
+// The reading cells are narrowed AT SPAWN: the harness removes the tools named
+// here from the agent's tool list before it starts — measured 2026-10-20, no
+// denied call, the agent carries on and returns through its schema. READ_ONLY
+// asks; this removes. Bash stays: NAV allows read-only git. `wfcheck --owns-diff`
+// after the run is still the bar — an option the harness renames is a key
+// ignored in silence, and only the tree says whether the property held.
+// The reproducers are NOT narrowed: they write a test in their own worktree by
+// design, which is what `isolation: 'worktree'` is for.
+const NO_WRITE = ['Write', 'Edit', 'NotebookEdit']
+
 // A report that quotes the secret it found has leaked it a second time, into a
 // document that is shared. After the run, `betterleaks` over the saved report
 // is the check that this held.
@@ -552,9 +562,9 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   const reports = new Map((await parallel(active.map((c) => async () => {
     const label = 'find:r' + round + ':' + c.lens.id + ':' + c.unit.id
     const schema = c.hits ? scanSchema(c.hits.map((h) => h.id)) : c.lens.id === 'flow' ? FLOW_SCHEMA : FINDINGS_SCHEMA
-    const first = await spawn(finderPrompt(c, round), { label, phase: 'Find', model: 'sonnet', effort: 'medium', schema })
+    const first = await spawn(finderPrompt(c, round), { label, phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema })
     if (first) return { key: c.key, r: live(label, first) }
-    const retry = await spawn(finderPrompt(c, round), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', schema })
+    const retry = await spawn(finderPrompt(c, round), { label: label + ':retry', phase: 'Find', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema })
     return { key: c.key, r: live(label + ':retry', retry) }
   }))).filter(Boolean).map((x) => [x.key, x.r]))
 
@@ -650,7 +660,7 @@ async function verifyRound(fresh) {
   phase('Verify')
   const verdicts = new Map((await parallel(fresh.map((f) => async () => ({
     id: f.id,
-    v: await spawn(verifierPrompt(f), { label: 'verify:read:' + f.id, phase: 'Verify', model: 'sonnet', effort: 'high', schema: VERDICT_SCHEMA }),
+    v: await spawn(verifierPrompt(f), { label: 'verify:read:' + f.id, phase: 'Verify', model: 'sonnet', effort: 'high', disallowedTools: NO_WRITE, schema: VERDICT_SCHEMA }),
   })))).filter(Boolean).map((x) => [x.id, x.v]))
   const out = fresh.map((f) => {
     const v = verdicts.get(f.id)
@@ -726,7 +736,7 @@ let groups = []
 let mergeDied = false
 if (confirmed.length > 1) {
   phase('Merge')
-  const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', schema: MERGE_SCHEMA })
+  const m = await spawn(mergePrompt(confirmed), { label: 'merge', phase: 'Merge', model: 'sonnet', effort: 'medium', disallowedTools: NO_WRITE, schema: MERGE_SCHEMA })
   if (!m) mergeDied = overCeiling.includes('merge') ? 'the merge was not spawned (MAX_AGENTS reached)' : 'the merge agent died'
   else {
     const known = new Set(confirmed.map((f) => f.id))

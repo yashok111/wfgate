@@ -198,7 +198,7 @@ const S = { type: 'object', properties: {
   confirmed: { type: 'array', items: { type: 'string' }, $comment: 'x-pass: true' },
   ok: { type: 'boolean' } } }
 phase('P')
-const r = await agent('go', { model: 'sonnet', effort: 'low', label: 'w', schema: S, phase: 'P' })
+const r = await agent('go', { model: 'sonnet', effort: 'low', label: 'w', disallowedTools: ['Write', 'Edit'], schema: S, phase: 'P' })
 return { done: true, findings: r.findings.length, gaps: r.gaps.length, confirmed: r.confirmed.length, ok: r.ok }`
 	r := byMode(runTyped(t, body, ws.TypeReview, "empty"), "empty")
 	m, _ := r.Return.(map[string]any)
@@ -296,7 +296,7 @@ func TestDeadFindersThatKilledNobody(t *testing.T) {
 // only in a review: a build keeps the closed list it had.
 func TestCriticsDieInAReviewsDeadReviews(t *testing.T) {
 	body := preamble + `phase('P')
-const a = await spawn('one', { model: 'sonnet', effort: 'low', label: 'critic:r1', schema: S, phase: 'P' })
+const a = await spawn('one', { model: 'sonnet', effort: 'low', label: 'critic:r1', disallowedTools: ['Write', 'Edit'], schema: S, phase: 'P' })
 return { done: true, dead: a ? 0 : 1 }`
 	r := byMode(runTyped(t, body, ws.TypeReview, "dead-reviews"), "dead-reviews")
 	if len(r.Killed) != 1 {
@@ -313,8 +313,8 @@ func TestAlternationIsSeverityOnly(t *testing.T) {
 	body := `export const meta = { name: 'x', description: 'd', phases: [{ title: 'P' }] }
 const S = { type: 'object', properties: { verdict: { type: 'string', enum: ['pass', 'blockers'] }, severity: { type: 'string', enum: ['blocker', 'minor'] } } }
 phase('P')
-const a = await agent('a', { model: 'sonnet', effort: 'low', label: 'critic:1', schema: S, phase: 'P' })
-const b = await agent('b', { model: 'sonnet', effort: 'low', label: 'critic:2', schema: S, phase: 'P' })
+const a = await agent('a', { model: 'sonnet', effort: 'low', label: 'critic:1', disallowedTools: ['Write', 'Edit'], schema: S, phase: 'P' })
+const b = await agent('b', { model: 'sonnet', effort: 'low', label: 'critic:2', disallowedTools: ['Write', 'Edit'], schema: S, phase: 'P' })
 return { done: true, v: [a.verdict, b.verdict].join(','), s: [a.severity, b.severity].join(',') }`
 	r := byMode(runTyped(t, body, ws.TypeReview, "clean"), "clean")
 	m, _ := r.Return.(map[string]any)
