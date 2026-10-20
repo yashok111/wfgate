@@ -9,10 +9,10 @@ import "os"
 // both set aside before resolution — and CLAUDE_CODE_SUBAGENT_MODEL_FORCE
 // turns CLAUDE_CODE_SUBAGENT_MODEL from a default into the same override for
 // every subagent. The required-option check above then verifies text the run
-// never reads. The check reads ITS OWN environment: the pre-flight gate runs it
-// from the session that launches, which is what makes the two the same, and
-// the report says nothing when neither is set because "no override seen here"
-// is not a claim about the launch.
+// never reads. The check reads ITS OWN environment, which is the launch's only
+// when it runs from the session that launches — the pre-flight gate's step 0
+// says to run it there — and the report says nothing when neither is set
+// because "no override seen here" is not a claim about the launch.
 func checkEnvironment(r *Report) {
 	if v := os.Getenv("CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL"); v != "" && v != "inherit" {
 		r.add(WARN, 1, "CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL=%q is set in this environment — at launch it replaces the `model:` of every agent() above, and the run prints `Workflow agent model ... ignored` per spawn; `unset CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` in the launching session before the run", v)

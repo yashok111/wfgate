@@ -50,7 +50,9 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    always, and a live gate paid for it — twenty-two "owns X, which does not exist" WARNs on a correct
    script, because a script's owned paths are relative to the repository under review and the
    workspace is not that tree. Pass `-root` explicitly to check a script against a tree the workspace
-   does not name. It must report
+   does not name. **Run it from the session that will call `Workflow`**: its environment check — the
+   model overrides of `model-routing.md`'s first paragraph — reads the environment it runs in, and a
+   `wfcheck` from another shell reads another one. It must report
    **zero ERRORs** before the gate runs. It catches, for free, what four phases of opus gating kept
    spending rounds on: a report field named in a prompt that the agent's schema does not declare; a
    SIG/contract block interpolated into the writer but not its callers; one file claimed by two agents;

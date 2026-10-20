@@ -335,6 +335,9 @@ can drift apart from itself, and nothing here compares the copies.
    target's HEAD is in the record for the same reason — a frozen gate that cites line numbers is
    meaningful only against one revision of the repository it reviews.
 
+   **The message that calls `Workflow` says what to run and nothing else** — the harness relays it into
+   every agent above the prompt (`authoring.md`, the launch-turn rule).
+
    **Then bind the launch to the manifest.** Once the substance moves into a context document — which is
    what the fan-out blob rule (cost discipline #2) drives it to — the running script reads that document
    at its MUTABLE original path. Freezing a copy for reviewers does not stop the launched run from

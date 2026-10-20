@@ -405,12 +405,11 @@ authority — every line of it indented, so a frame-like line at column zero ins
 forgery, which is why the `UNTRUSTED` fences of `security.mjs` prefix every line instead of framing a
 block — and ahead of it relays, verbatim, the user message that triggered the `Workflow` call as "the
 only user voice in this task", with the rule that where the computed task conflicts with that request,
-the request wins. A request longer than a few thousand characters is not relayed, a scheduled run relays
-nothing, and `CLAUDE_CODE_WORKFLOW_PROMPT_PROVENANCE` is the switch, on by default [M-50]. Neither the
-script, nor its pre-flight gate, nor `wfdry` reads that message. So the turn that launches a gated run
-says WHAT TO RUN and nothing else — no "skip X this time", no aside about scope, no draft of a finding —
-because an aside there reaches every reviewer as an instruction above its lens, and `wf freeze` froze a
-run that did not contain it. The other half is in the same binary's history: for six releases agents
-read the no-authority frame and SKIPPED their step while the run reported success (fixed in 2.1.301),
-so a `null` from a cell whose prompt is sound is a dead review for the ledger, never a reviewer's
-verdict.
+the request wins. A long request is not relayed, a scheduled run relays nothing, and
+`CLAUDE_CODE_WORKFLOW_PROMPT_PROVENANCE` is the switch, on by default. Neither the script, nor its
+pre-flight gate, nor `wfdry` reads that message. So the turn that launches a gated run says WHAT TO RUN
+and nothing else — no "skip X this time", no aside about scope, no draft of a finding — because an aside
+there reaches every reviewer as an instruction above its lens, and the freeze manifest hashes artifacts,
+never the chat. The other half: until a 2.1.301 fix, agents read the no-authority frame and SKIPPED
+their step while the run reported success — one more cause for `gate-checks.md` §G's first item, a dead
+agent and a clean result are not the same value [M-50].

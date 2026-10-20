@@ -628,10 +628,13 @@ environment, replaces the model of every `agent()` of a workflow run (the run
 prints `Workflow agent model "X" ignored` per spawn), and
 `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` makes `CLAUDE_CODE_SUBAGENT_MODEL` do the
 same for every subagent. `wfcheck` reads both from its own environment and
-reports a WARN naming the value and the line that unsets it; the report is
-silent when neither is set, because it reads the environment it was run in and
-cannot see the one the launch will use — the pre-flight gate runs the check from
-the session that launches, which is what makes the two the same.
+reports a WARN naming the value and the `unset` to run before the launch.
+`inherit` and an empty value switch the workflow variable off and are not
+reported; `_FORCE` alone, without a non-`inherit` `CLAUDE_CODE_SUBAGENT_MODEL`,
+is not reported either; and the report is silent when nothing is set, because
+it reads the environment it was run in and cannot see the one the launch will
+use. The two are the same only when `wfcheck` runs from the session that
+launches, which is why the pre-flight gate's step 0 says to run it there.
 
 ### `wfcheck` and a `<placeholder>` inside a command a prompt hands over
 

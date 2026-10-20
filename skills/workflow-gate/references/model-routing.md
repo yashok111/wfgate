@@ -99,7 +99,8 @@ and it is what an operator's quota actually runs out on.)
   producer *and* an opus reviewer; that is intended, not a leak.
 
 State the model on every `agent()` and mirror it on the matching `meta.phases[]` entry. Resolution
-order (no env): per-call `opts.model` > `meta.phases[].model`.
+order (no env override — with `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` set, that value beats both, first
+paragraph): per-call `opts.model` > `meta.phases[].model`.
 
 The mirror rule holds only for a **single-tier** phase. A phase that deliberately mixes tiers — a review
 phase with one top-tier and one default-tier reviewer is the common case — has one metadata slot and two
