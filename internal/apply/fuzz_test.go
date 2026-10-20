@@ -26,8 +26,8 @@ func FuzzParseTextRoundTrip(f *testing.F) {
 	f.Add("b.md", "", "has\n====\ninside", "n", uint8(2))
 	f.Fuzz(func(t *testing.T, file, note, old, nw string, count uint8) {
 		// The header is split by strings.Fields, so a file name is one field:
-		// no space of any kind, which includes \v and \f (the fuzzer's first
-		// find was a file named by a vertical tab, not a parser defect).
+		// no space of any kind, which includes \v and \f (the fuzzer found a
+		// file named by a vertical tab, which is not a parser defect).
 		if fs := strings.Fields(file); len(fs) != 1 || fs[0] != file || strings.ContainsAny(file, "[]") || strings.Contains(file, "note=") || strings.Contains(file, "count=") {
 			return
 		}
@@ -71,6 +71,9 @@ func FuzzParseTextRaw(f *testing.F) {
 	f.Add([]byte("=== a.md count=1 note=x\n<<<<\nold\n====\nnew\n>>>>\n"))
 	f.Add([]byte("=== [a.md]\n"))
 	f.Add([]byte("<<<<\n"))
+	// A stray marker in the NEW half — the P3d swallow — which the sweep found
+	// no seed of this target could reach.
+	f.Add([]byte("=== a.md\n<<<<\nold\n====\n<<<<\n>>>>\n"))
 	f.Fuzz(func(t *testing.T, b []byte) {
 		edits, err := ParseText(b)
 		if err != nil {

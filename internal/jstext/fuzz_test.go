@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The seeds are the six emitted templates: every shape the scanner was built
+// The seeds are the five emitted `.mjs` templates: every shape the scanner was built
 // for — nested template holes, a regex matching a quote, comment blocks — is in
 // them, and a fuzzer that starts from them mutates real scripts.
 func seedTemplates(f *testing.F) {
@@ -88,6 +88,15 @@ func FuzzUnescape(f *testing.F) {
 		}
 		if len(out) > len(s) {
 			t.Fatalf("grew: %q -> %q", s, out)
+		}
+		// A decoder that stopped decoding would pass the two above; a complete
+		// escape in front decodes to its rune and leaves the rest to the same
+		// decoder.
+		if got := Unescape(`\n` + s); got != "\n"+out {
+			t.Fatalf("Unescape(\\n+%q) = %q, want %q", s, got, "\n"+out)
+		}
+		if got := Unescape(`\u0041` + s); got != "A"+out {
+			t.Fatalf("Unescape(\\u0041+%q) = %q, want %q", s, got, "A"+out)
 		}
 	})
 }

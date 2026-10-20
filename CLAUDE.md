@@ -677,13 +677,13 @@ that defeated the text scanner), `internal/wfcheck` and `internal/wfdry` (one
 case per finding and per guard), and the end-to-end files under `cmd/wf`
 driving the prescribed sequence and asserting on OUTPUT.
 
-Five of those packages also carry `Fuzz*` targets (wave 41) — the text readers
+Five packages also carry `Fuzz*` targets (wave 41) — the text readers
 nobody else writes for: `jstext` (the blanked copy keeps its shape, prose lies
 inside what the code reader blanked), `ws` (the two setters give the row back
 with one cell changed), `apply` (a block round-trips or is refused), `check`
 (an anchor is in its text, the normaliser is a fixpoint) and `cli`. Each
 asserts an INVARIANT, never only "no panic": the fuzzer's first find was a
-real one and the next five were invariants written too strong, and only a
+real one and five more were invariants written too strong, and only a
 stated property tells the two apart. `make fuzz` runs them for a bounded time
 and is not a bar; what it finds is written under `testdata/fuzz/` and replayed
 by `make test` from then on.

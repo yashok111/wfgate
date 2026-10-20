@@ -28,6 +28,17 @@ func FuzzAnchorIn(f *testing.F) {
 		if w := enclosing(text, tok); w != "" && (!strings.Contains(w, tok) || len(w) <= len(tok)) {
 			t.Fatalf("enclosing(%q, %q) = %q", text, tok, w)
 		}
+		// The rule's two fixed answers: a token between underscores is a PART
+		// (`#RETENTION` on `MOCKER_CHECKPOINT_RETENTION`), and a run of lower-case
+		// letters inside a longer lower-case word is a fragment.
+		if tok != "" && strings.Trim(tok, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") == "" {
+			if !AnchorIn("X_"+tok+"_Y", tok) {
+				t.Fatalf("a token between underscores is a part: %q", tok)
+			}
+			if strings.ToLower(tok) == tok && strings.Trim(tok, "abcdefghijklmnopqrstuvwxyz") == "" && AnchorIn("x"+tok+"y", tok) {
+				t.Fatalf("a lower-case run inside a word is a fragment: %q", tok)
+			}
+		}
 	})
 }
 
@@ -38,6 +49,22 @@ func FuzzNormalise(f *testing.F) {
 	f.Add("Ünïcode ŚTRING")
 	f.Fuzz(func(t *testing.T, s string) {
 		joined, uniq := Normalise(s)
+		// Every maximal run of letters and digits in the input is one token
+		// out — a normaliser that dropped text would be a fixpoint too.
+		runs, in := 0, false
+		for _, r := range s {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				if !in {
+					runs++
+				}
+				in = true
+			} else {
+				in = false
+			}
+		}
+		if n := len(strings.Fields(joined)); n != runs {
+			t.Fatalf("%d runs in %q, %d tokens in %q", runs, s, n, joined)
+		}
 		if j2, _ := Normalise(joined); j2 != joined {
 			t.Fatalf("not a fixpoint: %q -> %q -> %q", s, joined, j2)
 		}

@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -15,6 +16,7 @@ func FuzzParseMixed(f *testing.F) {
 	f.Add("a -n 3 b -v c")
 	f.Add("-- -n x")
 	f.Add("-n")
+	f.Add("a b c d") // flag-free: every argument is a positional, in order
 	f.Fuzz(func(t *testing.T, line string) {
 		args := strings.Fields(line)
 		fs := flag.NewFlagSet("x", flag.ContinueOnError)
@@ -25,6 +27,15 @@ func FuzzParseMixed(f *testing.F) {
 		pos, err := ParseMixed(fs, args)
 		if err != nil {
 			return
+		}
+		flagShaped := false
+		for _, a := range args {
+			if strings.HasPrefix(a, "-") {
+				flagShaped = true
+			}
+		}
+		if !flagShaped && !slices.Equal(pos, args) {
+			t.Fatalf("no flags, yet %v != %v", pos, args)
 		}
 		k := 0
 		for _, p := range pos {

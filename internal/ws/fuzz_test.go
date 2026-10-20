@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -66,12 +67,20 @@ func FuzzShas(f *testing.F) {
 	f.Add("")
 	f.Fuzz(func(t *testing.T, cell string) {
 		lower := strings.ToLower(cell)
+		// A detector that found nothing would pass the checks below; a claim
+		// appended after a space is found whatever precedes it.
+		if !slices.Contains((FindingRow{ClosedBy: cell + " abc1234"}).Shas(), "abc1234") {
+			t.Fatalf("abc1234 appended to %q not found", cell)
+		}
 		for _, s := range (FindingRow{ClosedBy: cell}).Shas() {
 			if len(s) < 7 || len(s) > 40 || !strings.ContainsAny(s, "0123456789") || strings.Trim(s, "0123456789abcdef") != "" {
 				t.Fatalf("sha %q from %q", s, cell)
 			}
 			if !strings.Contains(lower, s) {
 				t.Fatalf("sha %q not in %q", s, lower)
+			}
+			if strings.Contains(lower, TargetShaPrefix+s) && !strings.Contains(strings.ReplaceAll(lower, TargetShaPrefix+s, ""), s) {
+				t.Fatalf("sha %q claimed from %q, where it is only the target's", s, cell)
 			}
 		}
 	})
