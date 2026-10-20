@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // cmdRoundClose fills one finding's closure cell with the commit that closed it.

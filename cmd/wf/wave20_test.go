@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // `wf init` inside the target. Measured on the first gate run against a target

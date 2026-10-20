@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // The twenty-sixth wave: a bug hunt over the whole toolchain by five vectors,

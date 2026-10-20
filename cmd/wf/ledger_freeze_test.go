@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	wfgate "git.sumka.site/yakov/wfgate"
+	wfgate "github.com/yashok111/wfgate"
 )
 
 // newGate builds the smallest workspace the freeze path needs: a target

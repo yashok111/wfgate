@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 	"path/filepath"
 	"strings"
 	"testing"

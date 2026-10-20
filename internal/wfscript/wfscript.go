@@ -31,7 +31,7 @@ import (
 	"github.com/dop251/goja/token"
 	"github.com/dop251/goja/unistring"
 
-	"git.sumka.site/yakov/wfgate/internal/jstext"
+	"github.com/yashok111/wfgate/internal/jstext"
 )
 
 // wrapPrefix makes a workflow script parseable as a function body. A script

@@ -27,7 +27,7 @@ only the second.
 On any machine with Claude Code (needs git, go, claude):
 
 ```bash
-git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git ~/projects/wfgate
+git clone https://github.com/yashok111/wfgate.git ~/projects/wfgate
 ~/projects/wfgate/scripts/install.sh      # three binaries + plugin (skill + hooks), and it UPDATES an installed plugin
 ```
 
@@ -1133,3 +1133,7 @@ The checks take the mechanical share of blockers — about a fifth — and never
 impersonate coverage of the rest. That is why `check cite` always prints how
 many citations carry no anchor: a green run over 148 unanchored citations
 proved nothing.
+
+## License
+
+MIT — see `LICENSE`.

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	wfgate "git.sumka.site/yakov/wfgate"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	wfgate "github.com/yashok111/wfgate"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // cmdNewScript emits the harness half of an orchestration script.

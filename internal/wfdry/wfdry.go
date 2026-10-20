@@ -31,11 +31,11 @@ import (
 
 	"github.com/dop251/goja"
 
-	"git.sumka.site/yakov/wfgate/internal/check"
+	"github.com/yashok111/wfgate/internal/check"
 
-	"git.sumka.site/yakov/wfgate/internal/jstext"
-	"git.sumka.site/yakov/wfgate/internal/wfscript"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/jstext"
+	"github.com/yashok111/wfgate/internal/wfscript"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // Modes are the states a real run can enter. `clean` matters most: reviewers

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // `wf scan` folds the SARIF logs a security run's scanners wrote into the JSON

@@ -2,7 +2,7 @@
 # install.sh — put the whole gate toolchain onto this machine's Claude Code.
 #
 # One command on a fresh clone:
-#   git clone ssh://git@git.sumka.site:2222/yakov/wfgate.git && wfgate/scripts/install.sh
+#   git clone https://github.com/yashok111/wfgate.git && wfgate/scripts/install.sh
 #
 # Two delivery channels, split by what each does well:
 #   - `make install` covers what a plugin cannot: builds the three

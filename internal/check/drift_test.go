@@ -3,7 +3,7 @@ package check
 import (
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // The drift matrix: one target commit produces every kind at once, because the

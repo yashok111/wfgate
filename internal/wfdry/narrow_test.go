@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // A reading cell of a read-only run is narrowed at spawn, and the option

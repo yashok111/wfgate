@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // The drift check answers the question verify's "target moved" mismatch opens:

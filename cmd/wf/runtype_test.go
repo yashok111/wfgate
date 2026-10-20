@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	wfgate "git.sumka.site/yakov/wfgate"
-	"git.sumka.site/yakov/wfgate/internal/wfdry"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	wfgate "github.com/yashok111/wfgate"
+	"github.com/yashok111/wfgate/internal/wfdry"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 func mkTarget(t *testing.T, tmp string) string {

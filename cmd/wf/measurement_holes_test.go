@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // The gate ships its own work mid-run and the target moves under a document

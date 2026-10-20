@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // dispatch is main's own switch, not a copy of it. The copy went stale the

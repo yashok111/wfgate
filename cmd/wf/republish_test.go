@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // A tag that moved over the round's OWN repairs prices them as the fix that

@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/wfdry"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/wfdry"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // runSchema compares what every agent's output schema OBLIGES its agent to

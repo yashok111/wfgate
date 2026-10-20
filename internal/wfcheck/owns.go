@@ -3,8 +3,8 @@ package wfcheck
 import (
 	"sort"
 
-	"git.sumka.site/yakov/wfgate/internal/jstext"
-	"git.sumka.site/yakov/wfgate/internal/wfscript"
+	"github.com/yashok111/wfgate/internal/jstext"
+	"github.com/yashok111/wfgate/internal/wfscript"
 )
 
 // The TEXTUAL backstop of the ownership check, and it is the sibling of the

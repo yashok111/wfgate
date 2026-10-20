@@ -88,5 +88,5 @@ cites.
 - A fix is unreviewed code and the largest single source of blockers; later
   rounds review the delta (`wf delta`), not the original.
 
-The tooling is versioned in `~/projects/wfgate`; `~/.local/bin/{wf,wfcheck,wfdry}` are three
+The tooling is versioned in the wfgate repository (the clone this plugin is installed from); `~/.local/bin/{wf,wfcheck,wfdry}` are three
 version-stamped binaries `make install` copies there. A fix to a tool or a spec is a commit there.

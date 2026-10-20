@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // resolveRoot answers which repository the file-existence checks read when the

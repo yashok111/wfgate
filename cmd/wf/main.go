@@ -31,12 +31,12 @@ import (
 	"time"
 	"unicode"
 
-	wfgate "git.sumka.site/yakov/wfgate"
-	"git.sumka.site/yakov/wfgate/internal/apply"
-	"git.sumka.site/yakov/wfgate/internal/check"
-	"git.sumka.site/yakov/wfgate/internal/cli"
-	"git.sumka.site/yakov/wfgate/internal/gitx"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	wfgate "github.com/yashok111/wfgate"
+	"github.com/yashok111/wfgate/internal/apply"
+	"github.com/yashok111/wfgate/internal/check"
+	"github.com/yashok111/wfgate/internal/cli"
+	"github.com/yashok111/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 const usage = `wf — gate harness

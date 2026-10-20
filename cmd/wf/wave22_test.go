@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 func atoi(s string) int { n, _ := strconv.Atoi(s); return n }

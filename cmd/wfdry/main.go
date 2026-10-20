@@ -22,10 +22,10 @@ import (
 	"os"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/check"
-	"git.sumka.site/yakov/wfgate/internal/cli"
-	"git.sumka.site/yakov/wfgate/internal/wfdry"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/check"
+	"github.com/yashok111/wfgate/internal/cli"
+	"github.com/yashok111/wfgate/internal/wfdry"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 var version = "devel"

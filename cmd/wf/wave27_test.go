@@ -1,6 +1,6 @@
 package main
 
-// The twenty-seventh wave — the A18 feedback (docs/feedbacks/FEEDBACK-a18.md):
+// The twenty-seventh wave — the A18 feedback (notes/docs/feedbacks/FEEDBACK-a18.md, in the private wfgate-notes repository):
 // the gate that closed with three blockers standing, on the owner's call, and
 // the section-run signal the manual had described and the tool had only
 // approximated.

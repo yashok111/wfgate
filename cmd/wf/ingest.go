@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/check"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/check"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // cmdRoundIngest appends the rows of each reviewer's LAST table to the round's

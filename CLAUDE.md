@@ -9,14 +9,21 @@ maintenance record, waves 2 to 41 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
-list with the measurement that closed each entry.
+list with the measurement that closed each entry. **The last three, and the
+gate write-ups under `docs/feedbacks/`, are NOT in this repository**: they are
+the private `yakov/wfgate-notes` repository on Gitea, cloned into `notes/`
+(gitignored) — every `WAVES.md`, `GATES.md`, `IDEAS.md` and `docs/feedbacks/`
+below means `notes/WAVES.md` and so on. Split out on 2026-10-20 with their
+history, when this repository was made public; a session without `notes/`
+clones it with
+`git clone ssh://git@git.sumka.site:2222/yakov/wfgate-notes.git notes`.
 `skills/workflow-gate/references/` is the OPERATING MANUAL, which is judgement
 and is what gate agents are briefed from; this repository is the mechanics.
 
 The `wf` CLI: the bookkeeping of a review gate. A gate's workspace is a git
 repository, applying edits is atomic and becomes a commit, freezing a round is
 a tag, and a delta round's input is a diff. Go 1.27, module
-`git.sumka.site/yakov/wfgate`, `git` is run as a process.
+`github.com/yashok111/wfgate`, `git` is run as a process.
 
 **One dependency: `goja`** (a JavaScript parser and engine, pure Go, no cgo).
 The rule used to be stdlib-only, on the argument that a tool watching other
@@ -473,7 +480,12 @@ stopped here, not discovered by a commit in the wrong tree.
 ## Hard rules
 
 - **origin is Gitea** `ssh://git@git.sumka.site:2222/yakov/wfgate.git`, branch
-  `main`, private. **Never push to GitHub.** The module path matches origin.
+  `main`. **Never push to GitHub**: the PUBLIC `github.com/yashok111/wfgate` is
+  Gitea's push mirror, and the module path names it, because that is the path
+  anyone outside can `go install`. Being public is why nothing private lands in
+  this tree — the maintenance record goes to `notes/` (above), and a path,
+  host or project name from a private gate is written into a commit here only
+  where the rule it supports needs it.
 - **The workspace is never inside the repository under review.** The gate's
   agents diff that tree against its own HEAD, and the rule "the tree stays
   untouched while a run is live" does not survive orchestration commits into

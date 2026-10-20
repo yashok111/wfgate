@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"git.sumka.site/yakov/wfgate/internal/check"
+	"github.com/yashok111/wfgate/internal/check"
 )
 
 func script(t *testing.T, body string) string {

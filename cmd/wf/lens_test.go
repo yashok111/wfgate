@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // promptFile writes a reviewer vector to a file outside the workspace, the way

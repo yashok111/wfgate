@@ -27,7 +27,7 @@ then the description is a stub and the reference is a skill that loads only when
 beside this one before the first line: an API recalled from memory costs the same gate round a rule
 recalled from memory does.
 All of it — the three binaries and these references — is versioned in the wfgate repository
-(`~/projects/wfgate`). Two delivery channels: `make install` copies the three version-stamped binaries
+(the clone this plugin is installed from). Two delivery channels: `make install` copies the three version-stamped binaries
 into `~/.local/bin`, and the wfgate PLUGIN carries this skill and the PreToolUse hook. Either way a fix
 to a tool or to a spec is a COMMIT there, never a hand edit of an installed copy. Extracted from CLAUDE.md 2026-06-10 to
 keep the always-loaded context lean — these rules are only needed when you actually orchestrate, and

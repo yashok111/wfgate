@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // The twenty-fifth wave: what the A4 operator session measured about where a

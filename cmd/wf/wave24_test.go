@@ -8,7 +8,7 @@ import (
 
 	"github.com/dop251/goja"
 
-	wfgate "git.sumka.site/yakov/wfgate"
+	wfgate "github.com/yashok111/wfgate"
 )
 
 // A finding cites LINES and mentions a section in passing. The section half

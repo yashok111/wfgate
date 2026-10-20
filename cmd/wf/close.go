@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // closeDir holds the gate's own record of itself: written into the workspace,

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // ManifestName is the marker file. Its presence is what makes a directory a

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	wfgate "git.sumka.site/yakov/wfgate"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	wfgate "github.com/yashok111/wfgate"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 func huntSkeleton(t *testing.T) string {

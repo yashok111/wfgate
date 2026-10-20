@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // ledgerClosure is a validated, NOT YET WRITTEN closure of some rows of one

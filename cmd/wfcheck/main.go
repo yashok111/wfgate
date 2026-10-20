@@ -20,9 +20,9 @@ import (
 	"regexp"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/cli"
-	"git.sumka.site/yakov/wfgate/internal/wfcheck"
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/cli"
+	"github.com/yashok111/wfgate/internal/wfcheck"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // version is stamped by the build. A run against a stale installed binary looks

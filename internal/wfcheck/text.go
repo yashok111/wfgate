@@ -1,6 +1,6 @@
 package wfcheck
 
-import "git.sumka.site/yakov/wfgate/internal/jstext"
+import "github.com/yashok111/wfgate/internal/jstext"
 
 // The textual backstop of the inventory check is the one place this package
 // still reads characters instead of the parsed program, and it exists precisely

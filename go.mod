@@ -1,4 +1,4 @@
-module git.sumka.site/yakov/wfgate
+module github.com/yashok111/wfgate
 
 go 1.27
 

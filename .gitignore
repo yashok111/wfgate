@@ -15,3 +15,7 @@
 
 # eval run output — the scored JSON and the HTML report per timestamp
 evals/results/
+
+# the PRIVATE maintenance record (WAVES/GATES/IDEAS, gate write-ups): its own
+# repository, yakov/wfgate-notes on Gitea, cloned here — never in the public tree
+/notes/

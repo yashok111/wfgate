@@ -7,7 +7,7 @@ import (
 
 	"github.com/dop251/goja/ast"
 
-	"git.sumka.site/yakov/wfgate/internal/wfscript"
+	"github.com/yashok111/wfgate/internal/wfscript"
 )
 
 // gateCfg is the object literal a per-section gate is configured with — the

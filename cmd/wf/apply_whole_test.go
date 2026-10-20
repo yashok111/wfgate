@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // `wf apply -whole` adopts a rewrite the operator made by hand, and the reason

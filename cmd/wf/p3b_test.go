@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/gitx"
 )
 
 // Blockers by ORIGIN. Measured: four rounds at 35/9, 37/3, 30/5, 35/5 with

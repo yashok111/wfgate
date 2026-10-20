@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
-	"git.sumka.site/yakov/wfgate/internal/jstext"
+	"github.com/yashok111/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/jstext"
 )
 
 // A gate's artifacts restate the same rules in different places: the decision

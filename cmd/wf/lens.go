@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"git.sumka.site/yakov/wfgate/internal/ws"
+	"github.com/yashok111/wfgate/internal/ws"
 )
 
 // The lens roster: which reviewer vectors a round actually ran, and with what

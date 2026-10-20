@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"git.sumka.site/yakov/wfgate/internal/gitx"
-	"git.sumka.site/yakov/wfgate/internal/wfscript"
+	"github.com/yashok111/wfgate/internal/gitx"
+	"github.com/yashok111/wfgate/internal/wfscript"
 )
 
 // The POST-RUN half of the ownership check, and it exists because the run-time
