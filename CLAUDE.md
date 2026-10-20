@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 40 — what each change answered and the command
+maintenance record, waves 2 to 41 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -366,7 +366,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 40 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 41 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -417,6 +417,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 38 | Five more security skills, read on the owner's ask | Seven default classes (destructive paths and LLM features among them), a cross-unit flow cell, trust follows who WROTE a value, `UNTRUSTED` first in every prompt with relayed text fenced and planted instructions listed apart, infrastructure controls as `cannot-verify`, STRIDE per boundary and build threats as acceptance observations |
 | 39 | Claude Code 2.1.295 to 2.1.304, read against the plugin | `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` overriding every `agent()` model, and `wfcheck` reporting it; the harness frames every workflow agent's task as no-authority and relays the LAUNCH turn above it; `onFailure: "block"` on the Workflow hook; `disallowedTools` queued |
 | 40 | The option wave 39 queued, probed | Every reading cell of the four read-only skeletons narrowed at spawn with `disallowedTools`, the reproducers exempt; `wfdry` refuses a reader without it and a value the harness would refuse; the tree bar stays the bar |
+| 41 | The owner's question: can our functions be fuzzed | Eleven `Fuzz*` targets over the five text readers with INVARIANTS, not "no panic"; `make fuzz`, not a bar; one real find (`SetClosedBy` losing a cell on a row with no closing pipe), five invariants the fuzzer corrected; the crasher banked as a replayed test |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
@@ -619,6 +620,7 @@ make build       # ./wf ./wfcheck ./wfdry with the version stamp (-ldflags)
 make check-tools # the BUILT binaries against the banked fixtures (meta-guard must FAIL)
 make check-docs  # `wf check rules` over the shipped manual — it is a gate corpus too
 make check-plugin # validate both manifests, RUN each hooks.json command, read agent keys (needs claude, jq, yq)
+make fuzz        # NOT a bar: the Fuzz* targets for FUZZTIME each; a find lands in testdata/fuzz/ and `make test` replays it
 make fmt         # gofmt -w; `make lint` only REPORTS the diff
 make install     # ~/.local/bin/{wf,wfcheck,wfdry} — owed after every code change
 make clean       # remove the three built binaries
@@ -674,6 +676,17 @@ markers, the operator conflict, drift), `internal/ws` (the ledger parser),
 that defeated the text scanner), `internal/wfcheck` and `internal/wfdry` (one
 case per finding and per guard), and the end-to-end files under `cmd/wf`
 driving the prescribed sequence and asserting on OUTPUT.
+
+Five of those packages also carry `Fuzz*` targets (wave 41) — the text readers
+nobody else writes for: `jstext` (the blanked copy keeps its shape, prose lies
+inside what the code reader blanked), `ws` (the two setters give the row back
+with one cell changed), `apply` (a block round-trips or is refused), `check`
+(an anchor is in its text, the normaliser is a fixpoint) and `cli`. Each
+asserts an INVARIANT, never only "no panic": the fuzzer's first find was a
+real one and the next five were invariants written too strong, and only a
+stated property tells the two apart. `make fuzz` runs them for a bounded time
+and is not a bar; what it finds is written under `testdata/fuzz/` and replayed
+by `make test` from then on.
 
 Coverage is NOT complete and the claim that it is has been wrong once: a
 mutation sweep after the first fix round found 33 guards deletable with the

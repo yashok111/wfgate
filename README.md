@@ -56,6 +56,7 @@ make test           # go test -race
 make check-tools    # the built binaries against the banked fixtures (meta-guard must FAIL)
 make check-docs     # `wf check rules` over this manual itself — a bar, not a report
 make check-plugin   # `claude plugin validate` over both manifests, each hooks.json command RUN, the sweep agent keys read
+make fuzz           # NOT a bar: every Fuzz* target for FUZZTIME (30s) each, one at a time; a find lands in testdata/fuzz/ and `make test` replays it from then on
 ```
 
 `git` is taken from `PATH`, and every invocation is pinned with

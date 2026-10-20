@@ -387,6 +387,15 @@ func SetClosedBy(row, val string) (string, bool) {
 	tail := ""
 	if len(pipes) >= 5 {
 		tail = row[pipes[4]:]
+	} else if strings.TrimSpace(val) == "" {
+		// A row with no closing pipe — markdown allows `| a | b | c | d`, and
+		// the setter keeps the spelling it was given — holds its fourth cell
+		// only while something is written in it: the parser drops ONE trailing
+		// empty cell, so an EMPTY closure written there left three cells and
+		// the next record refused the row as malformed. Found by the fuzzer
+		// (`||||0`, value ""). The one byte the setter adds that the author
+		// did not write is the pipe the row was missing, and only here.
+		tail = "|"
 	}
 	// No special case for an empty value: the general form already writes the
 	// scaffold's own `|  |`, and the branch that used to handle it wrote `| |`

@@ -5,7 +5,21 @@ PKGS := ./cmd/... ./internal/...
 # like a run against the new one; freeze.json records this value.
 VERSION := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 
-.PHONY: build test lint fmt install clean check-tools check-docs check-plugin
+.PHONY: build test lint fmt install clean check-tools check-docs check-plugin fuzz
+
+# Not a bar: a fuzz run is as long as FUZZTIME says and finds what it finds.
+# The engines run one at a time because each takes every core. What a run
+# finds is written by `go test` into the package's `testdata/fuzz/<Func>/` and
+# is committed there: from then on `make test` replays it on every run, so a
+# crasher found once is a regression test forever.
+FUZZTIME ?= 30s
+fuzz:
+	@for pkg in internal/jstext internal/ws internal/apply internal/check internal/cli; do \
+	  for fn in $$(go test -list '^Fuzz' ./$$pkg | grep '^Fuzz'); do \
+	    go test -run='^$$' -fuzz="^$$fn\$$" -fuzztime=$(FUZZTIME) ./$$pkg >/dev/null 2>&1 \
+	      && echo "ok    $$pkg $$fn" || { echo "FAIL  $$pkg $$fn (see testdata/fuzz/$$fn/)"; exit 1; }; \
+	  done; \
+	done
 
 build:
 	@for b in $(BINS); do \
