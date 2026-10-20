@@ -92,6 +92,7 @@ func Run(path, root string) (*Report, error) {
 	if rootNote != "" {
 		r.add(INFO, 1, "%s", rootNote)
 	}
+	checkEnvironment(r)
 	checkMeta(r, s)
 	calls := s.AgentCalls()
 	checkInventory(r, s, calls)

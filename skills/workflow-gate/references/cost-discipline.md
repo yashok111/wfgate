@@ -50,13 +50,15 @@ recovery has three parts, in order:
 The concurrency cap DEFAULTS to `Math.min(16, Math.max(2, cpus - 2))`, computed ONCE from
 `os.availableParallelism()` — so on a 4-core box a "parallel" phase of three runs two and queues one,
 worth knowing both for wall-clock estimates and because it bounds what a kill can lose. **There is
-exactly one knob, `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1-256, Claude Code 2.1.269 and
-later)**: the cap site reads it as `env ?? <the formula>` and writes `workflow: concurrent agent gate =
+exactly one CONCURRENCY knob, `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1-256, Claude Code 2.1.269
+and later)**: the cap site reads it as `env ?? <the formula>` and writes `workflow: concurrent agent gate =
 N` to the debug log when it is set. It is an environment variable of the SESSION that launches the run
 (the shell, or a settings `env` entry) — the settings schema carries no workflow concurrency of its own
 and `agent()`'s options carry none, so a script cannot raise it for itself. Re-derive the set with
 `grep -aoE "CLAUDE_CODE_WORKFLOW_[A-Z_]*" <the claude binary>` rather than trusting this paragraph —
-it said "there is no knob" for three weeks after one shipped [M-30].
+it said "there is no knob" for three weeks after one shipped [M-30]. The same grep turns up
+`CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL`, which moves no concurrency: it is a model override over every
+`agent()` of the run, `model-routing.md`'s first paragraph.
 The knob buys SLOTS, not cores: raise it for an inference-bound fan-out (read-only reviewers, readers),
 and leave it alone for agents that each build or run a test suite — the machine bounds those whatever the
 cap says, and a test suite beside a docker build and the agents' own processes has taken a box down

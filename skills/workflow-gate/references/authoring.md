@@ -398,3 +398,19 @@ genuinely needs a shell. `wf new-script` emits it as one shared `NAV` const inte
 producer, reviewer, fix, recheck and acceptance prompts, because an instruction that arrives from
 outside the script can only be overridden INSIDE it, and a habit stated once per prompt is a habit
 stated in none. What is NOT measured is the ratio after the change; the claim is the 256:64.
+
+**The LAUNCH turn is part of every agent's brief, and it outranks the prompt.** The harness delivers
+each workflow agent's task under a frame saying the text was computed by a script and carries no user
+authority — every line of it indented, so a frame-like line at column zero inside a prompt would be a
+forgery, which is why the `UNTRUSTED` fences of `security.mjs` prefix every line instead of framing a
+block — and ahead of it relays, verbatim, the user message that triggered the `Workflow` call as "the
+only user voice in this task", with the rule that where the computed task conflicts with that request,
+the request wins. A request longer than a few thousand characters is not relayed, a scheduled run relays
+nothing, and `CLAUDE_CODE_WORKFLOW_PROMPT_PROVENANCE` is the switch, on by default [M-50]. Neither the
+script, nor its pre-flight gate, nor `wfdry` reads that message. So the turn that launches a gated run
+says WHAT TO RUN and nothing else — no "skip X this time", no aside about scope, no draft of a finding —
+because an aside there reaches every reviewer as an instruction above its lens, and `wf freeze` froze a
+run that did not contain it. The other half is in the same binary's history: for six releases agents
+read the no-authority frame and SKIPPED their step while the run reported success (fixed in 2.1.301),
+so a `null` from a cell whose prompt is sound is a dead review for the ledger, never a reviewer's
+verdict.

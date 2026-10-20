@@ -619,6 +619,20 @@ default used to be the working directory always, which produced twenty-two
 "owns X, which does not exist" warnings on a correct script — a script's owned
 paths are relative to the tree under review, and the workspace is not it.
 
+### `wfcheck` and the environment it runs in
+
+A script's `model:` options are what the run uses only while nothing outside the
+script overrides them, and since Claude Code 2.1.296 one thing can:
+`CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL`, set in the launching session's
+environment, replaces the model of every `agent()` of a workflow run (the run
+prints `Workflow agent model "X" ignored` per spawn), and
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE` makes `CLAUDE_CODE_SUBAGENT_MODEL` do the
+same for every subagent. `wfcheck` reads both from its own environment and
+reports a WARN naming the value and the line that unsets it; the report is
+silent when neither is set, because it reads the environment it was run in and
+cannot see the one the launch will use — the pre-flight gate runs the check from
+the session that launches, which is what makes the two the same.
+
 ### `wfcheck` and a `<placeholder>` inside a command a prompt hands over
 
 Such a command runs, exits 0 having matched nothing, and prints NOTHING — which

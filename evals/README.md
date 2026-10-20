@@ -76,7 +76,10 @@ delta printed -0.33: a 0 for never answering, in the register of a 0 for
 answering badly. The case now carries `timeout_seconds: 900` and `max_turns:
 20`. Reading the manual and then writing a whole orchestration script is the
 most expensive thing this plugin asks of an agent, and a case that cannot pay
-for it measures the budget instead.
+for it measures the budget instead. Since Claude Code 2.1.299 a run that ends on
+an API error scores 0 WITHOUT grading and the suite exits 1 — the register
+problem above, now at least named by the exit code; a time-bound 0 is still a
+graded one.
 
 The WITHOUT arm is the reason the case is worth re-running rather than
 re-designing: it produced a script (`meta-block` passed) whose `agent()` calls
