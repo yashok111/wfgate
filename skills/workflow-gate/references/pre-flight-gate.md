@@ -197,7 +197,7 @@ the next round → re-freeze → `wf verify` → hand the next reviewer `wf delt
    IS the fixture contract, so nothing is hand-authored per run. Your own `spawn` wrapper is NOT
    stubbed: it is left in place and exercised, which is what makes the note below about a swallowed
    throw true. It must complete every mode before the gate runs. What follows is a BUILD run's
-   modes; a read-only run's (`wf init -type review|hunt|audit`) differ — no `acceptfail` or `unfixed`, an added
+   modes; a read-only run's (`wf init -type review|hunt|audit|security`) differ — no `acceptfail` or `unfixed`, an added
    `empty` and `dead-finders`, `dead-reviews` killing verifiers and critics — and are stated in
    `run-types.md`. The seven modes are `clean`, `blockers`
    (every gate returns one), `acceptfail`, `unfixed` (a fix round that leaves blockers open),

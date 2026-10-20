@@ -24,7 +24,7 @@ read-only types in every row below unless their own sections say otherwise.
 | a pass-shaped boolean (`verified`, `complete`) | true everywhere but `acceptfail` | true in the passing modes, false elsewhere |
 | `dead-reviews` kills | review / fix / closeout / verify / accept labels | those, plus critic / skeptic — the finders LIVE |
 | `dead-finders` kills | — | find / hunt / scan / audit / lens / inspect / analyze labels — the verifiers live, and a mode that kills nobody FAILS |
-| `disallowedTools` on a call | not asked | every call without `isolation: 'worktree'` names `Write` and `Edit` in it (the skeleton's `NO_WRITE`), refused in every mode otherwise; a value that is not an array of non-empty strings is refused in every type, the build included |
+| `disallowedTools` on a call | not asked | every call without `isolation: 'worktree'` names `Write` and `Edit` in it (the skeleton's `NO_WRITE`), refused in every mode otherwise; a hunt's or a security run's reproducer carrying it is refused too — narrowed, it could not write its test; a value that is not an array of non-empty strings is refused in every type, the build included |
 | `wfcheck --owns-diff` | an audit of the ownership map; exits 0 | a BAR: the tree must be unchanged and HEAD unmoved; exits 1 otherwise; the base must be a SHA; a hunt's or a security run's REGISTERED reproduction worktrees under `.claude/worktrees/` are listed with their cleanup, not counted |
 | the gate's third vector | CRITERION | COVERAGE & PRECISION (below) |
 
@@ -65,7 +65,9 @@ it carries, and what each piece answers:
   harness takes `Write`, `Edit` and `NotebookEdit` out of the agent's tool list before it starts, so
   there is no denied call and no dead agent, only a tool the agent does not have [M-51]. `wfdry`
   refuses a reading cell of a read-only type without it; a cell with `isolation: 'worktree'` is
-  exempt, because a reproducer writes its test there by design. `Bash` stays: `NAV` allows read-only
+  exempt, because a reproducer writes its test there by design — and a reproducer CARRYING the
+  option is refused, since narrowed it could not write that test and every reproduction would
+  read "not reproduced". `Bash` stays: `NAV` allows read-only
   git, and a finder with no shell cannot follow a blame. The option is belt, not bar — an option the
   harness renames is a key ignored in silence, and only the tree says whether the property held.
   Start the run from a

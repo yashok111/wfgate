@@ -52,6 +52,18 @@ return { done: true }`
 	}
 }
 
+// The converse of the reader refusal: a reproducer narrowed at spawn cannot
+// write the test it owes, and the run would complete on "not reproduced" with
+// nothing saying why. The review round's sweep added the option to the hunt's
+// reproducer and every bar stayed green.
+func TestReproducerIsNotNarrowed(t *testing.T) {
+	const anchor = "effort: 'medium', isolation: 'worktree', schema: REPRO_SCHEMA"
+	for _, c := range []struct{ typ, src string }{{ws.TypeHunt, huntSkeleton(t)}, {ws.TypeSecurity, securitySkeleton(t)}} {
+		body := mutate(t, c.src, anchor, "effort: 'medium', disallowedTools: NO_WRITE, isolation: 'worktree', schema: REPRO_SCHEMA")
+		wantViolation(t, byMode(runTyped(t, body, c.typ, "clean"), "clean"), "reproducer carries `disallowedTools` naming Write or Edit")
+	}
+}
+
 // The harness refuses a spawn whose `disallowedTools` is not an array of
 // non-empty strings, and the spawn wrapper turns that into a dead agent paid
 // for in a live run; the dry run refuses the shape first, in every type.

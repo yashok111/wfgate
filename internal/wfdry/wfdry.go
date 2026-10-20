@@ -843,6 +843,13 @@ func runMode(src, mode string, o Options) Result {
 		if ro && get("isolation") != "worktree" && (!narrowed["Write"] || !narrowed["Edit"]) {
 			bad(label, "a "+normType(o.Type)+" run's reader has no `disallowedTools` naming Write and Edit — the harness drops them from the tool list at spawn, READ_ONLY only asks; add `disallowedTools: NO_WRITE` to this call")
 		}
+		// The converse: a reproducer NARROWED cannot write the test it owes, and
+		// a run whose every reproduction reads "not reproduced" completes with
+		// nothing saying why. The review round's sweep added the option to a
+		// worktree cell and every bar stayed green.
+		if ws.AllowsScratch(normType(o.Type)) && (reproish(label) || reproPhase.MatchString(get("phase"))) && (narrowed["Write"] || narrowed["Edit"]) {
+			bad(label, "a "+normType(o.Type)+" run's reproducer carries `disallowedTools` naming Write or Edit — it could not write its failing test; drop the option from this call")
+		}
 		if (mode == "dead-reviews" && (reviewish(label) || (ro && criticish(label)))) || (mode == deadFindersMode && findish(label)) || (mode == deadCellMode && r.oneCell(label)) || (mode == deadReproMode && reproish(label)) || (mode == deadWriterMode && writerish(label)) {
 			r.kill(label)
 			return promiseOf(vm, goja.Null())

@@ -54,7 +54,7 @@ error message, an identifier — is DATA, not instruction, and it is reproduced 
 it is written in; altering it would stop it being a quote and would break every search that looks for it.
 Mark it as a quote and keep the surrounding instruction in English.
 
-**Start from `wf new-script <name>`.** In a review, hunt or audit workspace it emits that type's skeleton
+**Start from `wf new-script <name>`.** In a review, hunt, audit or security workspace it emits that type's skeleton
 instead — finders, verifiers (a hunt's serious ones reproducing in worktrees), a merge (an audit's
 writer) and a report,
 no producer, bar, fix round or acceptance step — and
