@@ -23,9 +23,15 @@ context as cache-read every turn — this compounds (≈48 turns/agent produced 
 across 58 agents). Prefer fewer, larger reads (batch a directory in one pass). If an agent is expected
 to exceed ~15-20 tool calls, its scope is too wide — split or narrow it.
 
-**4. Stop/resume is lossy.** On resume, only FULLY-COMPLETED `agent()` calls cache; in-flight agents are
-discarded and re-run from scratch. Do NOT repeatedly stop/resume a large workflow (each stop wastes up
-to the concurrency-cap's worth of partial agents). If a pause is likely (time pressure, a session you
+**4. Stop/resume is lossy.** On resume, a FULLY-COMPLETED `agent()` call is served from the run's
+journal, and in-flight agents are discarded and re-run from scratch. The cache is a PREFIX, not a set:
+the first call the journal holds neither a result nor a live `started` record for — one still queued
+behind the concurrency cap when the run stopped, or one that failed — switches it off for the rest of
+the run, so every call issued after that one runs live, journaled results included; an in-flight agent
+does not break it [M-52]. Before Claude Code 2.1.305 a completed agent inside `pipeline()` or
+`parallel()` re-ran on resume as well — every fan-out of every emitted skeleton — so upgrade before
+resuming one. Do NOT repeatedly stop/resume a large workflow (each stop wastes up to the
+concurrency-cap's worth of partial agents). If a pause is likely (time pressure, a session you
 may lose), split the work into smaller sequential `Workflow` calls at phase boundaries so each completes
 and caches, rather than one long run you keep interrupting. A claude.ai USAGE LIMIT is usually no
 longer one of those pauses: since Claude Code 2.1.271, with `/config` → "Continue automatically at

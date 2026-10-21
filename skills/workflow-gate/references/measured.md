@@ -873,3 +873,21 @@ non-empty tool-name strings ... Refusing the spawn rather than running it un-nar
 skeleton's `spawn` wrapper caught as a failed agent. The option is in the binary and in neither the
 `workflow-authoring` skill it ships nor a release note of 2.1.270 to 2.1.304, so a rename would be
 an unknown key ignored in silence: the tree after the run (`wfcheck --owns-diff`) stays the bar.
+
+## M-52 — what the Claude Code 2.1.304 and 2.1.306 binaries do with a run's journal on resume
+
+Read 2026-10-21 in both binaries, at the cache lookup inside the `agent()` wrapper (anchor: the
+`tengu_workflow_journal_started_hit_respawn` event), not probed with a live resume. A call's cache key
+is chained from the key before it. In 2.1.304 that chain is ONE variable for the whole run, advanced in
+the order calls are issued; on resume a served call resolves at once, which reorders the issuing inside
+a fan-out, so the keys of completed agents in `pipeline()` and `parallel()` stopped matching and they
+re-ran — the 2.1.305 note "Fixed Workflow resume re-running already-completed `pipeline()` and
+`parallel()` agents instead of serving them from the run's journal". In 2.1.306 the chain forks per
+slot of a fan-out and joins after it (an async-local store, `inSlot` / `join`), so a key no longer
+depends on the order in which siblings finish. Unchanged between the two: one run-wide flag, set by the
+first call that has no journaled result and whose `started` record is missing or was followed by a
+`failed` one, after which no call is served from the journal; a call with a `started` record and no
+result is re-run without setting it. 2.1.306 adds a third condition: a key whose result was followed by
+a later `started` record (the journal parser calls it demoted) sets the flag too. New in 2.1.305: a result the journal cannot serialise is not saved, with the
+warning `workflow journal: did not save an agent() result, so a resumed run will re-run from this
+call`.

@@ -5,7 +5,7 @@ is the way it is, the hard rules and the bars — what an agent has to ACT on.
 Four files hold what it only has to LOOK UP, and each says when to open it:
 `README.md` is the command reference — every flag, every report line, worked
 examples; go there first for "how do I run a round". `WAVES.md` is the
-maintenance record, waves 2 to 41 — what each change answered and the command
+maintenance record, waves 2 to 42 — what each change answered and the command
 that measured it; open it when a decision looks arbitrary or before
 contradicting a banked number. `GATES.md` is the gate census — every gate,
 its workspace and its numbers. `IDEAS.md` holds the queue and the do-not-build
@@ -373,7 +373,7 @@ does: it is part of what the freeze was verified WITH. In `verify` a mismatch
 is a note, not a MISMATCH: a rebuilt binary legitimately verifies an older
 freeze.
 
-**Waves 2 to 41 are in `WAVES.md`**, not here. They are the maintenance record —
+**Waves 2 to 42 are in `WAVES.md`**, not here. They are the maintenance record —
 what each change answered, and the command that measured it — and they were 80%
 of this file, paid in context on every session in this repository. The first
 split (2026-08-29) moved waves 2 to 18 byte-identical and kept the newest here;
@@ -425,6 +425,7 @@ proposing something that may already be on the do-not-build list. Its index:
 | 39 | Claude Code 2.1.295 to 2.1.304, read against the plugin | `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` overriding every `agent()` model, and `wfcheck` reporting it; the harness frames every workflow agent's task as no-authority and relays the LAUNCH turn above it; `onFailure: "block"` on the Workflow hook; `disallowedTools` queued |
 | 40 | The option wave 39 queued, probed | Every reading cell of the four read-only skeletons narrowed at spawn with `disallowedTools`, the reproducers exempt; `wfdry` refuses a reader without it and a value the harness would refuse; the tree bar stays the bar |
 | 41 | The owner's question: can our functions be fuzzed | Eleven `Fuzz*` targets over the five text readers with INVARIANTS, not "no panic"; `make fuzz`, not a bar; one real find (`SetClosedBy` losing a cell on a row with no closing pipe), five invariants the fuzzer corrected; the crasher banked as a replayed test |
+| 42 | Claude Code 2.1.305 and 2.1.306, read against the plugin | Resume served completed `pipeline()`/`parallel()` agents from the journal only from 2.1.305 (per-slot key chain); the cache is a PREFIX — the first call with no record switches it off for the rest of the run; `cost-discipline.md` §4 and `[M-52]` |
 
 **`wf close` and `wf prune`, and why the record is not the repository.** Three
 gates were written up by hand into `docs/feedbacks/FEEDBACK-p2*.md`, each inventing its own
