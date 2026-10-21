@@ -28,7 +28,10 @@ journal, and in-flight agents are discarded and re-run from scratch. The cache i
 the first call the journal holds neither a result nor a live `started` record for — one still queued
 behind the concurrency cap when the run stopped, or one that failed — switches it off for the rest of
 the run, so every call issued after that one runs live, journaled results included; an in-flight agent
-does not break it [M-52]. Before Claude Code 2.1.305 a completed agent inside `pipeline()` or
+does not break it [M-52]. An edited or added call is such a call, and "after" is ISSUE order, sibling
+slots of a `parallel()` included — so a resume meant to re-run one changed prompt against cached
+neighbours needs that prompt issued last — and a call added to or dropped from any slot of a fan-out
+re-keys every call after the fan-out. Before Claude Code 2.1.305 a completed agent inside `pipeline()` or
 `parallel()` re-ran on resume as well — every fan-out of every emitted skeleton — so upgrade before
 resuming one. Do NOT repeatedly stop/resume a large workflow (each stop wastes up to the
 concurrency-cap's worth of partial agents). If a pause is likely (time pressure, a session you

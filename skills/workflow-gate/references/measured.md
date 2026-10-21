@@ -877,7 +877,7 @@ an unknown key ignored in silence: the tree after the run (`wfcheck --owns-diff`
 ## M-52 — what the Claude Code 2.1.304 and 2.1.306 binaries do with a run's journal on resume
 
 Read 2026-10-21 in both binaries, at the cache lookup inside the `agent()` wrapper (anchor: the
-`tengu_workflow_journal_started_hit_respawn` event), not probed with a live resume. A call's cache key
+`tengu_workflow_journal_started_hit_respawn` event), then probed on 2.1.306. A call's cache key
 is chained from the key before it. In 2.1.304 that chain is ONE variable for the whole run, advanced in
 the order calls are issued; on resume a served call resolves at once, which reorders the issuing inside
 a fan-out, so the keys of completed agents in `pipeline()` and `parallel()` stopped matching and they
@@ -891,3 +891,11 @@ result is re-run without setting it. 2.1.306 adds a third condition: a key whose
 a later `started` record (the journal parser calls it demoted) sets the flag too. New in 2.1.305: a result the journal cannot serialise is not saved, with the
 warning `workflow journal: did not save an agent() result, so a resumed run will re-run from this
 call`.
+
+The probe: one script of a three-slot `parallel()` — slot 0 and slot 2 call `agent()` only when an
+`args` flag asks, slot 1 always — then a two-item, two-stage `pipeline()`; five haiku agents at `low`,
+then three resumes of the same run with different `args`, which the cache key does not include. Same
+`args`: all five served, no tokens. A call added in slot 2: slot 1 served, the new call live, and all
+four pipeline agents live under NEW keys — the fan-out's join hashes every slot's chain. A call added
+in slot 0: slot 1 ran live under the very key its journaled result carries, then the pipeline — the
+flag, not a key change, since slot 1's key is its slot's alone.
